@@ -1,0 +1,22 @@
+# Aether Node Configuration
+
+# Block time - locked at 60 seconds
+consensus.timeout_commit = "60s"
+
+# Gas limits (our locked values)
+mempool.max_tx_bytes = 1048576
+mempool.max_gas = 15000000
+
+# Logging
+log_level = "info"
+
+# RPC
+rpc.laddr = "tcp://0.0.0.0:26657"
+grpc.address = "0.0.0.0:9090"
+
+# P2P
+p2p.laddr = "tcp://0.0.0.0:26656"
+p2p.seeds = ""
+
+# State sync (for faster syncing later)
+state_sync.enable = false

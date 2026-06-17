@@ -1,0 +1,25 @@
+# Aether Makefile
+VERSION := $(shell git describe --tags --always --dirty)
+COMMIT  := $(shell git rev-parse --short HEAD)
+BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+LDFLAGS = -X github.com/whoyoujoshin/aether/version.Version=$(VERSION) \
+          -X github.com/whoyoujoshin/aether/version.Commit=$(COMMIT) \
+          -X github.com/whoyoujoshin/aether/version.BuildDate=$(BUILD_DATE)
+
+build:
+	go build -ldflags "$(LDFLAGS)" -o bin/aetherd ./cmd/aetherd
+
+install:
+	go install -ldflags "$(LDFLAGS)" ./cmd/aetherd
+
+test:
+	go test ./...
+
+clean:
+	rm -rf bin/
+
+run-local:
+	aetherd start --home ~/.aether
+
+.PHONY: build install test clean run-local

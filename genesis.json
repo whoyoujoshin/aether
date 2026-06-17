@@ -1,0 +1,16 @@
+{
+  "genesis_time": "2026-10-01T00:00:00Z",
+  "chain_id": "aether-1",
+  "initial_height": "1",
+  "app_hash": "",
+  "app_state": {
+    "auth": {},
+    "bank": {},
+    "staking": {},
+    "pow": {
+      "params": {
+        "block_reward": "5"
+      }
+    }
+  }
+}
