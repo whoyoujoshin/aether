@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
+	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 )
 
 var (
@@ -39,7 +41,7 @@ func (AppModuleBasic) ValidateGenesis(cdc codec.JSONCodec, config interface{}, b
 	return json.Unmarshal(bz, &genState)
 }
 
-func (AppModuleBasic) RegisterGRPCGatewayRoutes(cliCtx interface{}) {}
+func (AppModuleBasic) RegisterGRPCGatewayRoutes(cliCtx client.Context, mux *runtime.ServeMux) {}
 
 type AppModule struct {
 	AppModuleBasic
@@ -54,6 +56,8 @@ func NewAppModule(cdc codec.Codec, keeper Keeper) AppModule {
 		cdc:            cdc,
 	}
 }
+
+func (AppModule) IsOnePerModuleType() {}
 
 func (AppModule) IsAppModule() {}
 
