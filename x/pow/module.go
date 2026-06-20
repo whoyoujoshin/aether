@@ -2,6 +2,7 @@ package pow
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -10,8 +11,8 @@ import (
 )
 
 var (
-	_ module.AppModule      = AppModule{}
-	_ module.AppModuleBasic = AppModuleBasic{}
+	_ module.AppModule      = (*AppModule)(nil)
+	_ module.AppModuleBasic = (*AppModuleBasic)(nil)
 )
 
 type AppModuleBasic struct{}
@@ -26,13 +27,19 @@ func (AppModuleBasic) RegisterInterfaces(registry cdctypes.InterfaceRegistry) {}
 
 func (AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {
 	genState := DefaultGenesisState()
-	return cdc.MustMarshalJSON(&genState)
+	bz, err := json.Marshal(genState)
+	if err != nil {
+		panic(fmt.Errorf("failed to marshal genesis state: %w", err))
+	}
+	return bz
 }
 
 func (AppModuleBasic) ValidateGenesis(cdc codec.JSONCodec, config interface{}, bz json.RawMessage) error {
 	var genState GenesisState
-	return cdc.UnmarshalJSON(bz, &genState)
+	return json.Unmarshal(bz, &genState)
 }
+
+func (AppModuleBasic) RegisterGRPCGatewayRoutes(cliCtx interface{}) {}
 
 type AppModule struct {
 	AppModuleBasic
@@ -48,6 +55,8 @@ func NewAppModule(cdc codec.Codec, keeper Keeper) AppModule {
 	}
 }
 
+func (AppModule) IsAppModule() {}
+
 func (am AppModule) RegisterServices(cfg module.Configurator) {}
 
 func (am AppModule) ConsensusVersion() uint64 {
@@ -56,7 +65,10 @@ func (am AppModule) ConsensusVersion() uint64 {
 
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.RawMessage) []interface{} {
 	var genState GenesisState
-	cdc.MustUnmarshalJSON(data, &genState)
+	err := json.Unmarshal(data, &genState)
+	if err != nil {
+		panic(err)
+	}
 
 	am.keeper.SetBlockReward(ctx, sdk.NewInt(int64(genState.Params.BlockReward)))
 	am.keeper.SetDifficulty(ctx, sdk.NewInt(int64(genState.Params.Difficulty)))
@@ -71,5 +83,9 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 			Difficulty:  int(am.keeper.GetDifficulty(ctx).Int64()),
 		},
 	}
-	return cdc.MustMarshalJSON(&genState)
+	bz, err := json.Marshal(genState)
+	if err != nil {
+		panic(err)
+	}
+	return bz
 }

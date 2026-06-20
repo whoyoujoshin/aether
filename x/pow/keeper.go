@@ -21,28 +21,25 @@ func NewKeeper(cdc codec.BinaryCodec, storeKey types.StoreKey) Keeper {
 
 // ProcessBlock (full block processing with verification)
 func (k Keeper) ProcessBlock(ctx sdk.Context, blockHeight int64, miner sdk.AccAddress, nonce uint64, hash string) {
-	if ctx == nil {
-		return
-	}
+	logger := ctx.Logger()
 	if k.VerifyPoWSolution(ctx, blockHeight, miner, nonce, hash) {
 		reward := k.GetBlockReward(ctx)
-		ctx.Logger().Info("Block accepted", "height", blockHeight, "miner", miner.String(), "reward", reward.String(), "hash", hash)
+		logger.Info("Block accepted", "height", blockHeight, "miner", miner.String(), "reward", reward.String(), "hash", hash)
 	} else {
-		ctx.Logger().Info("Invalid PoW solution - block rejected")
+		logger.Info("Invalid PoW solution - block rejected")
 	}
 }
 
 // VerifyPoWSolution
 func (k Keeper) VerifyPoWSolution(ctx sdk.Context, blockHeight int64, miner sdk.AccAddress, nonce uint64, hash string) bool {
-	if ctx != nil {
-		ctx.Logger().Info("Verifying PoW", "height", blockHeight, "miner", miner.String(), "nonce", nonce)
-	}
+	logger := ctx.Logger()
+	logger.Info("Verifying PoW", "height", blockHeight, "miner", miner.String(), "nonce", nonce)
 	return true
 }
 
 // GetBlockReward
 func (k Keeper) GetBlockReward(ctx sdk.Context) math.Int {
-	if k.storeKey == nil || ctx == nil {
+	if k.storeKey == nil {
 		return math.NewInt(5) // Default reward
 	}
 	store := ctx.KVStore(k.storeKey)
@@ -58,7 +55,7 @@ func (k Keeper) GetBlockReward(ctx sdk.Context) math.Int {
 
 // SetBlockReward - Store block reward
 func (k Keeper) SetBlockReward(ctx sdk.Context, reward math.Int) {
-	if k.storeKey == nil || ctx == nil {
+	if k.storeKey == nil {
 		return
 	}
 	store := ctx.KVStore(k.storeKey)
@@ -68,7 +65,7 @@ func (k Keeper) SetBlockReward(ctx sdk.Context, reward math.Int) {
 
 // GetDifficulty
 func (k Keeper) GetDifficulty(ctx sdk.Context) math.Int {
-	if k.storeKey == nil || ctx == nil {
+	if k.storeKey == nil {
 		return math.NewInt(1) // Default difficulty
 	}
 	store := ctx.KVStore(k.storeKey)
@@ -83,7 +80,7 @@ func (k Keeper) GetDifficulty(ctx sdk.Context) math.Int {
 
 // SetDifficulty - Store difficulty
 func (k Keeper) SetDifficulty(ctx sdk.Context, difficulty math.Int) {
-	if k.storeKey == nil || ctx == nil {
+	if k.storeKey == nil {
 		return
 	}
 	store := ctx.KVStore(k.storeKey)
@@ -93,7 +90,5 @@ func (k Keeper) SetDifficulty(ctx sdk.Context, difficulty math.Int) {
 
 // AdjustDifficulty
 func (k Keeper) AdjustDifficulty(ctx sdk.Context) {
-	if ctx != nil {
-		ctx.Logger().Info("Difficulty adjusted")
-	}
+	ctx.Logger().Info("Difficulty adjusted")
 }

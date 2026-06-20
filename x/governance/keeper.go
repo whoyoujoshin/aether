@@ -19,7 +19,5 @@ func NewKeeper(cdc codec.BinaryCodec, storeKey types.StoreKey) Keeper {
 }
 
 func (k Keeper) SubmitProposal(ctx sdk.Context, title string) {
-	if ctx != nil {
-		ctx.Logger().Info("Proposal submitted", "title", title)
-	}
+	ctx.Logger().Info("Proposal submitted", "title", title)
 }
