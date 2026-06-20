@@ -1,0 +1,14 @@
+module github.com/whoyoujoshin/aether
+
+go 1.23
+
+require (
+	github.com/cosmos/cosmos-sdk v0.50.12
+	github.com/tendermint/tendermint v0.34.29
+	github.com/spf13/cobra v1.8.1
+)
+
+require (
+	// Cosmos dependencies will be pulled automatically
+	github.com/cometbft/cometbft v0.38.12 // indirect
+)

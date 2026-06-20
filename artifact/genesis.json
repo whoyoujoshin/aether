@@ -1,0 +1,38 @@
+{
+  "genesis_time": "2026-09-01T00:00:00Z",
+  "chain_id": "aether-testnet-1",
+  "initial_height": "1",
+  "consensus_params": {
+    "block": {
+      "max_bytes": "22000000",
+      "max_gas": "15000000"
+    }
+  },
+  "app_state": {
+    "auth": {
+      "accounts": []
+    },
+    "bank": {
+      "params": {
+        "send_enabled": true
+      }
+    },
+    "staking": {
+      "params": {
+        "bond_denom": "uaeth"
+      }
+    },
+    "pow": {
+      "params": {
+        "block_reward": "5000000000", 
+        "tail_reward": "180000000"
+      }
+    },
+    "treasury": {
+      "params": {
+        "issuance_share": "0.15",
+        "fee_share": "0.25"
+      }
+    }
+  }
+}

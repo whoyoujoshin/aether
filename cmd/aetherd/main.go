@@ -4,35 +4,56 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/whoyoujoshin/aether/app"
 )
 
 func main() {
-	fmt.Println("🚀 Aether Daemon v0.1")
-	fmt.Println("60s blocks • Fair Launch • Scrypt + AuxPoW")
+	fmt.Println("🚀 Aether Daemon v0.1 - Local Testnet (Cosmos SDK skeleton)")
+	fmt.Println("60s blocks • Scrypt PoW + AuxPoW • Fair Launch")
 
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "init":
-			fmt.Println("✅ Node initialized for testnet")
-			fmt.Println("Genesis ready with 5 AETH initial reward")
+			fmt.Println("✅ Node initialized")
 		case "start":
-			fmt.Println("🌐 Starting local testnet node...")
-			fmt.Println("Chain ID: aether-test-1")
-			fmt.Println("Block time: 60 seconds")
-			fmt.Println("Press Ctrl+C to stop\n")
-
-			block := 1
-			ticker := time.NewTicker(60 * time.Second)
-			for range ticker.C {
-				fmt.Printf("⛏️  Block %d mined | Reward: 5 AETH | Time: %s\n", block, time.Now().Format("15:04:05"))
-				block++
+			startTestnet()
+		case "mine":
+			fmt.Println("⛏️ Mining simulation started")
+			for {
+				time.Sleep(60 * time.Second)
+				fmt.Println("✅ Simulated mining block")
 			}
 		default:
-			fmt.Println("Usage: aetherd [init | start]")
+			fmt.Println("Usage: aetherd [init | start | mine]")
 		}
 	} else {
 		fmt.Println("\nCommands:")
 		fmt.Println("  aetherd init   - Initialize node")
 		fmt.Println("  aetherd start  - Start the node")
+		fmt.Println("  aetherd mine   - Mining simulation")
+	}
+}
+
+func startTestnet() {
+	fmt.Println("🌐 Starting local testnet...")
+	fmt.Println("Aether App initialized with Cosmos SDK")
+	fmt.Println("PoW verification enabled")
+	fmt.Println("Press Ctrl+C to stop\n")
+
+	block := 1
+	ticker := time.NewTicker(60 * time.Second)
+	for range ticker.C {
+		miner := "aether1miner"
+		nonce := uint64(block * 12345)
+		hash := "simulatedhash" + fmt.Sprint(block)
+
+		// Call PoW verification
+		a := app.New().(*app.App)
+		a.PowKeeper.ProcessBlock(nil, int64(block), sdk.AccAddress(miner), nonce, hash)
+
+		block++
 	}
 }
