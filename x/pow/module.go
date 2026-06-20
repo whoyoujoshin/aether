@@ -54,14 +54,14 @@ func (am AppModule) ConsensusVersion() uint64 {
 	return 1
 }
 
-func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.RawMessage) []abci.ValidatorUpdate {
+func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.RawMessage) []interface{} {
 	var genState GenesisState
 	cdc.MustUnmarshalJSON(data, &genState)
 
 	am.keeper.SetBlockReward(ctx, sdk.NewInt(int64(genState.Params.BlockReward)))
 	am.keeper.SetDifficulty(ctx, sdk.NewInt(int64(genState.Params.Difficulty)))
 
-	return []abci.ValidatorUpdate{}
+	return []interface{}{}
 }
 
 func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.RawMessage {
