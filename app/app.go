@@ -11,6 +11,8 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"cosmossdk.io/store/types"
+	"cosmossdk.io/log"
+	cosmosdb "github.com/cosmos/cosmos-db"
 
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/treasury"
@@ -47,7 +49,7 @@ type App struct {
 	sm *module.Manager
 }
 
-func New(logger sdk.Logger, db interface{}, traceStore io.Writer, loadLatest bool, skipUpgradeHeights map[int64]bool, homePath string, invCheckPeriod uint, baseAppOptions ...func(*baseapp.BaseApp),
+func New(logger log.Logger, db cosmosdb.DB, traceStore io.Writer, loadLatest bool, skipUpgradeHeights map[int64]bool, homePath string, invCheckPeriod uint, baseAppOptions ...func(*baseapp.BaseApp),
 ) *App {
 	fmt.Println("✅ Initializing Aether App...")
 
