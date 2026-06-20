@@ -6,7 +6,7 @@ const (
 )
 
 type Params struct {
-	TreasuryShare int `json:"treasury_share"`
+	InitialBalance int `json:"initial_balance"`
 }
 
 type GenesisState struct {
@@ -16,7 +16,7 @@ type GenesisState struct {
 func DefaultGenesisState() GenesisState {
 	return GenesisState{
 		Params: Params{
-			TreasuryShare: 15,
+			InitialBalance: 1000000,
 		},
 	}
 }

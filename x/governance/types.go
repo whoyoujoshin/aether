@@ -6,9 +6,7 @@ const (
 )
 
 type Params struct {
-	VotingPeriod  int `json:"voting_period"`
-	Quorum        int `json:"quorum"`
-	Supermajority int `json:"supermajority"`
+	VotingPeriod int `json:"voting_period"`
 }
 
 type GenesisState struct {
@@ -18,9 +16,7 @@ type GenesisState struct {
 func DefaultGenesisState() GenesisState {
 	return GenesisState{
 		Params: Params{
-			VotingPeriod:  21 * 24 * 60 * 60,
-			Quorum:        15,
-			Supermajority: 70,
+			VotingPeriod: 604800, // 1 week in seconds
 		},
 	}
 }
