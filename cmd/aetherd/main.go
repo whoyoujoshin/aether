@@ -23,8 +23,17 @@ import (
 	"github.com/whoyoujoshin/aether/app"
 )
 
+var encodingConfig = app.MakeEncodingConfig()
+
 var initClientCtx = client.Context{}.
-	WithHomeDir(app.DefaultNodeHome)
+	WithCodec(encodingConfig.Codec).
+	WithInterfaceRegistry(encodingConfig.InterfaceRegistry).
+	WithTxConfig(encodingConfig.TxConfig).
+	WithLegacyAmino(encodingConfig.Amino).
+	WithInput(os.Stdin).
+	WithBroadcastMode(flags.BroadcastSync).
+	WithHomeDir(app.DefaultNodeHome).
+	WithViper("")
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -39,18 +48,16 @@ func main() {
 		},
 	}
 
-	// genesis/init commands
 	rootCmd.AddCommand(
 		genutilcli.InitCmd(app.ModuleBasics, app.DefaultNodeHome),
 	)
 
-	// start/export/comet/etc.
 	server.AddCommands(
 		rootCmd,
 		app.DefaultNodeHome,
 		createApp,
-		nil,                               // appExport - not wired up yet
-		func(startCmd *cobra.Command) {},   // addStartFlags - must not be nil
+		nil,
+		func(startCmd *cobra.Command) {},
 	)
 
 	if err := svrcmd.Execute(rootCmd, "AETHERD", app.DefaultNodeHome); err != nil {
@@ -61,12 +68,10 @@ func main() {
 
 func initAppConfig() (string, interface{}) {
 	srvCfg := serverconfig.DefaultConfig()
-	srvCfg.MinGasPrices = "0.0001aeth" // <- swap for your chain's actual fee denom
+	srvCfg.MinGasPrices = "0.0001aeth"
 	return serverconfig.DefaultConfigTemplate, srvCfg
 }
 
-// createApp matches servertypes.AppCreator exactly. It pulls the extra
-// options app.New() wants out of appOpts instead of taking them as args.
 func createApp(
 	logger log.Logger,
 	db dbm.DB,
@@ -86,7 +91,7 @@ func createApp(
 		logger,
 		db,
 		traceStore,
-		true, // loadLatest
+		true,
 		skipUpgradeHeights,
 		homePath,
 		invCheckPeriod,

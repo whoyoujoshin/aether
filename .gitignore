@@ -1,31 +1,17 @@
-﻿# Binaries
+﻿# Ignore local node data
+.aether/
+keyring-*/
+*.log
+
+# Ignore build artifacts
+igniteBIN/
+artifact/
+
+# Go
 *.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Test binary
 *.test
-
-# Output of go coverage
-*.out
-
-# Dependency directories
-vendor/
-
-# Build
-build/
-dist/
-
-# IDE
-.idea/
-.vscode/
+*.prof
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Cosmos specific
-.aether/
-data/
