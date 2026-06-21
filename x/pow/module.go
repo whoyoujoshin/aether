@@ -2,20 +2,20 @@ package pow
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
-	"cosmossdk.io/math"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+	abci "github.com/cometbft/cometbft/abci/types"
+	"cosmossdk.io/math"
 )
 
 var (
-	_ module.AppModule      = (*AppModule)(nil)
-	_ module.AppModuleBasic = (*AppModuleBasic)(nil)
+	_ module.AppModule      = AppModule{}
+	_ module.AppModuleBasic = AppModuleBasic{}
 )
 
 type AppModuleBasic struct{}
@@ -30,10 +30,7 @@ func (AppModuleBasic) RegisterInterfaces(registry cdctypes.InterfaceRegistry) {}
 
 func (AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {
 	genState := DefaultGenesisState()
-	bz, err := json.Marshal(genState)
-	if err != nil {
-		panic(fmt.Errorf("failed to marshal genesis state: %w", err))
-	}
+	bz, _ := json.Marshal(&genState)
 	return bz
 }
 
@@ -42,7 +39,7 @@ func (AppModuleBasic) ValidateGenesis(cdc codec.JSONCodec, config interface{}, b
 	return json.Unmarshal(bz, &genState)
 }
 
-func (AppModuleBasic) RegisterGRPCGatewayRoutes(cliCtx client.Context, mux *runtime.ServeMux) {}
+func (AppModuleBasic) RegisterGRPCGatewayRoutes(ctx client.Context, mux *runtime.ServeMux) {}
 
 type AppModule struct {
 	AppModuleBasic
@@ -58,9 +55,9 @@ func NewAppModule(cdc codec.Codec, keeper Keeper) AppModule {
 	}
 }
 
-func (AppModule) IsOnePerModuleType() {}
+func (am AppModule) IsAppModule() {}
 
-func (AppModule) IsAppModule() {}
+func (am AppModule) IsOnePerModuleType() {}
 
 func (am AppModule) RegisterServices(cfg module.Configurator) {}
 
@@ -68,17 +65,14 @@ func (am AppModule) ConsensusVersion() uint64 {
 	return 1
 }
 
-func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.RawMessage) []interface{} {
+func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.RawMessage) []abci.ValidatorUpdate {
 	var genState GenesisState
-	err := json.Unmarshal(data, &genState)
-	if err != nil {
-		panic(err)
-	}
+	json.Unmarshal(data, &genState)
 
 	am.keeper.SetBlockReward(ctx, math.NewInt(int64(genState.Params.BlockReward)))
 	am.keeper.SetDifficulty(ctx, math.NewInt(int64(genState.Params.Difficulty)))
 
-	return []interface{}{}
+	return []abci.ValidatorUpdate{}
 }
 
 func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.RawMessage {
@@ -88,9 +82,6 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 			Difficulty:  int(am.keeper.GetDifficulty(ctx).Int64()),
 		},
 	}
-	bz, err := json.Marshal(genState)
-	if err != nil {
-		panic(err)
-	}
+	bz, _ := json.Marshal(&genState)
 	return bz
 }

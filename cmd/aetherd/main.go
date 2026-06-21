@@ -2,94 +2,95 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
-	"time"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	tmdb "github.com/cometbft/cometbft-db"
+	"github.com/spf13/cast"
+	"github.com/spf13/cobra"
+
+	"cosmossdk.io/log"
+	cmtcfg "github.com/cometbft/cometbft/config"
+	dbm "github.com/cosmos/cosmos-db"
+
+	"github.com/cosmos/cosmos-sdk/client"
+	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/server"
+	svrcmd "github.com/cosmos/cosmos-sdk/server/cmd"
+	serverconfig "github.com/cosmos/cosmos-sdk/server/config"
+	servertypes "github.com/cosmos/cosmos-sdk/server/types"
+	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
 
 	"github.com/whoyoujoshin/aether/app"
 )
 
-func main() {
-	fmt.Println("🚀 Aether Daemon v0.1 - Local Testnet (Cosmos SDK skeleton)")
-	fmt.Println("60s blocks • Scrypt PoW + AuxPoW • Fair Launch")
+var initClientCtx = client.Context{}.
+	WithHomeDir(app.DefaultNodeHome)
 
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "init":
-			fmt.Println("✅ Node initialized")
-		case "start":
-			startTestnet()
-		case "mine":
-			fmt.Println("⛏️  Mining simulation started")
-			for {
-				time.Sleep(60 * time.Second)
-				fmt.Println("✅ Simulated mining block")
+func main() {
+	rootCmd := &cobra.Command{
+		Use:   "aetherd",
+		Short: "Aether Network daemon",
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			if err := client.SetCmdClientContextHandler(initClientCtx, cmd); err != nil {
+				return err
 			}
-		default:
-			fmt.Println("Usage: aetherd [init | start | mine]")
-		}
-	} else {
-		fmt.Println("\nCommands:")
-		fmt.Println("  aetherd init   - Initialize node")
-		fmt.Println("  aetherd start  - Start the node")
-		fmt.Println("  aetherd mine   - Mining simulation")
+			customAppTemplate, customAppConfig := initAppConfig()
+			return server.InterceptConfigsPreRunHandler(cmd, customAppTemplate, customAppConfig, cmtcfg.DefaultConfig())
+		},
+	}
+
+	// genesis/init commands
+	rootCmd.AddCommand(
+		genutilcli.InitCmd(app.ModuleBasics, app.DefaultNodeHome),
+	)
+
+	// start/export/comet/etc.
+	server.AddCommands(
+		rootCmd,
+		app.DefaultNodeHome,
+		createApp,
+		nil,                               // appExport - not wired up yet
+		func(startCmd *cobra.Command) {},   // addStartFlags - must not be nil
+	)
+
+	if err := svrcmd.Execute(rootCmd, "AETHERD", app.DefaultNodeHome); err != nil {
+		fmt.Fprintln(rootCmd.OutOrStderr(), err)
+		os.Exit(1)
 	}
 }
 
-func startTestnet() {
-	fmt.Println("🌐 Starting local testnet...")
-	fmt.Println("Aether App initialized with Cosmos SDK")
-	fmt.Println("PoW verification enabled")
-	fmt.Println("Press Ctrl+C to stop\n")
+func initAppConfig() (string, interface{}) {
+	srvCfg := serverconfig.DefaultConfig()
+	srvCfg.MinGasPrices = "0.0001aeth" // <- swap for your chain's actual fee denom
+	return serverconfig.DefaultConfigTemplate, srvCfg
+}
 
-	// Initialize database
-	db, err := tmdb.NewDB("aether", tmdb.GoLevelDBBackend, "./data")
-	if err != nil {
-		fmt.Printf("Error creating database: %v\n", err)
-		return
+// createApp matches servertypes.AppCreator exactly. It pulls the extra
+// options app.New() wants out of appOpts instead of taking them as args.
+func createApp(
+	logger log.Logger,
+	db dbm.DB,
+	traceStore io.Writer,
+	appOpts servertypes.AppOptions,
+) servertypes.Application {
+	skipUpgradeHeights := make(map[int64]bool)
+	for _, h := range cast.ToIntSlice(appOpts.Get(server.FlagUnsafeSkipUpgrades)) {
+		skipUpgradeHeights[int64(h)] = true
 	}
-	defer db.Close()
 
-	// Create logger
-	logger := server.NewDefaultLogger()
+	homePath := cast.ToString(appOpts.Get(flags.FlagHome))
+	invCheckPeriod := cast.ToUint(appOpts.Get(server.FlagInvCheckPeriod))
+	baseAppOptions := server.DefaultBaseappOptions(appOpts)
 
-	// Initialize app
-	aethApp := app.New(
+	return app.New(
 		logger,
 		db,
-		nil,
-		true,
-		map[int64]bool{},
-		app.DefaultNodeHome,
-		0,
+		traceStore,
+		true, // loadLatest
+		skipUpgradeHeights,
+		homePath,
+		invCheckPeriod,
+		appOpts,
+		baseAppOptions...,
 	)
-
-	fmt.Println("✅ Aether App initialized with Cosmos SDK")
-	fmt.Println("PoW + Treasury + Governance modules loaded")
-
-	// Simulate blocks
-	block := int64(1)
-	ticker := time.NewTicker(10 * time.Second) // 10s for testing instead of 60s
-	defer ticker.Stop()
-
-	for range ticker.C {
-		minerAddr, err := sdk.AccAddressFromBech32("aether1miner1qwerty0123456789abcdefg123456")
-		if err != nil {
-			fmt.Printf("Error creating address: %v\n", err)
-			continue
-		}
-
-		nonce := uint64(block * 12345)
-		hash := fmt.Sprintf("simulatedhash%d", block)
-
-		fmt.Printf("✅ Block %d: Miner: %s | Nonce: %d | Hash: %s\n", block, minerAddr.String(), nonce, hash)
-
-		block++
-	
-		// Keep app reference to prevent garbage collection
-		_ = aethApp
-	}
 }

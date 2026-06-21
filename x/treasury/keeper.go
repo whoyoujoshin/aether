@@ -20,8 +20,7 @@ func NewKeeper(cdc codec.BinaryCodec, storeKey types.StoreKey) Keeper {
 }
 
 func (k Keeper) FundTreasury(ctx sdk.Context, amount math.Int) {
-	logger := ctx.Logger()
-	logger.Info("Treasury funded", "amount", amount.String())
+	ctx.Logger().Info("Treasury funded", "amount", amount.String())
 	if k.storeKey == nil {
 		return
 	}
