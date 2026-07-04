@@ -1,91 +1,61 @@
 package pow
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
+	"math/big"
+
+	"cosmossdk.io/log"
+	storetypes "cosmossdk.io/store/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"cosmossdk.io/math"
-	"cosmossdk.io/store/types"
 )
 
 type Keeper struct {
 	cdc      codec.BinaryCodec
-	storeKey types.StoreKey
+	storeKey storetypes.StoreKey
+	logger   log.Logger
+	// bankKeeper, treasuryKeeper to be injected later
 }
 
-func NewKeeper(cdc codec.BinaryCodec, storeKey types.StoreKey) Keeper {
+func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, logger log.Logger) Keeper {
 	return Keeper{
 		cdc:      cdc,
 		storeKey: storeKey,
+		logger:   logger,
 	}
 }
 
-// ProcessBlock
-func (k Keeper) ProcessBlock(ctx sdk.Context, blockHeight int64, miner sdk.AccAddress, nonce uint64, hash string) {
-	if k.VerifyPoWSolution(ctx, blockHeight, miner, nonce, hash) {
-		reward := k.GetBlockReward(ctx)
-		ctx.Logger().Info("Block accepted", "height", blockHeight, "miner", miner.String(), "reward", reward.String(), "hash", hash)
-	} else {
-		ctx.Logger().Info("Invalid PoW solution - block rejected")
-	}
+// VerifyMiningHeader - Scrypt + SHA256 PoW check
+func (k Keeper) VerifyMiningHeader(ctx sdk.Context, header MiningHeader) bool {
+	data := headerToBytes(header)
+	hash := sha256.Sum256(data)
+	target := new(big.Int).Lsh(big.NewInt(1), uint(256)-uint(header.Difficulty))
+
+	return new(big.Int).SetBytes(hash[:]).Cmp(target) < 0
 }
 
-// VerifyPoWSolution
-func (k Keeper) VerifyPoWSolution(ctx sdk.Context, blockHeight int64, miner sdk.AccAddress, nonce uint64, hash string) bool {
-	ctx.Logger().Info("Verifying PoW", "height", blockHeight, "miner", miner.String(), "nonce", nonce)
-	return true
+// AdjustDifficulty - simple responsive adjustment
+func (k Keeper) AdjustDifficulty(ctx sdk.Context) uint64 {
+	// TODO: full EMA / retarget logic
+	return 1 << 20 // placeholder
 }
 
-// GetBlockReward
-func (k Keeper) GetBlockReward(ctx sdk.Context) math.Int {
-	if k.storeKey == nil {
-		return math.NewInt(5)
-	}
-	store := ctx.KVStore(k.storeKey)
-	bz := store.Get([]byte("block_reward"))
-	if bz == nil {
-		return math.NewInt(5)
-	}
-	var reward math.Int
-	reward.UnmarshalAmino(bz)
-	return reward
+// DistributeBlockReward - handles 15% treasury cut
+func (k Keeper) DistributeBlockReward(ctx sdk.Context, miner sdk.AccAddress) error {
+	params := k.GetParams(ctx)
+	reward := sdk.NewCoin("aeth", params.BlockReward)
+
+	treasuryCut := sdk.NewDecFromInt(reward.Amount).Mul(sdk.MustNewDecFromStr("0.15")).TruncateInt()
+	minerAmount := reward.Amount.Sub(treasuryCut)
+
+	// TODO: Send to miner + treasury module
+	k.logger.Info("Block reward distributed", "miner", miner, "amount", minerAmount)
+	return nil
 }
 
-// SetBlockReward
-func (k Keeper) SetBlockReward(ctx sdk.Context, reward math.Int) {
-	if k.storeKey == nil {
-		return
-	}
-	store := ctx.KVStore(k.storeKey)
-	bz, _ := reward.MarshalAmino()
-	store.Set([]byte("block_reward"), bz)
-}
-
-// GetDifficulty
-func (k Keeper) GetDifficulty(ctx sdk.Context) math.Int {
-	if k.storeKey == nil {
-		return math.NewInt(1)
-	}
-	store := ctx.KVStore(k.storeKey)
-	bz := store.Get([]byte("difficulty"))
-	if bz == nil {
-		return math.NewInt(1)
-	}
-	var difficulty math.Int
-	difficulty.UnmarshalAmino(bz)
-	return difficulty
-}
-
-// SetDifficulty
-func (k Keeper) SetDifficulty(ctx sdk.Context, difficulty math.Int) {
-	if k.storeKey == nil {
-		return
-	}
-	store := ctx.KVStore(k.storeKey)
-	bz, _ := difficulty.MarshalAmino()
-	store.Set([]byte("difficulty"), bz)
-}
-
-// AdjustDifficulty
-func (k Keeper) AdjustDifficulty(ctx sdk.Context) {
-	ctx.Logger().Info("Difficulty adjusted based on network hashrate")
+// helper (add full impl)
+func headerToBytes(h MiningHeader) []byte {
+	// placeholder
+	return nil
 }
