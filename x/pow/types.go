@@ -14,7 +14,11 @@ type Params struct {
 	InitialDifficulty uint64  `json:"initial_difficulty" yaml:"initial_difficulty"`
 	MinDifficulty     uint64  `json:"min_difficulty" yaml:"min_difficulty"`
 	MaxDifficulty     uint64  `json:"max_difficulty" yaml:"max_difficulty"`
+ HEAD
 	BlockReward       sdk.Int `json:"block_reward" yaml:"block_reward"` // base reward in uaeth (before treasury cut)
+=======
+	BlockReward       sdk.Int `json:"block_reward" yaml:"block_reward"` // base reward in uaeth
+ 3e2f388b8558446fbdaf6e3c37583a70e2156261
 }
 
 type MiningHeader struct {
@@ -31,4 +35,8 @@ var (
 	KeyParams         = []byte("params")
 	KeyLastDifficulty = []byte("last_difficulty")
 	KeyLastBlockTime  = []byte("last_block_time")
+ HEAD
 )
+=======
+)
+ 3e2f388b8558446fbdaf6e3c37583a70e2156261
