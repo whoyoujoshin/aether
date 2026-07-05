@@ -2,7 +2,7 @@ package pow
 
 import (
 	"encoding/json"
-
+	"context"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -26,7 +26,7 @@ func (AppModuleBasic) Name() string {
 
 func (AppModuleBasic) RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {}
 
-func (AppModuleBasic) RegisterInterfaces(registry cdctypes.InterfaceRegistry) {}
+func (AppModuleBasic) RegisterInterfaces(registry cdctypes.InterfaceRegistry) {registry.RegisterImplementations((*sdk.Msg)(nil), &MsgSubmitPoW{})}
 
 func (AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {
 	genState := DefaultGenesisState()
@@ -47,6 +47,16 @@ type AppModule struct {
 	cdc    codec.Codec
 }
 
+func (am AppModule) BeginBlock(ctx context.Context) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	newDifficulty := am.keeper.AdjustDifficulty(sdkCtx)
+	am.keeper.SetDifficulty(sdkCtx, newDifficulty)
+	am.keeper.SetLastBlockTime(sdkCtx, sdkCtx.BlockTime().Unix())
+
+	return nil
+}
+
 func NewAppModule(cdc codec.Codec, keeper Keeper) AppModule {
 	return AppModule{
 		AppModuleBasic: AppModuleBasic{},
@@ -59,7 +69,7 @@ func (am AppModule) IsAppModule() {}
 
 func (am AppModule) IsOnePerModuleType() {}
 
-func (am AppModule) RegisterServices(cfg module.Configurator) {}
+func (am AppModule) RegisterServices(cfg module.Configurator) {RegisterMsgServer(cfg.MsgServer(), NewMsgServerImpl(am.keeper))}
 
 func (am AppModule) ConsensusVersion() uint64 {
 	return 1

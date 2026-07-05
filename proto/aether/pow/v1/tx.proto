@@ -1,0 +1,25 @@
+﻿syntax = "proto3";
+package aether.pow.v1;
+
+import "gogoproto/gogo.proto";
+import "cosmos/msg/v1/msg.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/pow";
+
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+  rpc SubmitPoW(MsgSubmitPoW) returns (MsgSubmitPoWResponse);
+}
+
+message MsgSubmitPoW {
+  option (cosmos.msg.v1.signer) = "miner";
+  string miner       = 1;
+  uint64 height      = 2;
+  int64  timestamp   = 3;
+  bytes  prev_hash   = 4;
+  bytes  merkle_root = 5;
+  uint64 nonce       = 6;
+  uint64 difficulty  = 7;
+}
+
+message MsgSubmitPoWResponse {}

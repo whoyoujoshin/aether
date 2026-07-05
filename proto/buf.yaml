@@ -1,0 +1,12 @@
+﻿version: v1
+name: buf.build/whoyoujoshin/aether
+deps:
+  - buf.build/cosmos/cosmos-sdk
+  - buf.build/cosmos/cosmos-proto
+  - buf.build/cosmos/gogo-proto
+breaking:
+  use:
+    - FILE
+lint:
+  use:
+    - DEFAULT

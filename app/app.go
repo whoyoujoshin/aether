@@ -12,7 +12,6 @@ import (
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/gogoproto/grpc"
 	storetypes "cosmossdk.io/store/types"
-
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -23,19 +22,25 @@ import (
 	"github.com/cosmos/cosmos-sdk/std"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/cosmos-sdk/x/auth/tx"
-
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	abci "github.com/cometbft/cometbft/abci/types"
-
 	"github.com/whoyoujoshin/aether/x/governance"
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/treasury"
+	"github.com/cosmos/cosmos-sdk/codec/address"
+	"github.com/cosmos/cosmos-sdk/runtime"
+	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"github.com/cosmos/cosmos-sdk/x/auth"
+	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
+	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	"github.com/cosmos/cosmos-sdk/x/bank"
+
 )
 
 const Name = "aether"
 
-// DefaultNodeHome is an absolute path (~/.aether) so every command
-// resolves the same home directory regardless of working directory.
 var DefaultNodeHome string
 
 func init() {
@@ -47,12 +52,13 @@ func init() {
 }
 
 var ModuleBasics = module.NewBasicManager(
+	auth.AppModuleBasic{},
+	bank.AppModuleBasic{},
 	pow.AppModuleBasic{},
 	treasury.AppModuleBasic{},
 	governance.AppModuleBasic{},
 )
 
-// EncodingConfig bundles the codecs and tx config the CLI's client.Context needs.
 type EncodingConfig struct {
 	InterfaceRegistry cdctypes.InterfaceRegistry
 	Codec             codec.Codec
@@ -60,15 +66,12 @@ type EncodingConfig struct {
 	Amino             *codec.LegacyAmino
 }
 
-// MakeEncodingConfig builds the encoding config used to populate the root
-// command's client.Context (needed for keys, tx, gRPC reflection, etc.)
 func MakeEncodingConfig() EncodingConfig {
 	interfaceRegistry := cdctypes.NewInterfaceRegistry()
 	std.RegisterInterfaces(interfaceRegistry)
 	ModuleBasics.RegisterInterfaces(interfaceRegistry)
 
 	appCodec := codec.NewProtoCodec(interfaceRegistry)
-
 	legacyAmino := codec.NewLegacyAmino()
 	std.RegisterLegacyAminoCodec(legacyAmino)
 	ModuleBasics.RegisterLegacyAminoCodec(legacyAmino)
@@ -83,17 +86,37 @@ func MakeEncodingConfig() EncodingConfig {
 	}
 }
 
-type paramStore struct {
-	cdc codec.BinaryCodec
+type consensusParamsStore struct {
+	storeKey storetypes.StoreKey
 }
 
-func (p paramStore) Get(ctx context.Context) (tmproto.ConsensusParams, error) {
-	return tmproto.ConsensusParams{}, nil
+func (s consensusParamsStore) Get(ctx context.Context) (tmproto.ConsensusParams, error) {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	bz := sdkCtx.KVStore(s.storeKey).Get([]byte("consensus_params"))
+	if bz == nil {
+		return tmproto.ConsensusParams{}, nil
+	}
+	var params tmproto.ConsensusParams
+	if err := params.Unmarshal(bz); err != nil {
+		return tmproto.ConsensusParams{}, err
+	}
+	return params, nil
 }
-func (p paramStore) Set(ctx context.Context, params tmproto.ConsensusParams) error { return nil }
-func (p paramStore) Has(ctx context.Context) (bool, error)                        { return false, nil }
-func (p paramStore) GetIfExists(ctx context.Context, key []byte, ptr interface{}) {}
-func (p paramStore) Modify(ctx context.Context, f func(*tmproto.ConsensusParams))  {}
+
+func (s consensusParamsStore) Set(ctx context.Context, params tmproto.ConsensusParams) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	bz, err := params.Marshal()
+	if err != nil {
+		return err
+	}
+	sdkCtx.KVStore(s.storeKey).Set([]byte("consensus_params"), bz)
+	return nil
+}
+
+func (s consensusParamsStore) Has(ctx context.Context) (bool, error) {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	return sdkCtx.KVStore(s.storeKey).Has([]byte("consensus_params")), nil
+}
 
 type App struct {
 	*baseapp.BaseApp
@@ -101,6 +124,8 @@ type App struct {
 	interfaceRegistry cdctypes.InterfaceRegistry
 	keys              map[string]*storetypes.KVStoreKey
 
+	AccountKeeper    authkeeper.AccountKeeper
+	BankKeeper       bankkeeper.BaseKeeper
 	PowKeeper        pow.Keeper
 	TreasuryKeeper   treasury.Keeper
 	GovernanceKeeper governance.Keeper
@@ -132,6 +157,8 @@ func New(
 		cdc:               appCodec,
 		interfaceRegistry: interfaceRegistry,
 		keys: map[string]*storetypes.KVStoreKey{
+			authtypes.StoreKey:  storetypes.NewKVStoreKey(authtypes.StoreKey),
+			banktypes.StoreKey:  storetypes.NewKVStoreKey(banktypes.StoreKey),
 			pow.StoreKey:        storetypes.NewKVStoreKey(pow.StoreKey),
 			treasury.StoreKey:   storetypes.NewKVStoreKey(treasury.StoreKey),
 			governance.StoreKey: storetypes.NewKVStoreKey(governance.StoreKey),
@@ -140,21 +167,62 @@ func New(
 	}
 
 	app.MountKVStores(app.keys)
-	app.SetParamStore(paramStore{cdc: appCodec})
+	app.SetParamStore(consensusParamsStore{storeKey: app.keys["consensus"]})
+	
+	maccPerms := map[string][]string{
+	authtypes.FeeCollectorName: nil,
+}
 
-	app.PowKeeper = pow.NewKeeper(appCodec, app.keys[pow.StoreKey])
+app.AccountKeeper = authkeeper.NewAccountKeeper(
+	appCodec,
+	runtime.NewKVStoreService(app.keys[authtypes.StoreKey]),
+	authtypes.ProtoBaseAccount,
+	maccPerms,
+	address.NewBech32Codec(sdk.Bech32MainPrefix),
+	sdk.Bech32MainPrefix,
+	authtypes.NewModuleAddress("gov").String(),
+)
+
+app.BankKeeper = bankkeeper.NewBaseKeeper(
+	appCodec,
+	runtime.NewKVStoreService(app.keys[banktypes.StoreKey]),
+	app.AccountKeeper,
+	nil,
+	authtypes.NewModuleAddress("gov").String(),
+	logger,
+)
+	// Initialize keepers
+	app.PowKeeper = pow.NewKeeper(appCodec, app.keys[pow.StoreKey], logger)
 	app.TreasuryKeeper = treasury.NewKeeper(appCodec, app.keys[treasury.StoreKey])
 	app.GovernanceKeeper = governance.NewKeeper(appCodec, app.keys[governance.StoreKey])
 
+	// Module manager
 	app.sm = module.NewManager(
-		pow.NewAppModule(appCodec, app.PowKeeper),
-		treasury.NewAppModule(appCodec, app.TreasuryKeeper),
-		governance.NewAppModule(appCodec, app.GovernanceKeeper),
-	)
+	auth.NewAppModule(appCodec, app.AccountKeeper, nil, nil),
+	bank.NewAppModule(appCodec, app.BankKeeper, app.AccountKeeper, nil),
+	pow.NewAppModule(appCodec, app.PowKeeper),
+	treasury.NewAppModule(appCodec, app.TreasuryKeeper),
+	governance.NewAppModule(appCodec, app.GovernanceKeeper),
+)
 
-	// === This is the important line that fixes the validator set error ===
+	configurator := module.NewConfigurator(appCodec, app.MsgServiceRouter(), app.GRPCQueryRouter())
+	app.sm.RegisterServices(configurator)
+
+	txConfig := tx.NewTxConfig(appCodec, tx.DefaultSignModes)
+
+anteHandler, err := authante.NewAnteHandler(authante.HandlerOptions{
+	AccountKeeper:   app.AccountKeeper,
+	BankKeeper:      app.BankKeeper,
+	SignModeHandler: txConfig.SignModeHandler(),
+	FeegrantKeeper:  nil,
+	SigGasConsumer:  authante.DefaultSigVerificationGasConsumer,
+})
+if err != nil {
+	panic(err)
+}
+	app.SetAnteHandler(anteHandler)
 	app.SetInitChainer(app.InitChainer)
-
+	app.SetBeginBlocker(app.BeginBlocker)
 	if loadLatest {
 		if err := app.LoadLatestVersion(); err != nil {
 			panic(fmt.Errorf("error loading last version: %w", err))
@@ -164,12 +232,8 @@ func New(
 	return app
 }
 
-// InitChainer returns the genesis validators so the node can start
 func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.ResponseInitChain, error) {
-	fmt.Printf(">>> InitChainer called! Validators in genesis: %d\n", len(req.Validators))
-	for i, v := range req.Validators {
-		fmt.Printf("    Validator %d: power=%d pubkey=%s\n", i, v.Power, v.PubKey)
-	}
+	fmt.Printf(">>> InitChainer called! Validators: %d\n", len(req.Validators))
 
 	return &abci.ResponseInitChain{
 		ConsensusParams: req.ConsensusParams,
@@ -177,11 +241,13 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 		AppHash:         app.LastCommitID().Hash,
 	}, nil
 }
-
-// Required interface methods
-func (app *App) RegisterAPIRoutes(apiSvr *api.Server, apiConfig config.APIConfig)     {}
+func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
+	return app.sm.BeginBlock(ctx)
+}
+// Required methods
+func (app *App) RegisterAPIRoutes(apiSvr *api.Server, apiConfig config.APIConfig) {}
 func (app *App) RegisterGRPCServerWithSkipCheckHeader(grpcSrv grpc.Server, skip bool) {}
-func (app *App) RegisterTxService(clientCtx client.Context)                          {}
-func (app *App) RegisterTendermintService(clientCtx client.Context)                  {}
-func (app *App) RegisterNodeService(clientCtx client.Context, cfg config.Config)     {}
-func (app *App) GetModuleManager() *module.Manager                                   { return app.sm }
+func (app *App) RegisterTxService(clientCtx client.Context) {}
+func (app *App) RegisterTendermintService(clientCtx client.Context) {}
+func (app *App) RegisterNodeService(clientCtx client.Context, cfg config.Config) {}
+func (app *App) GetModuleManager() *module.Manager { return app.sm }

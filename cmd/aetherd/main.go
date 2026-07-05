@@ -11,7 +11,7 @@ import (
 	"cosmossdk.io/log"
 	cmtcfg "github.com/cometbft/cometbft/config"
 	dbm "github.com/cosmos/cosmos-db"
-
+	"github.com/cosmos/cosmos-sdk/client/keys"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/server"
@@ -19,8 +19,10 @@ import (
 	serverconfig "github.com/cosmos/cosmos-sdk/server/config"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
-
+	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
+	powcli "github.com/whoyoujoshin/aether/x/pow/client/cli"
 	"github.com/whoyoujoshin/aether/app"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
 
 var encodingConfig = app.MakeEncodingConfig()
@@ -33,8 +35,8 @@ var initClientCtx = client.Context{}.
 	WithInput(os.Stdin).
 	WithBroadcastMode(flags.BroadcastSync).
 	WithHomeDir(app.DefaultNodeHome).
-	WithViper("")
-
+	WithViper("").
+	WithAccountRetriever(authtypes.AccountRetriever{})
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "aetherd",
@@ -49,16 +51,31 @@ func main() {
 	}
 
 	rootCmd.AddCommand(
-		genutilcli.InitCmd(app.ModuleBasics, app.DefaultNodeHome),
-	)
-
-	server.AddCommands(
+	genutilcli.InitCmd(app.ModuleBasics, app.DefaultNodeHome),
+	keys.Commands(),
+)
+server.AddCommands(
 		rootCmd,
 		app.DefaultNodeHome,
 		createApp,
 		nil,
 		func(startCmd *cobra.Command) {},
 	)
+
+txCmd := &cobra.Command{
+		Use:                        "tx",
+		Short:                      "Transactions subcommands",
+		DisableFlagParsing:         true,
+		SuggestionsMinimumDistance: 2,
+		RunE:                       client.ValidateCmd,
+	}
+	txCmd.AddCommand(
+		authcmd.GetSignCommand(),
+		authcmd.GetBroadcastCommand(),
+		powcli.NewTxCmd(),
+	)
+	rootCmd.AddCommand(txCmd)
+	
 
 	if err := svrcmd.Execute(rootCmd, "AETHERD", app.DefaultNodeHome); err != nil {
 		fmt.Fprintln(rootCmd.OutOrStderr(), err)

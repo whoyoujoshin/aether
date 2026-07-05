@@ -10,15 +10,12 @@ const (
 )
 
 type Params struct {
-	TargetBlockTime   int64   `json:"target_block_time" yaml:"target_block_time"` // seconds (default 60)
-	InitialDifficulty uint64  `json:"initial_difficulty" yaml:"initial_difficulty"`
-	MinDifficulty     uint64  `json:"min_difficulty" yaml:"min_difficulty"`
-	MaxDifficulty     uint64  `json:"max_difficulty" yaml:"max_difficulty"`
- HEAD
-	BlockReward       sdk.Int `json:"block_reward" yaml:"block_reward"` // base reward in uaeth (before treasury cut)
-=======
-	BlockReward       sdk.Int `json:"block_reward" yaml:"block_reward"` // base reward in uaeth
- 3e2f388b8558446fbdaf6e3c37583a70e2156261
+	TargetBlockTime   int64 `json:"target_block_time" yaml:"target_block_time"`
+	InitialDifficulty int   `json:"initial_difficulty" yaml:"initial_difficulty"`
+	MinDifficulty     int   `json:"min_difficulty" yaml:"min_difficulty"`
+	MaxDifficulty     int   `json:"max_difficulty" yaml:"max_difficulty"`
+	Difficulty        int   `json:"difficulty" yaml:"difficulty"`
+	BlockReward       int   `json:"block_reward" yaml:"block_reward"`
 }
 
 type MiningHeader struct {
@@ -31,12 +28,26 @@ type MiningHeader struct {
 	MinerAddress sdk.AccAddress `json:"miner_address"`
 }
 
+type GenesisState struct {
+	Params Params `json:"params"`
+}
+
+func DefaultGenesisState() GenesisState {
+	return GenesisState{
+		Params: Params{
+			TargetBlockTime:   60,
+			InitialDifficulty: 1 << 20,
+			MinDifficulty:     1 << 10,
+			MaxDifficulty:     1 << 40,
+			Difficulty:        1 << 20,
+			BlockReward:       5_000_000, // 5 AETH in uaeth
+		},
+	}
+}
+
 var (
-	KeyParams         = []byte("params")
-	KeyLastDifficulty = []byte("last_difficulty")
-	KeyLastBlockTime  = []byte("last_block_time")
- HEAD
+	KeyParams      = []byte("params")
+	KeyDifficulty  = []byte("difficulty")
+	KeyBlockReward = []byte("block_reward")
+	KeyLastBlockTime = []byte("last_block_time")
 )
-=======
-)
- 3e2f388b8558446fbdaf6e3c37583a70e2156261
