@@ -10,16 +10,19 @@ import (
 	storetypes "cosmossdk.io/store/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"github.com/whoyoujoshin/aether/x/pow/types"
 )
 
 type Keeper struct {
 	cdc      codec.BinaryCodec
 	storeKey storetypes.StoreKey
 	logger   log.Logger
+	bankKeeper types.BankKeeper
 }
 
-func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, logger log.Logger) Keeper {
-	return Keeper{cdc: cdc, storeKey: storeKey, logger: logger}
+func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, logger log.Logger, bankKeeper types.BankKeeper,) Keeper {
+	return Keeper{cdc: cdc, storeKey: storeKey, logger: logger, bankKeeper: bankKeeper,}
 }
 
 // --- Difficulty ---
@@ -73,12 +76,21 @@ func (k Keeper) GetBlockReward(ctx sdk.Context) math.Int {
 // --- PoW logic (placeholder verification — see note below) ---
 
 func (k Keeper) VerifyMiningHeader(ctx sdk.Context, header MiningHeader) bool {
-	if header.Difficulty == 0 || header.Difficulty >= 256 {
+	if header.Difficulty == 0 {
 		return false
 	}
+
 	data := headerToBytes(header)
 	hash := sha256.Sum256(data)
-	target := new(big.Int).Lsh(big.NewInt(1), uint(256-header.Difficulty))
+
+	// maxTarget is the easiest possible target (difficulty == 1). Higher
+	// difficulty divides it into a smaller (harder) target, matching the
+	// multiplicative retargeting used in AdjustDifficulty and the large
+	// difficulty values used in Params/DefaultGenesisState.
+	maxTarget := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+	difficulty := new(big.Int).SetUint64(header.Difficulty)
+	target := new(big.Int).Div(maxTarget, difficulty)
+
 	return new(big.Int).SetBytes(hash[:]).Cmp(target) < 0
 }
 
@@ -113,17 +125,45 @@ func (k Keeper) AdjustDifficulty(ctx sdk.Context) math.Int {
 
 func (k Keeper) DistributeBlockReward(ctx sdk.Context, miner sdk.AccAddress) error {
 	reward := k.GetBlockReward(ctx)
+	if reward.IsZero() {
+		return nil
+	}
+
+	coins := sdk.NewCoins(sdk.NewCoin("aeth", reward))
+
+	// Mint new reward coins to the pow module account
+	if err := k.bankKeeper.MintCoins(ctx, ModuleName, coins); err != nil {
+		k.logger.Error("failed to mint block reward", "error", err)
+		return err
+	}
+
+	// Calculate splits (15% to treasury / fee collector)
 	treasuryCut := math.LegacyNewDecFromInt(reward).
 		Mul(math.LegacyMustNewDecFromStr("0.15")).
 		TruncateInt()
 	minerAmount := reward.Sub(treasuryCut)
+
+	minerCoins := sdk.NewCoins(sdk.NewCoin("aeth", minerAmount))
+	treasuryCoins := sdk.NewCoins(sdk.NewCoin("aeth", treasuryCut))
+
+	// Send miner's share
+	if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, ModuleName, miner, minerCoins); err != nil {
+		return err
+	}
+
+	// Send treasury cut to fee collector (we can route this to x/treasury later)
+	if !treasuryCut.IsZero() {
+		if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, ModuleName, authtypes.FeeCollectorName, treasuryCoins); err != nil {
+			return err
+		}
+	}
 
 	k.logger.Info("block reward distributed",
 		"miner", miner.String(),
 		"miner_amount", minerAmount.String(),
 		"treasury_amount", treasuryCut.String(),
 	)
-	// TODO: actually move coins via bankKeeper + hand treasuryCut to x/treasury
+
 	return nil
 }
 

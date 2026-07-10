@@ -2,10 +2,11 @@ package pow
 
 import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/whoyoujoshin/aether/x/pow/types"
 )
 
 const (
-	ModuleName = "pow"
+	ModuleName = types.ModuleName
 	StoreKey   = ModuleName
 )
 

@@ -23,6 +23,7 @@ import (
 	powcli "github.com/whoyoujoshin/aether/x/pow/client/cli"
 	"github.com/whoyoujoshin/aether/app"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"github.com/cosmos/cosmos-sdk/client/rpc"
 )
 
 var encodingConfig = app.MakeEncodingConfig()
@@ -76,6 +77,21 @@ txCmd := &cobra.Command{
 	)
 	rootCmd.AddCommand(txCmd)
 	
+	queryCmd := &cobra.Command{
+		Use:                        "query",
+		Aliases:                    []string{"q"},
+		Short:                      "Querying subcommands",
+		DisableFlagParsing:         true,
+		SuggestionsMinimumDistance: 2,
+		RunE:                       client.ValidateCmd,
+	}
+	queryCmd.AddCommand(
+		rpc.ValidatorCommand(),
+		authcmd.QueryTxCmd(),
+		authcmd.QueryTxsByEventsCmd(),
+	)
+	app.ModuleBasics.AddQueryCommands(queryCmd)
+	rootCmd.AddCommand(queryCmd)
 
 	if err := svrcmd.Execute(rootCmd, "AETHERD", app.DefaultNodeHome); err != nil {
 		fmt.Fprintln(rootCmd.OutOrStderr(), err)

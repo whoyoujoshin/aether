@@ -131,6 +131,7 @@ type App struct {
 	GovernanceKeeper governance.Keeper
 
 	sm *module.Manager
+	BasicModuleManager   module.BasicManager
 }
 
 func New(
@@ -165,12 +166,14 @@ func New(
 			"consensus":         storetypes.NewKVStoreKey("consensus"),
 		},
 	}
-
+	app.MsgServiceRouter().SetInterfaceRegistry(app.interfaceRegistry)
+	
 	app.MountKVStores(app.keys)
 	app.SetParamStore(consensusParamsStore{storeKey: app.keys["consensus"]})
 	
 	maccPerms := map[string][]string{
 	authtypes.FeeCollectorName: nil,
+	pow.ModuleName:             {authtypes.Minter},
 }
 
 app.AccountKeeper = authkeeper.NewAccountKeeper(
@@ -192,7 +195,7 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 	logger,
 )
 	// Initialize keepers
-	app.PowKeeper = pow.NewKeeper(appCodec, app.keys[pow.StoreKey], logger)
+	app.PowKeeper = pow.NewKeeper(appCodec, app.keys[pow.StoreKey], logger, app.BankKeeper)
 	app.TreasuryKeeper = treasury.NewKeeper(appCodec, app.keys[treasury.StoreKey])
 	app.GovernanceKeeper = governance.NewKeeper(appCodec, app.keys[governance.StoreKey])
 
@@ -204,6 +207,8 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 	treasury.NewAppModule(appCodec, app.TreasuryKeeper),
 	governance.NewAppModule(appCodec, app.GovernanceKeeper),
 )
+	app.BasicModuleManager = module.NewBasicManagerFromManager(app.sm, nil)
+	app.BasicModuleManager.RegisterInterfaces(app.interfaceRegistry)
 
 	configurator := module.NewConfigurator(appCodec, app.MsgServiceRouter(), app.GRPCQueryRouter())
 	app.sm.RegisterServices(configurator)
