@@ -255,6 +255,7 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 		return nil, err
 	}
 
+	// Call module InitGenesis (they return empty ValidatorUpdates for pure PoW)
 	if _, err := app.sm.InitGenesis(ctx, app.cdc, genesisState); err != nil {
 		return nil, err
 	}
@@ -265,9 +266,18 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 		}
 	}
 
+	// CRITICAL for pure PoW / no-staking chains:
+	// Always return the validators that were provided in the genesis request.
+	// Do NOT let modules override them to empty.
+	validators := req.Validators
+	if len(validators) == 0 {
+		// Fallback safety — should not happen if genesis.template is used correctly
+		fmt.Println("WARNING: no validators in RequestInitChain")
+	}
+
 	return &abci.ResponseInitChain{
 		ConsensusParams: req.ConsensusParams,
-		Validators:      req.Validators,
+		Validators:      validators,
 		AppHash:         app.LastCommitID().Hash,
 	}, nil
 }
