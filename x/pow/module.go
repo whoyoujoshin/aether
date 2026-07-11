@@ -3,6 +3,7 @@ package pow
 import (
 	"encoding/json"
 	"context"
+	"fmt"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -76,21 +77,17 @@ func (am AppModule) ConsensusVersion() uint64 {
 }
 
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.RawMessage) []abci.ValidatorUpdate {
+	fmt.Println(">>> pow.InitGenesis called")
 	var genState GenesisState
 	json.Unmarshal(data, &genState)
 
 	am.keeper.SetBlockReward(ctx, math.NewInt(int64(genState.Params.BlockReward)))
 	am.keeper.SetDifficulty(ctx, math.NewInt(int64(genState.Params.Difficulty)))
 
-	// For pure PoW chains without x/staking, returning an empty set causes
-	// "validator set is empty after InitGenesis". Return a high-power update
-	// so the set is considered non-empty. The real validator comes from genesis
-	// consensus.validators and is forced in app.InitChainer.
-	return []abci.ValidatorUpdate{
-		{
-			Power: 1000000000000, // high power to clear DefaultPowerReduction
-		},
-	}
+	// Return empty. The real validators come from the genesis consensus section
+	// and are forced in app.InitChainer. Returning a partial update without PubKey
+	// was causing problems.
+	return []abci.ValidatorUpdate{}
 }
 
 func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.RawMessage {
