@@ -216,16 +216,22 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 
 	txConfig := tx.NewTxConfig(appCodec, tx.DefaultSignModes)
 
-anteHandler, err := authante.NewAnteHandler(authante.HandlerOptions{
-	AccountKeeper:   app.AccountKeeper,
-	BankKeeper:      app.BankKeeper,
-	SignModeHandler: txConfig.SignModeHandler(),
-	FeegrantKeeper:  nil,
-	SigGasConsumer:  authante.DefaultSigVerificationGasConsumer,
-})
-if err != nil {
-	panic(err)
-}
+	// Custom ante handler chain: standard auth + PostQuantumDecorator stub
+	anteHandler, err := authante.NewAnteHandler(authante.HandlerOptions{
+		AccountKeeper:   app.AccountKeeper,
+		BankKeeper:      app.BankKeeper,
+		SignModeHandler: txConfig.SignModeHandler(),
+		FeegrantKeeper:  nil,
+		SigGasConsumer:  authante.DefaultSigVerificationGasConsumer,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// Chain the PQ stub decorator (currently a no-op pass-through)
+	pqDecorator := NewPostQuantumDecorator()
+	anteHandler = sdk.ChainAnteDecorators(pqDecorator, anteHandler)
+
 	app.SetAnteHandler(anteHandler)
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
