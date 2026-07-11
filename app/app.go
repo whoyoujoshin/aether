@@ -216,8 +216,8 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 
 	txConfig := tx.NewTxConfig(appCodec, tx.DefaultSignModes)
 
-	// Custom ante handler chain: standard auth + PostQuantumDecorator stub
-	anteHandler, err := authante.NewAnteHandler(authante.HandlerOptions{
+	// Standard ante handler
+	stdAnteHandler, err := authante.NewAnteHandler(authante.HandlerOptions{
 		AccountKeeper:   app.AccountKeeper,
 		BankKeeper:      app.BankKeeper,
 		SignModeHandler: txConfig.SignModeHandler(),
@@ -228,9 +228,12 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 		panic(err)
 	}
 
-	// Chain the PQ stub decorator (currently a no-op pass-through)
+	// Wrap with our PostQuantumDecorator (outermost)
+	// The decorator calls next (the standard handler) after its own logic.
 	pqDecorator := NewPostQuantumDecorator()
-	anteHandler = sdk.ChainAnteDecorators(pqDecorator, anteHandler)
+	anteHandler := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (newCtx sdk.Context, err error) {
+		return pqd.AnteHandle(ctx, tx, simulate, stdAnteHandler)
+	}
 
 	app.SetAnteHandler(anteHandler)
 	app.SetInitChainer(app.InitChainer)
