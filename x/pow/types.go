@@ -2,11 +2,10 @@ package pow
 
 import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/whoyoujoshin/aether/x/pow/types"
 )
 
 const (
-	ModuleName = types.ModuleName
+	ModuleName = "pow"
 	StoreKey   = ModuleName
 )
 
@@ -17,6 +16,7 @@ type Params struct {
 	MaxDifficulty     int   `json:"max_difficulty" yaml:"max_difficulty"`
 	Difficulty        int   `json:"difficulty" yaml:"difficulty"`
 	BlockReward       int   `json:"block_reward" yaml:"block_reward"`
+	TailEmission      bool  `json:"tail_emission" yaml:"tail_emission"` // For sustainable model post-initial phase
 }
 
 type MiningHeader struct {
@@ -41,7 +41,8 @@ func DefaultGenesisState() GenesisState {
 			MinDifficulty:     1 << 10,
 			MaxDifficulty:     1 << 40,
 			Difficulty:        1 << 20,
-			BlockReward:       5_000_000, // 5 AETH in uaeth
+			BlockReward:       5_000_000, // 5 AETH initial (uaeth)
+			TailEmission:      false,
 		},
 	}
 }
