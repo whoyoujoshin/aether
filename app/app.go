@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"encoding/json"
 
 	dbm "github.com/cosmos/cosmos-db"
 	"cosmossdk.io/log"
@@ -239,6 +240,21 @@ if err != nil {
 
 func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.ResponseInitChain, error) {
 	fmt.Printf(">>> InitChainer called! Validators: %d\n", len(req.Validators))
+
+	var genesisState map[string]json.RawMessage
+	if err := json.Unmarshal(req.AppStateBytes, &genesisState); err != nil {
+		return nil, err
+	}
+
+	if _, err := app.sm.InitGenesis(ctx, app.cdc, genesisState); err != nil {
+		return nil, err
+	}
+
+	if req.ConsensusParams != nil {
+		if err := app.StoreConsensusParams(ctx, *req.ConsensusParams); err != nil {
+			return nil, err
+		}
+	}
 
 	return &abci.ResponseInitChain{
 		ConsensusParams: req.ConsensusParams,
