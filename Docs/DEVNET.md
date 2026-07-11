@@ -53,19 +53,18 @@ go run ./cmd/aetherd comet show-validator
 
 Copy the `"key"` value from step 3's output. Then, **before running `start` for the
 first time**, edit `$env:USERPROFILE\.aether\config\genesis.json` and replace the
-entire file with `genesis.template.json` (in this repo), substituting:
+entire file with the contents of `Docs/genesis.template.json` (updated with TailEmission),
+substituting:
 - `genesis_time` → current UTC timestamp (or leave whatever `init` generated)
 - the `pub_key.value` under `consensus.validators[0]` → the key from step 3
 
 Leave `"address"` out of the validator entry entirely — CometBFT derives it from
-the pubkey. (You can also supply it explicitly if you want to double-check it
-against the `addr=` field printed in the node's own startup log, but it's not
-required.)
+the pubkey.
 
 Only after that edit is saved, start the node:
 
 ```powershell
-go run ./cmd/aetherd start --minimum-gas-prices="0.0001aeth"
+go run ./cmd/aetherd start --minimum-gas-prices="0.0001uaeth"
 ```
 
 ## Confirming success
@@ -81,30 +80,47 @@ Look for these lines, in order, in the startup log:
 ```
 
 `waitSync=false` and `"This node is a validator"` are the two lines that confirm
-the validator set actually took. If you instead see `waitSync=true` and
-`"This node is not a validator"`, the pubkey in genesis didn't match this node's
-key — usually because of the stale-state issue in point 3 above (you edited
-genesis after an earlier successful start on the same `.aether` folder).
+the validator set actually took.
 
-## Sanity-check commands (while the node is running, in a second terminal)
+## Full Validation Cycle (PoW + Rewards + Treasury)
+
+With node running:
 
 ```powershell
-# What validator set did CometBFT actually load? (ground truth, bypasses any
-# assumptions about what the file "should" contain)
-(Invoke-WebRequest -UseBasicParsing http://127.0.0.1:26657/genesis).Content
+# In a second terminal — mine / submit PoW (use powminer or CLI)
+go run ./cmd/powminer
+# or craft a MsgSubmitPoW via aetherd tx pow submit-pow ...
 
-# Is this node an active validator with nonzero voting power?
+# Check params (should show TailEmission: false, BlockReward: 5000000)
+# (once query CLI is fully registered)
+# go run ./cmd/aetherd query pow params
+
+# Check balances / supply after reward distribution
+# go run ./cmd/aetherd query bank balances <miner-address>
+# go run ./cmd/aetherd query bank total
+```
+
+Expected: Miner receives ~85% of block reward (4.25 AETH), 15% routes to fee collector / treasury module account. Difficulty adjusts toward 60s target in BeginBlocker.
+
+## Sanity-check commands (while the node is running)
+
+```powershell
+(Invoke-WebRequest -UseBasicParsing http://127.0.0.1:26657/genesis).Content
 (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:26657/status).Content
 ```
-(`-UseBasicParsing` avoids a PowerShell script-execution security prompt.)
 
-## Known remaining gaps (as of this writing)
+## Current Status (July 11 2026 — Wiring Complete)
 
-The `x/pow` module compiles and is wired into `app.go`, but nothing in the app
-actually calls it yet:
-- No `MsgSubmitPoW` / msg server — miners can't submit proofs.
-- No `BeginBlocker`/`EndBlocker` hook calling `DistributeBlockReward`.
-- `AdjustDifficulty` is a stub that just returns the current difficulty.
-- Params/difficulty/reward are stored as raw JSON in the KV store rather than
-  proto-marshaled types — fine for a devnet, should become `.proto`-defined
-  before a real testnet.
+- ✅ MsgSubmitPoW + verification + DistributeBlockReward (15% treasury)
+- ✅ BeginBlocker difficulty adjustment (responsive to 60s target)
+- ✅ TailEmission param in Params / DefaultGenesis / genesis.template.json
+- ✅ PostQuantumDecorator stub wired into ante handler (pass-through for now)
+- ✅ Genesis templates aligned
+
+## Remaining for Full Testnet
+
+- Full query CLI registration for pow params
+- Real Dilithium/Falcon integration (replace stub)
+- AuxPoW merged mining
+- Proto-marshaled params instead of raw JSON
+- Multi-node + public incentivized testnet
