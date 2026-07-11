@@ -82,7 +82,15 @@ func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.
 	am.keeper.SetBlockReward(ctx, math.NewInt(int64(genState.Params.BlockReward)))
 	am.keeper.SetDifficulty(ctx, math.NewInt(int64(genState.Params.Difficulty)))
 
-	return []abci.ValidatorUpdate{}
+	// For pure PoW chains without x/staking, returning an empty set causes
+	// "validator set is empty after InitGenesis". Return a high-power update
+	// so the set is considered non-empty. The real validator comes from genesis
+	// consensus.validators and is forced in app.InitChainer.
+	return []abci.ValidatorUpdate{
+		{
+			Power: 1000000000000, // high power to clear DefaultPowerReduction
+		},
+	}
 }
 
 func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.RawMessage {
