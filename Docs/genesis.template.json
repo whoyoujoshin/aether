@@ -1,10 +1,10 @@
 {
   "app_name": "aetherd",
   "app_version": "0.1.0",
-  "genesis_time": "REPLACE_WITH_CURRENT_UTC_TIMESTAMP",
+  "genesis_time": "2026-07-11T21:00:00Z",
   "chain_id": "aether-testnet-1",
-  "initial_height": 1,
-  "app_hash": null,
+  "initial_height": "1",
+  "app_hash": "",
   "app_state": {
     "auth": {
       "params": {
