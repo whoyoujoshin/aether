@@ -12,6 +12,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"cosmossdk.io/math"
+	crypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 )
 
 var (
@@ -77,17 +78,26 @@ func (am AppModule) ConsensusVersion() uint64 {
 }
 
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.RawMessage) []abci.ValidatorUpdate {
-	fmt.Println(">>> pow.InitGenesis called")
+	fmt.Println(">>> pow.InitGenesis called - returning high-power update")
 	var genState GenesisState
 	json.Unmarshal(data, &genState)
 
 	am.keeper.SetBlockReward(ctx, math.NewInt(int64(genState.Params.BlockReward)))
 	am.keeper.SetDifficulty(ctx, math.NewInt(int64(genState.Params.Difficulty)))
 
-	// Return empty. The real validators come from the genesis consensus section
-	// and are forced in app.InitChainer. Returning a partial update without PubKey
-	// was causing problems.
-	return []abci.ValidatorUpdate{}
+	// Return a non-empty ValidatorUpdate so the SDK does not treat the set as empty.
+	// The real key comes from the genesis consensus.validators and is also forced
+	// in app.InitChainer. This is a pure-PoW workaround.
+	return []abci.ValidatorUpdate{
+		{
+			PubKey: crypto.PublicKey{
+				Sum: &crypto.PublicKey_Ed25519{
+					Ed25519: make([]byte, 32), // dummy - will be overridden by genesis
+				},
+			},
+			Power: 1000000000000,
+		},
+	}
 }
 
 func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.RawMessage {
