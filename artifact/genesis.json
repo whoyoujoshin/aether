@@ -14,18 +14,18 @@
     },
     "bank": {
       "params": {
-        "send_enabled": true
-      }
-    },
-    "staking": {
-      "params": {
-        "bond_denom": "uaeth"
+        "default_send_enabled": true
       }
     },
     "pow": {
       "params": {
-        "block_reward": "5000000000", 
-        "tail_reward": "180000000"
+        "target_block_time": 60,
+        "initial_difficulty": 1048576,
+        "min_difficulty": 1024,
+        "max_difficulty": 1099511627776,
+        "difficulty": 1048576,
+        "block_reward": 5000000,
+        "tail_emission": false
       }
     },
     "treasury": {
