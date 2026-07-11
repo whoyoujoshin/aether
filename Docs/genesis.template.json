@@ -70,7 +70,7 @@
           "type": "tendermint/PubKeyEd25519",
           "value": "REPLACE_WITH_OUTPUT_OF_show-validator"
         },
-        "power": "1000000",
+        "power": "1000000000000",
         "name": "mynode"
       }
     ],
