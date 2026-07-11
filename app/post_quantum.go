@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "cosmossdk.io/errors"
 )
 
 // PostQuantumDecorator is a placeholder ante handler decorator for post-quantum
@@ -28,13 +27,9 @@ func (pqd PostQuantumDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, simulate 
 	// on every signer. For now we log and pass through so classical txs work
 	// during devnet.
 	if !simulate {
-		// Example future check:
-		// for _, sig := range tx.GetSignaturesV2() {
-		//   if !isPostQuantum(sig.PubKey) {
-		//     return ctx, sdkerrors.Wrap(sdkerrors.ErrUnauthorized, "post-quantum signature required")
-		//   }
-		// }
-		_ = fmt.Sprintf("PQ stub: accepting tx with %d signers (quantum-ready path pending)", len(tx.GetSigners()))
+		// Future: inspect signatures via tx.GetSignaturesV2() or similar
+		// and enforce PQ pubkeys once the real crypto is wired.
+		_ = fmt.Sprintf("PQ stub: accepting tx (quantum-ready path pending)")
 	}
 
 	return next(ctx, tx, simulate)
