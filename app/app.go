@@ -232,7 +232,7 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 	// The decorator calls next (the standard handler) after its own logic.
 	pqDecorator := NewPostQuantumDecorator()
 	anteHandler := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (newCtx sdk.Context, err error) {
-		return pqd.AnteHandle(ctx, tx, simulate, stdAnteHandler)
+		return pqDecorator.AnteHandle(ctx, tx, simulate, stdAnteHandler)
 	}
 
 	app.SetAnteHandler(anteHandler)
