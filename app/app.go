@@ -248,6 +248,7 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 }
 
 func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.ResponseInitChain, error) {
+	fmt.Printf("\n\n========== AETHER INITCHAINER =========\n")
 	fmt.Printf(">>> InitChainer called! Validators: %d\n", len(req.Validators))
 
 	var genesisState map[string]json.RawMessage
@@ -270,15 +271,15 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 	// This is the critical fix for the "validator set is empty after InitGenesis" error.
 	validators := req.Validators
 	if len(validators) == 0 {
-		// Absolute last resort — should never happen if genesis is correct
 		fmt.Println("CRITICAL: no validators provided in RequestInitChain")
 	} else {
 		// Ensure every validator has high power so it passes any DefaultPowerReduction check
 		for i := range validators {
 			validators[i].Power = 1000000000000 // 1e12
 		}
-		fmt.Printf(">>> Forcing %d validators with high power\n", len(validators))
+		fmt.Printf(">>> FORCING %d VALIDATORS WITH POWER 1000000000000 <<<\n", len(validators))
 	}
+	fmt.Printf("========== END INITCHAINER ==========\n\n")
 
 	return &abci.ResponseInitChain{
 		ConsensusParams: req.ConsensusParams,
