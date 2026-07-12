@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aether Testnet Wallet</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 0; background: #0f0f0f; color: #fff; }
+        .container { max-width: 800px; margin: 40px auto; padding: 20px; }
+        .card { background: #1a1a1a; padding: 30px; border-radius: 12px; margin-bottom: 20px; }
+        button { background: #00ff9f; color: #000; padding: 12px 24px; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; }
+        input { width: 100%; padding: 12px; margin: 10px 0; background: #222; border: 1px solid #444; color: #fff; border-radius: 8px; box-sizing: border-box; }
+        .balance { font-size: 2rem; color: #00ff9f; }
+        a { color: #00ff9f; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Aether Testnet Wallet</h1>
+        <p>Connected to aether-testnet-1 • 60s blocks</p>
+
+        <div class="card">
+            <h2>Balance</h2>
+            <div class="balance" id="balance">0.00 AETH</div>
+            <button onclick="refreshBalance()">Refresh</button>
+        </div>
+
+        <div class="card">
+            <h2>Send AETH</h2>
+            <input type="text" id="to" placeholder="To Address">
+            <input type="number" id="amount" placeholder="Amount">
+            <button onclick="sendTx()">Send</button>
+        </div>
+
+        <div class="card">
+            <h2>Faucet</h2>
+            <button onclick="requestFaucet()">Get Test AETH</button>
+        </div>
+
+        <div class="card">
+            <h2>Quick Links</h2>
+            <a href="https://github.com/whoyoujoshin/aether" target="_blank">GitHub</a> | 
+            <a href="#" onclick="alert('Explorer coming soon')">Explorer</a>
+        </div>
+    </div>
+
+    <script>
+        function refreshBalance() {
+            // Mock for now - connect real RPC later
+            document.getElementById('balance').textContent = (Math.random() * 1000).toFixed(2) + " AETH";
+        }
+
+        function sendTx() {
+            const to = document.getElementById('to').value;
+            const amount = document.getElementById('amount').value;
+            if (to && amount) {
+                alert(`Sent ${amount} AETH to ${to} (testnet simulation)`);
+            } else {
+                alert("Fill address and amount");
+            }
+        }
+
+        function requestFaucet() {
+            alert("Testnet faucet request sent! (mock - real faucet coming soon)");
+            refreshBalance();
+        }
+
+        // Auto refresh
+        setInterval(refreshBalance, 30000);
+    </script>
+</body>
+</html>
