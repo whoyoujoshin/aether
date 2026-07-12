@@ -42,3 +42,10 @@ func (k Keeper) GetTreasuryBalance(ctx sdk.Context) math.Int {
 	balance.UnmarshalAmino(bz)
 	return balance
 }
+
+func (k Keeper) Heartbeat(ctx sdk.Context) {
+	if k.storeKey == nil {
+		return
+	}
+	ctx.KVStore(k.storeKey).Set([]byte("last_seen_height"), sdk.Uint64ToBigEndian(uint64(ctx.BlockHeight())))
+}

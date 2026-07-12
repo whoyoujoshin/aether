@@ -10,6 +10,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	abci "github.com/cometbft/cometbft/abci/types"
+	"cosmossdk.io/math"
 )
 
 var (
@@ -67,6 +68,7 @@ func (am AppModule) ConsensusVersion() uint64 {
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.RawMessage) []abci.ValidatorUpdate {
 	var genState GenesisState
 	json.Unmarshal(data, &genState)
+	am.keeper.FundTreasury(ctx, math.NewInt(int64(genState.Params.InitialBalance)))
 	return []abci.ValidatorUpdate{}
 }
 

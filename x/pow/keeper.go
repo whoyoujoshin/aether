@@ -73,6 +73,10 @@ func (k Keeper) GetBlockReward(ctx sdk.Context) math.Int {
 	return math.NewInt(r)
 }
 
+func (k Keeper) Heartbeat(ctx sdk.Context) {
+	ctx.KVStore(k.storeKey).Set([]byte("last_seen_height"), sdk.Uint64ToBigEndian(uint64(ctx.BlockHeight())))
+}
+
 // --- PoW logic (placeholder verification — see note below) ---
 
 func (k Keeper) VerifyMiningHeader(ctx sdk.Context, header MiningHeader) bool {

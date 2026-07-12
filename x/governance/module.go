@@ -67,6 +67,7 @@ func (am AppModule) ConsensusVersion() uint64 {
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.RawMessage) []abci.ValidatorUpdate {
 	var genState GenesisState
 	json.Unmarshal(data, &genState)
+	am.keeper.SetVotingPeriod(ctx, int64(genState.Params.VotingPeriod))
 	return []abci.ValidatorUpdate{}
 }
 

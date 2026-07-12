@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"encoding/json"
+	"strings"
 
 	dbm "github.com/cosmos/cosmos-db"
 	"cosmossdk.io/log"
@@ -248,7 +249,6 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 }
 
 func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.ResponseInitChain, error) {
-	fmt.Printf("\n\n========== AETHER INITCHAINER =========\n")
 	fmt.Printf(">>> InitChainer called! Validators: %d\n", len(req.Validators))
 
 	var genesisState map[string]json.RawMessage
@@ -256,9 +256,16 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 		return nil, err
 	}
 
-	// Call module InitGenesis (they return empty ValidatorUpdates for pure PoW)
 	if _, err := app.sm.InitGenesis(ctx, app.cdc, genesisState); err != nil {
-		return nil, err
+		// This chain has no x/staking module — validators come directly
+		// from genesis.json's consensus.validators (req.Validators), not
+		// from module-aggregated ValidatorUpdates. The module manager
+		// treats an empty aggregated validator set as fatal by default;
+		// that check doesn't apply to our design, so we tolerate exactly
+		// this one known, expected error and let any other error through.
+		if !strings.Contains(err.Error(), "validator set is empty after InitGenesis") {
+			return nil, err
+		}
 	}
 
 	if req.ConsensusParams != nil {
@@ -267,27 +274,17 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 		}
 	}
 
-	// Force a non-empty validator set for pure PoW chains (no x/staking).
-	// This is the critical fix for the "validator set is empty after InitGenesis" error.
-	validators := req.Validators
-	if len(validators) == 0 {
-		fmt.Println("CRITICAL: no validators provided in RequestInitChain")
-	} else {
-		// Ensure every validator has high power so it passes any DefaultPowerReduction check
-		for i := range validators {
-			validators[i].Power = 1000000000000 // 1e12
-		}
-		fmt.Printf(">>> FORCING %d VALIDATORS WITH POWER 1000000000000 <<<\n", len(validators))
-	}
-	fmt.Printf("========== END INITCHAINER ==========\n\n")
-
 	return &abci.ResponseInitChain{
 		ConsensusParams: req.ConsensusParams,
-		Validators:      validators,
+		Validators:      req.Validators,
 		AppHash:         app.LastCommitID().Hash,
 	}, nil
 }
+
 func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
+	app.PowKeeper.Heartbeat(ctx)
+	app.TreasuryKeeper.Heartbeat(ctx)
+	app.GovernanceKeeper.Heartbeat(ctx)
 	return app.sm.BeginBlock(ctx)
 }
 // Required methods
