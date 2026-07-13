@@ -47,8 +47,12 @@ func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubm
 	if err := k.Keeper.DistributeBlockReward(ctx, minerAddr); err != nil {
 		return nil, sdkerrors.Wrapf(err, "failed to distribute block reward")
 	}
-
+	
+	newDifficulty := k.Keeper.AdjustDifficulty(ctx)
+	k.Keeper.SetDifficulty(ctx, newDifficulty)
 	k.Keeper.SetLastBlockTime(ctx, ctx.BlockTime().Unix())
+
+	return &MsgSubmitPoWResponse{}, nil
 
 	return &MsgSubmitPoWResponse{}, nil
 }

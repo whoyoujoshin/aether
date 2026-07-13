@@ -42,6 +42,51 @@ func (k Keeper) GetDifficulty(ctx sdk.Context) math.Int {
 	return math.NewInt(d)
 }
 
+func (k Keeper) SetMinDifficulty(ctx sdk.Context, minDifficulty int64) {
+	bz, _ := json.Marshal(minDifficulty)
+	ctx.KVStore(k.storeKey).Set(KeyMinDifficulty, bz)
+}
+
+func (k Keeper) GetMinDifficulty(ctx sdk.Context) math.Int {
+	bz := ctx.KVStore(k.storeKey).Get(KeyMinDifficulty)
+	if bz == nil {
+		return math.NewInt(int64(DefaultGenesisState().Params.MinDifficulty))
+	}
+	var d int64
+	_ = json.Unmarshal(bz, &d)
+	return math.NewInt(d)
+}
+
+func (k Keeper) SetMaxDifficulty(ctx sdk.Context, maxDifficulty int64) {
+	bz, _ := json.Marshal(maxDifficulty)
+	ctx.KVStore(k.storeKey).Set(KeyMaxDifficulty, bz)
+}
+
+func (k Keeper) GetMaxDifficulty(ctx sdk.Context) math.Int {
+	bz := ctx.KVStore(k.storeKey).Get(KeyMaxDifficulty)
+	if bz == nil {
+		return math.NewInt(int64(DefaultGenesisState().Params.MaxDifficulty))
+	}
+	var d int64
+	_ = json.Unmarshal(bz, &d)
+	return math.NewInt(d)
+}
+
+func (k Keeper) SetTargetBlockTime(ctx sdk.Context, targetBlockTime int64) {
+	bz, _ := json.Marshal(targetBlockTime)
+	ctx.KVStore(k.storeKey).Set(KeyTargetBlockTime, bz)
+}
+
+func (k Keeper) GetTargetBlockTime(ctx sdk.Context) int64 {
+	bz := ctx.KVStore(k.storeKey).Get(KeyTargetBlockTime)
+	if bz == nil {
+		return DefaultGenesisState().Params.TargetBlockTime
+	}
+	var t int64
+	_ = json.Unmarshal(bz, &t)
+	return t
+}
+
 func (k Keeper) SetLastBlockTime(ctx sdk.Context, t int64) {
 	bz, _ := json.Marshal(t)
 	ctx.KVStore(k.storeKey).Set(KeyLastBlockTime, bz)
@@ -100,11 +145,9 @@ func (k Keeper) VerifyMiningHeader(ctx sdk.Context, header MiningHeader) bool {
 
 func (k Keeper) AdjustDifficulty(ctx sdk.Context) math.Int {
 	current := k.GetDifficulty(ctx)
-	defaults := DefaultGenesisState().Params
 
 	lastTime, ok := k.GetLastBlockTime(ctx)
 	if !ok {
-		// first block since genesis/reset — nothing to compare against yet
 		return current
 	}
 
@@ -113,11 +156,11 @@ func (k Keeper) AdjustDifficulty(ctx sdk.Context) math.Int {
 		return current
 	}
 
-	target := defaults.TargetBlockTime
+	target := k.GetTargetBlockTime(ctx)
 	adjusted := current.MulRaw(target).QuoRaw(elapsed)
 
-	minD := math.NewInt(int64(defaults.MinDifficulty))
-	maxD := math.NewInt(int64(defaults.MaxDifficulty))
+	minD := k.GetMinDifficulty(ctx)
+	maxD := k.GetMaxDifficulty(ctx)
 	if adjusted.LT(minD) {
 		adjusted = minD
 	}

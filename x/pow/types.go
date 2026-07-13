@@ -48,8 +48,11 @@ func DefaultGenesisState() GenesisState {
 }
 
 var (
-	KeyParams      = []byte("params")
-	KeyDifficulty  = []byte("difficulty")
-	KeyBlockReward = []byte("block_reward")
+	KeyParams        = []byte("params")
+	KeyDifficulty    = []byte("difficulty")
+	KeyBlockReward   = []byte("block_reward")
 	KeyLastBlockTime = []byte("last_block_time")
+	KeyMinDifficulty = []byte("min_difficulty")
+	KeyMaxDifficulty = []byte("max_difficulty")
+	KeyTargetBlockTime = []byte("target_block_time")
 )

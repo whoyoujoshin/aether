@@ -3,7 +3,6 @@ package pow
 import (
 	"encoding/json"
 	"context"
-	"fmt"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -50,12 +49,6 @@ type AppModule struct {
 }
 
 func (am AppModule) BeginBlock(ctx context.Context) error {
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-
-	newDifficulty := am.keeper.AdjustDifficulty(sdkCtx)
-	am.keeper.SetDifficulty(sdkCtx, newDifficulty)
-	am.keeper.SetLastBlockTime(sdkCtx, sdkCtx.BlockTime().Unix())
-
 	return nil
 }
 
@@ -78,16 +71,15 @@ func (am AppModule) ConsensusVersion() uint64 {
 }
 
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.RawMessage) []abci.ValidatorUpdate {
-	fmt.Println(">>> pow.InitGenesis called - returning high-power update")
 	var genState GenesisState
 	json.Unmarshal(data, &genState)
 
 	am.keeper.SetBlockReward(ctx, math.NewInt(int64(genState.Params.BlockReward)))
 	am.keeper.SetDifficulty(ctx, math.NewInt(int64(genState.Params.Difficulty)))
+	am.keeper.SetMinDifficulty(ctx, int64(genState.Params.MinDifficulty))
+	am.keeper.SetMaxDifficulty(ctx, int64(genState.Params.MaxDifficulty))
+	am.keeper.SetTargetBlockTime(ctx, genState.Params.TargetBlockTime)
 
-	// Return a non-empty ValidatorUpdate so the SDK does not treat the set as empty.
-	// The real key comes from the genesis consensus.validators and is also forced
-	// in app.InitChainer. This is a pure-PoW workaround.
 	return []abci.ValidatorUpdate{
 		{
 			PubKey: crypto.PublicKey{

@@ -38,6 +38,8 @@ import (
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/bank"
+	signing "cosmossdk.io/x/tx/signing"
+	"github.com/cosmos/gogoproto/proto"
 
 )
 
@@ -69,7 +71,16 @@ type EncodingConfig struct {
 }
 
 func MakeEncodingConfig() EncodingConfig {
-	interfaceRegistry := cdctypes.NewInterfaceRegistry()
+	interfaceRegistry, err := cdctypes.NewInterfaceRegistryWithOptions(cdctypes.InterfaceRegistryOptions{
+	ProtoFiles: proto.HybridResolver,
+	SigningOptions: signing.Options{
+		AddressCodec:          address.NewBech32Codec(sdk.Bech32MainPrefix),
+		ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
+	},
+})
+if err != nil {
+	panic(err)
+}
 	std.RegisterInterfaces(interfaceRegistry)
 	ModuleBasics.RegisterInterfaces(interfaceRegistry)
 
@@ -78,7 +89,16 @@ func MakeEncodingConfig() EncodingConfig {
 	std.RegisterLegacyAminoCodec(legacyAmino)
 	ModuleBasics.RegisterLegacyAminoCodec(legacyAmino)
 
-	txCfg := tx.NewTxConfig(appCodec, tx.DefaultSignModes)
+	txCfg, err := tx.NewTxConfigWithOptions(appCodec, tx.ConfigOptions{
+	EnabledSignModes: tx.DefaultSignModes,
+	SigningOptions: &signing.Options{
+		AddressCodec:          address.NewBech32Codec(sdk.Bech32MainPrefix),
+		ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
+	},
+})
+if err != nil {
+	panic(err)
+}
 
 	return EncodingConfig{
 		InterfaceRegistry: interfaceRegistry,
@@ -148,7 +168,16 @@ func New(
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) types.Application {
 
-	interfaceRegistry := cdctypes.NewInterfaceRegistry()
+	interfaceRegistry, err := cdctypes.NewInterfaceRegistryWithOptions(cdctypes.InterfaceRegistryOptions{
+	ProtoFiles: proto.HybridResolver,
+	SigningOptions: signing.Options{
+		AddressCodec:          address.NewBech32Codec(sdk.Bech32MainPrefix),
+		ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
+	},
+})
+if err != nil {
+	panic(err)
+}
 	std.RegisterInterfaces(interfaceRegistry)
 	appCodec := codec.NewProtoCodec(interfaceRegistry)
 
@@ -168,7 +197,7 @@ func New(
 			"consensus":         storetypes.NewKVStoreKey("consensus"),
 		},
 	}
-	app.MsgServiceRouter().SetInterfaceRegistry(app.interfaceRegistry)
+	app.SetInterfaceRegistry(app.interfaceRegistry)
 	
 	app.MountKVStores(app.keys)
 	app.SetParamStore(consensusParamsStore{storeKey: app.keys["consensus"]})
@@ -215,7 +244,17 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 	configurator := module.NewConfigurator(appCodec, app.MsgServiceRouter(), app.GRPCQueryRouter())
 	app.sm.RegisterServices(configurator)
 
-	txConfig := tx.NewTxConfig(appCodec, tx.DefaultSignModes)
+	txConfig, err := tx.NewTxConfigWithOptions(appCodec, tx.ConfigOptions{
+	EnabledSignModes: tx.DefaultSignModes,
+	SigningOptions: &signing.Options{
+		AddressCodec:          address.NewBech32Codec(sdk.Bech32MainPrefix),
+		ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
+	},
+})
+if err != nil {
+	panic(err)
+}
+	bApp.SetTxDecoder(txConfig.TxDecoder())
 
 	// Standard ante handler
 	stdAnteHandler, err := authante.NewAnteHandler(authante.HandlerOptions{
