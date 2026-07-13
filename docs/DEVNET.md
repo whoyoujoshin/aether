@@ -53,7 +53,7 @@ go run ./cmd/aetherd comet show-validator
 
 Copy the `"key"` value from step 3's output. Then, **before running `start` for the
 first time**, edit `$env:USERPROFILE\.aether\config\genesis.json` and replace the
-entire file with the contents of `Docs/genesis.template.json` (updated with TailEmission),
+entire file with the contents of `docs/genesis.template.json` (updated with TailEmission),
 substituting:
 - `genesis_time` → current UTC timestamp (or leave whatever `init` generated)
 - the `pub_key.value` under `consensus.validators[0]` → the key from step 3
