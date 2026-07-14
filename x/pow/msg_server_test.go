@@ -8,7 +8,8 @@ import (
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
-
+	"crypto/ed25519"
+	"crypto/rand"
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/pow/types"
 )
@@ -280,4 +281,85 @@ func TestSubmitPoW_FailedRewardDistribution_DoesNotAdjustDifficulty(t *testing.T
 	// successful DistributeBlockReward call.
 	_, hadLastTime := k.GetLastBlockTime(ctx)
 	require.False(t, hadLastTime, "LastBlockTime must not be set when reward distribution fails")
+}
+
+func TestRegisterValidatorPubkey_Success(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	minerAddr, addrStr := validMinerAddr(t)
+	consensusPubkey := make([]byte, ed25519.PublicKeySize)
+	_, err := rand.Read(consensusPubkey)
+	require.NoError(t, err)
+
+	msg := &pow.MsgRegisterValidatorPubkey{
+		Miner:           addrStr,
+		ConsensusPubkey: consensusPubkey,
+	}
+
+	_, err = srv.RegisterValidatorPubkey(ctx, msg)
+	require.NoError(t, err)
+
+	stored, ok := k.GetValidatorPubkey(ctx, minerAddr)
+	require.True(t, ok)
+	require.Equal(t, consensusPubkey, stored)
+}
+
+func TestRegisterValidatorPubkey_RejectsInvalidMinerAddress(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	msg := &pow.MsgRegisterValidatorPubkey{
+		Miner:           "not-a-valid-bech32-address",
+		ConsensusPubkey: make([]byte, ed25519.PublicKeySize),
+	}
+
+	_, err := srv.RegisterValidatorPubkey(ctx, msg)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, types.ErrInvalidCreator))
+}
+
+func TestRegisterValidatorPubkey_RejectsWrongSizePubkey(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	_, addrStr := validMinerAddr(t)
+	msg := &pow.MsgRegisterValidatorPubkey{
+		Miner:           addrStr,
+		ConsensusPubkey: []byte{0x01, 0x02, 0x03}, // far too short
+	}
+
+	_, err := srv.RegisterValidatorPubkey(ctx, msg)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, types.ErrInvalidConsensusPubkey))
+}
+
+func TestRegisterValidatorPubkey_OverwritesExistingRegistration(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	minerAddr, addrStr := validMinerAddr(t)
+
+	firstPubkey := make([]byte, ed25519.PublicKeySize)
+	firstPubkey[0] = 0xAA
+	_, err := srv.RegisterValidatorPubkey(ctx, &pow.MsgRegisterValidatorPubkey{
+		Miner: addrStr, ConsensusPubkey: firstPubkey,
+	})
+	require.NoError(t, err)
+
+	// Re-registering with a different key should silently replace the
+	// prior mapping -- current design allows this (no lock-in), which is
+	// intentional for now but worth revisiting once proof-of-possession
+	// is added, since at that point an unauthorized overwrite becomes
+	// meaningfully harder anyway.
+	secondPubkey := make([]byte, ed25519.PublicKeySize)
+	secondPubkey[0] = 0xBB
+	_, err = srv.RegisterValidatorPubkey(ctx, &pow.MsgRegisterValidatorPubkey{
+		Miner: addrStr, ConsensusPubkey: secondPubkey,
+	})
+	require.NoError(t, err)
+
+	stored, ok := k.GetValidatorPubkey(ctx, minerAddr)
+	require.True(t, ok)
+	require.Equal(t, secondPubkey, stored)
 }

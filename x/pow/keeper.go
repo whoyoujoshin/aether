@@ -101,6 +101,23 @@ func (k Keeper) GetLastBlockTime(ctx sdk.Context) (int64, bool) {
 	_ = json.Unmarshal(bz, &t)
 	return t, true
 }
+
+func validatorPubkeyKey(minerAddr sdk.AccAddress) []byte {
+	return append(KeyValidatorPubkeyPrefix, minerAddr.Bytes()...)
+}
+
+func (k Keeper) SetValidatorPubkey(ctx sdk.Context, minerAddr sdk.AccAddress, consensusPubkey []byte) {
+	ctx.KVStore(k.storeKey).Set(validatorPubkeyKey(minerAddr), consensusPubkey)
+}
+
+func (k Keeper) GetValidatorPubkey(ctx sdk.Context, minerAddr sdk.AccAddress) ([]byte, bool) {
+	bz := ctx.KVStore(k.storeKey).Get(validatorPubkeyKey(minerAddr))
+	if bz == nil {
+		return nil, false
+	}
+	return bz, true
+}
+
 // --- Block reward ---
 
 func (k Keeper) SetBlockReward(ctx sdk.Context, reward math.Int) {

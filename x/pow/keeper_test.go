@@ -16,7 +16,7 @@ import (
 	"cosmossdk.io/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
-	
+	"crypto/ed25519"
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/pow/testutil"
 	"github.com/whoyoujoshin/aether/x/pow/types"
@@ -337,4 +337,44 @@ func TestAdjustDifficulty_UsesPersistedCustomValues_NotHardcodedDefaults(t *test
 	adjusted = k.AdjustDifficulty(ctx)
 	require.True(t, adjusted.Equal(math.NewInt(customMax)),
 		"expected clamp at custom max %d, got %s", customMax, adjusted.String())
+}
+
+func TestValidatorPubkey_NotFoundReturnsFalse(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("no_registration_here__")
+
+	_, ok := k.GetValidatorPubkey(ctx, minerAddr)
+	require.False(t, ok)
+}
+
+func TestValidatorPubkey_RoundTrip(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("test_miner_address___")
+	pubkey := make([]byte, ed25519.PublicKeySize)
+	pubkey[5] = 0x42
+
+	k.SetValidatorPubkey(ctx, minerAddr, pubkey)
+
+	stored, ok := k.GetValidatorPubkey(ctx, minerAddr)
+	require.True(t, ok)
+	require.Equal(t, pubkey, stored)
+}
+
+func TestValidatorPubkey_DifferentMinersDoNotCollide(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerA := sdk.AccAddress("miner_a_address______")
+	minerB := sdk.AccAddress("miner_b_address______")
+
+	pubkeyA := make([]byte, ed25519.PublicKeySize)
+	pubkeyA[0] = 0xAA
+	pubkeyB := make([]byte, ed25519.PublicKeySize)
+	pubkeyB[0] = 0xBB
+
+	k.SetValidatorPubkey(ctx, minerA, pubkeyA)
+	k.SetValidatorPubkey(ctx, minerB, pubkeyB)
+
+	storedA, _ := k.GetValidatorPubkey(ctx, minerA)
+	storedB, _ := k.GetValidatorPubkey(ctx, minerB)
+	require.Equal(t, pubkeyA, storedA)
+	require.Equal(t, pubkeyB, storedB)
 }

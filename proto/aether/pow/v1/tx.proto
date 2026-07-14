@@ -7,9 +7,16 @@ import "cosmos/msg/v1/msg.proto";
 option go_package = "github.com/whoyoujoshin/aether/x/pow";
 
 service Msg {
-  option (cosmos.msg.v1.service) = true;
   rpc SubmitPoW(MsgSubmitPoW) returns (MsgSubmitPoWResponse);
+  rpc RegisterValidatorPubkey(MsgRegisterValidatorPubkey) returns (MsgRegisterValidatorPubkeyResponse);
 }
+
+message MsgRegisterValidatorPubkey {
+  string miner = 1;
+  bytes consensus_pubkey = 2; // raw 32-byte ed25519 public key
+}
+
+message MsgRegisterValidatorPubkeyResponse {}
 
 message MsgSubmitPoW {
   option (cosmos.msg.v1.signer) = "miner";

@@ -5,7 +5,7 @@ import (
 
 	sdkerrors "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-
+	"crypto/ed25519"
 	"github.com/whoyoujoshin/aether/x/pow/types"
 )
 
@@ -15,6 +15,24 @@ type msgServer struct {
 
 func NewMsgServerImpl(keeper Keeper) MsgServer {
 	return &msgServer{Keeper: keeper}
+}
+
+func (k msgServer) RegisterValidatorPubkey(goCtx context.Context, msg *MsgRegisterValidatorPubkey) (*MsgRegisterValidatorPubkeyResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	minerAddr, err := sdk.AccAddressFromBech32(msg.Miner)
+	if err != nil {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidCreator, "invalid miner address %q: %s", msg.Miner, err)
+	}
+
+	if len(msg.ConsensusPubkey) != ed25519.PublicKeySize {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidConsensusPubkey,
+			"consensus pubkey must be exactly %d bytes, got %d", ed25519.PublicKeySize, len(msg.ConsensusPubkey))
+	}
+
+	k.Keeper.SetValidatorPubkey(ctx, minerAddr, msg.ConsensusPubkey)
+
+	return &MsgRegisterValidatorPubkeyResponse{}, nil
 }
 
 func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubmitPoWResponse, error) {

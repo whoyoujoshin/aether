@@ -55,4 +55,5 @@ var (
 	KeyMinDifficulty = []byte("min_difficulty")
 	KeyMaxDifficulty = []byte("max_difficulty")
 	KeyTargetBlockTime = []byte("target_block_time")
+	KeyValidatorPubkeyPrefix = []byte("validator_pubkey/")
 )
