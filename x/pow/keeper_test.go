@@ -269,3 +269,72 @@ func TestAdjustDifficulty_ClampsAtMaximum(t *testing.T) {
 	maxD := math.NewInt(int64(params.MaxDifficulty))
 	require.True(t, adjusted.LTE(maxD), "difficulty should never exceed MaxDifficulty")
 }
+
+// --- Min/Max/TargetBlockTime persistence ---
+
+func TestMinMaxTargetBlockTime_FallbackToDefaults(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	params := pow.DefaultGenesisState().Params
+
+	require.True(t, k.GetMinDifficulty(ctx).Equal(math.NewInt(int64(params.MinDifficulty))))
+	require.True(t, k.GetMaxDifficulty(ctx).Equal(math.NewInt(int64(params.MaxDifficulty))))
+	require.Equal(t, params.TargetBlockTime, k.GetTargetBlockTime(ctx))
+}
+
+func TestMinMaxTargetBlockTime_RoundTrip(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	// Deliberately use values that differ from DefaultGenesisState(), so a
+	// regression back to reading hardcoded defaults (instead of persisted
+	// state) would be caught by this test failing.
+	customMin := int64(777)
+	customMax := int64(999_999_999)
+	customTarget := int64(42)
+
+	k.SetMinDifficulty(ctx, customMin)
+	k.SetMaxDifficulty(ctx, customMax)
+	k.SetTargetBlockTime(ctx, customTarget)
+
+	require.True(t, k.GetMinDifficulty(ctx).Equal(math.NewInt(customMin)))
+	require.True(t, k.GetMaxDifficulty(ctx).Equal(math.NewInt(customMax)))
+	require.Equal(t, customTarget, k.GetTargetBlockTime(ctx))
+}
+
+func TestAdjustDifficulty_UsesPersistedCustomValues_NotHardcodedDefaults(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	// Regression guard: AdjustDifficulty previously read
+	// DefaultGenesisState().Params directly, silently ignoring whatever
+	// was actually persisted (and therefore ignoring genesis.json entirely).
+	// This test uses custom min/max/target that differ sharply from the
+	// real defaults, so if AdjustDifficulty ever reverts to reading
+	// defaults again, this test will fail clearly rather than passing
+	// by coincidence.
+	customMin := int64(10)
+	customMax := int64(20) // deliberately tiny, far below real defaults
+	customTarget := int64(100)
+
+	k.SetMinDifficulty(ctx, customMin)
+	k.SetMaxDifficulty(ctx, customMax)
+	k.SetTargetBlockTime(ctx, customTarget)
+
+	k.SetDifficulty(ctx, math.NewInt(15))
+	lastTime := time.Now().Unix()
+	k.SetLastBlockTime(ctx, lastTime)
+
+	// Huge elapsed time should try to push difficulty far below customMin,
+	// but must clamp there instead of the real DefaultGenesisState min.
+	ctx = ctx.WithBlockTime(time.Unix(lastTime+100_000, 0))
+	adjusted := k.AdjustDifficulty(ctx)
+	require.True(t, adjusted.Equal(math.NewInt(customMin)),
+		"expected clamp at custom min %d, got %s", customMin, adjusted.String())
+
+	// Reset and test the opposite direction: fast submission should clamp
+	// at customMax, not the real (vastly larger) DefaultGenesisState max.
+	k.SetDifficulty(ctx, math.NewInt(15))
+	k.SetLastBlockTime(ctx, lastTime)
+	ctx = ctx.WithBlockTime(time.Unix(lastTime+1, 0))
+	adjusted = k.AdjustDifficulty(ctx)
+	require.True(t, adjusted.Equal(math.NewInt(customMax)),
+		"expected clamp at custom max %d, got %s", customMax, adjusted.String())
+}

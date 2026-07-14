@@ -148,3 +148,136 @@ func TestSubmitPoW_PropagatesRewardDistributionError(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "bank layer failure")
 }
+
+func TestSubmitPoW_Success_UpdatesDifficultyAndLastBlockTime(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	k.SetDifficulty(ctx, math.NewInt(1))
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+
+	// Confirm no LastBlockTime exists yet (fresh keeper).
+	_, hadLastTime := k.GetLastBlockTime(ctx)
+	require.False(t, hadLastTime)
+
+	_, addrStr := validMinerAddr(t)
+	msg := &pow.MsgSubmitPoW{
+		Miner:      addrStr,
+		Height:     1,
+		Timestamp:  time.Now().Unix(),
+		PrevHash:   []byte("prev"),
+		MerkleRoot: []byte("merkle"),
+		Nonce:      1,
+		Difficulty: 1,
+	}
+
+	_, err := srv.SubmitPoW(ctx, msg)
+	require.NoError(t, err)
+
+	// AdjustDifficulty should have run as a side effect of the successful
+	// submission (previously this only happened in BeginBlocker, entirely
+	// decoupled from whether a submission occurred at all).
+	lastTime, ok := k.GetLastBlockTime(ctx)
+	require.True(t, ok, "LastBlockTime should be set after a successful submission")
+	require.Equal(t, ctx.BlockTime().Unix(), lastTime)
+}
+
+func TestSubmitPoW_Success_DifficultyRetargetsBasedOnSubmissionTiming(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	// Set an explicit, low MinDifficulty so the default floor (1024) doesn't
+	// interfere with observing the raw retargeting math below.
+	k.SetMinDifficulty(ctx, 1)
+	k.SetTargetBlockTime(ctx, 60)
+	k.SetDifficulty(ctx, math.NewInt(1))
+	priorTime := time.Now().Unix()
+	k.SetLastBlockTime(ctx, priorTime)
+
+	submissionTime := priorTime + 5
+	ctx = ctx.WithBlockTime(time.Unix(submissionTime, 0))
+
+	_, addrStr := validMinerAddr(t)
+	msg := &pow.MsgSubmitPoW{
+		Miner: addrStr, Height: 1, Timestamp: submissionTime,
+		PrevHash: []byte("prev"), MerkleRoot: []byte("merkle"),
+		Nonce: 1, Difficulty: 1,
+	}
+
+	_, err := srv.SubmitPoW(ctx, msg)
+	require.NoError(t, err)
+
+	// Expected: current(1) * target(60) / elapsed(5) = 12
+	newDifficulty := k.GetDifficulty(ctx)
+	require.True(t, newDifficulty.Equal(math.NewInt(12)),
+		"expected difficulty to retarget to 12 (1*60/5), got %s", newDifficulty.String())
+}
+
+func TestSubmitPoW_FailedVerification_DoesNotAdjustDifficulty(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	highDifficulty := uint64(1) << 40
+	k.SetDifficulty(ctx, math.NewInt(int64(highDifficulty)))
+
+	_, addrStr := validMinerAddr(t)
+	msg := &pow.MsgSubmitPoW{
+		Miner: addrStr, Height: 1, Timestamp: time.Now().Unix(),
+		PrevHash: []byte("prev"), MerkleRoot: []byte("merkle"),
+		Nonce: 42, Difficulty: highDifficulty, // essentially never satisfies this target
+	}
+
+	_, err := srv.SubmitPoW(ctx, msg)
+	require.Error(t, err)
+
+	// A failed PoW verification must not advance LastBlockTime or difficulty
+	// -- otherwise a flood of invalid submissions could manipulate retargeting.
+	_, hadLastTime := k.GetLastBlockTime(ctx)
+	require.False(t, hadLastTime, "LastBlockTime must not be set on a failed submission")
+}
+
+func TestSubmitPoW_FailedDifficultyThreshold_DoesNotAdjustDifficulty(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	k.SetDifficulty(ctx, math.NewInt(1_000_000))
+
+	_, addrStr := validMinerAddr(t)
+	msg := &pow.MsgSubmitPoW{
+		Miner: addrStr, Height: 1, Timestamp: time.Now().Unix(),
+		PrevHash: []byte("prev"), MerkleRoot: []byte("merkle"),
+		Nonce: 1, Difficulty: 1, // far below the required 1,000,000
+	}
+
+	_, err := srv.SubmitPoW(ctx, msg)
+	require.Error(t, err)
+
+	_, hadLastTime := k.GetLastBlockTime(ctx)
+	require.False(t, hadLastTime, "LastBlockTime must not be set when difficulty check fails")
+}
+
+func TestSubmitPoW_FailedRewardDistribution_DoesNotAdjustDifficulty(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	k.SetDifficulty(ctx, math.NewInt(1))
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+	mockBank.MintErr = errors.New("bank layer failure")
+
+	_, addrStr := validMinerAddr(t)
+	msg := &pow.MsgSubmitPoW{
+		Miner: addrStr, Height: 1, Timestamp: time.Now().Unix(),
+		PrevHash: []byte("prev"), MerkleRoot: []byte("merkle"),
+		Nonce: 1, Difficulty: 1,
+	}
+
+	_, err := srv.SubmitPoW(ctx, msg)
+	require.Error(t, err)
+
+	// Verification passed and reward distribution was attempted, but since
+	// it failed, difficulty/LastBlockTime must not be touched -- the
+	// ordering in SubmitPoW places AdjustDifficulty strictly after a
+	// successful DistributeBlockReward call.
+	_, hadLastTime := k.GetLastBlockTime(ctx)
+	require.False(t, hadLastTime, "LastBlockTime must not be set when reward distribution fails")
+}
