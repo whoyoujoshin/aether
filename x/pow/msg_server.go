@@ -30,6 +30,17 @@ func (k msgServer) RegisterValidatorPubkey(goCtx context.Context, msg *MsgRegist
 			"consensus pubkey must be exactly %d bytes, got %d", ed25519.PublicKeySize, len(msg.ConsensusPubkey))
 	}
 
+	// Proof of possession: the signature must be produced by the private
+	// key matching ConsensusPubkey, over the miner's own address bytes.
+	// This is what prevents someone from registering a consensus pubkey
+	// they don't actually control (e.g., a real validator's public key,
+	// copied from elsewhere) against their own mining address.
+	challenge := []byte(msg.Miner)
+	if !ed25519.Verify(msg.ConsensusPubkey, challenge, msg.Signature) {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidProofOfPossession,
+			"signature does not verify against the provided consensus pubkey for miner %s", msg.Miner)
+	}
+
 	k.Keeper.SetValidatorPubkey(ctx, minerAddr, msg.ConsensusPubkey)
 
 	return &MsgRegisterValidatorPubkeyResponse{}, nil

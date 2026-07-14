@@ -14,8 +14,10 @@ service Msg {
 message MsgRegisterValidatorPubkey {
   string miner = 1;
   bytes consensus_pubkey = 2; // raw 32-byte ed25519 public key
+  bytes signature = 3;        // ed25519 signature, by the consensus private
+                               // key, over the raw bytes of `miner` -- proves
+                               // possession of the consensus private key
 }
-
 message MsgRegisterValidatorPubkeyResponse {}
 
 message MsgSubmitPoW {

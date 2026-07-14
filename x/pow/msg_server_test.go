@@ -9,7 +9,6 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
 	"crypto/ed25519"
-	"crypto/rand"
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/pow/types"
 )
@@ -288,13 +287,15 @@ func TestRegisterValidatorPubkey_Success(t *testing.T) {
 	srv := pow.NewMsgServerImpl(k)
 
 	minerAddr, addrStr := validMinerAddr(t)
-	consensusPubkey := make([]byte, ed25519.PublicKeySize)
-	_, err := rand.Read(consensusPubkey)
+	consensusPub, consensusPriv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
+
+	sig := ed25519.Sign(consensusPriv, []byte(addrStr))
 
 	msg := &pow.MsgRegisterValidatorPubkey{
 		Miner:           addrStr,
-		ConsensusPubkey: consensusPubkey,
+		ConsensusPubkey: consensusPub,
+		Signature:       sig,
 	}
 
 	_, err = srv.RegisterValidatorPubkey(ctx, msg)
@@ -302,7 +303,7 @@ func TestRegisterValidatorPubkey_Success(t *testing.T) {
 
 	stored, ok := k.GetValidatorPubkey(ctx, minerAddr)
 	require.True(t, ok)
-	require.Equal(t, consensusPubkey, stored)
+	require.Equal(t, []byte(consensusPub), stored)
 }
 
 func TestRegisterValidatorPubkey_RejectsInvalidMinerAddress(t *testing.T) {
@@ -312,6 +313,7 @@ func TestRegisterValidatorPubkey_RejectsInvalidMinerAddress(t *testing.T) {
 	msg := &pow.MsgRegisterValidatorPubkey{
 		Miner:           "not-a-valid-bech32-address",
 		ConsensusPubkey: make([]byte, ed25519.PublicKeySize),
+		Signature:       make([]byte, ed25519.SignatureSize),
 	}
 
 	_, err := srv.RegisterValidatorPubkey(ctx, msg)
@@ -327,11 +329,59 @@ func TestRegisterValidatorPubkey_RejectsWrongSizePubkey(t *testing.T) {
 	msg := &pow.MsgRegisterValidatorPubkey{
 		Miner:           addrStr,
 		ConsensusPubkey: []byte{0x01, 0x02, 0x03}, // far too short
+		Signature:       make([]byte, ed25519.SignatureSize),
 	}
 
 	_, err := srv.RegisterValidatorPubkey(ctx, msg)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, types.ErrInvalidConsensusPubkey))
+}
+
+func TestRegisterValidatorPubkey_RejectsInvalidSignature(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	_, addrStr := validMinerAddr(t)
+	consensusPub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	msg := &pow.MsgRegisterValidatorPubkey{
+		Miner:           addrStr,
+		ConsensusPubkey: consensusPub,
+		Signature:       make([]byte, ed25519.SignatureSize), // all zeros, not a real signature
+	}
+
+	_, err = srv.RegisterValidatorPubkey(ctx, msg)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, types.ErrInvalidProofOfPossession))
+}
+
+func TestRegisterValidatorPubkey_RejectsSignatureFromWrongKey(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	_, addrStr := validMinerAddr(t)
+
+	// The pubkey being registered belongs to keypair A, but the signature
+	// was produced by keypair B -- this is exactly the attack proof-of-
+	// possession exists to prevent (registering a pubkey you don't
+	// actually control the private key for).
+	pubkeyA, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	_, privB, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	sig := ed25519.Sign(privB, []byte(addrStr))
+
+	msg := &pow.MsgRegisterValidatorPubkey{
+		Miner:           addrStr,
+		ConsensusPubkey: pubkeyA,
+		Signature:       sig,
+	}
+
+	_, err = srv.RegisterValidatorPubkey(ctx, msg)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, types.ErrInvalidProofOfPossession))
 }
 
 func TestRegisterValidatorPubkey_OverwritesExistingRegistration(t *testing.T) {
@@ -340,26 +390,25 @@ func TestRegisterValidatorPubkey_OverwritesExistingRegistration(t *testing.T) {
 
 	minerAddr, addrStr := validMinerAddr(t)
 
-	firstPubkey := make([]byte, ed25519.PublicKeySize)
-	firstPubkey[0] = 0xAA
-	_, err := srv.RegisterValidatorPubkey(ctx, &pow.MsgRegisterValidatorPubkey{
-		Miner: addrStr, ConsensusPubkey: firstPubkey,
+	firstPub, firstPriv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	firstSig := ed25519.Sign(firstPriv, []byte(addrStr))
+	_, err = srv.RegisterValidatorPubkey(ctx, &pow.MsgRegisterValidatorPubkey{
+		Miner: addrStr, ConsensusPubkey: firstPub, Signature: firstSig,
 	})
 	require.NoError(t, err)
 
-	// Re-registering with a different key should silently replace the
-	// prior mapping -- current design allows this (no lock-in), which is
-	// intentional for now but worth revisiting once proof-of-possession
-	// is added, since at that point an unauthorized overwrite becomes
-	// meaningfully harder anyway.
-	secondPubkey := make([]byte, ed25519.PublicKeySize)
-	secondPubkey[0] = 0xBB
+	// Re-registering with a different, properly-proven key should replace
+	// the prior mapping.
+	secondPub, secondPriv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	secondSig := ed25519.Sign(secondPriv, []byte(addrStr))
 	_, err = srv.RegisterValidatorPubkey(ctx, &pow.MsgRegisterValidatorPubkey{
-		Miner: addrStr, ConsensusPubkey: secondPubkey,
+		Miner: addrStr, ConsensusPubkey: secondPub, Signature: secondSig,
 	})
 	require.NoError(t, err)
 
 	stored, ok := k.GetValidatorPubkey(ctx, minerAddr)
 	require.True(t, ok)
-	require.Equal(t, secondPubkey, stored)
+	require.Equal(t, []byte(secondPub), stored)
 }
