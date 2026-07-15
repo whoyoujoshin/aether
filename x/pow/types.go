@@ -16,7 +16,8 @@ type Params struct {
 	MaxDifficulty     int   `json:"max_difficulty" yaml:"max_difficulty"`
 	Difficulty        int   `json:"difficulty" yaml:"difficulty"`
 	BlockReward       int   `json:"block_reward" yaml:"block_reward"`
-	TailEmission      bool  `json:"tail_emission" yaml:"tail_emission"` // For sustainable model post-initial phase
+	TailEmission      bool  `json:"tail_emission" yaml:"tail_emission"`
+	EpochLength       int64 `json:"epoch_length" yaml:"epoch_length"`
 }
 
 type MiningHeader struct {
@@ -43,10 +44,10 @@ func DefaultGenesisState() GenesisState {
 			Difficulty:        1 << 20,
 			BlockReward:       5_000_000, // 5 AETH initial (uaeth)
 			TailEmission:      false,
+			EpochLength:       1440, // ~24h at 60s target blocks, per design doc §4
 		},
 	}
 }
-
 var (
 	KeyParams        = []byte("params")
 	KeyDifficulty    = []byte("difficulty")
@@ -56,4 +57,6 @@ var (
 	KeyMaxDifficulty = []byte("max_difficulty")
 	KeyTargetBlockTime = []byte("target_block_time")
 	KeyValidatorPubkeyPrefix = []byte("validator_pubkey/")
+	KeyEpochLength     = []byte("epoch_length")
+	KeyEpochWorkPrefix = []byte("epoch_work/")
 )

@@ -118,6 +118,88 @@ func (k Keeper) GetValidatorPubkey(ctx sdk.Context, minerAddr sdk.AccAddress) ([
 	return bz, true
 }
 
+func (k Keeper) SetEpochLength(ctx sdk.Context, epochLength int64) {
+	bz, _ := json.Marshal(epochLength)
+	ctx.KVStore(k.storeKey).Set(KeyEpochLength, bz)
+}
+
+func (k Keeper) GetEpochLength(ctx sdk.Context) int64 {
+	bz := ctx.KVStore(k.storeKey).Get(KeyEpochLength)
+	if bz == nil {
+		return DefaultGenesisState().Params.EpochLength
+	}
+	var e int64
+	_ = json.Unmarshal(bz, &e)
+	return e
+}
+
+// CurrentEpoch derives the epoch number from real chain height
+// (ctx.BlockHeight()), never from user-supplied message fields -- those
+// aren't validated against actual chain state and can't be trusted here.
+func (k Keeper) CurrentEpoch(ctx sdk.Context) int64 {
+	epochLength := k.GetEpochLength(ctx)
+	if epochLength <= 0 {
+		epochLength = 1 // defensive: avoid divide-by-zero if misconfigured
+	}
+	return ctx.BlockHeight() / epochLength
+}
+
+func epochWorkKey(epoch int64, minerAddr sdk.AccAddress) []byte {
+	epochBytes := sdk.Uint64ToBigEndian(uint64(epoch))
+	key := make([]byte, 0, len(KeyEpochWorkPrefix)+len(epochBytes)+len(minerAddr.Bytes()))
+	key = append(key, KeyEpochWorkPrefix...)
+	key = append(key, epochBytes...)
+	key = append(key, minerAddr.Bytes()...)
+	return key
+}
+
+// AddMiningWork increments recorded work for minerAddr in the given epoch.
+// Called from SubmitPoW's success path -- this is the raw input Top-K
+// validator selection will later rank addresses by. Starts as a simple
+// raw submission count; difficulty-weighting is an explicitly deferred
+// decision (see design doc open questions), not decided here.
+func (k Keeper) AddMiningWork(ctx sdk.Context, epoch int64, minerAddr sdk.AccAddress, amount uint64) {
+	newTotal := k.GetMiningWork(ctx, epoch, minerAddr) + amount
+	ctx.KVStore(k.storeKey).Set(epochWorkKey(epoch, minerAddr), sdk.Uint64ToBigEndian(newTotal))
+}
+
+func (k Keeper) GetMiningWork(ctx sdk.Context, epoch int64, minerAddr sdk.AccAddress) uint64 {
+	bz := ctx.KVStore(k.storeKey).Get(epochWorkKey(epoch, minerAddr))
+	if bz == nil {
+		return 0
+	}
+	return sdk.BigEndianToUint64(bz)
+}
+
+// MiningWorkEntry pairs a miner address with accumulated work in an epoch.
+type MiningWorkEntry struct {
+	MinerAddr sdk.AccAddress
+	Work      uint64
+}
+
+// IterateEpochWork returns every address with recorded work in the given
+// epoch. Not used yet -- exists now so the epoch_work/ key layout gets
+// verified against real iteration today, rather than assumed correct
+// until Top-K selection (component 4) is built on top of it.
+func (k Keeper) IterateEpochWork(ctx sdk.Context, epoch int64) []MiningWorkEntry {
+	epochBytes := sdk.Uint64ToBigEndian(uint64(epoch))
+	prefix := append(append([]byte{}, KeyEpochWorkPrefix...), epochBytes...)
+
+	store := ctx.KVStore(k.storeKey)
+	iterator := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
+	defer iterator.Close()
+
+	var entries []MiningWorkEntry
+	for ; iterator.Valid(); iterator.Next() {
+		addrBytes := iterator.Key()[len(prefix):]
+		entries = append(entries, MiningWorkEntry{
+			MinerAddr: sdk.AccAddress(addrBytes),
+			Work:      sdk.BigEndianToUint64(iterator.Value()),
+		})
+	}
+	return entries
+}
+
 // --- Block reward ---
 
 func (k Keeper) SetBlockReward(ctx sdk.Context, reward math.Int) {

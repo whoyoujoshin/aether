@@ -79,6 +79,7 @@ func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.
 	am.keeper.SetMinDifficulty(ctx, int64(genState.Params.MinDifficulty))
 	am.keeper.SetMaxDifficulty(ctx, int64(genState.Params.MaxDifficulty))
 	am.keeper.SetTargetBlockTime(ctx, genState.Params.TargetBlockTime)
+	am.keeper.SetEpochLength(ctx, genState.Params.EpochLength)
 
 	return []abci.ValidatorUpdate{
 		{

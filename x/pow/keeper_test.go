@@ -378,3 +378,153 @@ func TestValidatorPubkey_DifferentMinersDoNotCollide(t *testing.T) {
 	require.Equal(t, pubkeyA, storedA)
 	require.Equal(t, pubkeyB, storedB)
 }
+
+// --- Epoch length persistence ---
+
+func TestEpochLength_FallbackToDefault(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	params := pow.DefaultGenesisState().Params
+	require.Equal(t, params.EpochLength, k.GetEpochLength(ctx))
+}
+
+func TestEpochLength_RoundTrip(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetEpochLength(ctx, 500)
+	require.Equal(t, int64(500), k.GetEpochLength(ctx))
+}
+
+// --- CurrentEpoch ---
+
+func TestCurrentEpoch_DerivedFromRealBlockHeight(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetEpochLength(ctx, 100)
+
+	ctx = ctx.WithBlockHeight(0)
+	require.Equal(t, int64(0), k.CurrentEpoch(ctx))
+
+	ctx = ctx.WithBlockHeight(99)
+	require.Equal(t, int64(0), k.CurrentEpoch(ctx))
+
+	ctx = ctx.WithBlockHeight(100)
+	require.Equal(t, int64(1), k.CurrentEpoch(ctx))
+
+	ctx = ctx.WithBlockHeight(250)
+	require.Equal(t, int64(2), k.CurrentEpoch(ctx))
+}
+
+func TestCurrentEpoch_HandlesZeroEpochLengthDefensively(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetEpochLength(ctx, 0)
+	ctx = ctx.WithBlockHeight(50)
+
+	// Must not panic (divide by zero) -- falls back to treating each
+	// block as its own epoch rather than crashing on misconfiguration.
+	require.NotPanics(t, func() {
+		k.CurrentEpoch(ctx)
+	})
+}
+
+// --- Mining work tracking ---
+
+func TestMiningWork_StartsAtZero(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("unrecorded_miner_____")
+	require.Equal(t, uint64(0), k.GetMiningWork(ctx, 5, minerAddr))
+}
+
+func TestMiningWork_AccumulatesWithinSameEpoch(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("accumulating_miner___")
+
+	k.AddMiningWork(ctx, 3, minerAddr, 1)
+	k.AddMiningWork(ctx, 3, minerAddr, 1)
+	k.AddMiningWork(ctx, 3, minerAddr, 1)
+
+	require.Equal(t, uint64(3), k.GetMiningWork(ctx, 3, minerAddr))
+}
+
+func TestMiningWork_SeparateEpochsDoNotMix(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("cross_epoch_miner____")
+
+	k.AddMiningWork(ctx, 1, minerAddr, 5)
+	k.AddMiningWork(ctx, 2, minerAddr, 7)
+
+	require.Equal(t, uint64(5), k.GetMiningWork(ctx, 1, minerAddr))
+	require.Equal(t, uint64(7), k.GetMiningWork(ctx, 2, minerAddr))
+}
+
+func TestMiningWork_SeparateMinersDoNotMix(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerA := sdk.AccAddress("miner_a_for_work_test")
+	minerB := sdk.AccAddress("miner_b_for_work_test")
+
+	k.AddMiningWork(ctx, 1, minerA, 10)
+	k.AddMiningWork(ctx, 1, minerB, 20)
+
+	require.Equal(t, uint64(10), k.GetMiningWork(ctx, 1, minerA))
+	require.Equal(t, uint64(20), k.GetMiningWork(ctx, 1, minerB))
+}
+
+// --- IterateEpochWork ---
+
+func TestIterateEpochWork_ReturnsAllEntriesForGivenEpoch(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerA := sdk.AccAddress("iterate_test_miner_a_")
+	minerB := sdk.AccAddress("iterate_test_miner_b_")
+	minerC := sdk.AccAddress("iterate_test_miner_c_")
+
+	k.AddMiningWork(ctx, 7, minerA, 3)
+	k.AddMiningWork(ctx, 7, minerB, 8)
+	k.AddMiningWork(ctx, 7, minerC, 1)
+
+	entries := k.IterateEpochWork(ctx, 7)
+	require.Len(t, entries, 3)
+
+	totalWork := uint64(0)
+	for _, e := range entries {
+		totalWork += e.Work
+	}
+	require.Equal(t, uint64(12), totalWork)
+}
+
+func TestIterateEpochWork_DoesNotLeakOtherEpochs(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerA := sdk.AccAddress("leak_test_miner_a____")
+	minerB := sdk.AccAddress("leak_test_miner_b____")
+
+	k.AddMiningWork(ctx, 4, minerA, 1)
+	k.AddMiningWork(ctx, 5, minerB, 1)
+
+	entries := k.IterateEpochWork(ctx, 4)
+	require.Len(t, entries, 1, "epoch 4 iteration must not include epoch 5's entry")
+	require.Equal(t, uint64(1), entries[0].Work)
+}
+
+func TestIterateEpochWork_EmptyEpochReturnsNoEntries(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	entries := k.IterateEpochWork(ctx, 999)
+	require.Empty(t, entries)
+}
+
+func TestSubmitPoW_Success_RecordsMiningWorkForCurrentEpoch(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	k.SetDifficulty(ctx, math.NewInt(1))
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+	k.SetEpochLength(ctx, 100)
+	ctx = ctx.WithBlockHeight(50) // epoch 0
+
+	minerAddr, addrStr := validMinerAddr(t)
+	msg := &pow.MsgSubmitPoW{
+		Miner: addrStr, Height: 1, Timestamp: time.Now().Unix(),
+		PrevHash: []byte("prev"), MerkleRoot: []byte("merkle"),
+		Nonce: 1, Difficulty: 1,
+	}
+
+	_, err := srv.SubmitPoW(ctx, msg)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(1), k.GetMiningWork(ctx, 0, minerAddr))
+}

@@ -81,7 +81,8 @@ func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubm
 	k.Keeper.SetDifficulty(ctx, newDifficulty)
 	k.Keeper.SetLastBlockTime(ctx, ctx.BlockTime().Unix())
 
-	return &MsgSubmitPoWResponse{}, nil
+	currentEpoch := k.Keeper.CurrentEpoch(ctx)
+	k.Keeper.AddMiningWork(ctx, currentEpoch, minerAddr, 1)
 
 	return &MsgSubmitPoWResponse{}, nil
 }
