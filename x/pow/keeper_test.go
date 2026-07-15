@@ -528,3 +528,167 @@ func TestSubmitPoW_Success_RecordsMiningWorkForCurrentEpoch(t *testing.T) {
 
 	require.Equal(t, uint64(1), k.GetMiningWork(ctx, 0, minerAddr))
 }
+
+// --- Active validator set storage ---
+
+func TestActiveValidator_SetGetRemoveRoundTrip(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("active_validator_test")
+
+	require.False(t, k.IsActiveValidator(ctx, minerAddr))
+
+	k.SetActiveValidator(ctx, minerAddr)
+	require.True(t, k.IsActiveValidator(ctx, minerAddr))
+
+	k.RemoveActiveValidator(ctx, minerAddr)
+	require.False(t, k.IsActiveValidator(ctx, minerAddr))
+}
+
+func TestIterateActiveValidators_ReturnsAllActive(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerA := sdk.AccAddress("iterate_active_miner_a")
+	minerB := sdk.AccAddress("iterate_active_miner_b")
+
+	k.SetActiveValidator(ctx, minerA)
+	k.SetActiveValidator(ctx, minerB)
+
+	addrs := k.IterateActiveValidators(ctx)
+	require.Len(t, addrs, 2)
+}
+
+// --- ComputeValidatorUpdates ---
+
+func genValidatorPubkey(t *testing.T) []byte {
+	t.Helper()
+	pub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	return pub
+}
+
+func TestComputeValidatorUpdates_EmptyEpochReturnsNil(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	updates := k.ComputeValidatorUpdates(ctx, 1)
+	require.Nil(t, updates)
+}
+
+func TestComputeValidatorUpdates_ExcludesMinersWithoutRegisteredPubkey(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("no_pubkey_registered__")
+
+	// Mined, but never called RegisterValidatorPubkey.
+	k.AddMiningWork(ctx, 1, minerAddr, 5)
+
+	updates := k.ComputeValidatorUpdates(ctx, 1)
+	require.Nil(t, updates, "a miner with no registered consensus pubkey must not be selectable")
+}
+
+func TestComputeValidatorUpdates_SingleQualifiedCandidateGetsPower(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("single_qualified_miner")
+	pubkey := genValidatorPubkey(t)
+
+	k.SetValidatorPubkey(ctx, minerAddr, pubkey)
+	k.AddMiningWork(ctx, 1, minerAddr, 5)
+
+	updates := k.ComputeValidatorUpdates(ctx, 1)
+	require.Len(t, updates, 1)
+	require.Equal(t, int64(pow.ValidatorVotingPower), updates[0].Power)
+	require.True(t, k.IsActiveValidator(ctx, minerAddr))
+}
+
+func TestComputeValidatorUpdates_LimitsToTopK(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetTopKSize(ctx, 2)
+
+	addrs := []sdk.AccAddress{
+		sdk.AccAddress("top_k_candidate_one___"),
+		sdk.AccAddress("top_k_candidate_two___"),
+		sdk.AccAddress("top_k_candidate_three_"),
+	}
+	work := []uint64{10, 30, 20} // candidate two should rank first, three second, one excluded
+
+	for i, addr := range addrs {
+		k.SetValidatorPubkey(ctx, addr, genValidatorPubkey(t))
+		k.AddMiningWork(ctx, 1, addr, work[i])
+	}
+
+	updates := k.ComputeValidatorUpdates(ctx, 1)
+	require.Len(t, updates, 2, "only top-2 by work should be selected when TopKSize=2")
+
+	require.True(t, k.IsActiveValidator(ctx, addrs[1]), "highest-work candidate should be selected")
+	require.True(t, k.IsActiveValidator(ctx, addrs[2]), "second-highest-work candidate should be selected")
+	require.False(t, k.IsActiveValidator(ctx, addrs[0]), "lowest-work candidate should be excluded")
+}
+
+func TestComputeValidatorUpdates_DeterministicTiebreakOnEqualWork(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetTopKSize(ctx, 1)
+
+	addrLow := sdk.AccAddress{0x01}
+	addrHigh := sdk.AccAddress{0xFF}
+
+	k.SetValidatorPubkey(ctx, addrLow, genValidatorPubkey(t))
+	k.SetValidatorPubkey(ctx, addrHigh, genValidatorPubkey(t))
+	k.AddMiningWork(ctx, 1, addrLow, 10)
+	k.AddMiningWork(ctx, 1, addrHigh, 10) // exactly equal work -- must break the tie deterministically
+
+	updates := k.ComputeValidatorUpdates(ctx, 1)
+	require.Len(t, updates, 1)
+	// Lower raw address bytes wins the tiebreak, per ComputeValidatorUpdates'
+	// sort comparator -- this must be identical on every node, or the
+	// chain forks on who "actually" won the tie.
+	require.True(t, k.IsActiveValidator(ctx, addrLow))
+	require.False(t, k.IsActiveValidator(ctx, addrHigh))
+}
+
+func TestComputeValidatorUpdates_RemovesValidatorThatFallsOutOfTopK(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetTopKSize(ctx, 1)
+
+	fallingOut := sdk.AccAddress("falling_out_validator_")
+	replacement := sdk.AccAddress("replacement_validator_")
+
+	// Simulate this address having been selected in a prior epoch.
+	k.SetValidatorPubkey(ctx, fallingOut, genValidatorPubkey(t))
+	k.SetActiveValidator(ctx, fallingOut)
+	require.True(t, k.IsActiveValidator(ctx, fallingOut))
+
+	// This epoch, a different, higher-work address qualifies instead.
+	k.SetValidatorPubkey(ctx, replacement, genValidatorPubkey(t))
+	k.AddMiningWork(ctx, 2, replacement, 100)
+
+	updates := k.ComputeValidatorUpdates(ctx, 2)
+
+	var sawRemoval, sawAddition bool
+	for _, u := range updates {
+		if u.Power == 0 {
+			sawRemoval = true
+		}
+		if u.Power == int64(pow.ValidatorVotingPower) {
+			sawAddition = true
+		}
+	}
+	require.True(t, sawRemoval, "expected an explicit power=0 removal update for the validator that fell out")
+	require.True(t, sawAddition, "expected the new candidate to receive a power grant")
+	require.False(t, k.IsActiveValidator(ctx, fallingOut))
+	require.True(t, k.IsActiveValidator(ctx, replacement))
+}
+
+func TestComputeValidatorUpdates_SafetyGuard_EmptyQualifiedPoolLeavesActiveSetUntouched(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	// Simulate an existing validator set from a prior epoch.
+	existingValidator := sdk.AccAddress("existing_validator____")
+	k.SetValidatorPubkey(ctx, existingValidator, genValidatorPubkey(t))
+	k.SetActiveValidator(ctx, existingValidator)
+
+	// This epoch: nobody mined at all (empty work), so the qualified pool
+	// is empty. This is the exact scenario that could halt a chain if
+	// handled wrong -- ComputeValidatorUpdates must NOT emit a removal
+	// for the existing validator with nothing to replace it.
+	updates := k.ComputeValidatorUpdates(ctx, 99)
+
+	require.Nil(t, updates, "empty qualified pool must produce no updates at all")
+	require.True(t, k.IsActiveValidator(ctx, existingValidator),
+		"existing validator must remain active when there's no qualified replacement")
+}

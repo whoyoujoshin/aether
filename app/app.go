@@ -278,6 +278,7 @@ if err != nil {
 	app.SetAnteHandler(anteHandler)
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
+	app.SetEndBlocker(app.EndBlocker)
 	if loadLatest {
 		if err := app.LoadLatestVersion(); err != nil {
 			panic(fmt.Errorf("error loading last version: %w", err))
@@ -325,6 +326,10 @@ func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 	app.TreasuryKeeper.Heartbeat(ctx)
 	app.GovernanceKeeper.Heartbeat(ctx)
 	return app.sm.BeginBlock(ctx)
+}
+
+func (app *App) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
+	return app.sm.EndBlock(ctx)
 }
 // Required methods
 func (app *App) RegisterAPIRoutes(apiSvr *api.Server, apiConfig config.APIConfig) {}

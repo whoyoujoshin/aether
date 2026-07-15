@@ -80,6 +80,7 @@ func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.
 	am.keeper.SetMaxDifficulty(ctx, int64(genState.Params.MaxDifficulty))
 	am.keeper.SetTargetBlockTime(ctx, genState.Params.TargetBlockTime)
 	am.keeper.SetEpochLength(ctx, genState.Params.EpochLength)
+	am.keeper.SetTopKSize(ctx, genState.Params.TopKSize)
 
 	return []abci.ValidatorUpdate{
 		{
@@ -102,4 +103,26 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 	}
 	bz, _ := json.Marshal(&genState)
 	return bz
+}
+
+func (am AppModule) EndBlock(ctx context.Context) ([]abci.ValidatorUpdate, error) {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	epochLength := am.keeper.GetEpochLength(sdkCtx)
+	if epochLength <= 0 {
+		return nil, nil
+	}
+
+	// Only run Top-K selection exactly once, at the last block of each
+	// epoch -- not every block. Running it every block would still be
+	// *correct* (the computation is idempotent), but wasteful, and would
+	// make "epoch transition" a fuzzy concept instead of a precise one.
+	height := sdkCtx.BlockHeight()
+	if (height+1)%epochLength != 0 {
+		return nil, nil
+	}
+
+	epoch := am.keeper.CurrentEpoch(sdkCtx)
+	updates := am.keeper.ComputeValidatorUpdates(sdkCtx, epoch)
+	return updates, nil
 }

@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"math/big"
+	"bytes"
+	"sort"
 
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
@@ -12,6 +14,10 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/whoyoujoshin/aether/x/pow/types"
+	cometcrypto "github.com/cometbft/cometbft/crypto"
+	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
+	cometencoding "github.com/cometbft/cometbft/crypto/encoding"
+	abci "github.com/cometbft/cometbft/abci/types"
 )
 
 type Keeper struct {
@@ -200,6 +206,35 @@ func (k Keeper) IterateEpochWork(ctx sdk.Context, epoch int64) []MiningWorkEntry
 	return entries
 }
 
+// SetActiveValidator/RemoveActiveValidator/IterateActiveValidators track
+// which addresses are *currently* validators (i.e., were granted power in
+// the last emitted ValidatorUpdates), so the next epoch's computation knows
+// who needs an explicit power=0 removal update if they fall out of Top-K.
+func (k Keeper) SetActiveValidator(ctx sdk.Context, minerAddr sdk.AccAddress) {
+	ctx.KVStore(k.storeKey).Set(append(KeyActiveValidatorPrefix, minerAddr.Bytes()...), []byte{1})
+}
+
+func (k Keeper) RemoveActiveValidator(ctx sdk.Context, minerAddr sdk.AccAddress) {
+	ctx.KVStore(k.storeKey).Delete(append(KeyActiveValidatorPrefix, minerAddr.Bytes()...))
+}
+
+func (k Keeper) IsActiveValidator(ctx sdk.Context, minerAddr sdk.AccAddress) bool {
+	return ctx.KVStore(k.storeKey).Has(append(KeyActiveValidatorPrefix, minerAddr.Bytes()...))
+}
+
+func (k Keeper) IterateActiveValidators(ctx sdk.Context) []sdk.AccAddress {
+	store := ctx.KVStore(k.storeKey)
+	iterator := store.Iterator(KeyActiveValidatorPrefix, storetypes.PrefixEndBytes(KeyActiveValidatorPrefix))
+	defer iterator.Close()
+
+	var addrs []sdk.AccAddress
+	for ; iterator.Valid(); iterator.Next() {
+		addrBytes := iterator.Key()[len(KeyActiveValidatorPrefix):]
+		addrs = append(addrs, sdk.AccAddress(addrBytes))
+	}
+	return addrs
+}
+
 // --- Block reward ---
 
 func (k Keeper) SetBlockReward(ctx sdk.Context, reward math.Int) {
@@ -331,3 +366,121 @@ func headerToBytes(h MiningHeader) []byte {
 	buf = append(buf, h.MinerAddress.Bytes()...)
 	return buf
 }
+
+var (
+	KeyTopKSize = []byte("top_k_size")
+)
+
+func (k Keeper) SetTopKSize(ctx sdk.Context, topK int64) {
+	bz, _ := json.Marshal(topK)
+	ctx.KVStore(k.storeKey).Set(KeyTopKSize, bz)
+}
+
+func (k Keeper) GetTopKSize(ctx sdk.Context) int64 {
+	bz := ctx.KVStore(k.storeKey).Get(KeyTopKSize)
+	if bz == nil {
+		return DefaultGenesisState().Params.TopKSize
+	}
+	var v int64
+	_ = json.Unmarshal(bz, &v)
+	return v
+}
+
+// ValidatorVotingPower defines fixed voting power granted to every selected
+// validator this phase. Proportional-to-work weighting is an explicitly
+// deferred decision (see randomness-beacon design doc), not made here --
+// starting with equal power per selected validator keeps this phase's
+// logic simple and testable, matching the "ships a working multi-validator
+// devnet" goal for Phase 1 specifically.
+const ValidatorVotingPower = 1_000_000
+
+// toValidatorUpdate converts a raw 32-byte ed25519 pubkey and a power value
+// into an abci.ValidatorUpdate, handling the proto encoding step explicitly
+// so a malformed pubkey is caught here (logged, skipped) rather than
+// silently producing an update CometBFT rejects at the ABCI boundary.
+func (k Keeper) toValidatorUpdate(rawPubkey []byte, power int64, minerAddr sdk.AccAddress) (abci.ValidatorUpdate, bool) {
+	var cometPubkey cometcrypto.PubKey = cometed25519.PubKey(rawPubkey)
+
+	protoPubkey, err := cometencoding.PubKeyToProto(cometPubkey)
+	if err != nil {
+		k.logger.Error("failed to encode validator pubkey to proto, skipping",
+			"miner", minerAddr.String(), "error", err)
+		return abci.ValidatorUpdate{}, false
+	}
+
+	return abci.ValidatorUpdate{
+		PubKey: protoPubkey,
+		Power:  power,
+	}, true
+}
+
+func (k Keeper) ComputeValidatorUpdates(ctx sdk.Context, epoch int64) []abci.ValidatorUpdate {
+	workEntries := k.IterateEpochWork(ctx, epoch)
+
+	type qualifiedEntry struct {
+		MinerAddr sdk.AccAddress
+		Pubkey    []byte
+		Work      uint64
+	}
+	var qualified []qualifiedEntry
+	for _, entry := range workEntries {
+		pubkey, ok := k.GetValidatorPubkey(ctx, entry.MinerAddr)
+		if !ok {
+			continue // mined, but never registered a consensus pubkey -- not eligible
+		}
+		qualified = append(qualified, qualifiedEntry{
+			MinerAddr: entry.MinerAddr,
+			Pubkey:    pubkey,
+			Work:      entry.Work,
+		})
+	}
+
+	if len(qualified) == 0 {
+		k.logger.Info("no qualified validator candidates this epoch, leaving validator set unchanged", "epoch", epoch)
+		return nil
+	}
+
+	sort.Slice(qualified, func(i, j int) bool {
+		if qualified[i].Work != qualified[j].Work {
+			return qualified[i].Work > qualified[j].Work
+		}
+		return bytes.Compare(qualified[i].MinerAddr.Bytes(), qualified[j].MinerAddr.Bytes()) < 0
+	})
+
+	topK := k.GetTopKSize(ctx)
+	if int64(len(qualified)) > topK {
+		qualified = qualified[:topK]
+	}
+
+	selected := make(map[string]qualifiedEntry, len(qualified))
+	for _, q := range qualified {
+		selected[q.MinerAddr.String()] = q
+	}
+
+	var updates []abci.ValidatorUpdate
+
+	// Removals: anyone currently active who didn't make this epoch's cut.
+	for _, activeAddr := range k.IterateActiveValidators(ctx) {
+		if _, stillSelected := selected[activeAddr.String()]; !stillSelected {
+			pubkey, ok := k.GetValidatorPubkey(ctx, activeAddr)
+			if !ok {
+				continue // shouldn't happen, but don't panic on it
+			}
+			if update, ok := k.toValidatorUpdate(pubkey, 0, activeAddr); ok {
+				updates = append(updates, update)
+			}
+			k.RemoveActiveValidator(ctx, activeAddr)
+		}
+	}
+
+	// Additions/unchanged: everyone selected this epoch (re-)gets power.
+	for _, q := range qualified {
+		if update, ok := k.toValidatorUpdate(q.Pubkey, ValidatorVotingPower, q.MinerAddr); ok {
+			updates = append(updates, update)
+			k.SetActiveValidator(ctx, q.MinerAddr)
+		}
+	}
+
+	return updates
+}
+
