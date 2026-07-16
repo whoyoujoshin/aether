@@ -24,6 +24,7 @@ func NewTxCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(NewSubmitPoWCmd())
+	cmd.AddCommand(NewRegisterValidatorPubkeyCmd())
 
 	return cmd
 }
@@ -72,6 +73,40 @@ func NewSubmitPoWCmd() *cobra.Command {
 				MerkleRoot: merkleRoot,
 				Nonce:      nonce,
 				Difficulty: difficulty,
+			}
+
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
+func NewRegisterValidatorPubkeyCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "register-validator-pubkey [consensus-pubkey-hex] [signature-hex]",
+		Short: "Register the ed25519 consensus pubkey you control, proven via signature",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			consensusPubkey, err := hex.DecodeString(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid consensus-pubkey hex: %w", err)
+			}
+			signature, err := hex.DecodeString(args[1])
+			if err != nil {
+				return fmt.Errorf("invalid signature hex: %w", err)
+			}
+
+			msg := &pow.MsgRegisterValidatorPubkey{
+				Miner:           clientCtx.GetFromAddress().String(),
+				ConsensusPubkey: consensusPubkey,
+				Signature:       signature,
 			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)

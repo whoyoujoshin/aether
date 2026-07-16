@@ -27,7 +27,10 @@ func (AppModuleBasic) Name() string {
 
 func (AppModuleBasic) RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {}
 
-func (AppModuleBasic) RegisterInterfaces(registry cdctypes.InterfaceRegistry) {registry.RegisterImplementations((*sdk.Msg)(nil), &MsgSubmitPoW{})}
+func (AppModuleBasic) RegisterInterfaces(registry cdctypes.InterfaceRegistry) {
+	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgSubmitPoW{})
+	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgRegisterValidatorPubkey{})
+}
 
 func (AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {
 	genState := DefaultGenesisState()
@@ -35,7 +38,7 @@ func (AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {
 	return bz
 }
 
-func (AppModuleBasic) ValidateGenesis(cdc codec.JSONCodec, config interface{}, bz json.RawMessage) error {
+func (AppModuleBasic) ValidateGenesis(cdc codec.JSONCodec, config client.TxEncodingConfig, bz json.RawMessage) error {
 	var genState GenesisState
 	return json.Unmarshal(bz, &genState)
 }
@@ -109,15 +112,12 @@ func (am AppModule) EndBlock(ctx context.Context) ([]abci.ValidatorUpdate, error
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
 	epochLength := am.keeper.GetEpochLength(sdkCtx)
+	height := sdkCtx.BlockHeight()
+	
 	if epochLength <= 0 {
 		return nil, nil
 	}
 
-	// Only run Top-K selection exactly once, at the last block of each
-	// epoch -- not every block. Running it every block would still be
-	// *correct* (the computation is idempotent), but wasteful, and would
-	// make "epoch transition" a fuzzy concept instead of a precise one.
-	height := sdkCtx.BlockHeight()
 	if (height+1)%epochLength != 0 {
 		return nil, nil
 	}

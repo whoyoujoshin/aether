@@ -231,10 +231,12 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 	app.GovernanceKeeper = governance.NewKeeper(appCodec, app.keys[governance.StoreKey])
 
 	// Module manager
+	powModule := pow.NewAppModule(appCodec, app.PowKeeper)
+
 	app.sm = module.NewManager(
 	auth.NewAppModule(appCodec, app.AccountKeeper, nil, nil),
 	bank.NewAppModule(appCodec, app.BankKeeper, app.AccountKeeper, nil),
-	pow.NewAppModule(appCodec, app.PowKeeper),
+	powModule,
 	treasury.NewAppModule(appCodec, app.TreasuryKeeper),
 	governance.NewAppModule(appCodec, app.GovernanceKeeper),
 )
@@ -290,7 +292,6 @@ if err != nil {
 
 func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.ResponseInitChain, error) {
 	fmt.Printf(">>> InitChainer called! Validators: %d\n", len(req.Validators))
-
 	var genesisState map[string]json.RawMessage
 	if err := json.Unmarshal(req.AppStateBytes, &genesisState); err != nil {
 		return nil, err
@@ -320,7 +321,6 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 		AppHash:         app.LastCommitID().Hash,
 	}, nil
 }
-
 func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 	app.PowKeeper.Heartbeat(ctx)
 	app.TreasuryKeeper.Heartbeat(ctx)
