@@ -20,6 +20,9 @@ import (
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/pow/testutil"
 	"github.com/whoyoujoshin/aether/x/pow/types"
+	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
+	"cosmossdk.io/core/comet"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
 
 // setupKeeper builds a pow.Keeper against an in-memory store with a
@@ -691,4 +694,409 @@ func TestComputeValidatorUpdates_SafetyGuard_EmptyQualifiedPoolLeavesActiveSetUn
 	require.Nil(t, updates, "empty qualified pool must produce no updates at all")
 	require.True(t, k.IsActiveValidator(ctx, existingValidator),
 		"existing validator must remain active when there's no qualified replacement")
+}
+
+// --- Consensus address reverse index ---
+
+func TestConsensusToMiner_NotFoundReturnsFalse(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	_, ok := k.GetMinerByConsensusAddr(ctx, []byte("no_such_consensus_addr"))
+	require.False(t, ok)
+}
+
+func TestConsensusToMiner_RoundTrip(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("reverse_index_test_mi")
+	consensusAddr := []byte("some_consensus_address")
+
+	k.SetConsensusToMiner(ctx, consensusAddr, minerAddr)
+
+	found, ok := k.GetMinerByConsensusAddr(ctx, consensusAddr)
+	require.True(t, ok)
+	require.Equal(t, minerAddr, found)
+}
+
+// --- Permanent ban ---
+
+func TestBanned_DefaultsFalse(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("never_banned_miner____")
+	require.False(t, k.IsBanned(ctx, minerAddr))
+}
+
+func TestBanned_SetIsPermanent(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("banned_miner_test_____")
+
+	k.SetBanned(ctx, minerAddr)
+	require.True(t, k.IsBanned(ctx, minerAddr))
+
+	// There is deliberately no "unban" method -- permanent means permanent.
+	// This test exists to make that design choice explicit and testable,
+	// not just implicit in the absence of a method.
+	require.True(t, k.IsBanned(ctx, minerAddr), "ban must remain set with no way to clear it")
+}
+
+// --- Bond cooldown persistence ---
+
+func TestBondCooldown_FallbackToDefault(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	params := pow.DefaultGenesisState().Params
+	require.Equal(t, params.BondCooldown, k.GetBondCooldown(ctx))
+}
+
+func TestBondCooldown_RoundTrip(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetBondCooldown(ctx, 250)
+	require.Equal(t, int64(250), k.GetBondCooldown(ctx))
+}
+
+// --- Escrow ---
+
+func TestEscrow_StartsAtZero(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("no_escrow_yet_________")
+	require.True(t, k.GetEscrowBalance(ctx, minerAddr).IsZero())
+
+	_, ok := k.GetEscrowUnlockHeight(ctx, minerAddr)
+	require.False(t, ok)
+}
+
+func TestEscrow_AddAccumulates(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("accumulating_escrow___")
+
+	k.AddEscrow(ctx, minerAddr, math.NewInt(100))
+	k.AddEscrow(ctx, minerAddr, math.NewInt(50))
+
+	require.True(t, k.GetEscrowBalance(ctx, minerAddr).Equal(math.NewInt(150)))
+}
+
+func TestEscrow_AddRefreshesUnlockHeight(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetBondCooldown(ctx, 100)
+	minerAddr := sdk.AccAddress("unlock_refresh_test___")
+
+	ctx = ctx.WithBlockHeight(10)
+	k.AddEscrow(ctx, minerAddr, math.NewInt(100))
+	unlockHeight, ok := k.GetEscrowUnlockHeight(ctx, minerAddr)
+	require.True(t, ok)
+	require.Equal(t, int64(110), unlockHeight)
+
+	// A second contribution later must push the unlock height forward
+	// again, not leave the original (earlier) one in place -- otherwise
+	// a validator could "lock in" an early unlock height and then keep
+	// earning escrowed rewards past it with no real cooldown enforced
+	// on the newer funds.
+	ctx = ctx.WithBlockHeight(50)
+	k.AddEscrow(ctx, minerAddr, math.NewInt(50))
+	unlockHeight, ok = k.GetEscrowUnlockHeight(ctx, minerAddr)
+	require.True(t, ok)
+	require.Equal(t, int64(150), unlockHeight)
+}
+
+func TestEscrow_ClearRemovesBalanceAndUnlockHeight(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("clear_escrow_test_____")
+
+	k.AddEscrow(ctx, minerAddr, math.NewInt(100))
+	k.ClearEscrow(ctx, minerAddr)
+
+	require.True(t, k.GetEscrowBalance(ctx, minerAddr).IsZero())
+	_, ok := k.GetEscrowUnlockHeight(ctx, minerAddr)
+	require.False(t, ok)
+}
+
+func TestEscrow_SeparateMinersDoNotMix(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerA := sdk.AccAddress("escrow_miner_a________")
+	minerB := sdk.AccAddress("escrow_miner_b________")
+
+	k.AddEscrow(ctx, minerA, math.NewInt(100))
+	k.AddEscrow(ctx, minerB, math.NewInt(200))
+
+	require.True(t, k.GetEscrowBalance(ctx, minerA).Equal(math.NewInt(100)))
+	require.True(t, k.GetEscrowBalance(ctx, minerB).Equal(math.NewInt(200)))
+}
+
+func TestIterateEscrows_ReturnsAllNonZeroEscrows(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerA := sdk.AccAddress("iterate_escrow_a______")
+	minerB := sdk.AccAddress("iterate_escrow_b______")
+
+	k.AddEscrow(ctx, minerA, math.NewInt(10))
+	k.AddEscrow(ctx, minerB, math.NewInt(20))
+
+	addrs := k.IterateEscrows(ctx)
+	require.Len(t, addrs, 2)
+}
+
+func TestIterateEscrows_ExcludesClearedEscrows(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerA := sdk.AccAddress("cleared_escrow_a______")
+	minerB := sdk.AccAddress("cleared_escrow_b______")
+
+	k.AddEscrow(ctx, minerA, math.NewInt(10))
+	k.AddEscrow(ctx, minerB, math.NewInt(20))
+	k.ClearEscrow(ctx, minerA)
+
+	addrs := k.IterateEscrows(ctx)
+	require.Len(t, addrs, 1, "cleared escrow must not appear in iteration")
+}
+
+func TestDistributeBlockReward_ActiveValidatorSharesEscrowedNotPaidDirectly(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	miner := sdk.AccAddress("escrowed_validator____")
+
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+	k.SetActiveValidator(ctx, miner)
+
+	err := k.DistributeBlockReward(ctx, miner)
+	require.NoError(t, err)
+
+	require.Len(t, mockBank.MintCalls, 1)
+	require.Len(t, mockBank.SendCalls, 1, "only the fee-collector's 2/15 share should be sent directly")
+
+	// Since this miner is the sole active validator, their escrow
+	// receives both their own 85% mining share (4,250,000) AND the full
+	// 13/15 validator treasury share (650,000, since they're the only
+	// validator to split it with) -- total 4,900,000.
+	require.True(t, k.GetEscrowBalance(ctx, miner).Equal(math.NewInt(4_900_000)))
+	_, hasUnlock := k.GetEscrowUnlockHeight(ctx, miner)
+	require.True(t, hasUnlock, "escrow contribution must set an unlock height")
+}
+
+func TestDistributeBlockReward_NonValidatorStillPaidDirectly(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	miner := sdk.AccAddress("non_validator_miner___")
+
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+	// Deliberately NOT calling SetActiveValidator -- this is the regular,
+	// non-validator mining path, which must be unaffected by escrow logic.
+
+	err := k.DistributeBlockReward(ctx, miner)
+	require.NoError(t, err)
+
+	require.Len(t, mockBank.SendCalls, 2, "both the miner's direct payout and the treasury-cut send should happen")
+	require.True(t, k.GetEscrowBalance(ctx, miner).IsZero(), "a non-validator's reward must not be escrowed")
+}
+
+// --- Pending removal storage ---
+
+func TestPendingRemoval_MarkAndIterate(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("pending_removal_test__")
+
+	k.MarkPendingRemoval(ctx, minerAddr)
+	addrs := k.IteratePendingRemovals(ctx)
+	require.Len(t, addrs, 1)
+	require.Equal(t, minerAddr, addrs[0])
+}
+
+func TestPendingRemoval_ClearRemovesIt(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("clear_pending_removal_")
+
+	k.MarkPendingRemoval(ctx, minerAddr)
+	k.ClearPendingRemoval(ctx, minerAddr)
+
+	addrs := k.IteratePendingRemovals(ctx)
+	require.Empty(t, addrs)
+}
+
+// --- ProcessMisbehavior ---
+
+func withFakeEvidence(ctx sdk.Context, consensusAddr []byte) sdk.Context {
+	evidence := testutil.FakeEvidence{
+		MisbehaviorType:    comet.MisbehaviorType(1), // DUPLICATE_VOTE, per comet's constants
+		OffendingValidator: testutil.FakeValidator{Addr: consensusAddr, Pow: 1_000_000},
+		AtHeight:           1,
+		AtTime:             time.Now(),
+		VotingPowerTotal:   1_000_000,
+	}
+	blockInfo := testutil.FakeBlockInfo{
+		Evidence: testutil.FakeEvidenceList{evidence},
+	}
+	return ctx.WithCometInfo(blockInfo)
+}
+
+func TestProcessMisbehavior_NoEvidenceIsNoOp(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	ctx = ctx.WithCometInfo(testutil.FakeBlockInfo{Evidence: testutil.FakeEvidenceList{}})
+
+	require.NotPanics(t, func() {
+		k.ProcessMisbehavior(ctx)
+	})
+}
+
+func TestProcessMisbehavior_UnrecognizedConsensusAddressIsIgnored(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	ctx = withFakeEvidence(ctx, []byte("nobody_registered_this"))
+
+	require.NotPanics(t, func() {
+		k.ProcessMisbehavior(ctx)
+	})
+	// No panic, and nothing should have been banned since we can't map
+	// this consensus address back to any miner.
+}
+
+func TestProcessMisbehavior_BansAndBurnsEscrow(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	minerAddr := sdk.AccAddress("equivocating_validator")
+	consensusPub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	consensusAddr := cometed25519.PubKey(consensusPub).Address()
+
+	k.SetValidatorPubkey(ctx, minerAddr, consensusPub)
+	k.SetConsensusToMiner(ctx, consensusAddr, minerAddr)
+	k.SetActiveValidator(ctx, minerAddr)
+	k.AddEscrow(ctx, minerAddr, math.NewInt(1_000_000))
+
+	ctx = withFakeEvidence(ctx, consensusAddr)
+	k.ProcessMisbehavior(ctx)
+
+	require.True(t, k.IsBanned(ctx, minerAddr), "miner must be permanently banned")
+	require.True(t, k.GetEscrowBalance(ctx, minerAddr).IsZero(), "escrow must be fully forfeited")
+	require.False(t, k.IsActiveValidator(ctx, minerAddr), "miner must lose active validator status immediately")
+
+	pending := k.IteratePendingRemovals(ctx)
+	require.Len(t, pending, 1, "must be queued for immediate ValidatorUpdate removal")
+	require.Equal(t, minerAddr, pending[0])
+
+	require.Len(t, mockBank.BurnCalls, 1)
+	require.Equal(t, "1000000aeth", mockBank.BurnCalls[0].Coins.String())
+}
+
+func TestProcessMisbehavior_ZeroEscrowStillBansButDoesNotCallBurn(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	minerAddr := sdk.AccAddress("zero_escrow_offender__")
+	consensusPub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	consensusAddr := cometed25519.PubKey(consensusPub).Address()
+
+	k.SetValidatorPubkey(ctx, minerAddr, consensusPub)
+	k.SetConsensusToMiner(ctx, consensusAddr, minerAddr)
+	k.SetActiveValidator(ctx, minerAddr)
+	// Deliberately no AddEscrow call -- nothing pending.
+
+	ctx = withFakeEvidence(ctx, consensusAddr)
+	k.ProcessMisbehavior(ctx)
+
+	require.Empty(t, mockBank.BurnCalls, "should not attempt to burn again for an already-banned miner")
+}
+
+// --- CreditTreasuryShareToValidators ---
+
+func TestCreditTreasuryShareToValidators_NoActiveValidatorsReturnsZero(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	credited := k.CreditTreasuryShareToValidators(ctx, math.NewInt(1000))
+	require.True(t, credited.IsZero())
+}
+
+func TestCreditTreasuryShareToValidators_SplitsEvenly(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerA := sdk.AccAddress("treasury_split_miner_a")
+	minerB := sdk.AccAddress("treasury_split_miner_b")
+
+	k.SetActiveValidator(ctx, minerA)
+	k.SetActiveValidator(ctx, minerB)
+
+	credited := k.CreditTreasuryShareToValidators(ctx, math.NewInt(1000))
+
+	require.True(t, credited.Equal(math.NewInt(1000)), "1000 splits evenly across 2 validators with no remainder")
+	require.True(t, k.GetEscrowBalance(ctx, minerA).Equal(math.NewInt(500)))
+	require.True(t, k.GetEscrowBalance(ctx, minerB).Equal(math.NewInt(500)))
+}
+
+func TestCreditTreasuryShareToValidators_TruncationRemainderNotLost(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerA := sdk.AccAddress("truncation_miner_a____")
+	minerB := sdk.AccAddress("truncation_miner_b____")
+	minerC := sdk.AccAddress("truncation_miner_c____")
+
+	k.SetActiveValidator(ctx, minerA)
+	k.SetActiveValidator(ctx, minerB)
+	k.SetActiveValidator(ctx, minerC)
+
+	// 1000 / 3 = 333 remainder 1 -- the returned "actually credited" total
+	// must reflect only what was really distributed (999), not the
+	// original 1000, so the caller can correctly route the 1 leftover
+	// unit to the fee collector instead of it silently vanishing.
+	credited := k.CreditTreasuryShareToValidators(ctx, math.NewInt(1000))
+
+	require.True(t, credited.Equal(math.NewInt(999)))
+	require.True(t, k.GetEscrowBalance(ctx, minerA).Equal(math.NewInt(333)))
+	require.True(t, k.GetEscrowBalance(ctx, minerB).Equal(math.NewInt(333)))
+	require.True(t, k.GetEscrowBalance(ctx, minerC).Equal(math.NewInt(333)))
+}
+
+func TestCreditTreasuryShareToValidators_TooSmallToDivideReturnsZero(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerA := sdk.AccAddress("too_small_miner_a_____")
+	minerB := sdk.AccAddress("too_small_miner_b_____")
+	minerC := sdk.AccAddress("too_small_miner_c_____")
+
+	k.SetActiveValidator(ctx, minerA)
+	k.SetActiveValidator(ctx, minerB)
+	k.SetActiveValidator(ctx, minerC)
+
+	// 2 / 3 = 0 per validator -- nothing meaningful to distribute.
+	credited := k.CreditTreasuryShareToValidators(ctx, math.NewInt(2))
+
+	require.True(t, credited.IsZero())
+	require.True(t, k.GetEscrowBalance(ctx, minerA).IsZero())
+}
+
+// --- DistributeBlockReward's 13/2 treasury split ---
+
+func TestDistributeBlockReward_NoActiveValidators_TreasuryGoesEntirelyToFeeCollector(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	miner := sdk.AccAddress("no_validators_miner___")
+
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+	// No active validators registered at all.
+
+	err := k.DistributeBlockReward(ctx, miner)
+	require.NoError(t, err)
+
+	// Miner's own payout (non-validator, direct) + full 750000 treasury
+	// cut to fee collector -- 2 sends total, nothing escrowed for anyone.
+	require.Len(t, mockBank.SendCalls, 2)
+
+	var feeCollectorSend *testutil.SendCall
+	for i := range mockBank.SendCalls {
+		if mockBank.SendCalls[i].RecipientModule == authtypes.FeeCollectorName {
+			feeCollectorSend = &mockBank.SendCalls[i]
+		}
+	}
+	require.NotNil(t, feeCollectorSend)
+	require.Equal(t, "750000aeth", feeCollectorSend.Coins.String(), "entire treasury cut goes to fee collector when no validators exist")
+}
+
+func TestDistributeBlockReward_WithActiveValidators_SplitsThirteenTwo(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	miner := sdk.AccAddress("reward_split_miner____")
+	validatorA := sdk.AccAddress("reward_split_val_a____")
+
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+	k.SetActiveValidator(ctx, validatorA)
+	// miner itself is not a validator in this test -- keeps the miner
+	// payout path simple so we can isolate the treasury-split assertion.
+
+	err := k.DistributeBlockReward(ctx, miner)
+	require.NoError(t, err)
+
+	// Treasury cut = 750000 (15% of 5,000,000).
+	// Validator share = 750000 * 13/15 = 650000, all to the single active validator.
+	// Fee collector share = 750000 - 650000 = 100000 (the 2/15 portion).
+	require.True(t, k.GetEscrowBalance(ctx, validatorA).Equal(math.NewInt(650_000)))
+
+	var feeCollectorSend *testutil.SendCall
+	for i := range mockBank.SendCalls {
+		if mockBank.SendCalls[i].RecipientModule == authtypes.FeeCollectorName {
+			feeCollectorSend = &mockBank.SendCalls[i]
+		}
+	}
+	require.NotNil(t, feeCollectorSend)
+	require.Equal(t, "100000aeth", feeCollectorSend.Coins.String())
 }

@@ -51,10 +51,6 @@ type AppModule struct {
 	cdc    codec.Codec
 }
 
-func (am AppModule) BeginBlock(ctx context.Context) error {
-	return nil
-}
-
 func NewAppModule(cdc codec.Codec, keeper Keeper) AppModule {
 	return AppModule{
 		AppModuleBasic: AppModuleBasic{},
@@ -84,6 +80,7 @@ func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.
 	am.keeper.SetTargetBlockTime(ctx, genState.Params.TargetBlockTime)
 	am.keeper.SetEpochLength(ctx, genState.Params.EpochLength)
 	am.keeper.SetTopKSize(ctx, genState.Params.TopKSize)
+	am.keeper.SetBondCooldown(ctx, genState.Params.BondCooldown)
 
 	return []abci.ValidatorUpdate{
 		{
@@ -111,18 +108,39 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 func (am AppModule) EndBlock(ctx context.Context) ([]abci.ValidatorUpdate, error) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
-	epochLength := am.keeper.GetEpochLength(sdkCtx)
-	height := sdkCtx.BlockHeight()
-	
-	if epochLength <= 0 {
-		return nil, nil
+	// Immediate removals from misbehavior: unconditional, every block --
+	// independent of epoch timing. A banned validator must lose voting
+	// power the same block their ban is processed, not wait for the next
+	// epoch boundary.
+	var updates []abci.ValidatorUpdate
+	for _, minerAddr := range am.keeper.IteratePendingRemovals(sdkCtx) {
+		pubkey, ok := am.keeper.GetValidatorPubkey(sdkCtx, minerAddr)
+		if ok {
+			if update, ok := am.keeper.toValidatorUpdate(pubkey, 0, minerAddr); ok {
+				updates = append(updates, update)
+			}
+		}
+		am.keeper.ClearPendingRemoval(sdkCtx, minerAddr)
 	}
 
+	epochLength := am.keeper.GetEpochLength(sdkCtx)
+	if epochLength <= 0 {
+		return updates, nil
+	}
+
+	height := sdkCtx.BlockHeight()
 	if (height+1)%epochLength != 0 {
-		return nil, nil
+		return updates, nil
 	}
 
 	epoch := am.keeper.CurrentEpoch(sdkCtx)
-	updates := am.keeper.ComputeValidatorUpdates(sdkCtx, epoch)
+	epochUpdates := am.keeper.ComputeValidatorUpdates(sdkCtx, epoch)
+	updates = append(updates, epochUpdates...)
 	return updates, nil
+}
+
+func (am AppModule) BeginBlock(ctx context.Context) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	am.keeper.ProcessMisbehavior(sdkCtx)
+	return nil
 }

@@ -12,11 +12,12 @@ import (
 type MockBankKeeper struct {
 	MintCalls []MintCall
 	SendCalls []SendCall
+	BurnCalls []BurnCall
 
 	MintErr error
 	SendErr error
+	BurnErr error
 }
-
 type MintCall struct {
 	Module string
 	Coins  sdk.Coins
@@ -54,5 +55,18 @@ func (m *MockBankKeeper) SendCoinsFromModuleToModule(ctx context.Context, sender
 		return m.SendErr
 	}
 	m.SendCalls = append(m.SendCalls, SendCall{SenderModule: senderModule, RecipientModule: recipientModule, Coins: amt})
+	return nil
+}
+
+type BurnCall struct {
+	Module string
+	Coins  sdk.Coins
+}
+
+func (m *MockBankKeeper) BurnCoins(ctx context.Context, moduleName string, amt sdk.Coins) error {
+	if m.BurnErr != nil {
+		return m.BurnErr
+	}
+	m.BurnCalls = append(m.BurnCalls, BurnCall{Module: moduleName, Coins: amt})
 	return nil
 }

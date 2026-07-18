@@ -11,6 +11,7 @@ import (
 	"crypto/ed25519"
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/pow/types"
+	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519" 
 )
 
 // validMinerAddr is a real bech32-encoded address derived from arbitrary
@@ -411,4 +412,24 @@ func TestRegisterValidatorPubkey_OverwritesExistingRegistration(t *testing.T) {
 	stored, ok := k.GetValidatorPubkey(ctx, minerAddr)
 	require.True(t, ok)
 	require.Equal(t, []byte(secondPub), stored)
+}
+
+func TestRegisterValidatorPubkey_PopulatesConsensusToMinerIndex(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	minerAddr, addrStr := validMinerAddr(t)
+	consensusPub, consensusPriv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	sig := ed25519.Sign(consensusPriv, []byte(addrStr))
+
+	_, err = srv.RegisterValidatorPubkey(ctx, &pow.MsgRegisterValidatorPubkey{
+		Miner: addrStr, ConsensusPubkey: consensusPub, Signature: sig,
+	})
+	require.NoError(t, err)
+
+	consensusAddr := cometed25519.PubKey(consensusPub).Address()
+	foundMiner, ok := k.GetMinerByConsensusAddr(ctx, consensusAddr)
+	require.True(t, ok)
+	require.Equal(t, minerAddr, foundMiner)
 }

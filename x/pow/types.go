@@ -19,6 +19,7 @@ type Params struct {
 	TailEmission      bool  `json:"tail_emission" yaml:"tail_emission"` // For sustainable model post-initial phase
 	EpochLength       int64 `json:"epoch_length" yaml:"epoch_length"`   // Blocks per validator-selection epoch; see randomness-beacon design doc §4
 	TopKSize          int64 `json:"top_k_size" yaml:"top_k_size"`       // Max number of validators selected per epoch; see randomness-beacon design doc §4
+	BondCooldown int64 `json:"bond_cooldown" yaml:"bond_cooldown"` // Blocks an active validator's rewards stay escrowed before automatic release
 }
 
 type MiningHeader struct {
@@ -47,6 +48,7 @@ func DefaultGenesisState() GenesisState {
 			TailEmission:      false,
 			EpochLength:       1440, // ~24h at 60s target blocks
 			TopKSize:          21,   // BFT-performance sweet spot; see design doc §4
+			BondCooldown: 100, // arbitrary placeholder for testing; production value needs real analysis
 		},
 	}
 }
@@ -62,4 +64,10 @@ var (
 	KeyEpochLength     = []byte("epoch_length")
 	KeyEpochWorkPrefix = []byte("epoch_work/")
 	KeyActiveValidatorPrefix = []byte("active_validator/")
+	KeyConsensusToMinerPrefix = []byte("consensus_to_miner/")
+	KeyBannedPrefix           = []byte("banned/")
+	KeyEscrowPrefix       = []byte("escrow/")
+	KeyEscrowUnlockPrefix = []byte("escrow_unlock/")
+	KeyBondCooldown       = []byte("bond_cooldown")
+	KeyPendingRemovalPrefix = []byte("pending_removal/")
 )

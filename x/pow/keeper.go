@@ -309,42 +309,43 @@ func (k Keeper) DistributeBlockReward(ctx sdk.Context, miner sdk.AccAddress) err
 	if reward.IsZero() {
 		return nil
 	}
-
 	coins := sdk.NewCoins(sdk.NewCoin("aeth", reward))
-
-	// Mint new reward coins to the pow module account
 	if err := k.bankKeeper.MintCoins(ctx, ModuleName, coins); err != nil {
 		k.logger.Error("failed to mint block reward", "error", err)
 		return err
 	}
-
-	// Calculate splits (15% to treasury / fee collector)
 	treasuryCut := math.LegacyNewDecFromInt(reward).
 		Mul(math.LegacyMustNewDecFromStr("0.15")).
 		TruncateInt()
 	minerAmount := reward.Sub(treasuryCut)
-
 	minerCoins := sdk.NewCoins(sdk.NewCoin("aeth", minerAmount))
-	treasuryCoins := sdk.NewCoins(sdk.NewCoin("aeth", treasuryCut))
-
-	// Send miner's share
-	if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, ModuleName, miner, minerCoins); err != nil {
-		return err
-	}
-
-	// Send treasury cut to fee collector (we can route this to x/treasury later)
-	if !treasuryCut.IsZero() {
-		if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, ModuleName, authtypes.FeeCollectorName, treasuryCoins); err != nil {
+	if k.IsActiveValidator(ctx, miner) {
+		k.AddEscrow(ctx, miner, minerAmount)
+	} else {
+		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, ModuleName, miner, minerCoins); err != nil {
 			return err
 		}
 	}
-
+	// Treasury cut (15% of reward) splits 13/2 between active validators
+	// and the fee collector once validators exist; falls back to 100% fee
+	// collector if nobody is currently an active validator.
+	validatorShareTotal := treasuryCut.MulRaw(13).QuoRaw(15)
+	actuallyCredited := k.CreditTreasuryShareToValidators(ctx, validatorShareTotal)
+	feeCollectorAmount := treasuryCut.Sub(actuallyCredited)
+	if !feeCollectorAmount.IsZero() {
+		feeCollectorCoins := sdk.NewCoins(sdk.NewCoin("aeth", feeCollectorAmount))
+		if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, ModuleName, authtypes.FeeCollectorName, feeCollectorCoins); err != nil {
+			return err
+		}
+	}
 	k.logger.Info("block reward distributed",
 		"miner", miner.String(),
 		"miner_amount", minerAmount.String(),
-		"treasury_amount", treasuryCut.String(),
+		"treasury_cut", treasuryCut.String(),
+		"validator_share", actuallyCredited.String(),
+		"fee_collector_amount", feeCollectorAmount.String(),
+		"escrowed", k.IsActiveValidator(ctx, miner),
 	)
-
 	return nil
 }
 
@@ -484,3 +485,198 @@ func (k Keeper) ComputeValidatorUpdates(ctx sdk.Context, epoch int64) []abci.Val
 	return updates
 }
 
+// The reverse index: given a consensus address (what CometBFT's evidence
+// reports identify offenders by), find the miner address that registered
+// it. Built alongside the existing minerAddress -> consensusPubkey index.
+func (k Keeper) SetConsensusToMiner(ctx sdk.Context, consensusAddr []byte, minerAddr sdk.AccAddress) {
+	ctx.KVStore(k.storeKey).Set(append(KeyConsensusToMinerPrefix, consensusAddr...), minerAddr.Bytes())
+}
+
+func (k Keeper) GetMinerByConsensusAddr(ctx sdk.Context, consensusAddr []byte) (sdk.AccAddress, bool) {
+	bz := ctx.KVStore(k.storeKey).Get(append(KeyConsensusToMinerPrefix, consensusAddr...))
+	if bz == nil {
+		return nil, false
+	}
+	return sdk.AccAddress(bz), true
+}
+
+// Permanent ban -- once set, never cleared. A banned address must never be
+// selected as a validator again, regardless of future mining work.
+func (k Keeper) SetBanned(ctx sdk.Context, minerAddr sdk.AccAddress) {
+	ctx.KVStore(k.storeKey).Set(append(KeyBannedPrefix, minerAddr.Bytes()...), []byte{1})
+}
+
+func (k Keeper) IsBanned(ctx sdk.Context, minerAddr sdk.AccAddress) bool {
+	return ctx.KVStore(k.storeKey).Has(append(KeyBannedPrefix, minerAddr.Bytes()...))
+}
+
+func (k Keeper) SetBondCooldown(ctx sdk.Context, cooldown int64) {
+	bz, _ := json.Marshal(cooldown)
+	ctx.KVStore(k.storeKey).Set(KeyBondCooldown, bz)
+}
+
+func (k Keeper) GetBondCooldown(ctx sdk.Context) int64 {
+	bz := ctx.KVStore(k.storeKey).Get(KeyBondCooldown)
+	if bz == nil {
+		return DefaultGenesisState().Params.BondCooldown
+	}
+	var c int64
+	_ = json.Unmarshal(bz, &c)
+	return c
+}
+
+// AddEscrow increases minerAddr's pending escrowed balance and (re)sets
+// their unlock height to the current block height plus the cooldown
+// period. Called whenever an active validator earns a reward (their own
+// mining reward, or their share of other miners' treasury cut) -- see
+// msg_server.go's SubmitPoW.
+func (k Keeper) AddEscrow(ctx sdk.Context, minerAddr sdk.AccAddress, amount math.Int) {
+	current := k.GetEscrowBalance(ctx, minerAddr)
+	newBalance := current.Add(amount)
+	bz, _ := newBalance.Marshal()
+	ctx.KVStore(k.storeKey).Set(append(KeyEscrowPrefix, minerAddr.Bytes()...), bz)
+
+	unlockHeight := ctx.BlockHeight() + k.GetBondCooldown(ctx)
+	unlockBz := sdk.Uint64ToBigEndian(uint64(unlockHeight))
+	ctx.KVStore(k.storeKey).Set(append(KeyEscrowUnlockPrefix, minerAddr.Bytes()...), unlockBz)
+}
+
+func (k Keeper) GetEscrowBalance(ctx sdk.Context, minerAddr sdk.AccAddress) math.Int {
+	bz := ctx.KVStore(k.storeKey).Get(append(KeyEscrowPrefix, minerAddr.Bytes()...))
+	if bz == nil {
+		return math.ZeroInt()
+	}
+	var amount math.Int
+	if err := amount.Unmarshal(bz); err != nil {
+		return math.ZeroInt()
+	}
+	return amount
+}
+
+func (k Keeper) GetEscrowUnlockHeight(ctx sdk.Context, minerAddr sdk.AccAddress) (int64, bool) {
+	bz := ctx.KVStore(k.storeKey).Get(append(KeyEscrowUnlockPrefix, minerAddr.Bytes()...))
+	if bz == nil {
+		return 0, false
+	}
+	return int64(sdk.BigEndianToUint64(bz)), true
+}
+
+// ClearEscrow zeroes out minerAddr's pending escrow and unlock height --
+// used both by forfeiture (burn, balance goes to zero) and by release
+// (paid out, balance goes to zero) since both end with nothing left
+// pending.
+func (k Keeper) ClearEscrow(ctx sdk.Context, minerAddr sdk.AccAddress) {
+	ctx.KVStore(k.storeKey).Delete(append(KeyEscrowPrefix, minerAddr.Bytes()...))
+	ctx.KVStore(k.storeKey).Delete(append(KeyEscrowUnlockPrefix, minerAddr.Bytes()...))
+}
+
+// IterateEscrows returns every address with a nonzero pending escrow
+// balance, for use by the automatic release check in EndBlock.
+func (k Keeper) IterateEscrows(ctx sdk.Context) []sdk.AccAddress {
+	store := ctx.KVStore(k.storeKey)
+	iterator := store.Iterator(KeyEscrowPrefix, storetypes.PrefixEndBytes(KeyEscrowPrefix))
+	defer iterator.Close()
+
+	var addrs []sdk.AccAddress
+	for ; iterator.Valid(); iterator.Next() {
+		addrBytes := iterator.Key()[len(KeyEscrowPrefix):]
+		addrs = append(addrs, sdk.AccAddress(addrBytes))
+	}
+	return addrs
+}
+
+// Pending removal: populated by misbehavior consumption (BeginBlock),
+// drained unconditionally by EndBlock every single block -- independent
+// of the epoch-boundary Top-K logic, since a banned validator must lose
+// power immediately, not wait for the next epoch transition.
+func (k Keeper) MarkPendingRemoval(ctx sdk.Context, minerAddr sdk.AccAddress) {
+	ctx.KVStore(k.storeKey).Set(append(KeyPendingRemovalPrefix, minerAddr.Bytes()...), []byte{1})
+}
+
+func (k Keeper) IteratePendingRemovals(ctx sdk.Context) []sdk.AccAddress {
+	store := ctx.KVStore(k.storeKey)
+	iterator := store.Iterator(KeyPendingRemovalPrefix, storetypes.PrefixEndBytes(KeyPendingRemovalPrefix))
+	defer iterator.Close()
+
+	var addrs []sdk.AccAddress
+	for ; iterator.Valid(); iterator.Next() {
+		addrBytes := iterator.Key()[len(KeyPendingRemovalPrefix):]
+		addrs = append(addrs, sdk.AccAddress(addrBytes))
+	}
+	return addrs
+}
+
+func (k Keeper) ClearPendingRemoval(ctx sdk.Context, minerAddr sdk.AccAddress) {
+	ctx.KVStore(k.storeKey).Delete(append(KeyPendingRemovalPrefix, minerAddr.Bytes()...))
+}
+
+// ProcessMisbehavior reads CometBFT's reported evidence for this block
+// (already cryptographically verified by CometBFT itself before it ever
+// reaches the app -- see aether-randomness-beacon-design.md) and, for each
+// offending validator we can identify, permanently bans them and burns
+// their entire pending escrow. Called from BeginBlock so the ban takes
+// effect before any transactions in this same block are processed.
+func (k Keeper) ProcessMisbehavior(ctx sdk.Context) {
+	evidenceList := ctx.CometInfo().GetEvidence()
+
+	for i := 0; i < evidenceList.Len(); i++ {
+		evidence := evidenceList.Get(i)
+		consensusAddr := evidence.Validator().Address()
+
+		minerAddr, ok := k.GetMinerByConsensusAddr(ctx, consensusAddr)
+		if !ok {
+			// Evidence against a validator we have no record of registering.
+			// Can't act on it, but log it -- this shouldn't normally happen
+			// on a chain where only our own registered addresses ever hold
+			// voting power.
+			k.logger.Error("misbehavior evidence for unrecognized consensus address, cannot act on it")
+			continue
+		}
+
+		if k.IsBanned(ctx, minerAddr) {
+			continue // already banned, nothing further to do
+		}
+
+		k.logger.Error("validator equivocation detected, permanently banning and forfeiting escrow",
+			"miner", minerAddr.String(),
+			"misbehavior_type", int32(evidence.Type()),
+			"evidence_height", evidence.Height(),
+		)
+
+		forfeited := k.GetEscrowBalance(ctx, minerAddr)
+		if !forfeited.IsZero() {
+			coins := sdk.NewCoins(sdk.NewCoin("aeth", forfeited))
+			if err := k.bankKeeper.BurnCoins(ctx, ModuleName, coins); err != nil {
+				k.logger.Error("failed to burn forfeited escrow", "miner", minerAddr.String(), "error", err)
+			}
+		}
+		k.ClearEscrow(ctx, minerAddr)
+
+		k.SetBanned(ctx, minerAddr)
+		k.RemoveActiveValidator(ctx, minerAddr)
+		k.MarkPendingRemoval(ctx, minerAddr)
+	}
+}
+
+// CreditTreasuryShareToValidators splits amount evenly across every
+// currently active validator, adding each share to their escrow (subject
+// to the same cooldown as their own mining rewards). Returns the amount
+// actually credited to validators, so the caller can send the remainder
+// (including any leftover from integer-division truncation) to the fee
+// collector rather than letting it silently vanish.
+func (k Keeper) CreditTreasuryShareToValidators(ctx sdk.Context, amount math.Int) math.Int {
+	validators := k.IterateActiveValidators(ctx)
+	if len(validators) == 0 {
+		return math.ZeroInt()
+	}
+
+	share := amount.QuoRaw(int64(len(validators)))
+	if share.IsZero() {
+		return math.ZeroInt() // amount too small to meaningfully divide
+	}
+
+	for _, addr := range validators {
+		k.AddEscrow(ctx, addr, share)
+	}
+	return share.MulRaw(int64(len(validators)))
+}
