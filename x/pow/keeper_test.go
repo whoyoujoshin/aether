@@ -1100,3 +1100,40 @@ func TestDistributeBlockReward_WithActiveValidators_SplitsThirteenTwo(t *testing
 	require.NotNil(t, feeCollectorSend)
 	require.Equal(t, "100000aeth", feeCollectorSend.Coins.String())
 }
+
+func TestComputeValidatorUpdates_ExcludesPermanentlyBannedAddress(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	bannedMiner := sdk.AccAddress("banned_but_still_mining")
+	pubkey := genValidatorPubkey(t)
+
+	k.SetValidatorPubkey(ctx, bannedMiner, pubkey)
+	k.SetBanned(ctx, bannedMiner) // banned in some earlier epoch for equivocation
+
+	// Same address somehow accumulates new mining work in a later epoch --
+	// this is exactly the resurfacing scenario the ban check must prevent.
+	k.AddMiningWork(ctx, 5, bannedMiner, 1000)
+
+	updates := k.ComputeValidatorUpdates(ctx, 5)
+
+	require.Nil(t, updates, "a banned address must never be selectable again, regardless of new mining work")
+	require.False(t, k.IsActiveValidator(ctx, bannedMiner))
+}
+
+func TestComputeValidatorUpdates_BannedAddressExcludedButOthersStillQualify(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	bannedMiner := sdk.AccAddress("banned_among_others____")
+	honestMiner := sdk.AccAddress("honest_miner_among_them")
+
+	k.SetValidatorPubkey(ctx, bannedMiner, genValidatorPubkey(t))
+	k.SetBanned(ctx, bannedMiner)
+	k.AddMiningWork(ctx, 6, bannedMiner, 1000) // highest work, but banned
+
+	k.SetValidatorPubkey(ctx, honestMiner, genValidatorPubkey(t))
+	k.AddMiningWork(ctx, 6, honestMiner, 10) // lower work, but not banned
+
+	updates := k.ComputeValidatorUpdates(ctx, 6)
+
+	require.Len(t, updates, 1, "only the non-banned candidate should be selected")
+	require.True(t, k.IsActiveValidator(ctx, honestMiner))
+	require.False(t, k.IsActiveValidator(ctx, bannedMiner))
+}

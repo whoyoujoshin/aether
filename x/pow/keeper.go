@@ -425,6 +425,9 @@ func (k Keeper) ComputeValidatorUpdates(ctx sdk.Context, epoch int64) []abci.Val
 	}
 	var qualified []qualifiedEntry
 	for _, entry := range workEntries {
+		if k.IsBanned(ctx, entry.MinerAddr) {
+			continue // permanently banned for equivocation -- never eligible again
+		}
 		pubkey, ok := k.GetValidatorPubkey(ctx, entry.MinerAddr)
 		if !ok {
 			continue // mined, but never registered a consensus pubkey -- not eligible
