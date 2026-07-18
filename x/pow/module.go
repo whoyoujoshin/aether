@@ -108,6 +108,8 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 func (am AppModule) EndBlock(ctx context.Context) ([]abci.ValidatorUpdate, error) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
+	am.keeper.ReleaseMaturedEscrows(sdkCtx)
+
 	// Immediate removals from misbehavior: unconditional, every block --
 	// independent of epoch timing. A banned validator must lose voting
 	// power the same block their ban is processed, not wait for the next

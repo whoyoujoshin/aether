@@ -683,3 +683,37 @@ func (k Keeper) CreditTreasuryShareToValidators(ctx sdk.Context, amount math.Int
 	}
 	return share.MulRaw(int64(len(validators)))
 }
+
+// ReleaseMaturedEscrows pays out any pending escrow whose unlock height
+// has passed, to the validator's own account. Skips (and permanently
+// leaves locked) any address that's since been banned -- a banned
+// validator's escrow was already forfeited and burned in
+// ProcessMisbehavior, so there should be nothing left to release for
+// them, but this guard exists in case of ordering edge cases within a
+// single block.
+func (k Keeper) ReleaseMaturedEscrows(ctx sdk.Context) {
+	for _, minerAddr := range k.IterateEscrows(ctx) {
+		if k.IsBanned(ctx, minerAddr) {
+			continue
+		}
+
+		unlockHeight, ok := k.GetEscrowUnlockHeight(ctx, minerAddr)
+		if !ok || ctx.BlockHeight() < unlockHeight {
+			continue
+		}
+
+		balance := k.GetEscrowBalance(ctx, minerAddr)
+		if balance.IsZero() {
+			k.ClearEscrow(ctx, minerAddr)
+			continue
+		}
+
+		coins := sdk.NewCoins(sdk.NewCoin("aeth", balance))
+		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, ModuleName, minerAddr, coins); err != nil {
+			k.logger.Error("failed to release matured escrow", "miner", minerAddr.String(), "error", err)
+			continue
+		}
+
+		k.ClearEscrow(ctx, minerAddr)
+	}
+}

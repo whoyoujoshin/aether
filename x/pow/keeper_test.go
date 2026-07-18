@@ -1137,3 +1137,70 @@ func TestComputeValidatorUpdates_BannedAddressExcludedButOthersStillQualify(t *t
 	require.True(t, k.IsActiveValidator(ctx, honestMiner))
 	require.False(t, k.IsActiveValidator(ctx, bannedMiner))
 }
+
+func TestReleaseMaturedEscrows_NotYetMaturedStaysLocked(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	k.SetBondCooldown(ctx, 100)
+	minerAddr := sdk.AccAddress("not_matured_yet_______")
+
+	ctx = ctx.WithBlockHeight(10)
+	k.AddEscrow(ctx, minerAddr, math.NewInt(1000)) // unlocks at height 110
+
+	ctx = ctx.WithBlockHeight(50) // still before unlock
+	k.ReleaseMaturedEscrows(ctx)
+
+	require.True(t, k.GetEscrowBalance(ctx, minerAddr).Equal(math.NewInt(1000)), "escrow must remain locked before cooldown completes")
+	require.Empty(t, mockBank.SendCalls)
+}
+
+func TestReleaseMaturedEscrows_MaturedEscrowIsPaidOutAndCleared(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	k.SetBondCooldown(ctx, 100)
+	minerAddr := sdk.AccAddress("matured_escrow_test___")
+
+	ctx = ctx.WithBlockHeight(10)
+	k.AddEscrow(ctx, minerAddr, math.NewInt(1000)) // unlocks at height 110
+
+	ctx = ctx.WithBlockHeight(110) // exactly at unlock height
+	k.ReleaseMaturedEscrows(ctx)
+
+	require.True(t, k.GetEscrowBalance(ctx, minerAddr).IsZero(), "escrow must be cleared after release")
+	require.Len(t, mockBank.SendCalls, 1)
+	require.Equal(t, minerAddr, mockBank.SendCalls[0].RecipientAddr)
+	require.Equal(t, "1000aeth", mockBank.SendCalls[0].Coins.String())
+}
+
+func TestReleaseMaturedEscrows_BannedAddressIsSkipped(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	k.SetBondCooldown(ctx, 100)
+	minerAddr := sdk.AccAddress("banned_before_release_")
+
+	ctx = ctx.WithBlockHeight(10)
+	k.AddEscrow(ctx, minerAddr, math.NewInt(1000))
+	k.SetBanned(ctx, minerAddr) // banned before this test's release check runs
+
+	ctx = ctx.WithBlockHeight(110) // would otherwise be matured
+	k.ReleaseMaturedEscrows(ctx)
+
+	require.Empty(t, mockBank.SendCalls, "a banned address's escrow must never be paid out")
+}
+
+func TestReleaseMaturedEscrows_MultipleValidatorsReleasedIndependently(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	k.SetBondCooldown(ctx, 100)
+	minerEarly := sdk.AccAddress("early_escrow_miner____")
+	minerLate := sdk.AccAddress("late_escrow_miner_____")
+
+	ctx = ctx.WithBlockHeight(0)
+	k.AddEscrow(ctx, minerEarly, math.NewInt(500)) // unlocks at height 100
+
+	ctx = ctx.WithBlockHeight(80)
+	k.AddEscrow(ctx, minerLate, math.NewInt(700)) // unlocks at height 180
+
+	ctx = ctx.WithBlockHeight(100) // minerEarly matured, minerLate is not
+	k.ReleaseMaturedEscrows(ctx)
+
+	require.True(t, k.GetEscrowBalance(ctx, minerEarly).IsZero())
+	require.True(t, k.GetEscrowBalance(ctx, minerLate).Equal(math.NewInt(700)), "minerLate must remain locked")
+	require.Len(t, mockBank.SendCalls, 1, "only the matured escrow should be released this call")
+}
