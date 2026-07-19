@@ -1,0 +1,51 @@
+syntax = "proto3";
+package aether.pow.v1;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/pow";
+
+service Query {
+  rpc Difficulty(QueryDifficultyRequest) returns (QueryDifficultyResponse);
+  rpc BlockReward(QueryBlockRewardRequest) returns (QueryBlockRewardResponse);
+  rpc Escrow(QueryEscrowRequest) returns (QueryEscrowResponse);
+  rpc BanStatus(QueryBanStatusRequest) returns (QueryBanStatusResponse);
+  rpc ActiveValidators(QueryActiveValidatorsRequest) returns (QueryActiveValidatorsResponse);
+  rpc CurrentEpoch(QueryCurrentEpochRequest) returns (QueryCurrentEpochResponse);
+}
+
+message QueryDifficultyRequest {}
+message QueryDifficultyResponse {
+  string difficulty = 1;
+}
+
+message QueryBlockRewardRequest {}
+message QueryBlockRewardResponse {
+  string block_reward = 1;
+}
+
+message QueryEscrowRequest {
+  string miner = 1;
+}
+message QueryEscrowResponse {
+  string balance = 1;
+  int64 unlock_height = 2;
+  bool has_pending_escrow = 3;
+}
+
+message QueryBanStatusRequest {
+  string miner = 1;
+}
+message QueryBanStatusResponse {
+  bool banned = 1;
+}
+
+message QueryActiveValidatorsRequest {}
+message QueryActiveValidatorsResponse {
+  repeated string validators = 1;
+}
+
+message QueryCurrentEpochRequest {}
+message QueryCurrentEpochResponse {
+  int64 epoch = 1;
+}

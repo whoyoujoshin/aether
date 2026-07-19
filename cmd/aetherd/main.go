@@ -90,6 +90,8 @@ txCmd := &cobra.Command{
 		authcmd.QueryTxCmd(),
 		authcmd.QueryTxsByEventsCmd(),
 	)
+	queryCmd.AddCommand(powcli.GetQueryCmd())
+
 	app.ModuleBasics.AddQueryCommands(queryCmd)
 	rootCmd.AddCommand(queryCmd)
 
