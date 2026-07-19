@@ -20,6 +20,7 @@ type Params struct {
 	EpochLength       int64 `json:"epoch_length" yaml:"epoch_length"`   // Blocks per validator-selection epoch; see randomness-beacon design doc §4
 	TopKSize          int64 `json:"top_k_size" yaml:"top_k_size"`       // Max number of validators selected per epoch; see randomness-beacon design doc §4
 	BondCooldown int64 `json:"bond_cooldown" yaml:"bond_cooldown"` // Blocks an active validator's rewards stay escrowed before automatic release
+	RecencyWindowK int64 `json:"recency_window_k" yaml:"recency_window_k"` // Max blocks between a mining header's claimed ancestor and current height
 }
 
 type MiningHeader struct {
@@ -49,6 +50,7 @@ func DefaultGenesisState() GenesisState {
 			EpochLength:       1440, // ~24h at 60s target blocks
 			TopKSize:          21,   // BFT-performance sweet spot; see design doc §4
 			BondCooldown: 100, // arbitrary placeholder for testing; production value needs real analysis
+			RecencyWindowK: 10,
 		},
 	}
 }
@@ -70,4 +72,8 @@ var (
 	KeyEscrowUnlockPrefix = []byte("escrow_unlock/")
 	KeyBondCooldown       = []byte("bond_cooldown")
 	KeyPendingRemovalPrefix = []byte("pending_removal/")
+	KeyRecentHashPrefix       = []byte("recent_hash/")
+	KeyRecentDifficultyPrefix = []byte("recent_difficulty/")
+	KeyAcceptedWorkPrefix     = []byte("accepted_work/")
+	KeyRecencyWindowK = []byte("recency_window_k")
 )

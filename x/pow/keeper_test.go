@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 	"time"
+	"fmt"
 
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
@@ -514,15 +515,17 @@ func TestSubmitPoW_Success_RecordsMiningWorkForCurrentEpoch(t *testing.T) {
 	k, ctx, _ := setupKeeper(t)
 	srv := pow.NewMsgServerImpl(k)
 
-	k.SetDifficulty(ctx, math.NewInt(1))
 	k.SetBlockReward(ctx, math.NewInt(5_000_000))
 	k.SetEpochLength(ctx, 100)
-	ctx = ctx.WithBlockHeight(50) // epoch 0
+
+	realHash := []byte("real-hash-for-epoch-work-test")
+	ctx = setupRecentBlock(k, ctx, 50, realHash, 1) // height 50, still epoch 0 (50/100=0)
+	ctx = ctx.WithBlockHeight(51)                   // 1 block later, well within recency window
 
 	minerAddr, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner: addrStr, Height: 1, Timestamp: time.Now().Unix(),
-		PrevHash: []byte("prev"), MerkleRoot: []byte("merkle"),
+		Miner: addrStr, Height: 50, Timestamp: time.Now().Unix(),
+		PrevHash: realHash, MerkleRoot: []byte("merkle"),
 		Nonce: 1, Difficulty: 1,
 	}
 
@@ -1203,4 +1206,86 @@ func TestReleaseMaturedEscrows_MultipleValidatorsReleasedIndependently(t *testin
 	require.True(t, k.GetEscrowBalance(ctx, minerEarly).IsZero())
 	require.True(t, k.GetEscrowBalance(ctx, minerLate).Equal(math.NewInt(700)), "minerLate must remain locked")
 	require.Len(t, mockBank.SendCalls, 1, "only the matured escrow should be released this call")
+}
+
+// --- RecencyWindowK persistence ---
+
+func TestRecencyWindowK_FallbackToDefault(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	params := pow.DefaultGenesisState().Params
+	require.Equal(t, params.RecencyWindowK, k.GetRecencyWindowK(ctx))
+}
+
+func TestRecencyWindowK_RoundTrip(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetRecencyWindowK(ctx, 25)
+	require.Equal(t, int64(25), k.GetRecencyWindowK(ctx))
+}
+
+// --- RecordRecentBlock / GetRecentHash / GetRecentDifficulty ---
+
+func TestRecordRecentBlock_StoresHashAndDifficulty(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetDifficulty(ctx, math.NewInt(12345))
+	ctx = ctx.WithBlockHeight(50).WithHeaderHash([]byte("fake-block-hash-at-height-50"))
+
+	k.RecordRecentBlock(ctx)
+
+	hash, ok := k.GetRecentHash(ctx, 50)
+	require.True(t, ok)
+	require.Equal(t, []byte("fake-block-hash-at-height-50"), hash)
+
+	difficulty, ok := k.GetRecentDifficulty(ctx, 50)
+	require.True(t, ok)
+	require.True(t, difficulty.Equal(math.NewInt(12345)))
+}
+
+func TestRecordRecentBlock_PrunesOldEntriesBeyondRetentionWindow(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetRecencyWindowK(ctx, 10) // retain = K+2 = 12
+
+	for h := int64(0); h <= 20; h++ {
+		ctx = ctx.WithBlockHeight(h).WithHeaderHash([]byte(fmt.Sprintf("hash-%d", h)))
+		k.RecordRecentBlock(ctx)
+	}
+
+	// At height 20, retain=12, prune target = 20-12 = 8. Height 8 should be gone.
+	_, ok := k.GetRecentHash(ctx, 8)
+	require.False(t, ok, "height 8 should have been pruned by the time we reach height 20")
+
+	// Height 9 should still exist (just inside the retention window).
+	_, ok = k.GetRecentHash(ctx, 9)
+	require.True(t, ok, "height 9 should still be retained")
+}
+
+func TestGetRecentHash_UnknownHeightReturnsFalse(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	_, ok := k.GetRecentHash(ctx, 999)
+	require.False(t, ok)
+}
+
+// --- AcceptedWork anti-replay ---
+
+func TestAcceptedWork_NotAcceptedByDefault(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	require.False(t, k.IsWorkAccepted(ctx, []byte("some-header-hash")))
+}
+
+func TestAcceptedWork_MarkAndCheck(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	headerHash := []byte("a-specific-header-hash")
+
+	k.MarkWorkAccepted(ctx, headerHash)
+	require.True(t, k.IsWorkAccepted(ctx, headerHash))
+}
+
+func TestAcceptedWork_DifferentHashesDoNotCollide(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	hashA := []byte("header-hash-a")
+	hashB := []byte("header-hash-b")
+
+	k.MarkWorkAccepted(ctx, hashA)
+
+	require.True(t, k.IsWorkAccepted(ctx, hashA))
+	require.False(t, k.IsWorkAccepted(ctx, hashB))
 }

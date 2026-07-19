@@ -112,6 +112,7 @@ func (am AppModule) EndBlock(ctx context.Context) ([]abci.ValidatorUpdate, error
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
 	am.keeper.ReleaseMaturedEscrows(sdkCtx)
+	am.keeper.RecordRecentBlock(sdkCtx)
 
 	// Immediate removals from misbehavior: unconditional, every block --
 	// independent of epoch timing. A banned validator must lose voting

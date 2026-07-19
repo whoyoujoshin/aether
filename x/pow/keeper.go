@@ -717,3 +717,75 @@ func (k Keeper) ReleaseMaturedEscrows(ctx sdk.Context) {
 		k.ClearEscrow(ctx, minerAddr)
 	}
 }
+
+func (k Keeper) SetRecencyWindowK(ctx sdk.Context, kWindow int64) {
+	bz, _ := json.Marshal(kWindow)
+	ctx.KVStore(k.storeKey).Set(KeyRecencyWindowK, bz)
+}
+
+func (k Keeper) GetRecencyWindowK(ctx sdk.Context) int64 {
+	bz := ctx.KVStore(k.storeKey).Get(KeyRecencyWindowK)
+	if bz == nil {
+		return DefaultGenesisState().Params.RecencyWindowK
+	}
+	var v int64
+	_ = json.Unmarshal(bz, &v)
+	return v
+}
+
+func recentHashKey(height int64) []byte {
+	return append(KeyRecentHashPrefix, sdk.Uint64ToBigEndian(uint64(height))...)
+}
+
+func recentDifficultyKey(height int64) []byte {
+	return append(KeyRecentDifficultyPrefix, sdk.Uint64ToBigEndian(uint64(height))...)
+}
+
+// RecordRecentBlock stores this block's real hash and post-adjustment
+// difficulty, called from EndBlock every block. Retention is K+2 heights;
+// older entries are pruned immediately (this window is small and
+// unconditionally bounded, unlike AcceptedWork).
+func (k Keeper) RecordRecentBlock(ctx sdk.Context) {
+	height := ctx.BlockHeight()
+	ctx.KVStore(k.storeKey).Set(recentHashKey(height), ctx.HeaderHash())
+	ctx.KVStore(k.storeKey).Set(recentDifficultyKey(height), []byte(k.GetDifficulty(ctx).String()))
+
+	retain := k.GetRecencyWindowK(ctx) + 2
+	pruneHeight := height - retain
+	if pruneHeight >= 0 {
+		ctx.KVStore(k.storeKey).Delete(recentHashKey(pruneHeight))
+		ctx.KVStore(k.storeKey).Delete(recentDifficultyKey(pruneHeight))
+	}
+}
+
+func (k Keeper) GetRecentHash(ctx sdk.Context, height int64) ([]byte, bool) {
+	bz := ctx.KVStore(k.storeKey).Get(recentHashKey(height))
+	if bz == nil {
+		return nil, false
+	}
+	return bz, true
+}
+
+func (k Keeper) GetRecentDifficulty(ctx sdk.Context, height int64) (math.Int, bool) {
+	bz := ctx.KVStore(k.storeKey).Get(recentDifficultyKey(height))
+	if bz == nil {
+		return math.ZeroInt(), false
+	}
+	d, ok := math.NewIntFromString(string(bz))
+	if !ok {
+		return math.ZeroInt(), false
+	}
+	return d, true
+}
+
+func acceptedWorkKey(headerHash []byte) []byte {
+	return append(KeyAcceptedWorkPrefix, headerHash...)
+}
+
+func (k Keeper) IsWorkAccepted(ctx sdk.Context, headerHash []byte) bool {
+	return ctx.KVStore(k.storeKey).Has(acceptedWorkKey(headerHash))
+}
+
+func (k Keeper) MarkWorkAccepted(ctx sdk.Context, headerHash []byte) {
+	ctx.KVStore(k.storeKey).Set(acceptedWorkKey(headerHash), []byte{1})
+}
