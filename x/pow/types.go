@@ -44,7 +44,7 @@ func DefaultGenesisState() GenesisState {
 			MinDifficulty:     1 << 10,
 			MaxDifficulty:     1 << 40,
 			Difficulty:        1 << 20,
-			BlockReward:       5_000_000, // 5 AETH initial (uaeth)
+			BlockReward:       5_000_000, // 5,000,000 aeth (whole-unit denom, no sub-unit scaling)
 			TailEmission:      false,
 			EpochLength:       1440, // ~24h at 60s target blocks
 			TopKSize:          21,   // BFT-performance sweet spot; see design doc §4
