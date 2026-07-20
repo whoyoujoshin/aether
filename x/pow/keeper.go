@@ -18,6 +18,7 @@ import (
 	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
 	cometencoding "github.com/cometbft/cometbft/crypto/encoding"
 	abci "github.com/cometbft/cometbft/abci/types"
+	cryptoproto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 )
 
 type Keeper struct {
@@ -788,4 +789,45 @@ func (k Keeper) IsWorkAccepted(ctx sdk.Context, headerHash []byte) bool {
 
 func (k Keeper) MarkWorkAccepted(ctx sdk.Context, headerHash []byte) {
 	ctx.KVStore(k.storeKey).Set(acceptedWorkKey(headerHash), []byte{1})
+}
+
+// BootstrapValidator registers a genesis-declared validator (placed
+// directly into genesis.json's consensus.validators, never through
+// MsgRegisterValidatorPubkey) into x/pow's own tracked validator state.
+// Without this, the bootstrap validator is permanently exempt from Top-K
+// removal (ComputeValidatorUpdates only ever considers addresses already
+// in IterateActiveValidators) and invisible to equivocation slashing
+// (ProcessMisbehavior maps evidence's consensus address back to a miner
+// address via the same reverse index this populates).
+//
+// Since a genesis validator has no natural miner account, a stable,
+// deterministic miner address is derived directly from its consensus
+// address bytes -- this makes it behave identically to any other
+// validator for every existing mechanism, with zero special-casing
+// required anywhere else in the codebase.
+//
+// Voting power is intentionally NOT preserved from genesis here -- it's
+// set to the same flat ValidatorVotingPower constant every other
+// validator receives. The old, large genesis power value was only ever
+// needed to bootstrap a single-node devnet; once tracked, this validator
+// is subject to the exact same rules (equal power, Top-K removal,
+// slashing) as anyone else. No permanent privilege.
+func (k Keeper) BootstrapValidator(ctx sdk.Context, pubKeyProto cryptoproto.PublicKey) error {
+	cometPubKey, err := cometencoding.PubKeyFromProto(pubKeyProto)
+	if err != nil {
+		return err
+	}
+	rawPubKey := cometPubKey.Bytes()
+	consensusAddr := cometPubKey.Address()
+	derivedMinerAddr := sdk.AccAddress(consensusAddr)
+
+	if k.IsActiveValidator(ctx, derivedMinerAddr) {
+		return nil // already bootstrapped (e.g. re-run on a restart); idempotent
+	}
+
+	k.SetValidatorPubkey(ctx, derivedMinerAddr, rawPubKey)
+	k.SetConsensusToMiner(ctx, consensusAddr, derivedMinerAddr)
+	k.SetActiveValidator(ctx, derivedMinerAddr)
+
+	return nil
 }

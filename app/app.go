@@ -309,6 +309,12 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 		}
 	}
 
+	for _, v := range req.Validators {
+	if err := app.PowKeeper.BootstrapValidator(ctx, v.PubKey); err != nil {
+		return nil, err
+	}
+}
+
 	if req.ConsensusParams != nil {
 		if err := app.StoreConsensusParams(ctx, *req.ConsensusParams); err != nil {
 			return nil, err

@@ -22,6 +22,7 @@ import (
 	"github.com/whoyoujoshin/aether/x/pow/testutil"
 	"github.com/whoyoujoshin/aether/x/pow/types"
 	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
+	cometencoding "github.com/cometbft/cometbft/crypto/encoding"
 	"cosmossdk.io/core/comet"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
@@ -1288,4 +1289,84 @@ func TestAcceptedWork_DifferentHashesDoNotCollide(t *testing.T) {
 
 	require.True(t, k.IsWorkAccepted(ctx, hashA))
 	require.False(t, k.IsWorkAccepted(ctx, hashB))
+}
+
+func TestBootstrapValidator_RegistersIntoTrackedState(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	consensusPub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	protoPubKey, err := cometencoding.PubKeyToProto(cometed25519.PubKey(consensusPub))
+	require.NoError(t, err)
+
+	err = k.BootstrapValidator(ctx, protoPubKey)
+	require.NoError(t, err)
+
+	derivedMinerAddr := sdk.AccAddress(cometed25519.PubKey(consensusPub).Address())
+
+	require.True(t, k.IsActiveValidator(ctx, derivedMinerAddr),
+		"bootstrap validator must be tracked as an active validator, or it can never be removed via Top-K")
+
+	storedPubkey, ok := k.GetValidatorPubkey(ctx, derivedMinerAddr)
+	require.True(t, ok)
+	require.Equal(t, []byte(consensusPub), storedPubkey)
+
+	consensusAddr := cometed25519.PubKey(consensusPub).Address()
+	foundMiner, ok := k.GetMinerByConsensusAddr(ctx, consensusAddr)
+	require.True(t, ok)
+	require.Equal(t, derivedMinerAddr, foundMiner)
+}
+
+func TestBootstrapValidator_IdempotentOnRepeatedCalls(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	consensusPub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	protoPubKey, err := cometencoding.PubKeyToProto(cometed25519.PubKey(consensusPub))
+	require.NoError(t, err)
+
+	err = k.BootstrapValidator(ctx, protoPubKey)
+	require.NoError(t, err)
+	err = k.BootstrapValidator(ctx, protoPubKey) // simulates a node restart re-running InitChainer
+	require.NoError(t, err, "must not error on repeated bootstrap of the same validator")
+
+	derivedMinerAddr := sdk.AccAddress(cometed25519.PubKey(consensusPub).Address())
+	require.True(t, k.IsActiveValidator(ctx, derivedMinerAddr))
+}
+
+func TestBootstrapValidator_SubjectToTopKRemovalLikeAnyOtherValidator(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetTopKSize(ctx, 1)
+
+	// Bootstrap validator, but it does no mining work this epoch.
+	bootstrapPub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	bootstrapProto, err := cometencoding.PubKeyToProto(cometed25519.PubKey(bootstrapPub))
+	require.NoError(t, err)
+	require.NoError(t, k.BootstrapValidator(ctx, bootstrapProto))
+
+	// A real, actively-mining candidate qualifies instead.
+	minerAddr := sdk.AccAddress("actively_mining_candidate")
+	k.SetValidatorPubkey(ctx, minerAddr, genValidatorPubkey(t))
+	k.AddMiningWork(ctx, 1, minerAddr, 100)
+
+	updates := k.ComputeValidatorUpdates(ctx, 1)
+
+	bootstrapMinerAddr := sdk.AccAddress(cometed25519.PubKey(bootstrapPub).Address())
+
+	// This is the actual bug being fixed: before BootstrapValidator existed,
+	// the bootstrap validator would NEVER appear in this removal check at
+	// all, regardless of how the rest of Top-K evolved.
+	require.False(t, k.IsActiveValidator(ctx, bootstrapMinerAddr),
+		"bootstrap validator must be removable via Top-K just like any other validator")
+	require.True(t, k.IsActiveValidator(ctx, minerAddr))
+
+	var sawBootstrapRemoval bool
+	for _, u := range updates {
+		if u.Power == 0 {
+			sawBootstrapRemoval = true
+		}
+	}
+	require.True(t, sawBootstrapRemoval, "expected an explicit power=0 removal for the bootstrap validator")
 }
