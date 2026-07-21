@@ -1370,3 +1370,110 @@ func TestBootstrapValidator_SubjectToTopKRemovalLikeAnyOtherValidator(t *testing
 	}
 	require.True(t, sawBootstrapRemoval, "expected an explicit power=0 removal for the bootstrap validator")
 }
+
+// --- Tenure tracking ---
+
+func TestGetValidatorTenureRatio_ZeroForNeverActive(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("never_active_validator")
+	ratio := k.GetValidatorTenureRatio(ctx, minerAddr)
+	require.True(t, ratio.IsZero())
+}
+
+func TestGetValidatorTenureRatio_ZeroImmediatelyOnEntry(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("just_entered_validator")
+
+	ctx = ctx.WithBlockTime(time.Now())
+	k.SetActiveValidator(ctx, minerAddr)
+
+	ratio := k.GetValidatorTenureRatio(ctx, minerAddr)
+	require.True(t, ratio.IsZero(), "tenure should be exactly zero the instant a validator enters")
+}
+
+func TestGetValidatorTenureRatio_RampsLinearlyOverTime(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("ramping_validator______")
+
+	start := time.Now()
+	ctx = ctx.WithBlockTime(start)
+	k.SetActiveValidator(ctx, minerAddr)
+
+	// Halfway through the 30-day ramp.
+	ctx = ctx.WithBlockTime(start.Add(15 * 24 * time.Hour))
+	ratio := k.GetValidatorTenureRatio(ctx, minerAddr)
+	require.True(t, ratio.Sub(math.LegacyMustNewDecFromStr("0.5")).Abs().LT(math.LegacyMustNewDecFromStr("0.01")),
+		"expected ratio close to 0.5 at 15 of 30 days, got %s", ratio.String())
+}
+
+func TestGetValidatorTenureRatio_CapsAtOneAfterRampDuration(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("fully_tenured_validator")
+
+	start := time.Now()
+	ctx = ctx.WithBlockTime(start)
+	k.SetActiveValidator(ctx, minerAddr)
+
+	// Well past 30 days.
+	ctx = ctx.WithBlockTime(start.Add(90 * 24 * time.Hour))
+	ratio := k.GetValidatorTenureRatio(ctx, minerAddr)
+	require.True(t, ratio.Equal(math.LegacyOneDec()), "ratio must cap at exactly 1.0, got %s", ratio.String())
+}
+
+func TestGetValidatorTenureRatio_ResetsToZeroOnRemoval(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("removed_then_gone______")
+
+	start := time.Now()
+	ctx = ctx.WithBlockTime(start)
+	k.SetActiveValidator(ctx, minerAddr)
+
+	ctx = ctx.WithBlockTime(start.Add(20 * 24 * time.Hour))
+	require.False(t, k.GetValidatorTenureRatio(ctx, minerAddr).IsZero(), "sanity check: should have nonzero tenure before removal")
+
+	k.RemoveActiveValidator(ctx, minerAddr)
+	require.True(t, k.GetValidatorTenureRatio(ctx, minerAddr).IsZero(), "tenure must reset to zero on removal")
+}
+
+func TestGetValidatorTenureRatio_ReSelectionDoesNotResetTenure(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("repeatedly_selected____")
+
+	start := time.Now()
+	ctx = ctx.WithBlockTime(start)
+	k.SetActiveValidator(ctx, minerAddr) // first entry
+
+	ctx = ctx.WithBlockTime(start.Add(10 * 24 * time.Hour))
+	k.SetActiveValidator(ctx, minerAddr) // re-selected next epoch, STILL active -- must not reset
+
+	ctx = ctx.WithBlockTime(start.Add(20 * 24 * time.Hour))
+	k.SetActiveValidator(ctx, minerAddr) // re-selected again
+
+	// Tenure should reflect the full 20 days since ORIGINAL entry, not
+	// reset to zero at either re-selection.
+	ratio := k.GetValidatorTenureRatio(ctx, minerAddr)
+	expectedRatio := math.LegacyNewDec(20).QuoInt64(30)
+	require.True(t, ratio.Sub(expectedRatio).Abs().LT(math.LegacyMustNewDecFromStr("0.01")),
+		"expected ratio reflecting 20 continuous days, got %s", ratio.String())
+}
+
+func TestGetValidatorTenureRatio_DifferentValidatorsTrackedIndependently(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerEarly := sdk.AccAddress("early_entry_validator__")
+	minerLate := sdk.AccAddress("late_entry_validator___")
+
+	start := time.Now()
+	ctx = ctx.WithBlockTime(start)
+	k.SetActiveValidator(ctx, minerEarly)
+
+	ctx = ctx.WithBlockTime(start.Add(15 * 24 * time.Hour))
+	k.SetActiveValidator(ctx, minerLate)
+
+	ctx = ctx.WithBlockTime(start.Add(30 * 24 * time.Hour))
+	earlyRatio := k.GetValidatorTenureRatio(ctx, minerEarly)
+	lateRatio := k.GetValidatorTenureRatio(ctx, minerLate)
+
+	require.True(t, earlyRatio.Equal(math.LegacyOneDec()), "early validator should be fully ramped (30 of 30 days)")
+	require.True(t, lateRatio.Sub(math.LegacyMustNewDecFromStr("0.5")).Abs().LT(math.LegacyMustNewDecFromStr("0.01")),
+		"late validator should be at ~0.5 (15 of 30 days), got %s", lateRatio.String())
+}

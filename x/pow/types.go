@@ -76,4 +76,5 @@ var (
 	KeyRecentDifficultyPrefix = []byte("recent_difficulty/")
 	KeyAcceptedWorkPrefix     = []byte("accepted_work/")
 	KeyRecencyWindowK = []byte("recency_window_k")
+	KeyValidatorEnteredAtPrefix = []byte("validator_entered_at/")
 )

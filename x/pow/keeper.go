@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"bytes"
 	"sort"
+	"time"
 
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
@@ -211,12 +212,62 @@ func (k Keeper) IterateEpochWork(ctx sdk.Context, epoch int64) []MiningWorkEntry
 // which addresses are *currently* validators (i.e., were granted power in
 // the last emitted ValidatorUpdates), so the next epoch's computation knows
 // who needs an explicit power=0 removal update if they fall out of Top-K.
+// TenureRampDuration is the real-time window over which a validator's
+// voting-power weight (used by x/governance, not live consensus power --
+// see the design discussion in the project's governance planning) ramps
+// linearly from 0 to a full 1.0 ratio. Deliberately a constant for now,
+// not a genesis param -- can become one later if tuning is needed.
+const TenureRampDuration = 30 * 24 * time.Hour
+
 func (k Keeper) SetActiveValidator(ctx sdk.Context, minerAddr sdk.AccAddress) {
-	ctx.KVStore(k.storeKey).Set(append(KeyActiveValidatorPrefix, minerAddr.Bytes()...), []byte{1})
+	store := ctx.KVStore(k.storeKey)
+	key := append(KeyActiveValidatorPrefix, minerAddr.Bytes()...)
+
+	// Only stamp entry time if this validator isn't ALREADY active --
+	// SetActiveValidator is called every epoch for every still-qualifying
+	// validator (see ComputeValidatorUpdates), including ones who were
+	// already active last epoch. Re-stamping on every call would reset
+	// tenure to zero every single epoch, defeating the entire mechanism.
+	if !store.Has(key) {
+		entryKey := append(KeyValidatorEnteredAtPrefix, minerAddr.Bytes()...)
+		timestampBz := sdk.Uint64ToBigEndian(uint64(ctx.BlockTime().UnixNano()))
+		store.Set(entryKey, timestampBz)
+	}
+
+	store.Set(key, []byte{1})
 }
 
 func (k Keeper) RemoveActiveValidator(ctx sdk.Context, minerAddr sdk.AccAddress) {
-	ctx.KVStore(k.storeKey).Delete(append(KeyActiveValidatorPrefix, minerAddr.Bytes()...))
+	store := ctx.KVStore(k.storeKey)
+	store.Delete(append(KeyActiveValidatorPrefix, minerAddr.Bytes()...))
+	store.Delete(append(KeyValidatorEnteredAtPrefix, minerAddr.Bytes()...))
+}
+
+// GetValidatorTenureRatio returns how far through the tenure ramp this
+// validator is, as a value from 0.0 to 1.0. Returns 0 for an address
+// that isn't currently active (no entry timestamp recorded). Computed
+// fresh from real elapsed time on every call -- not pre-computed or
+// cached -- matching the same "derive from real chain state when
+// needed" principle used throughout this project (e.g. CurrentEpoch).
+func (k Keeper) GetValidatorTenureRatio(ctx sdk.Context, minerAddr sdk.AccAddress) math.LegacyDec {
+	store := ctx.KVStore(k.storeKey)
+	entryKey := append(KeyValidatorEnteredAtPrefix, minerAddr.Bytes()...)
+	bz := store.Get(entryKey)
+	if bz == nil {
+		return math.LegacyZeroDec()
+	}
+
+	enteredAt := time.Unix(0, int64(sdk.BigEndianToUint64(bz)))
+	elapsed := ctx.BlockTime().Sub(enteredAt)
+	if elapsed <= 0 {
+		return math.LegacyZeroDec()
+	}
+
+	ratio := math.LegacyNewDec(int64(elapsed)).QuoInt64(int64(TenureRampDuration))
+	if ratio.GT(math.LegacyOneDec()) {
+		return math.LegacyOneDec()
+	}
+	return ratio
 }
 
 func (k Keeper) IsActiveValidator(ctx sdk.Context, minerAddr sdk.AccAddress) bool {
