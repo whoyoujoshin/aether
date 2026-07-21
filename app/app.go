@@ -228,18 +228,21 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 	// Initialize keepers
 	app.PowKeeper = pow.NewKeeper(appCodec, app.keys[pow.StoreKey], logger, app.BankKeeper)
 	app.TreasuryKeeper = treasury.NewKeeper(appCodec, app.keys[treasury.StoreKey])
-	app.GovernanceKeeper = governance.NewKeeper(appCodec, app.keys[governance.StoreKey])
+	app.GovernanceKeeper = governance.NewKeeper(appCodec, app.keys[governance.StoreKey], app.BankKeeper)
 
 	// Module manager
 	powModule := pow.NewAppModule(appCodec, app.PowKeeper)
+
+governanceModule := governance.NewAppModule(appCodec, app.GovernanceKeeper)
 
 	app.sm = module.NewManager(
 	auth.NewAppModule(appCodec, app.AccountKeeper, nil, nil),
 	bank.NewAppModule(appCodec, app.BankKeeper, app.AccountKeeper, nil),
 	powModule,
 	treasury.NewAppModule(appCodec, app.TreasuryKeeper),
-	governance.NewAppModule(appCodec, app.GovernanceKeeper),
+	governanceModule,
 )
+
 	app.BasicModuleManager = module.NewBasicManagerFromManager(app.sm, nil)
 	app.BasicModuleManager.RegisterInterfaces(app.interfaceRegistry)
 

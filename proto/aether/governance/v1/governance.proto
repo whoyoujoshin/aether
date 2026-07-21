@@ -1,0 +1,34 @@
+syntax = "proto3";
+package aether.governance.v1;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/governance";
+
+enum ProposalStatus {
+  PROPOSAL_STATUS_UNSPECIFIED    = 0;
+  PROPOSAL_STATUS_DEPOSIT_PERIOD = 1;
+  PROPOSAL_STATUS_VOTING_PERIOD  = 2;
+  PROPOSAL_STATUS_PASSED         = 3;
+  PROPOSAL_STATUS_REJECTED       = 4;
+  PROPOSAL_STATUS_FAILED_QUORUM  = 5;
+  PROPOSAL_STATUS_EXPIRED        = 6;
+}
+
+message Proposal {
+  uint64 id = 1;
+  string recipient = 2;
+  string amount = 3;
+  string total_deposit = 4;
+  ProposalStatus status = 5;
+  int64 submit_time = 6;
+  int64 deposit_end_time = 7;
+  int64 voting_start_time = 8;
+  int64 voting_end_time = 9;
+}
+
+message Deposit {
+  uint64 proposal_id = 1;
+  string depositor = 2;
+  string amount = 3;
+}

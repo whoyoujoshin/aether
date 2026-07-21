@@ -33,13 +33,12 @@ func (AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {
 	return bz
 }
 
-func (AppModuleBasic) ValidateGenesis(cdc codec.JSONCodec, config interface{}, bz json.RawMessage) error {
+func (AppModuleBasic) ValidateGenesis(cdc codec.JSONCodec, config client.TxEncodingConfig, bz json.RawMessage) error {
 	var genState GenesisState
 	return json.Unmarshal(bz, &genState)
 }
 
 func (AppModuleBasic) RegisterGRPCGatewayRoutes(ctx client.Context, mux *runtime.ServeMux) {}
-
 type AppModule struct {
 	AppModuleBasic
 	keeper Keeper
@@ -67,7 +66,9 @@ func (am AppModule) ConsensusVersion() uint64 {
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.RawMessage) []abci.ValidatorUpdate {
 	var genState GenesisState
 	json.Unmarshal(data, &genState)
-	am.keeper.SetVotingPeriod(ctx, int64(genState.Params.VotingPeriod))
+	am.keeper.SetMinDeposit(ctx, genState.Params.MinDeposit)
+	am.keeper.SetDepositPeriod(ctx, genState.Params.DepositPeriod)
+	am.keeper.SetVotingPeriod(ctx, genState.Params.VotingPeriod)
 	return []abci.ValidatorUpdate{}
 }
 
