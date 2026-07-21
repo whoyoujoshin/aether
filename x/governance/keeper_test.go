@@ -2,6 +2,7 @@ package governance_test
 
 import (
 	"testing"
+	"errors"
 
 	"cosmossdk.io/log"
 	storetypes "cosmossdk.io/store/types"
@@ -100,4 +101,193 @@ func TestIterateProposals_EmptyStoreReturnsNoEntries(t *testing.T) {
 	k, ctx, _ := setupKeeper(t)
 	proposals := k.IterateProposals(ctx)
 	require.Empty(t, proposals)
+}
+
+func TestGetDeposit_NotFoundReturnsFalse(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	depositor := sdk.AccAddress("no_deposit_here_______")
+	_, ok := k.GetDeposit(ctx, 1, depositor)
+	require.False(t, ok)
+}
+
+func TestSetDeposit_RoundTrip(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	depositor := sdk.AccAddress("deposit_roundtrip_test")
+
+	deposit := governance.Deposit{
+		ProposalId: 1,
+		Depositor:  depositor.String(),
+		Amount:     "5000000",
+	}
+	k.SetDeposit(ctx, deposit)
+
+	stored, ok := k.GetDeposit(ctx, 1, depositor)
+	require.True(t, ok)
+	require.Equal(t, "5000000", stored.Amount)
+}
+
+func TestIterateDeposits_ReturnsOnlyThisProposalsDeposits(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	depositorA := sdk.AccAddress("deposit_iterate_a_____")
+	depositorB := sdk.AccAddress("deposit_iterate_b_____")
+
+	k.SetDeposit(ctx, governance.Deposit{ProposalId: 1, Depositor: depositorA.String(), Amount: "1000000"})
+	k.SetDeposit(ctx, governance.Deposit{ProposalId: 1, Depositor: depositorB.String(), Amount: "2000000"})
+	k.SetDeposit(ctx, governance.Deposit{ProposalId: 2, Depositor: depositorA.String(), Amount: "3000000"})
+
+	deposits := k.IterateDeposits(ctx, 1)
+	require.Len(t, deposits, 2, "must not include proposal 2's deposit")
+}
+
+func TestIterateDeposits_EmptyForProposalWithNoDeposits(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	deposits := k.IterateDeposits(ctx, 999)
+	require.Empty(t, deposits)
+}
+
+func validProposerAddr(t *testing.T) (sdk.AccAddress, string) {
+	t.Helper()
+	addr := sdk.AccAddress("valid_proposer_address")
+	return addr, addr.String()
+}
+
+func TestSubmitProposal_Success_CreatesProposalInDepositPeriod(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+	k.SetMinDeposit(ctx, 25_000_000)
+	k.SetDepositPeriod(ctx, 14*24*60*60)
+
+	_, proposerStr := validProposerAddr(t)
+	msg := &governance.MsgSubmitProposal{
+		Proposer:  proposerStr,
+		Recipient: proposerStr,
+		Amount:    "1000000",
+		Deposit:   "5000000", // below MinDeposit -- should stay in deposit period
+	}
+
+	resp, err := srv.SubmitProposal(ctx, msg)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), resp.ProposalId)
+
+	proposal, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD, proposal.Status)
+	require.Equal(t, "5000000", proposal.TotalDeposit)
+
+	require.Len(t, mockBank.SendCalls, 1)
+	require.Equal(t, "5000000aeth", mockBank.SendCalls[0].Coins.String())
+}
+
+func TestSubmitProposal_MeetingMinDepositImmediatelyEntersVotingPeriod(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+	k.SetMinDeposit(ctx, 25_000_000)
+	k.SetVotingPeriod(ctx, 7*24*60*60)
+
+	_, proposerStr := validProposerAddr(t)
+	msg := &governance.MsgSubmitProposal{
+		Proposer:  proposerStr,
+		Recipient: proposerStr,
+		Amount:    "1000000",
+		Deposit:   "25000000", // exactly meets MinDeposit
+	}
+
+	_, err := srv.SubmitProposal(ctx, msg)
+	require.NoError(t, err)
+
+	proposal, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD, proposal.Status,
+		"meeting MinDeposit at creation time should immediately enter voting period")
+	require.Equal(t, ctx.BlockTime().Unix()+7*24*60*60, proposal.VotingEndTime)
+}
+
+func TestSubmitProposal_ZeroDepositStaysInDepositPeriodWithNoBankCall(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+	k.SetMinDeposit(ctx, 25_000_000)
+
+	_, proposerStr := validProposerAddr(t)
+	msg := &governance.MsgSubmitProposal{
+		Proposer:  proposerStr,
+		Recipient: proposerStr,
+		Amount:    "1000000",
+		Deposit:   "0",
+	}
+
+	_, err := srv.SubmitProposal(ctx, msg)
+	require.NoError(t, err)
+	require.Empty(t, mockBank.SendCalls, "zero deposit should not trigger a bank transfer")
+}
+
+func TestSubmitProposal_RejectsInvalidRecipient(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+
+	_, proposerStr := validProposerAddr(t)
+	msg := &governance.MsgSubmitProposal{
+		Proposer:  proposerStr,
+		Recipient: "not-a-valid-address",
+		Amount:    "1000000",
+		Deposit:   "0",
+	}
+
+	_, err := srv.SubmitProposal(ctx, msg)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, governance.ErrInvalidRecipient))
+}
+
+func TestDeposit_AccumulatesAcrossMultipleContributors(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+	k.SetMinDeposit(ctx, 25_000_000)
+
+	_, proposerStr := validProposerAddr(t)
+	_, err := srv.SubmitProposal(ctx, &governance.MsgSubmitProposal{
+		Proposer: proposerStr, Recipient: proposerStr, Amount: "1000000", Deposit: "10000000",
+	})
+	require.NoError(t, err)
+
+	secondDepositor := sdk.AccAddress("second_depositor______")
+	_, err = srv.Deposit(ctx, &governance.MsgDeposit{
+		ProposalId: 1, Depositor: secondDepositor.String(), Amount: "15000000",
+	})
+	require.NoError(t, err)
+
+	proposal, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, "25000000", proposal.TotalDeposit)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD, proposal.Status,
+		"combined deposits from multiple contributors should trigger the transition")
+}
+
+func TestDeposit_RejectsContributionToNonexistentProposal(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+
+	depositor := sdk.AccAddress("depositor_for_missing_")
+	_, err := srv.Deposit(ctx, &governance.MsgDeposit{
+		ProposalId: 999, Depositor: depositor.String(), Amount: "1000000",
+	})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, governance.ErrProposalNotFound))
+}
+
+func TestDeposit_RejectsContributionAfterVotingPeriodStarted(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+	k.SetMinDeposit(ctx, 25_000_000)
+
+	_, proposerStr := validProposerAddr(t)
+	_, err := srv.SubmitProposal(ctx, &governance.MsgSubmitProposal{
+		Proposer: proposerStr, Recipient: proposerStr, Amount: "1000000", Deposit: "25000000",
+	})
+	require.NoError(t, err) // already in voting period after this
+
+	lateDepositor := sdk.AccAddress("late_depositor________")
+	_, err = srv.Deposit(ctx, &governance.MsgDeposit{
+		ProposalId: 1, Depositor: lateDepositor.String(), Amount: "1000000",
+	})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, governance.ErrDepositPeriodEnded))
 }

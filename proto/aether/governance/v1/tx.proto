@@ -1,0 +1,35 @@
+syntax = "proto3";
+package aether.governance.v1;
+
+import "gogoproto/gogo.proto";
+import "cosmos/msg/v1/msg.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/governance";
+
+service Msg {
+  rpc SubmitProposal(MsgSubmitProposal) returns (MsgSubmitProposalResponse);
+  rpc Deposit(MsgDeposit) returns (MsgDepositResponse);
+}
+
+message MsgSubmitProposal {
+  option (cosmos.msg.v1.signer) = "proposer";
+
+  string proposer  = 1;
+  string recipient = 2;
+  string amount    = 3;
+  string deposit   = 4; // initial deposit contributed at creation time; may be less than MinDeposit
+}
+
+message MsgSubmitProposalResponse {
+  uint64 proposal_id = 1;
+}
+
+message MsgDeposit {
+  option (cosmos.msg.v1.signer) = "depositor";
+
+  uint64 proposal_id = 1;
+  string depositor   = 2;
+  string amount      = 3;
+}
+
+message MsgDepositResponse {}

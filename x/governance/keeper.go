@@ -5,6 +5,8 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"cosmossdk.io/store/types"
 	storetypes "cosmossdk.io/store/types"
+	"cosmossdk.io/math"
+	sdkerrors "cosmossdk.io/errors"
 )
 
 type Keeper struct {
@@ -93,7 +95,7 @@ func (k Keeper) GetDepositPeriod(ctx sdk.Context) int64 {
 	return int64(sdk.BigEndianToUint64(bz))
 }
 
-func (k Keeper) nextProposalID(ctx sdk.Context) uint64 {
+func (k Keeper) NextProposalID(ctx sdk.Context) uint64 {
 	store := ctx.KVStore(k.storeKey)
 	bz := store.Get(KeyNextProposalID)
 	var id uint64 = 1
@@ -104,6 +106,54 @@ func (k Keeper) nextProposalID(ctx sdk.Context) uint64 {
 	return id
 }
 
+// addDeposit transfers amount from depositor into the governance module
+// account, accumulates it against the proposal's existing deposit
+// (combining with any prior contribution from the same depositor), and
+// transitions the proposal into its voting period the moment MinDeposit
+// is met.
+func (k Keeper) addDeposit(ctx sdk.Context, proposalID uint64, depositor sdk.AccAddress, amount math.Int) error {
+	coins := sdk.NewCoins(sdk.NewCoin("aeth", amount))
+	if err := k.bankKeeper.SendCoinsFromAccountToModule(ctx, depositor, ModuleName, coins); err != nil {
+		return sdkerrors.Wrapf(err, "failed to transfer deposit")
+	}
+
+	existingAmount := math.ZeroInt()
+	if existing, ok := k.GetDeposit(ctx, proposalID, depositor); ok {
+		parsed, parseOk := math.NewIntFromString(existing.Amount)
+		if parseOk {
+			existingAmount = parsed
+		}
+	}
+	newTotal := existingAmount.Add(amount)
+	k.SetDeposit(ctx, Deposit{
+		ProposalId: proposalID,
+		Depositor:  depositor.String(),
+		Amount:     newTotal.String(),
+	})
+
+	proposal, ok := k.GetProposal(ctx, proposalID)
+	if !ok {
+		return sdkerrors.Wrapf(ErrProposalNotFound, "proposal %d disappeared mid-deposit", proposalID)
+	}
+
+	currentTotal := math.ZeroInt()
+	if parsed, parseOk := math.NewIntFromString(proposal.TotalDeposit); parseOk {
+		currentTotal = parsed
+	}
+	newProposalTotal := currentTotal.Add(amount)
+	proposal.TotalDeposit = newProposalTotal.String()
+
+	minDeposit := k.GetMinDeposit(ctx)
+	if newProposalTotal.GTE(math.NewInt(minDeposit)) && proposal.Status == ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD {
+		votingPeriod := k.GetVotingPeriod(ctx)
+		proposal.Status = ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD
+		proposal.VotingStartTime = ctx.BlockTime().Unix()
+		proposal.VotingEndTime = proposal.VotingStartTime + votingPeriod
+	}
+
+	k.SetProposal(ctx, proposal)
+	return nil
+}
 func proposalKey(id uint64) []byte {
 	return append(KeyProposalPrefix, sdk.Uint64ToBigEndian(id)...)
 }
@@ -135,4 +185,47 @@ func (k Keeper) IterateProposals(ctx sdk.Context) []Proposal {
 		proposals = append(proposals, proposal)
 	}
 	return proposals
+}
+
+func depositKey(proposalID uint64, depositor sdk.AccAddress) []byte {
+	key := append(KeyDepositPrefix, sdk.Uint64ToBigEndian(proposalID)...)
+	return append(key, depositor.Bytes()...)
+}
+
+func depositPrefixForProposal(proposalID uint64) []byte {
+	return append(KeyDepositPrefix, sdk.Uint64ToBigEndian(proposalID)...)
+}
+
+func (k Keeper) SetDeposit(ctx sdk.Context, deposit Deposit) {
+	bz := k.cdc.MustMarshal(&deposit)
+	depositorAddr, err := sdk.AccAddressFromBech32(deposit.Depositor)
+	if err != nil {
+		return
+	}
+	ctx.KVStore(k.storeKey).Set(depositKey(deposit.ProposalId, depositorAddr), bz)
+}
+
+func (k Keeper) GetDeposit(ctx sdk.Context, proposalID uint64, depositor sdk.AccAddress) (Deposit, bool) {
+	bz := ctx.KVStore(k.storeKey).Get(depositKey(proposalID, depositor))
+	if bz == nil {
+		return Deposit{}, false
+	}
+	var deposit Deposit
+	k.cdc.MustUnmarshal(bz, &deposit)
+	return deposit, true
+}
+
+func (k Keeper) IterateDeposits(ctx sdk.Context, proposalID uint64) []Deposit {
+	store := ctx.KVStore(k.storeKey)
+	prefix := depositPrefixForProposal(proposalID)
+	iterator := types.KVStorePrefixIterator(store, prefix)
+	defer iterator.Close()
+
+	var deposits []Deposit
+	for ; iterator.Valid(); iterator.Next() {
+		var deposit Deposit
+		k.cdc.MustUnmarshal(iterator.Value(), &deposit)
+		deposits = append(deposits, deposit)
+	}
+	return deposits
 }

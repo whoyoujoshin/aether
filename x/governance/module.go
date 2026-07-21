@@ -25,8 +25,10 @@ func (AppModuleBasic) Name() string {
 
 func (AppModuleBasic) RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {}
 
-func (AppModuleBasic) RegisterInterfaces(registry cdctypes.InterfaceRegistry) {}
-
+func (AppModuleBasic) RegisterInterfaces(registry cdctypes.InterfaceRegistry) {
+	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgSubmitProposal{})
+	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgDeposit{})
+}
 func (AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {
 	genState := DefaultGenesisState()
 	bz, _ := json.Marshal(&genState)
@@ -57,7 +59,9 @@ func (am AppModule) IsAppModule() {}
 
 func (am AppModule) IsOnePerModuleType() {}
 
-func (am AppModule) RegisterServices(cfg module.Configurator) {}
+func (am AppModule) RegisterServices(cfg module.Configurator) {
+	RegisterMsgServer(cfg.MsgServer(), NewMsgServerImpl(am.keeper))
+}
 
 func (am AppModule) ConsensusVersion() uint64 {
 	return 1
