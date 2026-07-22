@@ -7,6 +7,7 @@ import (
 	storetypes "cosmossdk.io/store/types"
 	"cosmossdk.io/math"
 	sdkerrors "cosmossdk.io/errors"
+	"cosmossdk.io/log"
 )
 
 type Keeper struct {
@@ -228,4 +229,49 @@ func (k Keeper) IterateDeposits(ctx sdk.Context, proposalID uint64) []Deposit {
 		deposits = append(deposits, deposit)
 	}
 	return deposits
+}
+
+// ExpireProposal transitions a deposit-period proposal that never met
+// MinDeposit within its deposit window to expired status, burning
+// whatever deposit was accumulated -- per the locked design, a deposit
+// is refunded on pass, burned on fail OR expiry. There's no "refund on
+// expiry" case; failing to attract enough support within the window is
+// treated the same as failing outright.
+func (k Keeper) ExpireProposal(ctx sdk.Context, proposal Proposal) error {
+	deposits := k.IterateDeposits(ctx, proposal.Id)
+	for _, d := range deposits {
+		amount, ok := math.NewIntFromString(d.Amount)
+		if !ok || !amount.IsPositive() {
+			continue
+		}
+		coins := sdk.NewCoins(sdk.NewCoin("aeth", amount))
+		if err := k.bankKeeper.BurnCoins(ctx, ModuleName, coins); err != nil {
+			return sdkerrors.Wrapf(err, "failed to burn deposit for expired proposal %d", proposal.Id)
+		}
+	}
+
+	proposal.Status = ProposalStatus_PROPOSAL_STATUS_EXPIRED
+	k.SetProposal(ctx, proposal)
+	return nil
+}
+
+// ProcessProposalExpiry checks every proposal still in its deposit
+// period and expires (burning deposit) any whose deposit window has
+// passed without meeting MinDeposit. Called from EndBlock every block.
+func (k Keeper) ProcessProposalExpiry(ctx sdk.Context) {
+	now := ctx.BlockTime().Unix()
+	for _, proposal := range k.IterateProposals(ctx) {
+		if proposal.Status != ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD {
+			continue
+		}
+		if now > proposal.DepositEndTime {
+			if err := k.ExpireProposal(ctx, proposal); err != nil {
+				k.Logger(ctx).Error("failed to expire proposal", "proposal_id", proposal.Id, "error", err)
+			}
+		}
+	}
+}
+
+func (k Keeper) Logger(ctx sdk.Context) log.Logger {
+	return ctx.Logger().With("module", "x/"+ModuleName)
 }

@@ -2,6 +2,7 @@ package governance
 
 import (
 	"encoding/json"
+	"context"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -80,4 +81,10 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 	genState := DefaultGenesisState()
 	bz, _ := json.Marshal(&genState)
 	return bz
+}
+
+func (am AppModule) EndBlock(ctx context.Context) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	am.keeper.ProcessProposalExpiry(sdkCtx)
+	return nil
 }

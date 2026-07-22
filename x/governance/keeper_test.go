@@ -14,7 +14,7 @@ import (
 	"cosmossdk.io/store/metrics"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
-
+	"cosmossdk.io/math"
 	"github.com/whoyoujoshin/aether/x/governance"
 	"github.com/whoyoujoshin/aether/x/governance/testutil"
 )
@@ -290,4 +290,99 @@ func TestDeposit_RejectsContributionAfterVotingPeriodStarted(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.True(t, errors.Is(err, governance.ErrDepositPeriodEnded))
+}
+
+func TestExpireProposal_BurnsAllAccumulatedDeposits(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+
+	proposal := governance.Proposal{
+		Id:           1,
+		Recipient:    "cosmos1testaddress",
+		Amount:       "1000000",
+		TotalDeposit: "15000000",
+		Status:       governance.ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD,
+	}
+	k.SetProposal(ctx, proposal)
+
+	depositorA := sdk.AccAddress("expiry_depositor_a____")
+	depositorB := sdk.AccAddress("expiry_depositor_b____")
+	k.SetDeposit(ctx, governance.Deposit{ProposalId: 1, Depositor: depositorA.String(), Amount: "10000000"})
+	k.SetDeposit(ctx, governance.Deposit{ProposalId: 1, Depositor: depositorB.String(), Amount: "5000000"})
+
+	err := k.ExpireProposal(ctx, proposal)
+	require.NoError(t, err)
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_EXPIRED, updated.Status)
+
+	require.Len(t, mockBank.BurnCalls, 2)
+	totalBurned := math.ZeroInt()
+	for _, c := range mockBank.BurnCalls {
+		amt := c.Coins.AmountOf("aeth")
+		totalBurned = totalBurned.Add(amt)
+	}
+	require.True(t, totalBurned.Equal(math.NewInt(15_000_000)))
+}
+
+func TestExpireProposal_NoDepositsIsANoOpBurnButStillExpires(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+
+	proposal := governance.Proposal{
+		Id:     1,
+		Status: governance.ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD,
+	}
+	k.SetProposal(ctx, proposal)
+
+	err := k.ExpireProposal(ctx, proposal)
+	require.NoError(t, err)
+
+	require.Empty(t, mockBank.BurnCalls)
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_EXPIRED, updated.Status)
+}
+
+func TestProcessProposalExpiry_ExpiresOnlyProposalsPastDepositEndTime(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	now := ctx.BlockTime().Unix()
+
+	expiredProposal := governance.Proposal{
+		Id: 1, Status: governance.ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD,
+		DepositEndTime: now - 100, // already past
+	}
+	stillOpenProposal := governance.Proposal{
+		Id: 2, Status: governance.ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD,
+		DepositEndTime: now + 100, // not yet past
+	}
+	k.SetProposal(ctx, expiredProposal)
+	k.SetProposal(ctx, stillOpenProposal)
+
+	k.ProcessProposalExpiry(ctx)
+
+	updated1, _ := k.GetProposal(ctx, 1)
+	updated2, _ := k.GetProposal(ctx, 2)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_EXPIRED, updated1.Status)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD, updated2.Status,
+		"proposal still within its deposit window must not be expired")
+}
+
+func TestProcessProposalExpiry_IgnoresProposalsNotInDepositPeriod(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+
+	now := ctx.BlockTime().Unix()
+	votingProposal := governance.Proposal{
+		Id: 1, Status: governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD,
+		DepositEndTime: now - 100, // in the past, but irrelevant -- already past deposit period
+	}
+	k.SetProposal(ctx, votingProposal)
+
+	k.ProcessProposalExpiry(ctx)
+
+	updated, _ := k.GetProposal(ctx, 1)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD, updated.Status,
+		"a proposal already in voting period must not be touched by expiry processing")
+	require.Empty(t, mockBank.BurnCalls)
 }
