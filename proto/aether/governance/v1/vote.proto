@@ -1,0 +1,21 @@
+syntax = "proto3";
+package aether.governance.v1;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/governance";
+
+enum VoteOption {
+  VOTE_OPTION_UNSPECIFIED  = 0;
+  VOTE_OPTION_YES          = 1;
+  VOTE_OPTION_NO           = 2;
+  VOTE_OPTION_ABSTAIN      = 3;
+  VOTE_OPTION_NO_WITH_VETO = 4;
+}
+
+message Vote {
+  uint64 proposal_id = 1;
+  string voter        = 2;
+  VoteOption option   = 3;
+  string weight       = 4; // tenure ratio (0.0-1.0) locked in at the moment this vote was cast
+}

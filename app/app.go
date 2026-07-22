@@ -228,7 +228,7 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 	// Initialize keepers
 	app.PowKeeper = pow.NewKeeper(appCodec, app.keys[pow.StoreKey], logger, app.BankKeeper)
 	app.TreasuryKeeper = treasury.NewKeeper(appCodec, app.keys[treasury.StoreKey])
-	app.GovernanceKeeper = governance.NewKeeper(appCodec, app.keys[governance.StoreKey], app.BankKeeper)
+	app.GovernanceKeeper = governance.NewKeeper(appCodec, app.keys[governance.StoreKey], app.BankKeeper, app.PowKeeper)
 
 	// Module manager
 	powModule := pow.NewAppModule(appCodec, app.PowKeeper)

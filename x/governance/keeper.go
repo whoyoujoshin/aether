@@ -14,13 +14,15 @@ type Keeper struct {
 	cdc        codec.BinaryCodec
 	storeKey   types.StoreKey
 	bankKeeper BankKeeper
+	powKeeper  PowKeeper
 }
 
-func NewKeeper(cdc codec.BinaryCodec, storeKey types.StoreKey, bankKeeper BankKeeper) Keeper {
+func NewKeeper(cdc codec.BinaryCodec, storeKey types.StoreKey, bankKeeper BankKeeper, powKeeper PowKeeper) Keeper {
 	return Keeper{
 		cdc:        cdc,
 		storeKey:   storeKey,
 		bankKeeper: bankKeeper,
+		powKeeper:  powKeeper,
 	}
 }
 
@@ -274,4 +276,50 @@ func (k Keeper) ProcessProposalExpiry(ctx sdk.Context) {
 
 func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 	return ctx.Logger().With("module", "x/"+ModuleName)
+}
+
+func voteKey(proposalID uint64, voter sdk.AccAddress) []byte {
+	key := append(KeyVotePrefix, sdk.Uint64ToBigEndian(proposalID)...)
+	return append(key, voter.Bytes()...)
+}
+
+func votePrefixForProposal(proposalID uint64) []byte {
+	return append(KeyVotePrefix, sdk.Uint64ToBigEndian(proposalID)...)
+}
+
+// SetVote stores a vote, keyed by (proposalID, voter) -- casting a second
+// vote for the same proposal overwrites the first, matching standard
+// Cosmos governance behavior (a validator may change their vote any time
+// before voting closes).
+func (k Keeper) SetVote(ctx sdk.Context, vote Vote) {
+	voterAddr, err := sdk.AccAddressFromBech32(vote.Voter)
+	if err != nil {
+		return
+	}
+	bz := k.cdc.MustMarshal(&vote)
+	ctx.KVStore(k.storeKey).Set(voteKey(vote.ProposalId, voterAddr), bz)
+}
+
+func (k Keeper) GetVote(ctx sdk.Context, proposalID uint64, voter sdk.AccAddress) (Vote, bool) {
+	bz := ctx.KVStore(k.storeKey).Get(voteKey(proposalID, voter))
+	if bz == nil {
+		return Vote{}, false
+	}
+	var vote Vote
+	k.cdc.MustUnmarshal(bz, &vote)
+	return vote, true
+}
+
+func (k Keeper) IterateVotes(ctx sdk.Context, proposalID uint64) []Vote {
+	store := ctx.KVStore(k.storeKey)
+	iterator := types.KVStorePrefixIterator(store, votePrefixForProposal(proposalID))
+	defer iterator.Close()
+
+	var votes []Vote
+	for ; iterator.Valid(); iterator.Next() {
+		var vote Vote
+		k.cdc.MustUnmarshal(iterator.Value(), &vote)
+		votes = append(votes, vote)
+	}
+	return votes
 }

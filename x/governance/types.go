@@ -29,4 +29,5 @@ var (
 	KeyNextProposalID = []byte("next_proposal_id")
 	KeyProposalPrefix = []byte("proposal/")
 	KeyDepositPrefix  = []byte("deposit/") // deposit/{proposalID}/{depositorAddr}
+	KeyVotePrefix = []byte("vote/")
 )

@@ -3,12 +3,14 @@ package aether.governance.v1;
 
 import "gogoproto/gogo.proto";
 import "cosmos/msg/v1/msg.proto";
+import "aether/governance/v1/vote.proto";
 
 option go_package = "github.com/whoyoujoshin/aether/x/governance";
 
 service Msg {
   rpc SubmitProposal(MsgSubmitProposal) returns (MsgSubmitProposalResponse);
   rpc Deposit(MsgDeposit) returns (MsgDepositResponse);
+  rpc Vote(MsgVote) returns (MsgVoteResponse);
 }
 
 message MsgSubmitProposal {
@@ -33,3 +35,13 @@ message MsgDeposit {
 }
 
 message MsgDepositResponse {}
+
+message MsgVote {
+  option (cosmos.msg.v1.signer) = "voter";
+
+  uint64 proposal_id = 1;
+  string voter       = 2;
+  VoteOption option  = 3;
+}
+
+message MsgVoteResponse {}

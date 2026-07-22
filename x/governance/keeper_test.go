@@ -1,25 +1,26 @@
 package governance_test
 
 import (
-	"testing"
 	"errors"
+	"testing"
 
 	"cosmossdk.io/log"
+	"cosmossdk.io/math"
+	"cosmossdk.io/store/metrics"
 	storetypes "cosmossdk.io/store/types"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"cosmossdk.io/store"
-	"cosmossdk.io/store/metrics"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
-	"cosmossdk.io/math"
+
 	"github.com/whoyoujoshin/aether/x/governance"
 	"github.com/whoyoujoshin/aether/x/governance/testutil"
 )
 
-func setupKeeper(t *testing.T) (governance.Keeper, sdk.Context, *testutil.MockBankKeeper) {
+func setupKeeper(t *testing.T) (governance.Keeper, sdk.Context, *testutil.MockBankKeeper, *testutil.MockPowKeeper) {
 	t.Helper()
 
 	storeKey := storetypes.NewKVStoreKey(governance.StoreKey)
@@ -35,27 +36,34 @@ func setupKeeper(t *testing.T) (governance.Keeper, sdk.Context, *testutil.MockBa
 	cdc := codec.NewProtoCodec(interfaceRegistry)
 
 	mockBank := testutil.NewMockBankKeeper()
-	k := governance.NewKeeper(cdc, storeKey, mockBank)
+	mockPow := testutil.NewMockPowKeeper()
+	k := governance.NewKeeper(cdc, storeKey, mockBank, mockPow)
 
-	return k, ctx, mockBank
+	return k, ctx, mockBank, mockPow
+}
+
+func validProposerAddr(t *testing.T) (sdk.AccAddress, string) {
+	t.Helper()
+	addr := sdk.AccAddress("valid_proposer_address")
+	return addr, addr.String()
 }
 
 // --- Params ---
 
 func TestMinDeposit_RoundTrip(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	k.SetMinDeposit(ctx, 25_000_000)
 	require.Equal(t, int64(25_000_000), k.GetMinDeposit(ctx))
 }
 
 func TestDepositPeriod_RoundTrip(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	k.SetDepositPeriod(ctx, 14*24*60*60)
 	require.Equal(t, int64(14*24*60*60), k.GetDepositPeriod(ctx))
 }
 
 func TestVotingPeriod_RoundTrip(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	k.SetVotingPeriod(ctx, 7*24*60*60)
 	require.Equal(t, int64(7*24*60*60), k.GetVotingPeriod(ctx))
 }
@@ -63,13 +71,13 @@ func TestVotingPeriod_RoundTrip(t *testing.T) {
 // --- Proposal storage ---
 
 func TestGetProposal_NotFoundReturnsFalse(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	_, ok := k.GetProposal(ctx, 999)
 	require.False(t, ok)
 }
 
 func TestSetProposal_RoundTrip(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	proposal := governance.Proposal{
 		Id:           1,
 		Recipient:    "cosmos1testaddress",
@@ -88,7 +96,7 @@ func TestSetProposal_RoundTrip(t *testing.T) {
 }
 
 func TestIterateProposals_ReturnsAllStored(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	k.SetProposal(ctx, governance.Proposal{Id: 1, Recipient: "addr1"})
 	k.SetProposal(ctx, governance.Proposal{Id: 2, Recipient: "addr2"})
 	k.SetProposal(ctx, governance.Proposal{Id: 3, Recipient: "addr3"})
@@ -98,20 +106,22 @@ func TestIterateProposals_ReturnsAllStored(t *testing.T) {
 }
 
 func TestIterateProposals_EmptyStoreReturnsNoEntries(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	proposals := k.IterateProposals(ctx)
 	require.Empty(t, proposals)
 }
 
+// --- Deposit storage ---
+
 func TestGetDeposit_NotFoundReturnsFalse(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	depositor := sdk.AccAddress("no_deposit_here_______")
 	_, ok := k.GetDeposit(ctx, 1, depositor)
 	require.False(t, ok)
 }
 
 func TestSetDeposit_RoundTrip(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	depositor := sdk.AccAddress("deposit_roundtrip_test")
 
 	deposit := governance.Deposit{
@@ -127,7 +137,7 @@ func TestSetDeposit_RoundTrip(t *testing.T) {
 }
 
 func TestIterateDeposits_ReturnsOnlyThisProposalsDeposits(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	depositorA := sdk.AccAddress("deposit_iterate_a_____")
 	depositorB := sdk.AccAddress("deposit_iterate_b_____")
 
@@ -140,19 +150,15 @@ func TestIterateDeposits_ReturnsOnlyThisProposalsDeposits(t *testing.T) {
 }
 
 func TestIterateDeposits_EmptyForProposalWithNoDeposits(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	deposits := k.IterateDeposits(ctx, 999)
 	require.Empty(t, deposits)
 }
 
-func validProposerAddr(t *testing.T) (sdk.AccAddress, string) {
-	t.Helper()
-	addr := sdk.AccAddress("valid_proposer_address")
-	return addr, addr.String()
-}
+// --- SubmitProposal / Deposit message handlers ---
 
 func TestSubmitProposal_Success_CreatesProposalInDepositPeriod(t *testing.T) {
-	k, ctx, mockBank := setupKeeper(t)
+	k, ctx, mockBank, _ := setupKeeper(t)
 	srv := governance.NewMsgServerImpl(k)
 	k.SetMinDeposit(ctx, 25_000_000)
 	k.SetDepositPeriod(ctx, 14*24*60*60)
@@ -162,7 +168,7 @@ func TestSubmitProposal_Success_CreatesProposalInDepositPeriod(t *testing.T) {
 		Proposer:  proposerStr,
 		Recipient: proposerStr,
 		Amount:    "1000000",
-		Deposit:   "5000000", // below MinDeposit -- should stay in deposit period
+		Deposit:   "5000000",
 	}
 
 	resp, err := srv.SubmitProposal(ctx, msg)
@@ -179,7 +185,7 @@ func TestSubmitProposal_Success_CreatesProposalInDepositPeriod(t *testing.T) {
 }
 
 func TestSubmitProposal_MeetingMinDepositImmediatelyEntersVotingPeriod(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	srv := governance.NewMsgServerImpl(k)
 	k.SetMinDeposit(ctx, 25_000_000)
 	k.SetVotingPeriod(ctx, 7*24*60*60)
@@ -189,7 +195,7 @@ func TestSubmitProposal_MeetingMinDepositImmediatelyEntersVotingPeriod(t *testin
 		Proposer:  proposerStr,
 		Recipient: proposerStr,
 		Amount:    "1000000",
-		Deposit:   "25000000", // exactly meets MinDeposit
+		Deposit:   "25000000",
 	}
 
 	_, err := srv.SubmitProposal(ctx, msg)
@@ -203,7 +209,7 @@ func TestSubmitProposal_MeetingMinDepositImmediatelyEntersVotingPeriod(t *testin
 }
 
 func TestSubmitProposal_ZeroDepositStaysInDepositPeriodWithNoBankCall(t *testing.T) {
-	k, ctx, mockBank := setupKeeper(t)
+	k, ctx, mockBank, _ := setupKeeper(t)
 	srv := governance.NewMsgServerImpl(k)
 	k.SetMinDeposit(ctx, 25_000_000)
 
@@ -221,7 +227,7 @@ func TestSubmitProposal_ZeroDepositStaysInDepositPeriodWithNoBankCall(t *testing
 }
 
 func TestSubmitProposal_RejectsInvalidRecipient(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	srv := governance.NewMsgServerImpl(k)
 
 	_, proposerStr := validProposerAddr(t)
@@ -238,7 +244,7 @@ func TestSubmitProposal_RejectsInvalidRecipient(t *testing.T) {
 }
 
 func TestDeposit_AccumulatesAcrossMultipleContributors(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	srv := governance.NewMsgServerImpl(k)
 	k.SetMinDeposit(ctx, 25_000_000)
 
@@ -262,7 +268,7 @@ func TestDeposit_AccumulatesAcrossMultipleContributors(t *testing.T) {
 }
 
 func TestDeposit_RejectsContributionToNonexistentProposal(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	srv := governance.NewMsgServerImpl(k)
 
 	depositor := sdk.AccAddress("depositor_for_missing_")
@@ -274,7 +280,7 @@ func TestDeposit_RejectsContributionToNonexistentProposal(t *testing.T) {
 }
 
 func TestDeposit_RejectsContributionAfterVotingPeriodStarted(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 	srv := governance.NewMsgServerImpl(k)
 	k.SetMinDeposit(ctx, 25_000_000)
 
@@ -282,7 +288,7 @@ func TestDeposit_RejectsContributionAfterVotingPeriodStarted(t *testing.T) {
 	_, err := srv.SubmitProposal(ctx, &governance.MsgSubmitProposal{
 		Proposer: proposerStr, Recipient: proposerStr, Amount: "1000000", Deposit: "25000000",
 	})
-	require.NoError(t, err) // already in voting period after this
+	require.NoError(t, err)
 
 	lateDepositor := sdk.AccAddress("late_depositor________")
 	_, err = srv.Deposit(ctx, &governance.MsgDeposit{
@@ -292,8 +298,10 @@ func TestDeposit_RejectsContributionAfterVotingPeriodStarted(t *testing.T) {
 	require.True(t, errors.Is(err, governance.ErrDepositPeriodEnded))
 }
 
+// --- Deposit-period expiry ---
+
 func TestExpireProposal_BurnsAllAccumulatedDeposits(t *testing.T) {
-	k, ctx, mockBank := setupKeeper(t)
+	k, ctx, mockBank, _ := setupKeeper(t)
 
 	proposal := governance.Proposal{
 		Id:           1,
@@ -326,7 +334,7 @@ func TestExpireProposal_BurnsAllAccumulatedDeposits(t *testing.T) {
 }
 
 func TestExpireProposal_NoDepositsIsANoOpBurnButStillExpires(t *testing.T) {
-	k, ctx, mockBank := setupKeeper(t)
+	k, ctx, mockBank, _ := setupKeeper(t)
 
 	proposal := governance.Proposal{
 		Id:     1,
@@ -345,17 +353,17 @@ func TestExpireProposal_NoDepositsIsANoOpBurnButStillExpires(t *testing.T) {
 }
 
 func TestProcessProposalExpiry_ExpiresOnlyProposalsPastDepositEndTime(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
+	k, ctx, _, _ := setupKeeper(t)
 
 	now := ctx.BlockTime().Unix()
 
 	expiredProposal := governance.Proposal{
 		Id: 1, Status: governance.ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD,
-		DepositEndTime: now - 100, // already past
+		DepositEndTime: now - 100,
 	}
 	stillOpenProposal := governance.Proposal{
 		Id: 2, Status: governance.ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD,
-		DepositEndTime: now + 100, // not yet past
+		DepositEndTime: now + 100,
 	}
 	k.SetProposal(ctx, expiredProposal)
 	k.SetProposal(ctx, stillOpenProposal)
@@ -370,12 +378,12 @@ func TestProcessProposalExpiry_ExpiresOnlyProposalsPastDepositEndTime(t *testing
 }
 
 func TestProcessProposalExpiry_IgnoresProposalsNotInDepositPeriod(t *testing.T) {
-	k, ctx, mockBank := setupKeeper(t)
+	k, ctx, mockBank, _ := setupKeeper(t)
 
 	now := ctx.BlockTime().Unix()
 	votingProposal := governance.Proposal{
 		Id: 1, Status: governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD,
-		DepositEndTime: now - 100, // in the past, but irrelevant -- already past deposit period
+		DepositEndTime: now - 100,
 	}
 	k.SetProposal(ctx, votingProposal)
 
@@ -385,4 +393,141 @@ func TestProcessProposalExpiry_IgnoresProposalsNotInDepositPeriod(t *testing.T) 
 	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD, updated.Status,
 		"a proposal already in voting period must not be touched by expiry processing")
 	require.Empty(t, mockBank.BurnCalls)
+}
+
+// --- Vote storage ---
+
+func TestGetVote_NotFoundReturnsFalse(t *testing.T) {
+	k, ctx, _, _ := setupKeeper(t)
+	voter := sdk.AccAddress("no_vote_here__________")
+	_, ok := k.GetVote(ctx, 1, voter)
+	require.False(t, ok)
+}
+
+func TestSetVote_RoundTrip(t *testing.T) {
+	k, ctx, _, _ := setupKeeper(t)
+	voter := sdk.AccAddress("vote_roundtrip_voter__")
+
+	vote := governance.Vote{
+		ProposalId: 1,
+		Voter:      voter.String(),
+		Option:     governance.VoteOption_VOTE_OPTION_YES,
+		Weight:     "0.5",
+	}
+	k.SetVote(ctx, vote)
+
+	stored, ok := k.GetVote(ctx, 1, voter)
+	require.True(t, ok)
+	require.Equal(t, governance.VoteOption_VOTE_OPTION_YES, stored.Option)
+	require.Equal(t, "0.5", stored.Weight)
+}
+
+func TestSetVote_OverwritesPreviousVoteFromSameVoter(t *testing.T) {
+	k, ctx, _, _ := setupKeeper(t)
+	voter := sdk.AccAddress("changing_my_mind_voter")
+
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voter.String(), Option: governance.VoteOption_VOTE_OPTION_NO, Weight: "0.2"})
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voter.String(), Option: governance.VoteOption_VOTE_OPTION_YES, Weight: "0.2"})
+
+	stored, ok := k.GetVote(ctx, 1, voter)
+	require.True(t, ok)
+	require.Equal(t, governance.VoteOption_VOTE_OPTION_YES, stored.Option, "second vote should overwrite the first")
+}
+
+func TestIterateVotes_ReturnsOnlyThisProposalsVotes(t *testing.T) {
+	k, ctx, _, _ := setupKeeper(t)
+	voterA := sdk.AccAddress("iterate_votes_voter_a_")
+	voterB := sdk.AccAddress("iterate_votes_voter_b_")
+
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterA.String(), Option: governance.VoteOption_VOTE_OPTION_YES})
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterB.String(), Option: governance.VoteOption_VOTE_OPTION_NO})
+	k.SetVote(ctx, governance.Vote{ProposalId: 2, Voter: voterA.String(), Option: governance.VoteOption_VOTE_OPTION_ABSTAIN})
+
+	votes := k.IterateVotes(ctx, 1)
+	require.Len(t, votes, 2, "must not include proposal 2's vote")
+}
+
+// --- Vote message handler ---
+
+func TestVote_Success_LocksInCurrentTenureRatioAsWeight(t *testing.T) {
+	k, ctx, _, mockPow := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+
+	proposal := governance.Proposal{Id: 1, Status: governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD}
+	k.SetProposal(ctx, proposal)
+
+	voter := sdk.AccAddress("vote_handler_voter____")
+	mockPow.TenureRatios[voter.String()] = math.LegacyMustNewDecFromStr("0.75")
+
+	_, err := srv.Vote(ctx, &governance.MsgVote{
+		ProposalId: 1, Voter: voter.String(), Option: governance.VoteOption_VOTE_OPTION_YES,
+	})
+	require.NoError(t, err)
+
+	stored, ok := k.GetVote(ctx, 1, voter)
+	require.True(t, ok)
+	require.Equal(t, "0.750000000000000000", stored.Weight)
+}
+
+func TestVote_RejectsVoteOnNonexistentProposal(t *testing.T) {
+	k, ctx, _, _ := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+
+	voter := sdk.AccAddress("vote_for_missing_prop_")
+	_, err := srv.Vote(ctx, &governance.MsgVote{
+		ProposalId: 999, Voter: voter.String(), Option: governance.VoteOption_VOTE_OPTION_YES,
+	})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, governance.ErrProposalNotFound))
+}
+
+func TestVote_RejectsVoteWhenNotInVotingPeriod(t *testing.T) {
+	k, ctx, _, _ := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+
+	proposal := governance.Proposal{Id: 1, Status: governance.ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD}
+	k.SetProposal(ctx, proposal)
+
+	voter := sdk.AccAddress("vote_too_early_voter__")
+	_, err := srv.Vote(ctx, &governance.MsgVote{
+		ProposalId: 1, Voter: voter.String(), Option: governance.VoteOption_VOTE_OPTION_YES,
+	})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, governance.ErrNotInVotingPeriod))
+}
+
+func TestVote_RejectsUnspecifiedOption(t *testing.T) {
+	k, ctx, _, _ := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+
+	proposal := governance.Proposal{Id: 1, Status: governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD}
+	k.SetProposal(ctx, proposal)
+
+	voter := sdk.AccAddress("vote_unspecified______")
+	_, err := srv.Vote(ctx, &governance.MsgVote{
+		ProposalId: 1, Voter: voter.String(), Option: governance.VoteOption_VOTE_OPTION_UNSPECIFIED,
+	})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, governance.ErrInvalidVoteOption))
+}
+
+func TestVote_ChangingVoteOverwritesPreviousOne(t *testing.T) {
+	k, ctx, _, mockPow := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+
+	proposal := governance.Proposal{Id: 1, Status: governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD}
+	k.SetProposal(ctx, proposal)
+
+	voter := sdk.AccAddress("changes_mind_voter____")
+	mockPow.TenureRatios[voter.String()] = math.LegacyMustNewDecFromStr("0.3")
+
+	_, err := srv.Vote(ctx, &governance.MsgVote{ProposalId: 1, Voter: voter.String(), Option: governance.VoteOption_VOTE_OPTION_NO})
+	require.NoError(t, err)
+
+	_, err = srv.Vote(ctx, &governance.MsgVote{ProposalId: 1, Voter: voter.String(), Option: governance.VoteOption_VOTE_OPTION_NO_WITH_VETO})
+	require.NoError(t, err)
+
+	stored, ok := k.GetVote(ctx, 1, voter)
+	require.True(t, ok)
+	require.Equal(t, governance.VoteOption_VOTE_OPTION_NO_WITH_VETO, stored.Option, "later vote must overwrite the earlier one")
 }

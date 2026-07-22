@@ -29,7 +29,9 @@ func (AppModuleBasic) RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {}
 func (AppModuleBasic) RegisterInterfaces(registry cdctypes.InterfaceRegistry) {
 	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgSubmitProposal{})
 	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgDeposit{})
+	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgVote{})
 }
+
 func (AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {
 	genState := DefaultGenesisState()
 	bz, _ := json.Marshal(&genState)
