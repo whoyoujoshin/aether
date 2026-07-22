@@ -368,7 +368,7 @@ func TestProcessProposalExpiry_ExpiresOnlyProposalsPastDepositEndTime(t *testing
 	k.SetProposal(ctx, expiredProposal)
 	k.SetProposal(ctx, stillOpenProposal)
 
-	k.ProcessProposalExpiry(ctx)
+	k.ProcessProposalLifecycle(ctx)
 
 	updated1, _ := k.GetProposal(ctx, 1)
 	updated2, _ := k.GetProposal(ctx, 2)
@@ -387,7 +387,7 @@ func TestProcessProposalExpiry_IgnoresProposalsNotInDepositPeriod(t *testing.T) 
 	}
 	k.SetProposal(ctx, votingProposal)
 
-	k.ProcessProposalExpiry(ctx)
+	k.ProcessProposalLifecycle(ctx)
 
 	updated, _ := k.GetProposal(ctx, 1)
 	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD, updated.Status,
@@ -530,4 +530,230 @@ func TestVote_ChangingVoteOverwritesPreviousOne(t *testing.T) {
 	stored, ok := k.GetVote(ctx, 1, voter)
 	require.True(t, ok)
 	require.Equal(t, governance.VoteOption_VOTE_OPTION_NO_WITH_VETO, stored.Option, "later vote must overwrite the earlier one")
+}
+
+// --- TallyVotes ---
+
+func TestTallyVotes_ExcludesVotesFromNoLongerActiveValidators(t *testing.T) {
+	k, ctx, _, mockPow := setupKeeper(t)
+
+	activeVoter := sdk.AccAddress("still_active_voter____")
+	inactiveVoter := sdk.AccAddress("no_longer_active_voter")
+
+	mockPow.ActiveValidators[activeVoter.String()] = true
+	// inactiveVoter deliberately left out of ActiveValidators -- simulates
+	// falling out of Top-K or being slashed after casting their vote.
+
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: activeVoter.String(), Option: governance.VoteOption_VOTE_OPTION_YES, Weight: "1.0"})
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: inactiveVoter.String(), Option: governance.VoteOption_VOTE_OPTION_YES, Weight: "1.0"})
+
+	result := k.TallyVotes(ctx, 1)
+	require.Equal(t, int64(1), result.ValidVoterCount, "the no-longer-active voter must not count")
+	require.True(t, result.YesPower.Equal(math.LegacyOneDec()), "only the active voter's weight should be counted")
+}
+
+func TestTallyVotes_SumsWeightPerOption(t *testing.T) {
+	k, ctx, _, mockPow := setupKeeper(t)
+
+	voterYes := sdk.AccAddress("tally_voter_yes_______")
+	voterNo := sdk.AccAddress("tally_voter_no________")
+	voterAbstain := sdk.AccAddress("tally_voter_abstain___")
+	voterVeto := sdk.AccAddress("tally_voter_veto______")
+
+	for _, addr := range []sdk.AccAddress{voterYes, voterNo, voterAbstain, voterVeto} {
+		mockPow.ActiveValidators[addr.String()] = true
+	}
+
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterYes.String(), Option: governance.VoteOption_VOTE_OPTION_YES, Weight: "0.5"})
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterNo.String(), Option: governance.VoteOption_VOTE_OPTION_NO, Weight: "0.3"})
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterAbstain.String(), Option: governance.VoteOption_VOTE_OPTION_ABSTAIN, Weight: "0.2"})
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterVeto.String(), Option: governance.VoteOption_VOTE_OPTION_NO_WITH_VETO, Weight: "0.1"})
+
+	result := k.TallyVotes(ctx, 1)
+	require.Equal(t, int64(4), result.ValidVoterCount)
+	require.True(t, result.YesPower.Equal(math.LegacyMustNewDecFromStr("0.5")))
+	require.True(t, result.NoPower.Equal(math.LegacyMustNewDecFromStr("0.3")))
+	require.True(t, result.AbstainPower.Equal(math.LegacyMustNewDecFromStr("0.2")))
+	require.True(t, result.VetoPower.Equal(math.LegacyMustNewDecFromStr("0.1")))
+}
+
+// --- ResolveProposal ---
+
+func setupResolvableProposal(t *testing.T, k governance.Keeper, ctx sdk.Context) governance.Proposal {
+	t.Helper()
+	proposal := governance.Proposal{
+		Id:           1,
+		Recipient:    "cosmos1recipient",
+		Amount:       "1000000",
+		TotalDeposit: "25000000",
+		Status:       governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD,
+	}
+	k.SetProposal(ctx, proposal)
+	return proposal
+}
+
+func TestResolveProposal_FailsQuorumWithTooFewValidVoters(t *testing.T) {
+	k, ctx, mockBank, mockPow := setupKeeper(t)
+	proposal := setupResolvableProposal(t, k, ctx)
+
+	depositor := sdk.AccAddress("quorum_fail_depositor_")
+	k.SetDeposit(ctx, governance.Deposit{ProposalId: 1, Depositor: depositor.String(), Amount: "25000000"})
+
+	voter := sdk.AccAddress("only_one_voter________")
+	mockPow.ActiveValidators[voter.String()] = true
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voter.String(), Option: governance.VoteOption_VOTE_OPTION_YES, Weight: "1.0"})
+
+	err := k.ResolveProposal(ctx, proposal, 13) // needs 13, only 1 valid vote
+	require.NoError(t, err)
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_FAILED_QUORUM, updated.Status)
+
+	require.Len(t, mockBank.BurnCalls, 1, "deposit must be burned on quorum failure")
+}
+
+func TestResolveProposal_PassesAtExactlyTwoThirdsYes(t *testing.T) {
+	k, ctx, mockBank, mockPow := setupKeeper(t)
+	proposal := setupResolvableProposal(t, k, ctx)
+
+	depositor := sdk.AccAddress("pass_test_depositor___")
+	k.SetDeposit(ctx, governance.Deposit{ProposalId: 1, Depositor: depositor.String(), Amount: "25000000"})
+
+	voterYes := sdk.AccAddress("pass_test_voter_yes___")
+	voterNo := sdk.AccAddress("pass_test_voter_no____")
+	mockPow.ActiveValidators[voterYes.String()] = true
+	mockPow.ActiveValidators[voterNo.String()] = true
+
+	// Exactly 2/3 yes, 1/3 no -- must pass (>= 2/3, not > 2/3).
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterYes.String(), Option: governance.VoteOption_VOTE_OPTION_YES, Weight: "2"})
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterNo.String(), Option: governance.VoteOption_VOTE_OPTION_NO, Weight: "1"})
+
+	err := k.ResolveProposal(ctx, proposal, 2)
+	require.NoError(t, err)
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_PASSED, updated.Status,
+		"exactly 2/3 yes must pass, per the locked 'at least 2/3' rule")
+
+	require.Len(t, mockBank.SendCalls, 1, "deposit must be refunded on pass")
+}
+
+func TestResolveProposal_RejectsJustBelowTwoThirds(t *testing.T) {
+	k, ctx, mockBank, mockPow := setupKeeper(t)
+	proposal := setupResolvableProposal(t, k, ctx)
+
+	depositor := sdk.AccAddress("reject_test_depositor_")
+	k.SetDeposit(ctx, governance.Deposit{ProposalId: 1, Depositor: depositor.String(), Amount: "25000000"})
+
+	voterYes := sdk.AccAddress("reject_test_voter_yes_")
+	voterNo := sdk.AccAddress("reject_test_voter_no__")
+	mockPow.ActiveValidators[voterYes.String()] = true
+	mockPow.ActiveValidators[voterNo.String()] = true
+
+	// 60% yes, 40% no -- below 2/3, must reject.
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterYes.String(), Option: governance.VoteOption_VOTE_OPTION_YES, Weight: "0.6"})
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterNo.String(), Option: governance.VoteOption_VOTE_OPTION_NO, Weight: "0.4"})
+
+	err := k.ResolveProposal(ctx, proposal, 2)
+	require.NoError(t, err)
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_REJECTED, updated.Status)
+	require.Len(t, mockBank.BurnCalls, 1)
+}
+
+func TestResolveProposal_VetoRejectsRegardlessOfYesRatio(t *testing.T) {
+	k, ctx, mockBank, mockPow := setupKeeper(t)
+	proposal := setupResolvableProposal(t, k, ctx)
+
+	depositor := sdk.AccAddress("veto_test_depositor___")
+	k.SetDeposit(ctx, governance.Deposit{ProposalId: 1, Depositor: depositor.String(), Amount: "25000000"})
+
+	voterYes := sdk.AccAddress("veto_test_voter_yes___")
+	voterVeto := sdk.AccAddress("veto_test_voter_veto__")
+	mockPow.ActiveValidators[voterYes.String()] = true
+	mockPow.ActiveValidators[voterVeto.String()] = true
+
+	// 2/3 yes would otherwise pass, but 1/3 veto must override it.
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterYes.String(), Option: governance.VoteOption_VOTE_OPTION_YES, Weight: "2"})
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterVeto.String(), Option: governance.VoteOption_VOTE_OPTION_NO_WITH_VETO, Weight: "1"})
+
+	err := k.ResolveProposal(ctx, proposal, 2)
+	require.NoError(t, err)
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_REJECTED, updated.Status,
+		"veto at exactly 1/3 of votes cast must reject regardless of yes ratio")
+	require.Len(t, mockBank.BurnCalls, 1)
+}
+
+func TestResolveProposal_ExactTieFailsToPass(t *testing.T) {
+	k, ctx, _, mockPow := setupKeeper(t)
+	proposal := setupResolvableProposal(t, k, ctx)
+
+	depositor := sdk.AccAddress("tie_test_depositor____")
+	k.SetDeposit(ctx, governance.Deposit{ProposalId: 1, Depositor: depositor.String(), Amount: "25000000"})
+
+	voterYes := sdk.AccAddress("tie_test_voter_yes____")
+	voterNo := sdk.AccAddress("tie_test_voter_no_____")
+	mockPow.ActiveValidators[voterYes.String()] = true
+	mockPow.ActiveValidators[voterNo.String()] = true
+
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterYes.String(), Option: governance.VoteOption_VOTE_OPTION_YES, Weight: "1"})
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterNo.String(), Option: governance.VoteOption_VOTE_OPTION_NO, Weight: "1"})
+
+	err := k.ResolveProposal(ctx, proposal, 2)
+	require.NoError(t, err)
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_REJECTED, updated.Status,
+		"an exact 50/50 tie must fail to pass -- status quo wins")
+}
+
+func TestResolveProposal_AbstainDoesNotCountTowardThresholdRatio(t *testing.T) {
+	k, ctx, _, mockPow := setupKeeper(t)
+	proposal := setupResolvableProposal(t, k, ctx)
+
+	voterYes := sdk.AccAddress("abstain_test_voter_yes")
+	voterAbstain := sdk.AccAddress("abstain_test_voter_abs")
+	mockPow.ActiveValidators[voterYes.String()] = true
+	mockPow.ActiveValidators[voterAbstain.String()] = true
+
+	// Yes alone is 100% of non-abstain power -- should pass even though
+	// a large abstain vote was also cast (abstain must not dilute the ratio).
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterYes.String(), Option: governance.VoteOption_VOTE_OPTION_YES, Weight: "1"})
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterAbstain.String(), Option: governance.VoteOption_VOTE_OPTION_ABSTAIN, Weight: "10"})
+
+	err := k.ResolveProposal(ctx, proposal, 2)
+	require.NoError(t, err)
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_PASSED, updated.Status,
+		"abstain power must not count toward the yes/no ratio denominator")
+}
+
+// --- ProcessProposalLifecycle (combined pass) ---
+
+func TestProcessProposalLifecycle_ComputesQuorumDynamicallyFromTopKSize(t *testing.T) {
+	k, ctx, _, mockPow := setupKeeper(t)
+	mockPow.TopKSize = 21
+
+	proposal := governance.Proposal{
+		Id: 1, Status: governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD,
+		VotingEndTime: ctx.BlockTime().Unix() - 100, // already past
+	}
+	k.SetProposal(ctx, proposal)
+
+	k.ProcessProposalLifecycle(ctx)
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_FAILED_QUORUM, updated.Status,
+		"with TopKSize=21, quorum of 13 is required; zero votes must fail quorum")
 }

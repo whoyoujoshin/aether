@@ -87,6 +87,6 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 
 func (am AppModule) EndBlock(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	am.keeper.ProcessProposalExpiry(sdkCtx)
+	am.keeper.ProcessProposalLifecycle(sdkCtx) // 60% of 21 = 13 validators, per locked quorum spec
 	return nil
 }

@@ -17,4 +17,5 @@ type BankKeeper interface {
 type PowKeeper interface {
 	GetValidatorTenureRatio(ctx sdk.Context, minerAddr sdk.AccAddress) math.LegacyDec
 	IsActiveValidator(ctx sdk.Context, minerAddr sdk.AccAddress) bool
+	GetTopKSize(ctx sdk.Context) int64
 }

@@ -8,6 +8,11 @@ import (
 type MockPowKeeper struct {
 	TenureRatios     map[string]math.LegacyDec
 	ActiveValidators map[string]bool
+	TopKSize         int64
+}
+
+func (m *MockPowKeeper) GetTopKSize(ctx sdk.Context) int64 {
+	return m.TopKSize
 }
 
 func NewMockPowKeeper() *MockPowKeeper {

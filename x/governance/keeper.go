@@ -257,21 +257,44 @@ func (k Keeper) ExpireProposal(ctx sdk.Context, proposal Proposal) error {
 	return nil
 }
 
-// ProcessProposalExpiry checks every proposal still in its deposit
-// period and expires (burning deposit) any whose deposit window has
-// passed without meeting MinDeposit. Called from EndBlock every block.
-func (k Keeper) ProcessProposalExpiry(ctx sdk.Context) {
+// ProcessProposalLifecycle checks every proposal and advances it if its
+// current period has ended: deposit-period proposals that missed
+// MinDeposit are expired (deposit burned), and voting-period proposals
+// whose window has closed are tallied and resolved. Called from
+// EndBlock every block.
+func (k Keeper) ProcessProposalLifecycle(ctx sdk.Context) {
 	now := ctx.BlockTime().Unix()
+	quorumThreshold := k.computeQuorumThreshold(ctx)
+
 	for _, proposal := range k.IterateProposals(ctx) {
-		if proposal.Status != ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD {
-			continue
-		}
-		if now > proposal.DepositEndTime {
-			if err := k.ExpireProposal(ctx, proposal); err != nil {
-				k.Logger(ctx).Error("failed to expire proposal", "proposal_id", proposal.Id, "error", err)
+		switch proposal.Status {
+		case ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD:
+			if now > proposal.DepositEndTime {
+				if err := k.ExpireProposal(ctx, proposal); err != nil {
+					k.Logger(ctx).Error("failed to expire proposal", "proposal_id", proposal.Id, "error", err)
+				}
+			}
+		case ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD:
+			if now > proposal.VotingEndTime {
+				if err := k.ResolveProposal(ctx, proposal, quorumThreshold); err != nil {
+					k.Logger(ctx).Error("failed to resolve proposal", "proposal_id", proposal.Id, "error", err)
+				}
 			}
 		}
 	}
+}
+
+// computeQuorumThreshold returns ceil(0.6 * TopKSize) -- the minimum
+// number of validators who must cast a still-valid vote for a proposal's
+// resolution to count at all, per the locked 60% quorum spec. Computed
+// dynamically from x/pow's current TopKSize rather than hardcoded, so a
+// future governance-driven change to TopKSize doesn't silently leave
+// this quorum number stale.
+func (k Keeper) computeQuorumThreshold(ctx sdk.Context) int64 {
+	topK := k.powKeeper.GetTopKSize(ctx)
+	// Ceiling division: (topK*6 + 9) / 10 computes ceil(topK * 0.6)
+	// using only integer math, avoiding any float/Dec rounding subtlety.
+	return (topK*6 + 9) / 10
 }
 
 func (k Keeper) Logger(ctx sdk.Context) log.Logger {
@@ -322,4 +345,135 @@ func (k Keeper) IterateVotes(ctx sdk.Context, proposalID uint64) []Vote {
 		votes = append(votes, vote)
 	}
 	return votes
+}
+
+// TallyResult holds the intermediate computed values from tallying a
+// proposal's votes, useful both for resolution and for future querying
+// (e.g. showing users why a proposal passed/failed).
+type TallyResult struct {
+	ValidVoterCount int64
+	YesPower        math.LegacyDec
+	NoPower         math.LegacyDec
+	AbstainPower    math.LegacyDec
+	VetoPower       math.LegacyDec
+}
+
+// TallyVotes re-checks each voter's CURRENT active-validator status
+// (not their status at cast time) and sums tenure-weighted power by
+// option. A voter who has since fallen out of Top-K or been slashed is
+// excluded entirely -- not counted toward quorum, not counted toward
+// any option's power. This is deliberate: a validator slashed for
+// misbehavior after voting should not retain influence over the
+// outcome via a vote cast before their misbehavior was caught.
+func (k Keeper) TallyVotes(ctx sdk.Context, proposalID uint64) TallyResult {
+	result := TallyResult{
+		YesPower:     math.LegacyZeroDec(),
+		NoPower:      math.LegacyZeroDec(),
+		AbstainPower: math.LegacyZeroDec(),
+		VetoPower:    math.LegacyZeroDec(),
+	}
+
+	for _, vote := range k.IterateVotes(ctx, proposalID) {
+		voterAddr, err := sdk.AccAddressFromBech32(vote.Voter)
+		if err != nil {
+			continue
+		}
+		if !k.powKeeper.IsActiveValidator(ctx, voterAddr) {
+			continue
+		}
+
+		weight, err := math.LegacyNewDecFromStr(vote.Weight)
+if err != nil {
+	continue
+}
+
+		result.ValidVoterCount++
+		switch vote.Option {
+		case VoteOption_VOTE_OPTION_YES:
+			result.YesPower = result.YesPower.Add(weight)
+		case VoteOption_VOTE_OPTION_NO:
+			result.NoPower = result.NoPower.Add(weight)
+		case VoteOption_VOTE_OPTION_ABSTAIN:
+			result.AbstainPower = result.AbstainPower.Add(weight)
+		case VoteOption_VOTE_OPTION_NO_WITH_VETO:
+			result.VetoPower = result.VetoPower.Add(weight)
+		}
+	}
+
+	return result
+}
+
+// ResolveProposal tallies votes for a proposal whose voting period has
+// closed and transitions it to its final status:
+//   - FAILED_QUORUM if fewer than QuorumThreshold validators cast a
+//     still-valid vote (deposit burned)
+//   - REJECTED if veto power reaches at least 1/3 of non-abstain power
+//     cast, regardless of the yes/no ratio (deposit burned)
+//   - PASSED if yes power reaches at least 2/3 of non-abstain power
+//     cast (deposit refunded)
+//   - REJECTED otherwise, including an exact tie (deposit burned) --
+//     "ties fail to pass, status quo wins"
+func (k Keeper) ResolveProposal(ctx sdk.Context, proposal Proposal, quorumThreshold int64) error {
+	result := k.TallyVotes(ctx, proposal.Id)
+
+	if result.ValidVoterCount < quorumThreshold {
+		proposal.Status = ProposalStatus_PROPOSAL_STATUS_FAILED_QUORUM
+		k.SetProposal(ctx, proposal)
+		return k.burnDeposits(ctx, proposal.Id)
+	}
+
+	nonAbstainPower := result.YesPower.Add(result.NoPower).Add(result.VetoPower)
+
+	if !nonAbstainPower.IsZero() {
+		vetoRatio := result.VetoPower.Quo(nonAbstainPower)
+		if vetoRatio.GTE(math.LegacyNewDec(1).QuoInt64(3)) {
+			proposal.Status = ProposalStatus_PROPOSAL_STATUS_REJECTED
+			k.SetProposal(ctx, proposal)
+			return k.burnDeposits(ctx, proposal.Id)
+		}
+
+		yesRatio := result.YesPower.Quo(nonAbstainPower)
+		
+		if yesRatio.GTE(math.LegacyNewDec(2).QuoInt64(3)) {
+			proposal.Status = ProposalStatus_PROPOSAL_STATUS_PASSED
+			k.SetProposal(ctx, proposal)
+			return k.refundDeposits(ctx, proposal.Id)
+		}
+	}
+
+	proposal.Status = ProposalStatus_PROPOSAL_STATUS_REJECTED
+	k.SetProposal(ctx, proposal)
+	return k.burnDeposits(ctx, proposal.Id)
+}
+
+func (k Keeper) burnDeposits(ctx sdk.Context, proposalID uint64) error {
+	for _, d := range k.IterateDeposits(ctx, proposalID) {
+		amount, ok := math.NewIntFromString(d.Amount)
+		if !ok || !amount.IsPositive() {
+			continue
+		}
+		coins := sdk.NewCoins(sdk.NewCoin("aeth", amount))
+		if err := k.bankKeeper.BurnCoins(ctx, ModuleName, coins); err != nil {
+			return sdkerrors.Wrapf(err, "failed to burn deposit for proposal %d", proposalID)
+		}
+	}
+	return nil
+}
+
+func (k Keeper) refundDeposits(ctx sdk.Context, proposalID uint64) error {
+	for _, d := range k.IterateDeposits(ctx, proposalID) {
+		depositorAddr, err := sdk.AccAddressFromBech32(d.Depositor)
+		if err != nil {
+			continue
+		}
+		amount, ok := math.NewIntFromString(d.Amount)
+		if !ok || !amount.IsPositive() {
+			continue
+		}
+		coins := sdk.NewCoins(sdk.NewCoin("aeth", amount))
+		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, ModuleName, depositorAddr, coins); err != nil {
+			return sdkerrors.Wrapf(err, "failed to refund deposit for proposal %d", proposalID)
+		}
+	}
+	return nil
 }
