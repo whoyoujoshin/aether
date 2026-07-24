@@ -24,11 +24,12 @@ import (
 	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
 	cometencoding "github.com/cometbft/cometbft/crypto/encoding"
 	"cosmossdk.io/core/comet"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"github.com/whoyoujoshin/aether/x/treasury"
 )
 
 // setupKeeper builds a pow.Keeper against an in-memory store with a
 // MockBankKeeper, independent of the rest of the app.
+
 func setupKeeper(t *testing.T) (pow.Keeper, sdk.Context, *testutil.MockBankKeeper) {
 	t.Helper()
 
@@ -45,9 +46,32 @@ func setupKeeper(t *testing.T) (pow.Keeper, sdk.Context, *testutil.MockBankKeepe
 	cdc := codec.NewProtoCodec(interfaceRegistry)
 
 	mockBank := testutil.NewMockBankKeeper()
-	k := pow.NewKeeper(cdc, storeKey, log.NewNopLogger(), mockBank)
+	mockTreasury := testutil.NewMockTreasuryKeeper()
+	k := pow.NewKeeper(cdc, storeKey, log.NewNopLogger(), mockBank, mockTreasury)
 
 	return k, ctx, mockBank
+}
+
+func setupKeeperWithTreasury(t *testing.T) (pow.Keeper, sdk.Context, *testutil.MockBankKeeper, *testutil.MockTreasuryKeeper) {
+	t.Helper()
+
+	storeKey := storetypes.NewKVStoreKey(types.ModuleName)
+
+	db := dbm.NewMemDB()
+	stateStore := store.NewCommitMultiStore(db, log.NewNopLogger(), metrics.NewNoOpMetrics())
+	stateStore.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, db)
+	require.NoError(t, stateStore.LoadLatestVersion())
+
+	ctx := sdk.NewContext(stateStore, tmproto.Header{Time: time.Now()}, false, log.NewNopLogger())
+
+	interfaceRegistry := codectypes.NewInterfaceRegistry()
+	cdc := codec.NewProtoCodec(interfaceRegistry)
+
+	mockBank := testutil.NewMockBankKeeper()
+	mockTreasury := testutil.NewMockTreasuryKeeper()
+	k := pow.NewKeeper(cdc, storeKey, log.NewNopLogger(), mockBank, mockTreasury)
+
+	return k, ctx, mockBank, mockTreasury
 }
 
 func testHeader(difficulty, nonce uint64) pow.MiningHeader {
@@ -132,7 +156,7 @@ func TestDistributeBlockReward_SplitsCorrectly(t *testing.T) {
 	require.Equal(t, "4250000aeth", minerSend.Coins.String())
 
 	treasurySend := mockBank.SendCalls[1]
-	require.Equal(t, "fee_collector", treasurySend.RecipientModule)
+	require.Equal(t, "treasury", treasurySend.RecipientModule)
 	require.Equal(t, "750000aeth", treasurySend.Coins.String())
 }
 
@@ -1053,7 +1077,7 @@ func TestCreditTreasuryShareToValidators_TooSmallToDivideReturnsZero(t *testing.
 
 // --- DistributeBlockReward's 13/2 treasury split ---
 
-func TestDistributeBlockReward_NoActiveValidators_TreasuryGoesEntirelyToFeeCollector(t *testing.T) {
+func TestDistributeBlockReward_NoActiveValidators_TreasuryGoesEntirelyToTreasury(t *testing.T) {
 	k, ctx, mockBank := setupKeeper(t)
 	miner := sdk.AccAddress("no_validators_miner___")
 
@@ -1064,17 +1088,17 @@ func TestDistributeBlockReward_NoActiveValidators_TreasuryGoesEntirelyToFeeColle
 	require.NoError(t, err)
 
 	// Miner's own payout (non-validator, direct) + full 750000 treasury
-	// cut to fee collector -- 2 sends total, nothing escrowed for anyone.
+	// cut to x/treasury -- 2 sends total, nothing escrowed for anyone.
 	require.Len(t, mockBank.SendCalls, 2)
 
-	var feeCollectorSend *testutil.SendCall
+	var treasurySend *testutil.SendCall
 	for i := range mockBank.SendCalls {
-		if mockBank.SendCalls[i].RecipientModule == authtypes.FeeCollectorName {
-			feeCollectorSend = &mockBank.SendCalls[i]
+		if mockBank.SendCalls[i].RecipientModule == treasury.ModuleName {
+			treasurySend = &mockBank.SendCalls[i]
 		}
 	}
-	require.NotNil(t, feeCollectorSend)
-	require.Equal(t, "750000aeth", feeCollectorSend.Coins.String(), "entire treasury cut goes to fee collector when no validators exist")
+	require.NotNil(t, treasurySend)
+	require.Equal(t, "750000aeth", treasurySend.Coins.String(), "entire treasury cut goes to x/treasury when no validators exist")
 }
 
 func TestDistributeBlockReward_WithActiveValidators_SplitsThirteenTwo(t *testing.T) {
@@ -1092,17 +1116,17 @@ func TestDistributeBlockReward_WithActiveValidators_SplitsThirteenTwo(t *testing
 
 	// Treasury cut = 750000 (15% of 5,000,000).
 	// Validator share = 750000 * 13/15 = 650000, all to the single active validator.
-	// Fee collector share = 750000 - 650000 = 100000 (the 2/15 portion).
+	// Treasury-fund share = 750000 - 650000 = 100000 (the 2/15 portion).
 	require.True(t, k.GetEscrowBalance(ctx, validatorA).Equal(math.NewInt(650_000)))
 
-	var feeCollectorSend *testutil.SendCall
+	var treasurySend *testutil.SendCall
 	for i := range mockBank.SendCalls {
-		if mockBank.SendCalls[i].RecipientModule == authtypes.FeeCollectorName {
-			feeCollectorSend = &mockBank.SendCalls[i]
+		if mockBank.SendCalls[i].RecipientModule == treasury.ModuleName {
+			treasurySend = &mockBank.SendCalls[i]
 		}
 	}
-	require.NotNil(t, feeCollectorSend)
-	require.Equal(t, "100000aeth", feeCollectorSend.Coins.String())
+	require.NotNil(t, treasurySend)
+	require.Equal(t, "100000aeth", treasurySend.Coins.String())
 }
 
 func TestComputeValidatorUpdates_ExcludesPermanentlyBannedAddress(t *testing.T) {
@@ -1476,4 +1500,45 @@ func TestGetValidatorTenureRatio_DifferentValidatorsTrackedIndependently(t *test
 	require.True(t, earlyRatio.Equal(math.LegacyOneDec()), "early validator should be fully ramped (30 of 30 days)")
 	require.True(t, lateRatio.Sub(math.LegacyMustNewDecFromStr("0.5")).Abs().LT(math.LegacyMustNewDecFromStr("0.01")),
 		"late validator should be at ~0.5 (15 of 30 days), got %s", lateRatio.String())
+}
+
+func TestDistributeBlockReward_CallsFundTreasuryWithCorrectAmount(t *testing.T) {
+	k, ctx, _, mockTreasury := setupKeeperWithTreasury(t)
+	miner := sdk.AccAddress("fund_treasury_miner___")
+
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+
+	err := k.DistributeBlockReward(ctx, miner)
+	require.NoError(t, err)
+
+	require.Len(t, mockTreasury.FundCalls, 1)
+	require.True(t, mockTreasury.FundCalls[0].Amount.Equal(math.NewInt(750_000)),
+		"expected the full 750000 treasury cut (no active validators) to fund treasury")
+}
+
+func TestDistributeBlockReward_WithActiveValidators_FundsTreasuryWithRemainderOnly(t *testing.T) {
+	k, ctx, _, mockTreasury := setupKeeperWithTreasury(t)
+	miner := sdk.AccAddress("fund_treasury_miner_2_")
+	validatorA := sdk.AccAddress("fund_treasury_val_a___")
+
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+	k.SetActiveValidator(ctx, validatorA)
+
+	err := k.DistributeBlockReward(ctx, miner)
+	require.NoError(t, err)
+
+	require.Len(t, mockTreasury.FundCalls, 1)
+	require.True(t, mockTreasury.FundCalls[0].Amount.Equal(math.NewInt(100_000)),
+		"expected only the 2/15 remainder (100000) to fund treasury, not the full 750000 cut")
+}
+
+func TestDistributeBlockReward_ZeroTreasuryAmountDoesNotCallFundTreasury(t *testing.T) {
+	k, ctx, _, mockTreasury := setupKeeperWithTreasury(t)
+	miner := sdk.AccAddress("fund_treasury_zero____")
+
+	k.SetBlockReward(ctx, math.NewInt(0)) // zero reward -> DistributeBlockReward no-ops entirely
+
+	err := k.DistributeBlockReward(ctx, miner)
+	require.NoError(t, err)
+	require.Empty(t, mockTreasury.FundCalls)
 }

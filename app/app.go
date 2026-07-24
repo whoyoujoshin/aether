@@ -205,6 +205,7 @@ if err != nil {
 	maccPerms := map[string][]string{
 	authtypes.FeeCollectorName: nil,
 	pow.ModuleName:             {authtypes.Minter},
+	treasury.ModuleName:        nil,
 }
 
 app.AccountKeeper = authkeeper.NewAccountKeeper(
@@ -226,8 +227,8 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 	logger,
 )
 	// Initialize keepers
-	app.PowKeeper = pow.NewKeeper(appCodec, app.keys[pow.StoreKey], logger, app.BankKeeper)
 	app.TreasuryKeeper = treasury.NewKeeper(appCodec, app.keys[treasury.StoreKey])
+	app.PowKeeper = pow.NewKeeper(appCodec, app.keys[pow.StoreKey], logger, app.BankKeeper, app.TreasuryKeeper)
 	app.GovernanceKeeper = governance.NewKeeper(appCodec, app.keys[governance.StoreKey], app.BankKeeper, app.PowKeeper)
 
 	// Module manager

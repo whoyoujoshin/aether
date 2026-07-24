@@ -20,12 +20,17 @@ func NewKeeper(cdc codec.BinaryCodec, storeKey types.StoreKey) Keeper {
 }
 
 func (k Keeper) FundTreasury(ctx sdk.Context, amount math.Int) {
-	ctx.Logger().Info("Treasury funded", "amount", amount.String())
+	if amount.IsZero() {
+		return
+	}
+	current := k.GetTreasuryBalance(ctx)
+	newBalance := current.Add(amount)
+	ctx.Logger().Info("Treasury funded", "amount", amount.String(), "new_balance", newBalance.String())
 	if k.storeKey == nil {
 		return
 	}
 	store := ctx.KVStore(k.storeKey)
-	bz, _ := amount.MarshalAmino()
+	bz, _ := newBalance.MarshalAmino()
 	store.Set([]byte("treasury_balance"), bz)
 }
 

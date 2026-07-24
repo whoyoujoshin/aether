@@ -13,24 +13,31 @@ import (
 	storetypes "cosmossdk.io/store/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/whoyoujoshin/aether/x/pow/types"
 	cometcrypto "github.com/cometbft/cometbft/crypto"
 	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
 	cometencoding "github.com/cometbft/cometbft/crypto/encoding"
 	abci "github.com/cometbft/cometbft/abci/types"
 	cryptoproto "github.com/cometbft/cometbft/proto/tendermint/crypto"
+	"github.com/whoyoujoshin/aether/x/treasury"
 )
 
 type Keeper struct {
-	cdc      codec.BinaryCodec
-	storeKey storetypes.StoreKey
-	logger   log.Logger
-	bankKeeper types.BankKeeper
+	cdc            codec.BinaryCodec
+	storeKey       storetypes.StoreKey
+	logger         log.Logger
+	bankKeeper     types.BankKeeper
+	treasuryKeeper types.TreasuryKeeper
 }
 
-func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, logger log.Logger, bankKeeper types.BankKeeper,) Keeper {
-	return Keeper{cdc: cdc, storeKey: storeKey, logger: logger, bankKeeper: bankKeeper,}
+func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, logger log.Logger, bankKeeper types.BankKeeper, treasuryKeeper types.TreasuryKeeper) Keeper {
+	return Keeper{
+		cdc:            cdc,
+		storeKey:       storeKey,
+		logger:         logger,
+		bankKeeper:     bankKeeper,
+		treasuryKeeper: treasuryKeeper,
+	}
 }
 
 // --- Difficulty ---
@@ -384,20 +391,26 @@ func (k Keeper) DistributeBlockReward(ctx sdk.Context, miner sdk.AccAddress) err
 	validatorShareTotal := treasuryCut.MulRaw(13).QuoRaw(15)
 	actuallyCredited := k.CreditTreasuryShareToValidators(ctx, validatorShareTotal)
 	feeCollectorAmount := treasuryCut.Sub(actuallyCredited)
-	if !feeCollectorAmount.IsZero() {
-		feeCollectorCoins := sdk.NewCoins(sdk.NewCoin("aeth", feeCollectorAmount))
-		if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, ModuleName, authtypes.FeeCollectorName, feeCollectorCoins); err != nil {
-			return err
-		}
+if !feeCollectorAmount.IsZero() {
+	feeCollectorCoins := sdk.NewCoins(sdk.NewCoin("aeth", feeCollectorAmount))
+	// Redirected from the fee collector (which had no real consumer --
+	// no staking module distributes from it, nothing else spends it) to
+	// x/treasury instead, giving governance's treasury-spend proposals
+	// genuine, honest inflow to work with. Does not touch the validator
+	// incentive split above (still exactly 13/15 to active validators).
+	if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, ModuleName, treasury.ModuleName, feeCollectorCoins); err != nil {
+		return err
 	}
+	k.treasuryKeeper.FundTreasury(ctx, feeCollectorAmount)
+}
 	k.logger.Info("block reward distributed",
-		"miner", miner.String(),
-		"miner_amount", minerAmount.String(),
-		"treasury_cut", treasuryCut.String(),
-		"validator_share", actuallyCredited.String(),
-		"fee_collector_amount", feeCollectorAmount.String(),
-		"escrowed", k.IsActiveValidator(ctx, miner),
-	)
+	"miner", miner.String(),
+	"miner_amount", minerAmount.String(),
+	"treasury_cut", treasuryCut.String(),
+	"validator_share", actuallyCredited.String(),
+	"treasury_fund_amount", feeCollectorAmount.String(),
+	"escrowed", k.IsActiveValidator(ctx, miner),
+)
 	return nil
 }
 
