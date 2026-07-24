@@ -433,12 +433,23 @@ func (k Keeper) ResolveProposal(ctx sdk.Context, proposal Proposal, quorumThresh
 		}
 
 		yesRatio := result.YesPower.Quo(nonAbstainPower)
-		
-		if yesRatio.GTE(math.LegacyNewDec(2).QuoInt64(3)) {
-			proposal.Status = ProposalStatus_PROPOSAL_STATUS_PASSED
-			k.SetProposal(ctx, proposal)
-			return k.refundDeposits(ctx, proposal.Id)
-		}
+if yesRatio.GTE(math.LegacyNewDec(2).QuoInt64(3)) {
+	proposal.Status = ProposalStatus_PROPOSAL_STATUS_PASSED
+	k.SetProposal(ctx, proposal)
+
+	if err := k.executeTreasurySpend(ctx, proposal); err != nil {
+		// The proposal has already genuinely passed by community vote --
+		// a failure here (e.g. treasury genuinely lacks sufficient funds)
+		// is an execution problem, not a reason to silently pretend the
+		// vote didn't happen. Logged, not swallowed; the proposal stays
+		// marked PASSED (the vote outcome is a fact regardless of
+		// execution success) and deposit still refunds, since the
+		// depositors did nothing wrong.
+		k.Logger(ctx).Error("proposal passed but treasury execution failed", "proposal_id", proposal.Id, "error", err)
+	}
+
+	return k.refundDeposits(ctx, proposal.Id)
+}
 	}
 
 	proposal.Status = ProposalStatus_PROPOSAL_STATUS_REJECTED
@@ -476,4 +487,23 @@ func (k Keeper) refundDeposits(ctx sdk.Context, proposalID uint64) error {
 		}
 	}
 	return nil
+}
+
+// executeTreasurySpend transfers a passed proposal's specified amount
+// from the governance module account to its named recipient. This is
+// v1 scope per the locked design -- treasury-spend only; parameter
+// changes are an explicitly deferred v1.1 fast-follow.
+func (k Keeper) executeTreasurySpend(ctx sdk.Context, proposal Proposal) error {
+	recipientAddr, err := sdk.AccAddressFromBech32(proposal.Recipient)
+	if err != nil {
+		return sdkerrors.Wrapf(err, "invalid recipient address on passed proposal %d", proposal.Id)
+	}
+
+	amount, ok := math.NewIntFromString(proposal.Amount)
+	if !ok || !amount.IsPositive() {
+		return sdkerrors.Wrapf(ErrInvalidDeposit, "invalid or non-positive amount %q on passed proposal %d", proposal.Amount, proposal.Id)
+	}
+
+	coins := sdk.NewCoins(sdk.NewCoin("aeth", amount))
+	return k.bankKeeper.SendCoinsFromModuleToAccount(ctx, ModuleName, recipientAddr, coins)
 }

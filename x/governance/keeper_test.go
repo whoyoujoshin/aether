@@ -757,3 +757,111 @@ func TestProcessProposalLifecycle_ComputesQuorumDynamicallyFromTopKSize(t *testi
 	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_FAILED_QUORUM, updated.Status,
 		"with TopKSize=21, quorum of 13 is required; zero votes must fail quorum")
 }
+
+// --- Treasury-spend execution (component 6) ---
+
+func TestResolveProposal_PassedProposalExecutesTreasurySpend(t *testing.T) {
+	k, ctx, mockBank, mockPow := setupKeeper(t)
+
+	recipient := sdk.AccAddress("treasury_spend_recipient")
+	proposal := governance.Proposal{
+		Id:           1,
+		Recipient:    recipient.String(),
+		Amount:       "10000000",
+		TotalDeposit: "25000000",
+		Status:       governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD,
+	}
+	k.SetProposal(ctx, proposal)
+
+	depositor := sdk.AccAddress("treasury_spend_depositor")
+	k.SetDeposit(ctx, governance.Deposit{ProposalId: 1, Depositor: depositor.String(), Amount: "25000000"})
+
+	voterYes := sdk.AccAddress("treasury_spend_voter_yes")
+	mockPow.ActiveValidators[voterYes.String()] = true
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterYes.String(), Option: governance.VoteOption_VOTE_OPTION_YES, Weight: "1"})
+
+	err := k.ResolveProposal(ctx, proposal, 1)
+	require.NoError(t, err)
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_PASSED, updated.Status)
+
+	var sawTreasurySpend, sawRefund bool
+	for _, c := range mockBank.SendCalls {
+		if c.SenderModule == governance.ModuleName && c.RecipientAddr.Equals(recipient) {
+			sawTreasurySpend = true
+			require.Equal(t, "10000000aeth", c.Coins.String())
+		}
+		if c.RecipientAddr.Equals(depositor) {
+			sawRefund = true
+		}
+	}
+	require.True(t, sawTreasurySpend, "expected the treasury-spend transfer to the proposal's recipient")
+	require.True(t, sawRefund, "expected the deposit refund to still happen alongside execution")
+}
+
+func TestResolveProposal_RejectedProposalNeverExecutesSpend(t *testing.T) {
+	k, ctx, mockBank, mockPow := setupKeeper(t)
+
+	recipient := sdk.AccAddress("rejected_spend_recipient")
+	proposal := governance.Proposal{
+		Id:           1,
+		Recipient:    recipient.String(),
+		Amount:       "10000000",
+		TotalDeposit: "25000000",
+		Status:       governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD,
+	}
+	k.SetProposal(ctx, proposal)
+
+	voterNo := sdk.AccAddress("rejected_spend_voter_no")
+	mockPow.ActiveValidators[voterNo.String()] = true
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterNo.String(), Option: governance.VoteOption_VOTE_OPTION_NO, Weight: "1"})
+
+	err := k.ResolveProposal(ctx, proposal, 1)
+	require.NoError(t, err)
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_REJECTED, updated.Status)
+
+	for _, c := range mockBank.SendCalls {
+		require.False(t, c.RecipientAddr.Equals(recipient), "a rejected proposal must never execute its treasury spend")
+	}
+}
+
+func TestResolveProposal_ExecutionFailureDoesNotBlockDepositRefund(t *testing.T) {
+	k, ctx, mockBank, mockPow := setupKeeper(t)
+
+	proposal := governance.Proposal{
+		Id:           1,
+		Recipient:    "not-a-valid-bech32-address", // will fail executeTreasurySpend
+		Amount:       "10000000",
+		TotalDeposit: "25000000",
+		Status:       governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD,
+	}
+	k.SetProposal(ctx, proposal)
+
+	depositor := sdk.AccAddress("exec_failure_depositor")
+	k.SetDeposit(ctx, governance.Deposit{ProposalId: 1, Depositor: depositor.String(), Amount: "25000000"})
+
+	voterYes := sdk.AccAddress("exec_failure_voter_yes")
+	mockPow.ActiveValidators[voterYes.String()] = true
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterYes.String(), Option: governance.VoteOption_VOTE_OPTION_YES, Weight: "1"})
+
+	err := k.ResolveProposal(ctx, proposal, 1)
+	require.NoError(t, err, "ResolveProposal itself must not error just because execution failed internally")
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_PASSED, updated.Status,
+		"the vote outcome is a fact regardless of execution success")
+
+	var sawRefund bool
+	for _, c := range mockBank.SendCalls {
+		if c.RecipientAddr.Equals(depositor) {
+			sawRefund = true
+		}
+	}
+	require.True(t, sawRefund, "deposit must still refund even when treasury execution fails")
+}
