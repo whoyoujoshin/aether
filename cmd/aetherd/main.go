@@ -21,9 +21,11 @@ import (
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
 	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
 	powcli "github.com/whoyoujoshin/aether/x/pow/client/cli"
+	governancecli "github.com/whoyoujoshin/aether/x/governance/client/cli"
 	"github.com/whoyoujoshin/aether/app"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/cosmos-sdk/client/rpc"
+	
 )
 
 var encodingConfig = app.MakeEncodingConfig()
@@ -74,6 +76,7 @@ txCmd := &cobra.Command{
 		authcmd.GetSignCommand(),
 		authcmd.GetBroadcastCommand(),
 		powcli.NewTxCmd(),
+		governancecli.NewTxCmd(),
 	)
 	rootCmd.AddCommand(txCmd)
 	
