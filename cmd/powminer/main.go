@@ -17,7 +17,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -30,7 +29,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
+	"golang.org/x/crypto/scrypt"
 	"github.com/whoyoujoshin/aether/x/pow"
 )
 
@@ -65,18 +64,30 @@ func headerToBytes(h header) []byte {
 	return buf
 }
 
+const (
+	scryptN = 1024
+	scryptR = 1
+	scryptP = 1
+)
+
 func verify(h header) bool {
 	if h.Difficulty == 0 {
 		return false
 	}
 	data := headerToBytes(h)
-	hash := sha256.Sum256(data)
+
+	// Matches x/pow's keeper: scrypt(header, header, N, r, p, 32),
+	// Litecoin's real parameters, not a lighter devnet-only variant.
+	hash, err := scrypt.Key(data, data, scryptN, scryptR, scryptP, 32)
+	if err != nil {
+		return false
+	}
 
 	maxTarget := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
 	difficulty := new(big.Int).SetUint64(h.Difficulty)
 	target := new(big.Int).Div(maxTarget, difficulty)
 
-	return new(big.Int).SetBytes(hash[:]).Cmp(target) < 0
+	return new(big.Int).SetBytes(hash).Cmp(target) < 0
 }
 
 func main() {

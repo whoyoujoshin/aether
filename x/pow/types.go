@@ -41,10 +41,16 @@ func DefaultGenesisState() GenesisState {
 	return GenesisState{
 		Params: Params{
 			TargetBlockTime:   60,
-			InitialDifficulty: 1 << 20,
-			MinDifficulty:     1 << 10,
-			MaxDifficulty:     1 << 40,
-			Difficulty:        1 << 20,
+			InitialDifficulty: 285_960, // Retuned for real Scrypt (Litecoin params: N=1024, r=1, p=1),
+                             // measured at ~4,767 hashes/sec single-threaded -- averages
+                             // ~60s per nonce, matching TargetBlockTime. The old 1<<20
+                             // value was tuned against SHA-256's raw speed and meant
+                             // something entirely different under Scrypt's memory-hardness.
+			MinDifficulty:     1_024,    // ~0.2s average at measured throughput -- an easy floor,
+                             // giving AdjustDifficulty real room to move down.
+			MaxDifficulty:     100_000_000, // ~5.8 hours average at measured throughput -- generous
+                                // headroom for faster hardware / more miners joining later.
+			Difficulty:        285_960,     // Starts equal to InitialDifficulty.
 			BlockReward:       5_000_000, // 5,000,000 aeth (whole-unit denom, no sub-unit scaling)
 			TailEmission:      false,
 			EpochLength:       1440, // ~24h at 60s target blocks

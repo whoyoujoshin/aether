@@ -1,7 +1,6 @@
 package pow
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"math/big"
 	"bytes"
@@ -20,6 +19,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	cryptoproto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	"github.com/whoyoujoshin/aether/x/treasury"
+	"golang.org/x/crypto/scrypt"
 )
 
 type Keeper struct {
@@ -317,13 +317,33 @@ func (k Keeper) Heartbeat(ctx sdk.Context) {
 
 // --- PoW logic (placeholder verification — see note below) ---
 
+// ScryptN, ScryptR, ScryptP are Litecoin's real, battle-tested Scrypt
+// parameters (N=1024, r=1, p=1) -- chosen deliberately over lighter
+// devnet-only values, since using different parameters for testing
+// versus production would mean redoing all difficulty tuning twice,
+// and matching Litecoin's real parameters keeps the door open for
+// genuine LTC-family AuxPoW compatibility later (see the locked
+// consensus design decision: Scrypt-native, AuxPoW targeting LTC/DOGE).
+const (
+	ScryptN = 1024
+	ScryptR = 1
+	ScryptP = 1
+)
+
 func (k Keeper) VerifyMiningHeader(ctx sdk.Context, header MiningHeader) bool {
 	if header.Difficulty == 0 {
 		return false
 	}
 
 	data := headerToBytes(header)
-	hash := sha256.Sum256(data)
+
+	// Matches Litecoin's convention: the header itself serves as both
+	// the scrypt password and salt (scrypt(header, header, N, r, p, 32)).
+	hash, err := scrypt.Key(data, data, ScryptN, ScryptR, ScryptP, 32)
+	if err != nil {
+		k.logger.Error("scrypt hashing failed during header verification", "error", err)
+		return false
+	}
 
 	// maxTarget is the easiest possible target (difficulty == 1). Higher
 	// difficulty divides it into a smaller (harder) target, matching the
@@ -333,7 +353,7 @@ func (k Keeper) VerifyMiningHeader(ctx sdk.Context, header MiningHeader) bool {
 	difficulty := new(big.Int).SetUint64(header.Difficulty)
 	target := new(big.Int).Div(maxTarget, difficulty)
 
-	return new(big.Int).SetBytes(hash[:]).Cmp(target) < 0
+	return new(big.Int).SetBytes(hash).Cmp(target) < 0
 }
 
 func (k Keeper) AdjustDifficulty(ctx sdk.Context) math.Int {

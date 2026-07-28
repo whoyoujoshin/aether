@@ -84,6 +84,7 @@ func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.
 	am.keeper.SetEpochLength(ctx, genState.Params.EpochLength)
 	am.keeper.SetTopKSize(ctx, genState.Params.TopKSize)
 	am.keeper.SetBondCooldown(ctx, genState.Params.BondCooldown)
+	am.keeper.SetRecencyWindowK(ctx, genState.Params.RecencyWindowK)
 
 	return []abci.ValidatorUpdate{
 		{
