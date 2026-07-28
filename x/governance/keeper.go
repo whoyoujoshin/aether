@@ -11,18 +11,20 @@ import (
 )
 
 type Keeper struct {
-	cdc        codec.BinaryCodec
-	storeKey   types.StoreKey
-	bankKeeper BankKeeper
-	powKeeper  PowKeeper
+	cdc            codec.BinaryCodec
+	storeKey       types.StoreKey
+	bankKeeper     BankKeeper
+	powKeeper      PowKeeper
+	treasuryKeeper TreasuryKeeper
 }
 
-func NewKeeper(cdc codec.BinaryCodec, storeKey types.StoreKey, bankKeeper BankKeeper, powKeeper PowKeeper) Keeper {
+func NewKeeper(cdc codec.BinaryCodec, storeKey types.StoreKey, bankKeeper BankKeeper, powKeeper PowKeeper, treasuryKeeper TreasuryKeeper) Keeper {
 	return Keeper{
-		cdc:        cdc,
-		storeKey:   storeKey,
-		bankKeeper: bankKeeper,
-		powKeeper:  powKeeper,
+		cdc:            cdc,
+		storeKey:       storeKey,
+		bankKeeper:     bankKeeper,
+		powKeeper:      powKeeper,
+		treasuryKeeper: treasuryKeeper,
 	}
 }
 
@@ -504,6 +506,11 @@ func (k Keeper) executeTreasurySpend(ctx sdk.Context, proposal Proposal) error {
 		return sdkerrors.Wrapf(ErrInvalidDeposit, "invalid or non-positive amount %q on passed proposal %d", proposal.Amount, proposal.Id)
 	}
 
-	coins := sdk.NewCoins(sdk.NewCoin("aeth", amount))
-	return k.bankKeeper.SendCoinsFromModuleToAccount(ctx, ModuleName, recipientAddr, coins)
+	// Routes through x/treasury's own Spend method rather than moving
+	// coins directly from governance's own module account -- fixes a bug
+	// found live: governance previously paid execution out of the same
+	// pool holding pending deposits, which could leave insufficient
+	// funds for an unrelated deposit refund. Treasury is the single
+	// source of truth for spendable funds; governance only authorizes.
+	return k.treasuryKeeper.Spend(ctx, recipientAddr, amount)
 }

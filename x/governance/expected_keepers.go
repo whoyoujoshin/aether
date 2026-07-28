@@ -19,3 +19,7 @@ type PowKeeper interface {
 	IsActiveValidator(ctx sdk.Context, minerAddr sdk.AccAddress) bool
 	GetTopKSize(ctx sdk.Context) int64
 }
+
+type TreasuryKeeper interface {
+	Spend(ctx sdk.Context, recipient sdk.AccAddress, amount math.Int) error
+}
