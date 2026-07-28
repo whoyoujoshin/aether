@@ -1,0 +1,26 @@
+syntax = "proto3";
+package aether.pow.v1;
+
+option go_package = "github.com/whoyoujoshin/aether/x/pow";
+
+// MerkleBranch matches the real Bitcoin/Litecoin/Dogecoin AuxPoW
+// convention exactly: a plain integer index whose bits (LSB first,
+// shifted right after each level) determine left/right ordering at
+// each level of the tree -- not a separate side-mask field. See
+// auxpow-binary-format-reference.md, section 3.
+message MerkleBranch {
+  repeated bytes hashes = 1; // sibling hashes, leaf to root
+  uint32 index = 2;          // bit-path index; NOT a free choice by the
+                              // miner in the case of the chain branch --
+                              // see AuxPowData.chain_nonce below
+}
+
+message AuxPowData {
+  bytes parent_header = 1;          // 80-byte serialized parent (Litecoin/Dogecoin) header
+  bytes coinbase_tx = 2;             // full serialized parent coinbase transaction
+  MerkleBranch coinbase_branch = 3;  // proves coinbase_tx is in the parent block's merkle tree
+  MerkleBranch chain_branch = 4;     // proves Aether's block hash is committed inside the coinbase
+  uint32 chain_nonce = 5;            // the nNonce embedded in the coinbase's merge-mining trailer;
+                                      // required to independently recompute and verify
+                                      // chain_branch.index via getExpectedIndex (see reference doc)
+}

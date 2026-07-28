@@ -2,7 +2,6 @@ package pow
 
 import (
 	"encoding/json"
-	"math/big"
 	"bytes"
 	"sort"
 	"time"
@@ -345,15 +344,7 @@ func (k Keeper) VerifyMiningHeader(ctx sdk.Context, header MiningHeader) bool {
 		return false
 	}
 
-	// maxTarget is the easiest possible target (difficulty == 1). Higher
-	// difficulty divides it into a smaller (harder) target, matching the
-	// multiplicative retargeting used in AdjustDifficulty and the large
-	// difficulty values used in Params/DefaultGenesisState.
-	maxTarget := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
-	difficulty := new(big.Int).SetUint64(header.Difficulty)
-	target := new(big.Int).Div(maxTarget, difficulty)
-
-	return new(big.Int).SetBytes(hash).Cmp(target) < 0
+	return meetsdifficulty(hash, header.Difficulty)
 }
 
 func (k Keeper) AdjustDifficulty(ctx sdk.Context) math.Int {
