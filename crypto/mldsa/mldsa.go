@@ -7,8 +7,9 @@ import (
 
 	"github.com/cloudflare/circl/sign/mldsa/mldsa44"
 	"github.com/cosmos/cosmos-sdk/crypto/types"
-	"github.com/cometbft/cometbft/crypto/tmhash"
 	sdkerrors "cosmossdk.io/errors"
+	"github.com/cosmos/cosmos-sdk/types/address"
+	"github.com/cosmos/gogoproto/proto"
 )
 
 const (
@@ -43,8 +44,22 @@ var _ types.PrivKey = &PrivKey{}
 // needs its own deliberate confirmation before being relied upon for
 // real account addresses, tracked as an open question for this
 // component).
+// Address derives an account address per ADR-028 -- the SDK's own
+// documented, recommended scheme for any new public key type. Mixing
+// the proto type name into the hash (not just the raw key bytes)
+// specifically protects against a "switch table attack" where two
+// different key types could otherwise produce colliding addresses.
+// Confirmed via primary source (the real ADR-028 doc and the SDK's
+// address package) before implementing, rather than reusing ed25519's
+// own address scheme -- which the SDK's own ed25519 implementation
+// explicitly warns is NOT valid for real account use outside a
+// consensus-key context. Produces a 32-byte address (ADR-028's base
+// length), not the older 20-byte scheme -- deliberate, since ML-DSA
+// is mandatory from genesis with no classical fallback, so this
+// becomes the chain's only account address format, not one competing
+// with a legacy scheme.
 func (pk *PubKey) Address() types.Address {
-	return types.Address(tmhash.SumTruncated(pk.Key))
+	return types.Address(address.Hash(proto.MessageName(pk), pk.Key))
 }
 
 func (pk *PubKey) Bytes() []byte {

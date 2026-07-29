@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
+	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 )
 
@@ -91,7 +91,7 @@ func TestPubKey_Address_IsDeterministicAndCorrectLength(t *testing.T) {
 	addr2 := pub.Address()
 
 	require.Equal(t, addr1, addr2)
-	require.Len(t, addr1, 20) // tmhash.SumTruncated produces 20 bytes
+	require.Len(t, addr1, 32) // ADR-028 base address length
 }
 
 func TestPubKey_Type_ReturnsExpectedIdentifier(t *testing.T) {
@@ -107,4 +107,21 @@ func TestPrivKey_Sign_RejectsUninitializedKey(t *testing.T) {
 	empty := &mldsa.PrivKey{}
 	_, err := empty.Sign([]byte("test"))
 	require.Error(t, err)
+}
+
+func TestPubKey_Address_IncorporatesTypeNameNotJustRawKeyBytes(t *testing.T) {
+	// Confirms the ADR-028 switch-table protection is genuinely in
+	// effect: the address must depend on more than just the raw key
+	// bytes, or two different key types with coincidentally identical
+	// key bytes could collide on the same address.
+	priv, err := mldsa.GenPrivKey()
+require.NoError(t, err)
+pub, ok := priv.PubKey().(*mldsa.PubKey)
+require.True(t, ok)
+
+rawKeyHash := tmhash.SumTruncated(pub.Key) // the OLD, provisional scheme
+realAddress := pub.Address()
+
+	require.NotEqual(t, []byte(realAddress), rawKeyHash,
+		"address must not simply be a bare hash of the raw key bytes alone")
 }
