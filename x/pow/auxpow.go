@@ -212,15 +212,19 @@ func CheckAuxPow(data *AuxPowData, currentDifficulty uint64) error {
 
 	// 3. Aether's own block hash must genuinely be committed via the
 	// chain merkle branch.
-	reconstructedChainRoot := checkMerkleBranch(auxBlockHash, data.ChainBranch.Hashes, data.ChainBranch.Index)
-	reversedChainRoot := make([]byte, len(reconstructedChainRoot))
-	copy(reversedChainRoot, reconstructedChainRoot)
-	for i, j := 0, len(reversedChainRoot)-1; i < j; i, j = i+1, j-1 {
-		reversedChainRoot[i], reversedChainRoot[j] = reversedChainRoot[j], reversedChainRoot[i]
-	}
-	if !bytes.Equal(reversedChainRoot, commitment.RootHash) {
-		return errors.New("chain merkle branch does not reconstruct the committed aux block hash")
-	}
+	// extractCommitment already reverses the embedded root hash back out
+// of wire order into internal order -- commitment.RootHash is
+// directly comparable to checkMerkleBranch's output with no further
+// reversal needed. (Found via live testing: an earlier version of
+// this function reversed a second time here, which only appeared
+// correct because the unit test's own construction helper had a
+// separate, compensating double-reversal bug that canceled it out --
+// exactly the kind of bug only an independently-built live test tool
+// can catch, since it doesn't share the same mistaken assumption.)
+reconstructedChainRoot := checkMerkleBranch(auxBlockHash, data.ChainBranch.Hashes, data.ChainBranch.Index)
+if !bytes.Equal(reconstructedChainRoot, commitment.RootHash) {
+	return errors.New("chain merkle branch does not reconstruct the committed aux block hash")
+}
 
 	// 4. The commitment's declared size must match the actual branch
 	// depth.

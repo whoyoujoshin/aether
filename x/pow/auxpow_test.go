@@ -353,18 +353,13 @@ func buildValidAuxPow(t *testing.T, auxBlockHash []byte, difficulty uint64) *Aux
 	// At h=0, checkMerkleBranch with an empty branch just returns the
 	// leaf unchanged -- so the committed root equals auxBlockHash
 	// itself. Reverse it, since extractCommitment reverses it back.
-	committedRoot := make([]byte, len(auxBlockHash))
-	copy(committedRoot, auxBlockHash)
-	for i, j := 0, len(committedRoot)-1; i < j; i, j = i+1, j-1 {
-		committedRoot[i], committedRoot[j] = committedRoot[j], committedRoot[i]
-	}
-
-	scriptSig := buildTestScriptSig([]byte("miner-arbitrary-data"), func() []byte {
-		// buildTestScriptSig re-reverses whatever we give it, so pass
-		// the UN-reversed auxBlockHash and let the helper do the
-		// reversal, matching real coinbase construction.
-		return auxBlockHash
-	}(), 1, nonce) // size = 1<<0 = 1
+	// buildTestScriptSig reverses whatever we give it exactly once,
+// matching the real spec's single endian-conversion step -- pass
+// auxBlockHash directly, unreversed. (Corrected: a prior version
+// pre-reversed it here too, a double-reversal that only appeared
+// correct because CheckAuxPow had its own separate, compensating
+// extra-reversal bug -- see the fix in CheckAuxPow itself.)
+scriptSig := buildTestScriptSig([]byte("miner-arbitrary-data"), auxBlockHash, 1, nonce) // size = 1<<0 = 1
 
 	coinbaseTx := buildTestCoinbaseTx(scriptSig)
 
