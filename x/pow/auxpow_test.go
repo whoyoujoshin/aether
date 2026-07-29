@@ -399,6 +399,7 @@ func buildValidAuxPow(t *testing.T, auxBlockHash []byte, difficulty uint64) *Aux
 		CoinbaseBranch: &MerkleBranch{Hashes: [][]byte{}, Index: 0},
 		ChainBranch:    &MerkleBranch{Hashes: chainBranchHashes, Index: expectedIndex},
 		ChainNonce:     nonce,
+		AuxBlockHash:   auxBlockHash,
 	}
 }
 
@@ -408,18 +409,17 @@ func TestCheckAuxPow_ValidSubmissionPasses(t *testing.T) {
 
 	auxPow := buildValidAuxPow(t, auxBlockHash, difficulty)
 
-	err := CheckAuxPow(auxPow, auxBlockHash, difficulty)
+	err := CheckAuxPow(auxPow, difficulty)
 	require.NoError(t, err)
 }
 
 func TestCheckAuxPow_WrongAuxBlockHashFails(t *testing.T) {
 	auxBlockHash := bytes.Repeat([]byte{0x42}, 32)
 	difficulty := uint64(4)
-
 	auxPow := buildValidAuxPow(t, auxBlockHash, difficulty)
-
 	wrongHash := bytes.Repeat([]byte{0x99}, 32)
-	err := CheckAuxPow(auxPow, wrongHash, difficulty)
+	auxPow.AuxBlockHash = wrongHash // tamper with the committed hash after construction
+	err := CheckAuxPow(auxPow, difficulty)
 	require.Error(t, err)
 }
 
@@ -431,7 +431,7 @@ func TestCheckAuxPow_InsufficientParentPoWFails(t *testing.T) {
 
 	// Check against a much higher difficulty than the parent header
 	// actually satisfies.
-	err := CheckAuxPow(auxPow, auxBlockHash, 1_000_000_000)
+	err := CheckAuxPow(auxPow, 1_000_000_000)
 	require.Error(t, err)
 }
 
@@ -448,7 +448,7 @@ func TestCheckAuxPow_TamperedCoinbaseBreaksMerkleProof(t *testing.T) {
 	tampered[len(tampered)-1] ^= 0xFF
 	auxPow.CoinbaseTx = tampered
 
-	err := CheckAuxPow(auxPow, auxBlockHash, difficulty)
+	err := CheckAuxPow(auxPow, difficulty)
 	require.Error(t, err)
 }
 
@@ -463,6 +463,6 @@ func TestCheckAuxPow_ExcessiveChainBranchLengthFails(t *testing.T) {
 	}
 	auxPow.ChainBranch.Hashes = tooLong
 
-	err := CheckAuxPow(auxPow, auxBlockHash, difficulty)
+	err := CheckAuxPow(auxPow, difficulty)
 	require.Error(t, err)
 }

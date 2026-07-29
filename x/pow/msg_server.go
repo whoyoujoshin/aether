@@ -55,71 +55,64 @@ func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubm
 		return nil, sdkerrors.Wrapf(types.ErrInvalidCreator, "invalid miner address %q: %s", msg.Miner, err)
 	}
 
+	switch submission := msg.Submission.(type) {
+	case *MsgSubmitPoW_Native:
+		return k.submitNativePoW(ctx, minerAddr, submission.Native)
+	case *MsgSubmitPoW_AuxPow:
+		return k.submitAuxPoW(ctx, minerAddr, submission.AuxPow)
+	default:
+		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "submission must include either native or aux_pow data")
+	}
+}
+
+// submitNativePoW handles a native Scrypt submission -- identical
+// logic to the pre-AuxPoW handler, unchanged, just factored into its
+// own function.
+func (k msgServer) submitNativePoW(ctx sdk.Context, minerAddr sdk.AccAddress, native *NativeSubmission) (*MsgSubmitPoWResponse, error) {
 	header := MiningHeader{
-		Height:       msg.Height,
-		Timestamp:    msg.Timestamp,
-		PrevHash:     msg.PrevHash,
-		MerkleRoot:   msg.MerkleRoot,
-		Nonce:        msg.Nonce,
-		Difficulty:   msg.Difficulty,
+		Height:       native.Height,
+		Timestamp:    native.Timestamp,
+		PrevHash:     native.PrevHash,
+		MerkleRoot:   native.MerkleRoot,
+		Nonce:        native.Nonce,
+		Difficulty:   native.Difficulty,
 		MinerAddress: minerAddr,
 	}
 
-	// Ancestor validation: header.Height/PrevHash are an UNVERIFIED CLAIM
-	// from the client until checked against our own recent-block-hash
-	// window. Never trusted for accounting until these checks pass.
 	claimedHeight := int64(header.Height)
 	storedHash, ok := k.Keeper.GetRecentHash(ctx, claimedHeight)
 	if !ok {
-		return nil, sdkerrors.Wrapf(types.ErrUnknownAncestor,
-			"no known block at height %d", claimedHeight)
+		return nil, sdkerrors.Wrapf(types.ErrUnknownAncestor, "no known block at height %d", claimedHeight)
 	}
 	if !bytes.Equal(storedHash, header.PrevHash) {
-		return nil, sdkerrors.Wrapf(types.ErrUnknownAncestor,
-			"prevHash does not match the real block hash at height %d", claimedHeight)
+		return nil, sdkerrors.Wrapf(types.ErrUnknownAncestor, "prevHash does not match the real block hash at height %d", claimedHeight)
 	}
 
 	recencyWindow := k.Keeper.GetRecencyWindowK(ctx)
 	if ctx.BlockHeight()-claimedHeight > recencyWindow {
-		return nil, sdkerrors.Wrapf(types.ErrStaleAncestor,
-			"claimed height %d is more than %d blocks behind current height %d",
-			claimedHeight, recencyWindow, ctx.BlockHeight())
+		return nil, sdkerrors.Wrapf(types.ErrStaleAncestor, "claimed height %d is more than %d blocks behind current height %d", claimedHeight, recencyWindow, ctx.BlockHeight())
 	}
 
-	// Historical difficulty: check against what was actually in effect at
-	// the claimed height, not the current live difficulty -- a miner
-	// shouldn't be penalized if difficulty moved between when they solved
-	// their header and when their transaction was included.
 	historicalDifficulty, ok := k.Keeper.GetRecentDifficulty(ctx, claimedHeight)
 	if !ok {
-		return nil, sdkerrors.Wrapf(types.ErrUnknownAncestor,
-			"no recorded difficulty at height %d", claimedHeight)
+		return nil, sdkerrors.Wrapf(types.ErrUnknownAncestor, "no recorded difficulty at height %d", claimedHeight)
 	}
-	if header.Difficulty < historicalDifficulty.Uint64() {
-		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW,
-			"submitted difficulty %d below required difficulty %d at height %d",
-			header.Difficulty, historicalDifficulty.Uint64(), claimedHeight)
+	if native.Difficulty < historicalDifficulty.Uint64() {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "submitted difficulty %d below required difficulty %d at height %d", native.Difficulty, historicalDifficulty.Uint64(), claimedHeight)
 	}
 
 	if !k.Keeper.VerifyMiningHeader(ctx, header) {
-		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW,
-			"proof of work verification failed for miner %s at height %d", msg.Miner, msg.Height)
+		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "proof of work verification failed for miner %s at height %d", minerAddr.String(), native.Height)
 	}
 
-	// Anti-replay: the header hash is computed from data that's
-	// cryptographically bound to the actual proof of work (including the
-	// miner's own address) -- any change to any field requires new work,
-	// so re-submitting the identical header is unambiguous duplication.
 	headerHash := sha256.Sum256(headerToBytes(header))
 	if k.Keeper.IsWorkAccepted(ctx, headerHash[:]) {
-		return nil, sdkerrors.Wrapf(types.ErrDuplicateWork,
-			"this exact mining header has already been accepted")
+		return nil, sdkerrors.Wrapf(types.ErrDuplicateWork, "this exact mining header has already been accepted")
 	}
 
 	if err := k.Keeper.DistributeBlockReward(ctx, minerAddr); err != nil {
 		return nil, sdkerrors.Wrapf(err, "failed to distribute block reward")
 	}
-
 	newDifficulty := k.Keeper.AdjustDifficulty(ctx)
 	k.Keeper.SetDifficulty(ctx, newDifficulty)
 	k.Keeper.SetLastBlockTime(ctx, ctx.BlockTime().Unix())
@@ -128,6 +121,37 @@ func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubm
 	k.Keeper.AddMiningWork(ctx, currentEpoch, minerAddr, 1)
 
 	k.Keeper.MarkWorkAccepted(ctx, headerHash[:])
+
+	return &MsgSubmitPoWResponse{}, nil
+}
+
+// submitAuxPoW handles a merged-mining submission. Per the locked
+// design (see auxpow-decision-addendum.md): earns the full mining
+// reward and retargets difficulty exactly like a native submission,
+// but deliberately does NOT call AddMiningWork -- AuxPoW work secures
+// the chain and earns rewards, but never counts toward Top-K validator
+// eligibility, bonding, tenure, or governance voting power. Only
+// native, dedicated work does.
+func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPow *AuxPowData) (*MsgSubmitPoWResponse, error) {
+	currentDifficulty := k.Keeper.GetDifficulty(ctx).Uint64()
+	if err := CheckAuxPow(auxPow, currentDifficulty); err != nil {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "AuxPoW verification failed: %s", err)
+	}
+
+	if k.Keeper.IsWorkAccepted(ctx, auxPow.AuxBlockHash) {
+		return nil, sdkerrors.Wrapf(types.ErrDuplicateWork, "this exact AuxPoW submission has already been accepted")
+	}
+
+	if err := k.Keeper.DistributeBlockReward(ctx, minerAddr); err != nil {
+		return nil, sdkerrors.Wrapf(err, "failed to distribute block reward")
+	}
+	newDifficulty := k.Keeper.AdjustDifficulty(ctx)
+	k.Keeper.SetDifficulty(ctx, newDifficulty)
+	k.Keeper.SetLastBlockTime(ctx, ctx.BlockTime().Unix())
+
+	// Deliberately no AddMiningWork call here -- see function comment.
+
+	k.Keeper.MarkWorkAccepted(ctx, auxPow.AuxBlockHash)
 
 	return &MsgSubmitPoWResponse{}, nil
 }

@@ -22,19 +22,39 @@ func validMinerAddr(t *testing.T) (sdk.AccAddress, string) {
 	return addr, addr.String()
 }
 
+func newNativeSubmitMsg(miner string, height uint64, timestamp int64, prevHash, merkleRoot []byte, nonce, difficulty uint64) *pow.MsgSubmitPoW {
+	return &pow.MsgSubmitPoW{
+		Miner: miner,
+		Submission: &pow.MsgSubmitPoW_Native{
+			Native: &pow.NativeSubmission{
+				Height:     height,
+				Timestamp:  timestamp,
+				PrevHash:   prevHash,
+				MerkleRoot: merkleRoot,
+				Nonce:      nonce,
+				Difficulty: difficulty,
+			},
+		},
+	}
+}
+
 func TestSubmitPoW_RejectsInvalidMinerAddress(t *testing.T) {
 	k, ctx, _ := setupKeeper(t)
 	srv := pow.NewMsgServerImpl(k)
 
 	msg := &pow.MsgSubmitPoW{
-		Miner:      "not-a-valid-bech32-address",
-		Height:     1,
-		Timestamp:  time.Now().Unix(),
-		PrevHash:   []byte("prev"),
-		MerkleRoot: []byte("merkle"),
-		Nonce:      1,
-		Difficulty: 1,
-	}
+Miner: "not-a-valid-bech32-address",
+Submission: &pow.MsgSubmitPoW_Native{
+Native: &pow.NativeSubmission{
+Height:     1,
+Timestamp:  time.Now().Unix(),
+PrevHash:   []byte("prev"),
+MerkleRoot: []byte("merkle"),
+Nonce:      1,
+Difficulty: 1,
+},
+},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.Error(t, err)
@@ -51,10 +71,15 @@ func TestSubmitPoW_RejectsDifficultyBelowRequired(t *testing.T) {
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner: addrStr, Height: 1, Timestamp: time.Now().Unix(),
-		PrevHash: realHash, MerkleRoot: []byte("merkle"),
-		Nonce: 1, Difficulty: 1, // far below the required 1,000,000
-	}
+	Miner: addrStr,
+	Submission: &pow.MsgSubmitPoW_Native{
+		Native: &pow.NativeSubmission{
+			Height: 1, Timestamp: time.Now().Unix(),
+			PrevHash: realHash, MerkleRoot: []byte("merkle"),
+			Nonce: 1, Difficulty: 1, // far below the required 1,000,000
+		},
+	},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.Error(t, err)
@@ -75,14 +100,18 @@ func TestSubmitPoW_RejectsFailedVerification(t *testing.T) {
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner:      addrStr,
-		Height:     1,
-		Timestamp:  time.Now().Unix(),
-		PrevHash:   realHash,
-		MerkleRoot: []byte("merkle"),
-		Nonce:      42, // essentially never satisfies a target this small
-		Difficulty: highDifficulty,
-	}
+	Miner: addrStr,
+	Submission: &pow.MsgSubmitPoW_Native{
+		Native: &pow.NativeSubmission{
+			Height:     1,
+			Timestamp:  time.Now().Unix(),
+			PrevHash:   realHash,
+			MerkleRoot: []byte("merkle"),
+			Nonce:      42, // essentially never satisfies a target this small
+			Difficulty: highDifficulty,
+		},
+	},
+}
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, types.ErrInvalidPoW), "expected ErrInvalidPoW, got: %v", err)
@@ -99,14 +128,18 @@ func TestSubmitPoW_SucceedsAndDistributesReward(t *testing.T) {
 
 	minerAddr, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner:      addrStr,
-		Height:     1,
-		Timestamp:  time.Now().Unix(),
-		PrevHash:   realHash,
-		MerkleRoot: []byte("merkle"),
-		Nonce:      1,
-		Difficulty: 1,
-	}
+Miner: addrStr,
+Submission: &pow.MsgSubmitPoW_Native{
+Native: &pow.NativeSubmission{
+Height:     1,
+Timestamp:  time.Now().Unix(),
+PrevHash:   realHash,
+MerkleRoot: []byte("merkle"),
+Nonce:      1,
+Difficulty: 1,
+},
+},
+}
 
 	resp, err := srv.SubmitPoW(ctx, msg)
 	require.NoError(t, err)
@@ -135,14 +168,18 @@ func TestSubmitPoW_PropagatesRewardDistributionError(t *testing.T) {
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner:      addrStr,
-		Height:     1,
-		Timestamp:  time.Now().Unix(),
-		PrevHash:   realHash,
-		MerkleRoot: []byte("merkle"),
-		Nonce:      1,
-		Difficulty: 1,
-	}
+Miner: addrStr,
+Submission: &pow.MsgSubmitPoW_Native{
+Native: &pow.NativeSubmission{
+Height:     1,
+Timestamp:  time.Now().Unix(),
+PrevHash:   realHash,
+MerkleRoot: []byte("merkle"),
+Nonce:      1,
+Difficulty: 1,
+},
+},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.Error(t, err)
@@ -163,14 +200,18 @@ func TestSubmitPoW_Success_UpdatesDifficultyAndLastBlockTime(t *testing.T) {
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner:      addrStr,
-		Height:     1,
-		Timestamp:  time.Now().Unix(),
-		PrevHash:   realHash,
-		MerkleRoot: []byte("merkle"),
-		Nonce:      1,
-		Difficulty: 1,
-	}
+Miner: addrStr,
+Submission: &pow.MsgSubmitPoW_Native{
+Native: &pow.NativeSubmission{
+Height:     1,
+Timestamp:  time.Now().Unix(),
+PrevHash:   realHash,
+MerkleRoot: []byte("merkle"),
+Nonce:      1,
+Difficulty: 1,
+},
+},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.NoError(t, err)
@@ -199,10 +240,18 @@ func TestSubmitPoW_Success_DifficultyRetargetsBasedOnSubmissionTiming(t *testing
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner: addrStr, Height: 1, Timestamp: submissionTime,
-		PrevHash: realHash, MerkleRoot: []byte("merkle"),
-		Nonce: 1, Difficulty: 1,
-	}
+Miner: addrStr,
+Submission: &pow.MsgSubmitPoW_Native{
+Native: &pow.NativeSubmission{
+Height:     1,
+Timestamp:  submissionTime,
+PrevHash:   realHash,
+MerkleRoot: []byte("merkle"),
+Nonce:      1,
+Difficulty: 1,
+},
+},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.NoError(t, err)
@@ -223,10 +272,18 @@ func TestSubmitPoW_FailedVerification_DoesNotAdjustDifficulty(t *testing.T) {
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner: addrStr, Height: 1, Timestamp: time.Now().Unix(),
-		PrevHash: realHash, MerkleRoot: []byte("merkle"),
-		Nonce: 42, Difficulty: highDifficulty,
-	}
+Miner: addrStr,
+Submission: &pow.MsgSubmitPoW_Native{
+Native: &pow.NativeSubmission{
+Height:     1,
+Timestamp:  time.Now().Unix(),
+PrevHash:   realHash,
+MerkleRoot: []byte("merkle"),
+Nonce:      42,
+Difficulty: highDifficulty,
+},
+},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.Error(t, err)
@@ -245,10 +302,15 @@ func TestSubmitPoW_FailedDifficultyThreshold_DoesNotAdjustDifficulty(t *testing.
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner: addrStr, Height: 1, Timestamp: time.Now().Unix(),
-		PrevHash: realHash, MerkleRoot: []byte("merkle"),
-		Nonce: 1, Difficulty: 1, // far below the required 1,000,000
-	}
+	Miner: addrStr,
+	Submission: &pow.MsgSubmitPoW_Native{
+		Native: &pow.NativeSubmission{
+			Height: 1, Timestamp: time.Now().Unix(),
+			PrevHash: realHash, MerkleRoot: []byte("merkle"),
+			Nonce: 1, Difficulty: 1, // far below the required 1,000,000
+		},
+	},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.Error(t, err)
@@ -269,10 +331,18 @@ func TestSubmitPoW_FailedRewardDistribution_DoesNotAdjustDifficulty(t *testing.T
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner: addrStr, Height: 1, Timestamp: time.Now().Unix(),
-		PrevHash: realHash, MerkleRoot: []byte("merkle"),
-		Nonce: 1, Difficulty: 1,
-	}
+Miner: addrStr,
+Submission: &pow.MsgSubmitPoW_Native{
+Native: &pow.NativeSubmission{
+Height:     1,
+Timestamp:  time.Now().Unix(),
+PrevHash:   realHash,
+MerkleRoot: []byte("merkle"),
+Nonce:      1,
+Difficulty: 1,
+},
+},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.Error(t, err)
@@ -447,10 +517,18 @@ func TestSubmitPoW_RejectsUnknownAncestorHeight(t *testing.T) {
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner: addrStr, Height: 999, Timestamp: time.Now().Unix(),
-		PrevHash: []byte("some-hash"), MerkleRoot: []byte("merkle"),
-		Nonce: 1, Difficulty: 1,
-	}
+Miner: addrStr,
+Submission: &pow.MsgSubmitPoW_Native{
+Native: &pow.NativeSubmission{
+Height:     999,
+Timestamp:  time.Now().Unix(),
+PrevHash:   []byte("some-hash"),
+MerkleRoot: []byte("merkle"),
+Nonce:      1,
+Difficulty: 1,
+},
+},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.Error(t, err)
@@ -467,10 +545,18 @@ func TestSubmitPoW_RejectsMismatchedPrevHash(t *testing.T) {
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner: addrStr, Height: 5, Timestamp: time.Now().Unix(),
-		PrevHash: []byte("a-completely-different-fake-hash"), MerkleRoot: []byte("merkle"),
-		Nonce: 1, Difficulty: 1,
-	}
+Miner: addrStr,
+Submission: &pow.MsgSubmitPoW_Native{
+Native: &pow.NativeSubmission{
+Height:     5,
+Timestamp:  time.Now().Unix(),
+PrevHash:   []byte("a-completely-different-fake-hash"),
+MerkleRoot: []byte("merkle"),
+Nonce:      1,
+Difficulty: 1,
+},
+},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.Error(t, err)
@@ -488,10 +574,18 @@ func TestSubmitPoW_RejectsStaleAncestorBeyondRecencyWindow(t *testing.T) {
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner: addrStr, Height: 1, Timestamp: time.Now().Unix(),
-		PrevHash: realHash, MerkleRoot: []byte("merkle"),
-		Nonce: 1, Difficulty: 1,
-	}
+Miner: addrStr,
+Submission: &pow.MsgSubmitPoW_Native{
+Native: &pow.NativeSubmission{
+Height:     1,
+Timestamp:  time.Now().Unix(),
+PrevHash:   realHash,
+MerkleRoot: []byte("merkle"),
+Nonce:      1,
+Difficulty: 1,
+},
+},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.Error(t, err)
@@ -509,10 +603,18 @@ func TestSubmitPoW_AcceptsValidAncestorWithinRecencyWindow(t *testing.T) {
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner: addrStr, Height: 40, Timestamp: time.Now().Unix(),
-		PrevHash: realHash, MerkleRoot: []byte("merkle"),
-		Nonce: 1, Difficulty: 1,
-	}
+Miner: addrStr,
+Submission: &pow.MsgSubmitPoW_Native{
+Native: &pow.NativeSubmission{
+Height:     40,
+Timestamp:  time.Now().Unix(),
+PrevHash:   realHash,
+MerkleRoot: []byte("merkle"),
+Nonce:      1,
+Difficulty: 1,
+},
+},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.NoError(t, err)
@@ -534,10 +636,15 @@ func TestSubmitPoW_UsesHistoricalDifficultyNotCurrentDifficulty(t *testing.T) {
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner: addrStr, Height: 10, Timestamp: time.Now().Unix(),
-		PrevHash: realHash, MerkleRoot: []byte("merkle"),
-		Nonce: 1, Difficulty: 1, // matches the HISTORICAL difficulty of 1, not current
-	}
+	Miner: addrStr,
+	Submission: &pow.MsgSubmitPoW_Native{
+		Native: &pow.NativeSubmission{
+			Height: 10, Timestamp: time.Now().Unix(),
+			PrevHash: realHash, MerkleRoot: []byte("merkle"),
+			Nonce: 1, Difficulty: 1, // matches the HISTORICAL difficulty of 1, not current
+		},
+	},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.NoError(t, err, "should validate against historical difficulty at the claimed height, not current live difficulty")
@@ -554,10 +661,15 @@ func TestSubmitPoW_RejectsDuplicateWork(t *testing.T) {
 
 	_, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner: addrStr, Height: 20, Timestamp: 12345, // fixed timestamp so header hash is deterministic
-		PrevHash: realHash, MerkleRoot: []byte("merkle"),
-		Nonce: 1, Difficulty: 1,
-	}
+	Miner: addrStr,
+	Submission: &pow.MsgSubmitPoW_Native{
+		Native: &pow.NativeSubmission{
+			Height: 20, Timestamp: 12345, // fixed timestamp so header hash is deterministic
+			PrevHash: realHash, MerkleRoot: []byte("merkle"),
+			Nonce: 1, Difficulty: 1,
+		},
+	},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.NoError(t, err, "first submission of this exact header should succeed")

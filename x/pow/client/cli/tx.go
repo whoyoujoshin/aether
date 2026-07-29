@@ -66,14 +66,18 @@ func NewSubmitPoWCmd() *cobra.Command {
 			}
 
 			msg := &pow.MsgSubmitPoW{
-				Miner:      clientCtx.GetFromAddress().String(),
-				Height:     height,
-				Timestamp:  timestamp,
-				PrevHash:   prevHash,
-				MerkleRoot: merkleRoot,
-				Nonce:      nonce,
-				Difficulty: difficulty,
-			}
+	Miner: clientCtx.GetFromAddress().String(),
+	Submission: &pow.MsgSubmitPoW_Native{
+		Native: &pow.NativeSubmission{
+			Height:     height,
+			Timestamp:  timestamp,
+			PrevHash:   prevHash,
+			MerkleRoot: merkleRoot,
+			Nonce:      nonce,
+			Difficulty: difficulty,
+		},
+	},
+}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},

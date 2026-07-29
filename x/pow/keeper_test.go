@@ -549,10 +549,18 @@ func TestSubmitPoW_Success_RecordsMiningWorkForCurrentEpoch(t *testing.T) {
 
 	minerAddr, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-		Miner: addrStr, Height: 50, Timestamp: time.Now().Unix(),
-		PrevHash: realHash, MerkleRoot: []byte("merkle"),
-		Nonce: 1, Difficulty: 1,
-	}
+Miner: addrStr,
+Submission: &pow.MsgSubmitPoW_Native{
+Native: &pow.NativeSubmission{
+Height:     50,
+Timestamp:  time.Now().Unix(),
+PrevHash:   realHash,
+MerkleRoot: []byte("merkle"),
+Nonce:      1,
+Difficulty: 1,
+},
+},
+}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.NoError(t, err)

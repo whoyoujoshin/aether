@@ -180,7 +180,8 @@ const maxChainMerkleBranchLength = 30
 // mining. currentDifficulty is Aether's live difficulty target (from
 // GetDifficulty), the same value native submissions are checked
 // against.
-func CheckAuxPow(data *AuxPowData, auxBlockHash []byte, currentDifficulty uint64) error {
+func CheckAuxPow(data *AuxPowData, currentDifficulty uint64) error {
+	auxBlockHash := data.AuxBlockHash
 	if len(data.ChainBranch.Hashes) > maxChainMerkleBranchLength {
 		return fmt.Errorf("chain merkle branch too long: %d exceeds maximum of %d", len(data.ChainBranch.Hashes), maxChainMerkleBranchLength)
 	}

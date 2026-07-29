@@ -3,6 +3,7 @@ package aether.pow.v1;
 
 import "gogoproto/gogo.proto";
 import "cosmos/msg/v1/msg.proto";
+import "aether/pow/v1/auxpow.proto";
 
 option go_package = "github.com/whoyoujoshin/aether/x/pow";
 
@@ -23,15 +24,23 @@ message MsgRegisterValidatorPubkey {
 
 message MsgRegisterValidatorPubkeyResponse {}
 
+message NativeSubmission {
+  uint64 height      = 1;
+  int64  timestamp   = 2;
+  bytes  prev_hash   = 3;
+  bytes  merkle_root = 4;
+  uint64 nonce       = 5;
+  uint64 difficulty  = 6;
+}
+
 message MsgSubmitPoW {
   option (cosmos.msg.v1.signer) = "miner";
-  string miner       = 1;
-  uint64 height      = 2;
-  int64  timestamp   = 3;
-  bytes  prev_hash   = 4;
-  bytes  merkle_root = 5;
-  uint64 nonce       = 6;
-  uint64 difficulty  = 7;
+  string miner = 1;
+
+  oneof submission {
+    NativeSubmission native = 2;
+    AuxPowData aux_pow = 3;
+  }
 }
 
 message MsgSubmitPoWResponse {}

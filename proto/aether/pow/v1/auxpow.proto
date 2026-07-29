@@ -19,8 +19,11 @@ message AuxPowData {
   bytes parent_header = 1;          // 80-byte serialized parent (Litecoin/Dogecoin) header
   bytes coinbase_tx = 2;             // full serialized parent coinbase transaction
   MerkleBranch coinbase_branch = 3;  // proves coinbase_tx is in the parent block's merkle tree
-  MerkleBranch chain_branch = 4;     // proves Aether's block hash is committed inside the coinbase
-  uint32 chain_nonce = 5;            // the nNonce embedded in the coinbase's merge-mining trailer;
-                                      // required to independently recompute and verify
-                                      // chain_branch.index via getExpectedIndex (see reference doc)
+  MerkleBranch chain_branch = 4;     // proves aux_block_hash is committed inside the coinbase
+  uint32 chain_nonce = 5;            // the nNonce embedded in the coinbase's merge-mining trailer
+  bytes aux_block_hash = 6;          // the miner-chosen Aether commitment hash, embedded in their
+                                      // coinbase BEFORE mining began -- the miner must know this
+                                      // value in advance since it's baked into what they hash
+                                      // against the parent chain's target; Aether independently
+                                      // verifies it was genuinely committed via chain_branch
 }
