@@ -1,0 +1,21 @@
+syntax = "proto3";
+package aether.crypto.v1;
+
+option go_package = "github.com/whoyoujoshin/aether/crypto/mldsa";
+
+// PubKey is an ML-DSA-44 public key (FIPS 204), wrapping the raw
+// 1,312-byte key. Locked design: ML-DSA-44 mandatory from genesis,
+// no classical signature types accepted for account transactions --
+// see pq-signatures-decision.md.
+message PubKey {
+  bytes key = 1;
+}
+
+// PrivKey is an ML-DSA-44 private key, stored as its 32-byte seed
+// (circl's mldsa44 package derives the full key deterministically
+// from this seed via NewKeyFromSeed) rather than the full expanded
+// private key -- smaller storage, and matches circl's own idiomatic
+// pattern for this scheme.
+message PrivKey {
+  bytes key = 1;
+}
