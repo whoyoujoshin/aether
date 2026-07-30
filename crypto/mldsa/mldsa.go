@@ -10,6 +10,7 @@ import (
 	sdkerrors "cosmossdk.io/errors"
 	"github.com/cosmos/cosmos-sdk/types/address"
 	"github.com/cosmos/gogoproto/proto"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 )
 
 const (
@@ -160,4 +161,15 @@ func GenPrivKey() (*PrivKey, error) {
 	_, _ = mldsa44.NewKeyFromSeed(&seed)
 
 	return &PrivKey{Key: seed[:]}, nil
+}
+
+// RegisterInterfaces registers this package's PubKey and PrivKey as
+// valid implementations of the SDK's cryptotypes.PubKey/PrivKey
+// interfaces, so they can be used as protobuf Any values throughout
+// the application (account state, transaction signatures) -- without
+// this, the codec cannot unmarshal an Any containing this key type
+// and will fail at runtime with no compile-time warning.
+func RegisterInterfaces(registry codectypes.InterfaceRegistry) {
+	registry.RegisterImplementations((*types.PubKey)(nil), &PubKey{})
+	registry.RegisterImplementations((*types.PrivKey)(nil), &PrivKey{})
 }

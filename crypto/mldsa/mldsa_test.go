@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 )
 
 func TestGenPrivKey_ProducesValidKey(t *testing.T) {
@@ -124,4 +126,39 @@ realAddress := pub.Address()
 
 	require.NotEqual(t, []byte(realAddress), rawKeyHash,
 		"address must not simply be a bare hash of the raw key bytes alone")
+}
+
+func TestRegisterInterfaces_PubKeyRoundTripsThroughAny(t *testing.T) {
+	registry := codectypes.NewInterfaceRegistry()
+	mldsa.RegisterInterfaces(registry)
+
+	priv, err := mldsa.GenPrivKey()
+	require.NoError(t, err)
+	pub := priv.PubKey()
+
+	anyPub, err := codectypes.NewAnyWithValue(pub)
+	require.NoError(t, err)
+
+	var unpacked cryptotypes.PubKey
+	err = registry.UnpackAny(anyPub, &unpacked)
+	require.NoError(t, err, "registered PubKey type must round-trip through Any without error")
+
+	require.True(t, pub.Equals(unpacked), "unpacked key must equal the original")
+}
+
+func TestRegisterInterfaces_PrivKeyRoundTripsThroughAny(t *testing.T) {
+	registry := codectypes.NewInterfaceRegistry()
+	mldsa.RegisterInterfaces(registry)
+
+	priv, err := mldsa.GenPrivKey()
+	require.NoError(t, err)
+
+	anyPriv, err := codectypes.NewAnyWithValue(priv)
+	require.NoError(t, err)
+
+	var unpacked cryptotypes.LedgerPrivKey
+	err = registry.UnpackAny(anyPriv, &unpacked)
+	require.NoError(t, err, "registered PrivKey type must round-trip through Any without error")
+
+	require.True(t, priv.Equals(unpacked), "unpacked key must equal the original")
 }

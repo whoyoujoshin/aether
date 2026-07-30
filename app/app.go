@@ -40,6 +40,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/bank"
 	signing "cosmossdk.io/x/tx/signing"
 	"github.com/cosmos/gogoproto/proto"
+	"github.com/whoyoujoshin/aether/crypto/mldsa"
 
 )
 
@@ -82,6 +83,7 @@ if err != nil {
 	panic(err)
 }
 	std.RegisterInterfaces(interfaceRegistry)
+	mldsa.RegisterInterfaces(interfaceRegistry)
 	ModuleBasics.RegisterInterfaces(interfaceRegistry)
 
 	appCodec := codec.NewProtoCodec(interfaceRegistry)
@@ -179,6 +181,7 @@ if err != nil {
 	panic(err)
 }
 	std.RegisterInterfaces(interfaceRegistry)
+	mldsa.RegisterInterfaces(interfaceRegistry)
 	appCodec := codec.NewProtoCodec(interfaceRegistry)
 
 	bApp := baseapp.NewBaseApp(Name, logger, db, nil, baseAppOptions...)
