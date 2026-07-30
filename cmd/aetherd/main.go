@@ -25,6 +25,8 @@ import (
 	"github.com/whoyoujoshin/aether/app"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/cosmos-sdk/client/rpc"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	
 )
 
@@ -39,7 +41,11 @@ var initClientCtx = client.Context{}.
 	WithBroadcastMode(flags.BroadcastSync).
 	WithHomeDir(app.DefaultNodeHome).
 	WithViper("").
-	WithAccountRetriever(authtypes.AccountRetriever{})
+	WithAccountRetriever(authtypes.AccountRetriever{}).
+	WithKeyringOptions(func(options *keyring.Options) {
+		options.SupportedAlgos = append(options.SupportedAlgos, mldsa.Algo)
+	})
+
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "aetherd",
@@ -53,9 +59,18 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(
+	keysCmd := keys.Commands()
+for _, subCmd := range keysCmd.Commands() {
+	if subCmd.Name() == "add" {
+		keysCmd.RemoveCommand(subCmd)
+		break
+	}
+}
+keysCmd.AddCommand(NewAddMLDSAKeyCmd())
+
+rootCmd.AddCommand(
 	genutilcli.InitCmd(app.ModuleBasics, app.DefaultNodeHome),
-	keys.Commands(),
+	keysCmd,
 )
 server.AddCommands(
 		rootCmd,
