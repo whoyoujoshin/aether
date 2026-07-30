@@ -41,6 +41,7 @@ import (
 	signing "cosmossdk.io/x/tx/signing"
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
 
 )
 
@@ -271,7 +272,19 @@ if err != nil {
 		BankKeeper:      app.BankKeeper,
 		SignModeHandler: txConfig.SignModeHandler(),
 		FeegrantKeeper:  nil,
-		SigGasConsumer:  authante.DefaultSigVerificationGasConsumer,
+	SigGasConsumer: func(meter storetypes.GasMeter, sig txsigning.SignatureV2, params authtypes.Params) error {
+	switch sig.PubKey.(type) {
+	case *mldsa.PubKey:
+		// Deliberate, modest cost reflecting real measured ML-DSA-44
+		// verification speed (microseconds, per design research) --
+		// not scaled up to match its larger byte size, since that
+		// cost is already charged separately via tx_size_cost_per_byte.
+		meter.ConsumeGas(2000, "ante verify: mldsa44")
+		return nil
+	default:
+		return authante.DefaultSigVerificationGasConsumer(meter, sig, params)
+	}
+},
 	})
 	if err != nil {
 		panic(err)
