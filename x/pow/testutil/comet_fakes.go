@@ -10,13 +10,14 @@ import (
 // inject a specific set of misbehavior evidence without needing a live
 // CometBFT instance.
 type FakeBlockInfo struct {
-	Evidence comet.EvidenceList
+	Evidence   comet.EvidenceList
+	LastCommit comet.CommitInfo
 }
 
-func (f FakeBlockInfo) GetEvidence() comet.EvidenceList  { return f.Evidence }
-func (f FakeBlockInfo) GetValidatorsHash() []byte        { return nil }
-func (f FakeBlockInfo) GetProposerAddress() []byte       { return nil }
-func (f FakeBlockInfo) GetLastCommit() comet.CommitInfo  { return nil }
+func (f FakeBlockInfo) GetEvidence() comet.EvidenceList { return f.Evidence }
+func (f FakeBlockInfo) GetValidatorsHash() []byte       { return nil }
+func (f FakeBlockInfo) GetProposerAddress() []byte      { return nil }
+func (f FakeBlockInfo) GetLastCommit() comet.CommitInfo { return f.LastCommit }
 
 // FakeEvidenceList is a simple slice-backed comet.EvidenceList.
 type FakeEvidenceList []comet.Evidence
@@ -47,3 +48,26 @@ type FakeValidator struct {
 
 func (f FakeValidator) Address() []byte { return f.Addr }
 func (f FakeValidator) Power() int64    { return f.Pow }
+
+// FakeCommitInfo is a minimal test double for comet.CommitInfo.
+type FakeCommitInfo struct {
+	VoteList comet.VoteInfos
+}
+
+func (f FakeCommitInfo) Round() int32          { return 0 }
+func (f FakeCommitInfo) Votes() comet.VoteInfos { return f.VoteList }
+
+// FakeVoteInfos is a simple slice-backed comet.VoteInfos.
+type FakeVoteInfos []comet.VoteInfo
+
+func (f FakeVoteInfos) Len() int               { return len(f) }
+func (f FakeVoteInfos) Get(i int) comet.VoteInfo { return f[i] }
+
+// FakeVoteInfo is a minimal test double for comet.VoteInfo.
+type FakeVoteInfo struct {
+	Voter comet.Validator
+	Flag  comet.BlockIDFlag
+}
+
+func (f FakeVoteInfo) Validator() comet.Validator      { return f.Voter }
+func (f FakeVoteInfo) GetBlockIDFlag() comet.BlockIDFlag { return f.Flag }

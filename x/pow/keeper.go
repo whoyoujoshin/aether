@@ -19,6 +19,7 @@ import (
 	cryptoproto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	"github.com/whoyoujoshin/aether/x/treasury"
 	"golang.org/x/crypto/scrypt"
+	"cosmossdk.io/core/comet"
 )
 
 type Keeper struct {
@@ -905,4 +906,103 @@ func (k Keeper) BootstrapValidator(ctx sdk.Context, pubKeyProto cryptoproto.Publ
 	k.SetActiveValidator(ctx, derivedMinerAddr)
 
 	return nil
+}
+
+// RecordValidatorSigning updates a validator's rolling liveness window
+// with whether they signed the just-finalized block, using a circular
+// buffer of the last LivenessWindowSize results -- the same standard
+// pattern real Cosmos liveness tracking uses. Returns true if the
+// validator's miss rate within the window now exceeds
+// LivenessMissThreshold, signaling they should be immediately removed.
+func (k Keeper) RecordValidatorSigning(ctx sdk.Context, minerAddr sdk.AccAddress, signed bool) bool {
+	store := ctx.KVStore(k.storeKey)
+
+	bitmapKey := append(KeyLivenessBitmapPrefix, minerAddr.Bytes()...)
+	indexKey := append(KeyLivenessIndexPrefix, minerAddr.Bytes()...)
+	missedKey := append(KeyLivenessMissedPrefix, minerAddr.Bytes()...)
+
+	bitmap := store.Get(bitmapKey)
+	if bitmap == nil {
+		bitmap = make([]byte, LivenessWindowSize) // all zero = treated as "signed" for not-yet-observed slots
+	}
+
+	index := int64(0)
+	if idxBz := store.Get(indexKey); idxBz != nil {
+		index = int64(sdk.BigEndianToUint64(idxBz))
+	}
+
+	missed := int64(0)
+	if missedBz := store.Get(missedKey); missedBz != nil {
+		missed = int64(sdk.BigEndianToUint64(missedBz))
+	}
+
+	// The slot we're about to overwrite held the OLDEST result in the
+	// window; if it was a miss, it's aging out, so decrement first.
+	if bitmap[index] == 1 {
+		missed--
+	}
+
+	// Record the NEW result at that same slot.
+	if signed {
+		bitmap[index] = 0
+	} else {
+		bitmap[index] = 1
+		missed++
+	}
+
+	index = (index + 1) % LivenessWindowSize
+
+	store.Set(bitmapKey, bitmap)
+	store.Set(indexKey, sdk.Uint64ToBigEndian(uint64(index)))
+	store.Set(missedKey, sdk.Uint64ToBigEndian(uint64(missed)))
+
+	missRate := float64(missed) / float64(LivenessWindowSize)
+	return missRate > LivenessMissThreshold
+}
+
+// ClearValidatorLiveness resets a validator's liveness tracking
+// entirely -- called on removal (whether for downtime or
+// equivocation), so re-entry always starts with a clean window rather
+// than carrying over stale history from a prior stint in the active set.
+func (k Keeper) ClearValidatorLiveness(ctx sdk.Context, minerAddr sdk.AccAddress) {
+	store := ctx.KVStore(k.storeKey)
+	store.Delete(append(KeyLivenessBitmapPrefix, minerAddr.Bytes()...))
+	store.Delete(append(KeyLivenessIndexPrefix, minerAddr.Bytes()...))
+	store.Delete(append(KeyLivenessMissedPrefix, minerAddr.Bytes()...))
+}
+
+// CheckValidatorLiveness reads the just-finalized block's real commit
+// info (the same interface Phase 2 already uses for equivocation
+// evidence) and updates every active validator's liveness window.
+// Any validator whose miss rate now exceeds the threshold is
+// immediately removed from the active set -- reusing the exact same
+// removal path Phase 2 built for equivocation, but with none of its
+// consequences (no ban, no escrow forfeiture). Called from EndBlock
+// every block, alongside the existing equivocation check.
+func (k Keeper) CheckValidatorLiveness(ctx sdk.Context) {
+	votes := ctx.CometInfo().GetLastCommit().Votes()
+
+	for i := 0; i < votes.Len(); i++ {
+		vote := votes.Get(i)
+		consensusAddr := vote.Validator().Address()
+
+		minerAddr, found := k.GetMinerByConsensusAddr(ctx, consensusAddr)
+		if !found {
+			continue
+		}
+		if !k.IsActiveValidator(ctx, minerAddr) {
+			continue
+		}
+
+		signed := vote.GetBlockIDFlag() == comet.BlockIDFlagCommit
+		shouldRemove := k.RecordValidatorSigning(ctx, minerAddr, signed)
+
+		if shouldRemove {
+	k.logger.Info("validator exceeded liveness miss threshold, removing from active set (downtime, not equivocation -- no ban, no escrow forfeiture)",
+		"miner", minerAddr.String(), "window_size", LivenessWindowSize, "threshold", LivenessMissThreshold)
+	k.RemoveActiveValidator(ctx, minerAddr)
+	k.MarkPendingRemoval(ctx, minerAddr)
+	k.ClearValidatorLiveness(ctx, minerAddr)
+}
+	}
 }

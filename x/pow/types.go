@@ -7,6 +7,8 @@ import (
 const (
 	ModuleName = "pow"
 	StoreKey   = ModuleName
+	LivenessWindowSize     = 60
+	LivenessMissThreshold  = 0.5 // 50% -- more than this within the window triggers removal
 )
 
 type Params struct {
@@ -83,4 +85,7 @@ var (
 	KeyAcceptedWorkPrefix     = []byte("accepted_work/")
 	KeyRecencyWindowK = []byte("recency_window_k")
 	KeyValidatorEnteredAtPrefix = []byte("validator_entered_at/")
+	KeyLivenessBitmapPrefix = []byte("liveness_bitmap/") // validator addr -> [60]byte (0/1 per slot)
+	KeyLivenessIndexPrefix  = []byte("liveness_index/")  // validator addr -> current write index (0-59)
+	KeyLivenessMissedPrefix = []byte("liveness_missed/") // validator addr -> current miss count in window
 )

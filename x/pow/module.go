@@ -149,5 +149,6 @@ func (am AppModule) EndBlock(ctx context.Context) ([]abci.ValidatorUpdate, error
 func (am AppModule) BeginBlock(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	am.keeper.ProcessMisbehavior(sdkCtx)
+	am.keeper.CheckValidatorLiveness(sdkCtx)
 	return nil
 }

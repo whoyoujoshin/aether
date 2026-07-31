@@ -1550,3 +1550,135 @@ func TestDistributeBlockReward_ZeroTreasuryAmountDoesNotCallFundTreasury(t *test
 	require.NoError(t, err)
 	require.Empty(t, mockTreasury.FundCalls)
 }
+
+// --- Liveness detection ---
+
+func fakeVoteInfo(consensusAddr []byte, signed bool) testutil.FakeVoteInfo {
+	flag := comet.BlockIDFlagAbsent
+	if signed {
+		flag = comet.BlockIDFlagCommit
+	}
+	return testutil.FakeVoteInfo{
+		Voter: testutil.FakeValidator{Addr: consensusAddr},
+		Flag:  flag,
+	}
+}
+
+func setupLivenessCtx(ctx sdk.Context, votes testutil.FakeVoteInfos) sdk.Context {
+	return ctx.WithCometInfo(testutil.FakeBlockInfo{
+		LastCommit: testutil.FakeCommitInfo{VoteList: votes},
+	})
+}
+
+func TestRecordValidatorSigning_StaysBelowThresholdWithOccasionalMisses(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("liveness_occasional_miss")
+
+	var shouldRemove bool
+	for i := 0; i < 10; i++ {
+		// Miss every 5th block -- well under the 50% threshold.
+		signed := i%5 != 0
+		shouldRemove = k.RecordValidatorSigning(ctx, minerAddr, signed)
+	}
+	require.False(t, shouldRemove, "occasional misses well under threshold must not trigger removal")
+}
+
+func TestRecordValidatorSigning_TriggersAtThreshold(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("liveness_sustained_miss_")
+
+	var shouldRemove bool
+	for i := 0; i < pow.LivenessWindowSize; i++ {
+		// Miss every other block -- exactly 50%, then push past it.
+		shouldRemove = k.RecordValidatorSigning(ctx, minerAddr, i%2 == 0)
+	}
+	// At exactly 50%, our rule is "more than" the threshold, so this
+	// alone shouldn't yet trigger -- confirm the boundary precisely.
+	require.False(t, shouldRemove, "exactly 50% missed must not yet trigger removal (threshold is 'more than', not 'at least')")
+
+	// One more miss pushes it over.
+	shouldRemove = k.RecordValidatorSigning(ctx, minerAddr, false)
+	require.True(t, shouldRemove, "exceeding 50% missed within the window must trigger removal")
+}
+
+func TestRecordValidatorSigning_WindowSlidesCorrectly(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("liveness_window_slide___")
+
+	// Fill the entire window with misses.
+	for i := 0; i < pow.LivenessWindowSize; i++ {
+		k.RecordValidatorSigning(ctx, minerAddr, false)
+	}
+
+	// Now record enough real signed blocks to slide all the old
+	// misses out of the window -- should recover below threshold.
+	var shouldRemove bool
+	for i := 0; i < pow.LivenessWindowSize; i++ {
+		shouldRemove = k.RecordValidatorSigning(ctx, minerAddr, true)
+	}
+	require.False(t, shouldRemove, "a full window of subsequent signing must recover the validator below threshold")
+}
+
+func TestClearValidatorLiveness_ResetsWindowCompletely(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	minerAddr := sdk.AccAddress("liveness_clear_test_____")
+
+	for i := 0; i < pow.LivenessWindowSize; i++ {
+		k.RecordValidatorSigning(ctx, minerAddr, false)
+	}
+
+	k.ClearValidatorLiveness(ctx, minerAddr)
+
+	// After clearing, a single miss should not trigger removal --
+	// confirming the window was genuinely reset, not left full of
+	// stale misses.
+	shouldRemove := k.RecordValidatorSigning(ctx, minerAddr, false)
+	require.False(t, shouldRemove)
+}
+
+func TestCheckValidatorLiveness_RemovesValidatorExceedingThreshold(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	minerAddr := sdk.AccAddress("liveness_e2e_removed____")
+	consensusAddr := []byte("consensus_addr_removed__")
+	k.SetConsensusToMiner(ctx, consensusAddr, minerAddr)
+	k.SetActiveValidator(ctx, minerAddr)
+
+	// Sustained absence, well past the threshold.
+	for i := 0; i < pow.LivenessWindowSize+1; i++ {
+		voteCtx := setupLivenessCtx(ctx, testutil.FakeVoteInfos{fakeVoteInfo(consensusAddr, false)})
+		k.CheckValidatorLiveness(voteCtx)
+	}
+
+	require.False(t, k.IsActiveValidator(ctx, minerAddr), "validator exceeding the miss threshold must be removed")
+
+	pending := k.IteratePendingRemovals(ctx)
+	require.Contains(t, pending, minerAddr, "removal must be queued through the same pending-removal path Phase 2 uses")
+}
+
+func TestCheckValidatorLiveness_DoesNotRemoveValidatorSigningNormally(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	minerAddr := sdk.AccAddress("liveness_e2e_stays______")
+	consensusAddr := []byte("consensus_addr_stays____")
+	k.SetConsensusToMiner(ctx, consensusAddr, minerAddr)
+	k.SetActiveValidator(ctx, minerAddr)
+
+	for i := 0; i < pow.LivenessWindowSize+1; i++ {
+		voteCtx := setupLivenessCtx(ctx, testutil.FakeVoteInfos{fakeVoteInfo(consensusAddr, true)})
+		k.CheckValidatorLiveness(voteCtx)
+	}
+
+	require.True(t, k.IsActiveValidator(ctx, minerAddr), "a validator signing every block must never be removed")
+}
+
+func TestCheckValidatorLiveness_IgnoresUnrecognizedConsensusAddress(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	unrecognizedAddr := []byte("no_miner_registered_for_")
+	voteCtx := setupLivenessCtx(ctx, testutil.FakeVoteInfos{fakeVoteInfo(unrecognizedAddr, false)})
+
+	require.NotPanics(t, func() {
+		k.CheckValidatorLiveness(voteCtx)
+	})
+}
