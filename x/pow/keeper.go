@@ -304,7 +304,13 @@ func (k Keeper) SetBlockReward(ctx sdk.Context, reward math.Int) {
 func (k Keeper) GetBlockReward(ctx sdk.Context) math.Int {
 	bz := ctx.KVStore(k.storeKey).Get(KeyBlockReward)
 	if bz == nil {
-		return math.NewInt(int64(DefaultGenesisState().Params.BlockReward))
+		// No explicit override has ever been set (via SetBlockReward) --
+		// use the real, locked height-based decay schedule. Every
+		// existing test that explicitly calls SetBlockReward continues
+		// to get exactly that value, unchanged; real genesis-started
+		// chains (which no longer call SetBlockReward at genesis -- see
+		// module.go) always fall through to the real schedule.
+		return k.ComputeScheduledBlockReward(ctx, ctx.BlockHeight())
 	}
 	var r int64
 	_ = json.Unmarshal(bz, &r)
@@ -380,7 +386,7 @@ func (k Keeper) DistributeBlockReward(ctx sdk.Context, miner sdk.AccAddress) err
 	if reward.IsZero() {
 		return nil
 	}
-	coins := sdk.NewCoins(sdk.NewCoin("aeth", reward))
+	coins := sdk.NewCoins(sdk.NewCoin("uaeth", reward))
 	if err := k.bankKeeper.MintCoins(ctx, ModuleName, coins); err != nil {
 		k.logger.Error("failed to mint block reward", "error", err)
 		return err
@@ -389,7 +395,7 @@ func (k Keeper) DistributeBlockReward(ctx sdk.Context, miner sdk.AccAddress) err
 		Mul(math.LegacyMustNewDecFromStr("0.15")).
 		TruncateInt()
 	minerAmount := reward.Sub(treasuryCut)
-	minerCoins := sdk.NewCoins(sdk.NewCoin("aeth", minerAmount))
+	minerCoins := sdk.NewCoins(sdk.NewCoin("uaeth", minerAmount))
 	if k.IsActiveValidator(ctx, miner) {
 		k.AddEscrow(ctx, miner, minerAmount)
 	} else {
@@ -404,7 +410,7 @@ func (k Keeper) DistributeBlockReward(ctx sdk.Context, miner sdk.AccAddress) err
 	actuallyCredited := k.CreditTreasuryShareToValidators(ctx, validatorShareTotal)
 	feeCollectorAmount := treasuryCut.Sub(actuallyCredited)
 if !feeCollectorAmount.IsZero() {
-	feeCollectorCoins := sdk.NewCoins(sdk.NewCoin("aeth", feeCollectorAmount))
+	feeCollectorCoins := sdk.NewCoins(sdk.NewCoin("uaeth", feeCollectorAmount))
 	// Redirected from the fee collector (which had no real consumer --
 	// no staking module distributes from it, nothing else spends it) to
 	// x/treasury instead, giving governance's treasury-spend proposals
@@ -725,7 +731,7 @@ func (k Keeper) ProcessMisbehavior(ctx sdk.Context) {
 
 		forfeited := k.GetEscrowBalance(ctx, minerAddr)
 		if !forfeited.IsZero() {
-			coins := sdk.NewCoins(sdk.NewCoin("aeth", forfeited))
+			coins := sdk.NewCoins(sdk.NewCoin("uaeth", forfeited))
 			if err := k.bankKeeper.BurnCoins(ctx, ModuleName, coins); err != nil {
 				k.logger.Error("failed to burn forfeited escrow", "miner", minerAddr.String(), "error", err)
 			}
@@ -785,7 +791,7 @@ func (k Keeper) ReleaseMaturedEscrows(ctx sdk.Context) {
 			continue
 		}
 
-		coins := sdk.NewCoins(sdk.NewCoin("aeth", balance))
+		coins := sdk.NewCoins(sdk.NewCoin("uaeth", balance))
 		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, ModuleName, minerAddr, coins); err != nil {
 			k.logger.Error("failed to release matured escrow", "miner", minerAddr.String(), "error", err)
 			continue
@@ -1005,4 +1011,31 @@ func (k Keeper) CheckValidatorLiveness(ctx sdk.Context) {
 	k.ClearValidatorLiveness(ctx, minerAddr)
 }
 	}
+}
+
+// ComputeScheduledBlockReward returns the real, locked block reward
+// for a given height, per the decay schedule in
+// tail-emission-decision.md: 5.00 AETH decaying ~34%/year (multiplicative,
+// discrete yearly steps, not smooth per-block decay) for 8 years, then
+// a permanent 0.20 AETH tail. Deterministic, height-based (never
+// wall-clock-time-based, matching the same principle difficulty
+// retargeting already follows) -- every node computes an identical
+// result for the same height.
+func (k Keeper) ComputeScheduledBlockReward(ctx sdk.Context, height int64) math.Int {
+	targetBlockTime := k.GetTargetBlockTime(ctx)
+	if targetBlockTime <= 0 {
+		targetBlockTime = 60 // sane fallback; should not occur in practice
+	}
+	blocksPerYear := SecondsPerYear / targetBlockTime
+
+	yearsElapsed := height / blocksPerYear
+	if yearsElapsed >= BlockRewardDecayYears {
+		return math.NewInt(TailBlockReward)
+	}
+
+	reward := math.LegacyNewDec(InitialBlockReward)
+	for i := int64(0); i < yearsElapsed; i++ {
+		reward = reward.Mul(BlockRewardDecayFactor)
+	}
+	return reward.TruncateInt()
 }

@@ -81,7 +81,7 @@ func (k Keeper) Spend(ctx sdk.Context, recipient sdk.AccAddress, amount math.Int
 		return sdkerrors.Wrapf(ErrInsufficientTreasuryBalance, "treasury balance %s is less than requested %s", current.String(), amount.String())
 	}
 
-	coins := sdk.NewCoins(sdk.NewCoin("aeth", amount))
+	coins := sdk.NewCoins(sdk.NewCoin("uaeth", amount))
 	if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, ModuleName, recipient, coins); err != nil {
 		return err
 	}

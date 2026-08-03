@@ -146,7 +146,7 @@ Difficulty: 1,
 	require.NotNil(t, resp)
 
 	require.Len(t, mockBank.MintCalls, 1)
-	require.Equal(t, "5000000aeth", mockBank.MintCalls[0].Coins.String())
+	require.Equal(t, "5000000uaeth", mockBank.MintCalls[0].Coins.String())
 	require.Len(t, mockBank.SendCalls, 2)
 	require.Equal(t, minerAddr, mockBank.SendCalls[0].RecipientAddr)
 

@@ -1,6 +1,7 @@
 package pow
 
 import (
+	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -53,7 +54,11 @@ func DefaultGenesisState() GenesisState {
 			MaxDifficulty:     100_000_000, // ~5.8 hours average at measured throughput -- generous
                                 // headroom for faster hardware / more miners joining later.
 			Difficulty:        285_960,     // Starts equal to InitialDifficulty.
-			BlockReward:       5_000_000, // 5,000,000 aeth (whole-unit denom, no sub-unit scaling)
+			BlockReward: 5_000_000, // 5,000,000 uaeth = 5.00 AETH -- matches Year 1 of the locked
+                        // decay schedule (see tail-emission-decision.md), though this
+                        // flat genesis default will be superseded once DistributeBlockReward
+                        // is wired to compute the real height-based decay curve rather than
+                        // reading this single static value.
 			TailEmission:      false,
 			EpochLength:       1440, // ~24h at 60s target blocks
 			TopKSize:          21,   // BFT-performance sweet spot; see design doc §4
@@ -89,3 +94,25 @@ var (
 	KeyLivenessIndexPrefix  = []byte("liveness_index/")  // validator addr -> current write index (0-59)
 	KeyLivenessMissedPrefix = []byte("liveness_missed/") // validator addr -> current miss count in window
 )
+
+// Locked block-reward decay schedule (see tail-emission-decision.md).
+// These are permanent protocol constants, not genesis-tunable
+// parameters -- Aether's monetary policy is meant to be as fixed and
+// predictable as Bitcoin's halving schedule, not something an operator
+// can casually reconfigure per-deployment.
+const (
+	InitialBlockReward    int64 = 5_000_000 // 5.00 AETH, in uaeth
+	BlockRewardDecayYears int64 = 8
+	TailBlockReward       int64 = 200_000 // 0.20 AETH, in uaeth, permanent from year 9 onward
+	SecondsPerYear        int64 = 31_557_600 // 365.25 days -- a fixed constant, not computed from wall-clock time
+)
+
+// BlockRewardDecayFactor is ~34% annual decay (66% retained per year),
+// confirmed by direct calculation to land at ~0.18 AETH after 8 years
+// from a 5.00 AETH start -- NOT the originally-stated "18%/year",
+// which was mathematically verified to be incorrect (it would only
+// reach ~1.02 AETH after 8 years). Uses math.LegacyDec (deterministic,
+// arbitrary-precision fixed-point), never float64 -- floating-point
+// arithmetic is not guaranteed to produce identical results across
+// different systems, which would risk a consensus fork.
+var BlockRewardDecayFactor = math.LegacyMustNewDecFromStr("0.66")

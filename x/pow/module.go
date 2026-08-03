@@ -76,7 +76,6 @@ func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.
 	var genState GenesisState
 	json.Unmarshal(data, &genState)
 
-	am.keeper.SetBlockReward(ctx, math.NewInt(int64(genState.Params.BlockReward)))
 	am.keeper.SetDifficulty(ctx, math.NewInt(int64(genState.Params.Difficulty)))
 	am.keeper.SetMinDifficulty(ctx, int64(genState.Params.MinDifficulty))
 	am.keeper.SetMaxDifficulty(ctx, int64(genState.Params.MaxDifficulty))

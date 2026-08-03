@@ -205,7 +205,7 @@ func TestSubmitProposal_Success_CreatesProposalInDepositPeriod(t *testing.T) {
 	require.Equal(t, "5000000", proposal.TotalDeposit)
 
 	require.Len(t, mockBank.SendCalls, 1)
-	require.Equal(t, "5000000aeth", mockBank.SendCalls[0].Coins.String())
+	require.Equal(t, "5000000uaeth", mockBank.SendCalls[0].Coins.String())
 }
 
 func TestSubmitProposal_MeetingMinDepositImmediatelyEntersVotingPeriod(t *testing.T) {
@@ -351,7 +351,7 @@ func TestExpireProposal_BurnsAllAccumulatedDeposits(t *testing.T) {
 	require.Len(t, mockBank.BurnCalls, 2)
 	totalBurned := math.ZeroInt()
 	for _, c := range mockBank.BurnCalls {
-		amt := c.Coins.AmountOf("aeth")
+		amt := c.Coins.AmountOf("uaeth")
 		totalBurned = totalBurned.Add(amt)
 	}
 	require.True(t, totalBurned.Equal(math.NewInt(15_000_000)))

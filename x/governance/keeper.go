@@ -117,7 +117,7 @@ func (k Keeper) NextProposalID(ctx sdk.Context) uint64 {
 // transitions the proposal into its voting period the moment MinDeposit
 // is met.
 func (k Keeper) addDeposit(ctx sdk.Context, proposalID uint64, depositor sdk.AccAddress, amount math.Int) error {
-	coins := sdk.NewCoins(sdk.NewCoin("aeth", amount))
+	coins := sdk.NewCoins(sdk.NewCoin("uaeth", amount))
 	if err := k.bankKeeper.SendCoinsFromAccountToModule(ctx, depositor, ModuleName, coins); err != nil {
 		return sdkerrors.Wrapf(err, "failed to transfer deposit")
 	}
@@ -248,7 +248,7 @@ func (k Keeper) ExpireProposal(ctx sdk.Context, proposal Proposal) error {
 		if !ok || !amount.IsPositive() {
 			continue
 		}
-		coins := sdk.NewCoins(sdk.NewCoin("aeth", amount))
+		coins := sdk.NewCoins(sdk.NewCoin("uaeth", amount))
 		if err := k.bankKeeper.BurnCoins(ctx, ModuleName, coins); err != nil {
 			return sdkerrors.Wrapf(err, "failed to burn deposit for expired proposal %d", proposal.Id)
 		}
@@ -465,7 +465,7 @@ func (k Keeper) burnDeposits(ctx sdk.Context, proposalID uint64) error {
 		if !ok || !amount.IsPositive() {
 			continue
 		}
-		coins := sdk.NewCoins(sdk.NewCoin("aeth", amount))
+		coins := sdk.NewCoins(sdk.NewCoin("uaeth", amount))
 		if err := k.bankKeeper.BurnCoins(ctx, ModuleName, coins); err != nil {
 			return sdkerrors.Wrapf(err, "failed to burn deposit for proposal %d", proposalID)
 		}
@@ -483,7 +483,7 @@ func (k Keeper) refundDeposits(ctx sdk.Context, proposalID uint64) error {
 		if !ok || !amount.IsPositive() {
 			continue
 		}
-		coins := sdk.NewCoins(sdk.NewCoin("aeth", amount))
+		coins := sdk.NewCoins(sdk.NewCoin("uaeth", amount))
 		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, ModuleName, depositorAddr, coins); err != nil {
 			return sdkerrors.Wrapf(err, "failed to refund deposit for proposal %d", proposalID)
 		}

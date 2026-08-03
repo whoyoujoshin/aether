@@ -147,17 +147,17 @@ func TestDistributeBlockReward_SplitsCorrectly(t *testing.T) {
 
 	require.Len(t, mockBank.MintCalls, 1)
 	require.Equal(t, types.ModuleName, mockBank.MintCalls[0].Module)
-	require.Equal(t, "5000000aeth", mockBank.MintCalls[0].Coins.String())
+	require.Equal(t, "5000000uaeth", mockBank.MintCalls[0].Coins.String())
 
 	require.Len(t, mockBank.SendCalls, 2)
 
 	minerSend := mockBank.SendCalls[0]
 	require.Equal(t, miner, minerSend.RecipientAddr)
-	require.Equal(t, "4250000aeth", minerSend.Coins.String())
+	require.Equal(t, "4250000uaeth", minerSend.Coins.String())
 
 	treasurySend := mockBank.SendCalls[1]
 	require.Equal(t, "treasury", treasurySend.RecipientModule)
-	require.Equal(t, "750000aeth", treasurySend.Coins.String())
+	require.Equal(t, "750000uaeth", treasurySend.Coins.String())
 }
 
 func TestDistributeBlockReward_ZeroRewardNoOps(t *testing.T) {
@@ -183,7 +183,7 @@ func TestDistributeBlockReward_SkipsTreasurySendWhenCutTruncatesToZero(t *testin
 	require.NoError(t, err)
 	require.Len(t, mockBank.MintCalls, 1)
 	require.Len(t, mockBank.SendCalls, 1, "treasury send should be skipped when the cut truncates to zero")
-	require.Equal(t, "1aeth", mockBank.SendCalls[0].Coins.String())
+	require.Equal(t, "1uaeth", mockBank.SendCalls[0].Coins.String())
 }
 
 func TestDistributeBlockReward_PropagatesMintError(t *testing.T) {
@@ -1000,7 +1000,7 @@ func TestProcessMisbehavior_BansAndBurnsEscrow(t *testing.T) {
 	require.Equal(t, minerAddr, pending[0])
 
 	require.Len(t, mockBank.BurnCalls, 1)
-	require.Equal(t, "1000000aeth", mockBank.BurnCalls[0].Coins.String())
+	require.Equal(t, "1000000uaeth", mockBank.BurnCalls[0].Coins.String())
 }
 
 func TestProcessMisbehavior_ZeroEscrowStillBansButDoesNotCallBurn(t *testing.T) {
@@ -1106,7 +1106,7 @@ func TestDistributeBlockReward_NoActiveValidators_TreasuryGoesEntirelyToTreasury
 		}
 	}
 	require.NotNil(t, treasurySend)
-	require.Equal(t, "750000aeth", treasurySend.Coins.String(), "entire treasury cut goes to x/treasury when no validators exist")
+	require.Equal(t, "750000uaeth", treasurySend.Coins.String(), "entire treasury cut goes to x/treasury when no validators exist")
 }
 
 func TestDistributeBlockReward_WithActiveValidators_SplitsThirteenTwo(t *testing.T) {
@@ -1134,7 +1134,7 @@ func TestDistributeBlockReward_WithActiveValidators_SplitsThirteenTwo(t *testing
 		}
 	}
 	require.NotNil(t, treasurySend)
-	require.Equal(t, "100000aeth", treasurySend.Coins.String())
+	require.Equal(t, "100000uaeth", treasurySend.Coins.String())
 }
 
 func TestComputeValidatorUpdates_ExcludesPermanentlyBannedAddress(t *testing.T) {
@@ -1203,7 +1203,7 @@ func TestReleaseMaturedEscrows_MaturedEscrowIsPaidOutAndCleared(t *testing.T) {
 	require.True(t, k.GetEscrowBalance(ctx, minerAddr).IsZero(), "escrow must be cleared after release")
 	require.Len(t, mockBank.SendCalls, 1)
 	require.Equal(t, minerAddr, mockBank.SendCalls[0].RecipientAddr)
-	require.Equal(t, "1000aeth", mockBank.SendCalls[0].Coins.String())
+	require.Equal(t, "1000uaeth", mockBank.SendCalls[0].Coins.String())
 }
 
 func TestReleaseMaturedEscrows_BannedAddressIsSkipped(t *testing.T) {
@@ -1681,4 +1681,73 @@ func TestCheckValidatorLiveness_IgnoresUnrecognizedConsensusAddress(t *testing.T
 	require.NotPanics(t, func() {
 		k.CheckValidatorLiveness(voteCtx)
 	})
+}
+
+// --- Block reward decay schedule ---
+
+func TestComputeScheduledBlockReward_Year1(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetTargetBlockTime(ctx, 60)
+
+	reward := k.ComputeScheduledBlockReward(ctx, 0)
+	require.True(t, reward.Equal(math.NewInt(5_000_000)), "year 1 should be exactly 5.00 AETH (5,000,000 uaeth), got %s", reward.String())
+}
+
+func TestComputeScheduledBlockReward_AllYearLevels(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetTargetBlockTime(ctx, 60)
+	blocksPerYear := int64(31_557_600 / 60)
+
+	expected := []int64{5_000_000, 3_300_000, 2_178_000, 1_437_480, 948_736, 626_166, 413_269, 272_758}
+
+	for year, exp := range expected {
+		height := int64(year) * blocksPerYear
+		reward := k.ComputeScheduledBlockReward(ctx, height)
+		require.True(t, reward.Equal(math.NewInt(exp)), "year %d (height %d): expected %d, got %s", year+1, height, exp, reward.String())
+	}
+}
+
+func TestComputeScheduledBlockReward_TailBeginsExactlyAtYear9(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetTargetBlockTime(ctx, 60)
+	blocksPerYear := int64(31_557_600 / 60)
+
+	yearEightHeight := 7 * blocksPerYear
+	yearNineHeight := 8 * blocksPerYear
+
+	rewardYear8 := k.ComputeScheduledBlockReward(ctx, yearEightHeight)
+	rewardYear9 := k.ComputeScheduledBlockReward(ctx, yearNineHeight)
+
+	require.True(t, rewardYear8.Equal(math.NewInt(272_758)), "last year of decay must still be the decayed value, not the tail")
+	require.True(t, rewardYear9.Equal(math.NewInt(200_000)), "year 9 must be exactly the permanent tail value")
+}
+
+func TestComputeScheduledBlockReward_TailPersistsIndefinitely(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetTargetBlockTime(ctx, 60)
+	blocksPerYear := int64(31_557_600 / 60)
+
+	farFuture := 100 * blocksPerYear // year 100, well past decay
+	reward := k.ComputeScheduledBlockReward(ctx, farFuture)
+	require.True(t, reward.Equal(math.NewInt(200_000)), "tail must remain exactly 0.20 AETH indefinitely, not continue decaying")
+}
+
+func TestGetBlockReward_FallsThroughToScheduleWhenNoOverrideSet(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetTargetBlockTime(ctx, 60)
+	ctx = ctx.WithBlockHeight(0)
+
+	// No SetBlockReward call at all -- must fall through to the real schedule.
+	reward := k.GetBlockReward(ctx)
+	require.True(t, reward.Equal(math.NewInt(5_000_000)), "with no explicit override, GetBlockReward must return the real scheduled value")
+}
+
+func TestGetBlockReward_ExplicitOverrideTakesPrecedenceOverSchedule(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	k.SetTargetBlockTime(ctx, 60)
+	ctx = ctx.WithBlockHeight(0) // would otherwise be year 1 (5,000,000)
+
+	k.SetBlockReward(ctx, math.NewInt(999_999))
+	reward := k.GetBlockReward(ctx)
+	require.True(t, reward.Equal(math.NewInt(999_999)), "an explicit SetBlockReward override must take precedence over the computed schedule")
 }
