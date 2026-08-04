@@ -42,6 +42,7 @@ import (
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
+	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 
 )
 
@@ -360,7 +361,9 @@ func (app *App) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
 // Required methods
 func (app *App) RegisterAPIRoutes(apiSvr *api.Server, apiConfig config.APIConfig) {}
 func (app *App) RegisterGRPCServerWithSkipCheckHeader(grpcSrv grpc.Server, skip bool) {}
-func (app *App) RegisterTxService(clientCtx client.Context) {}
+func (app *App) RegisterTxService(clientCtx client.Context) {
+	authtx.RegisterTxService(app.BaseApp.GRPCQueryRouter(), clientCtx, app.BaseApp.Simulate, app.interfaceRegistry)
+}
 func (app *App) RegisterTendermintService(clientCtx client.Context) {}
 func (app *App) RegisterNodeService(clientCtx client.Context, cfg config.Config) {}
 func (app *App) GetModuleManager() *module.Manager { return app.sm }
