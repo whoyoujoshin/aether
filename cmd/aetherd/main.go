@@ -27,6 +27,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/client/rpc"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	bankcli "github.com/cosmos/cosmos-sdk/x/bank/client/cli"
+	addresscodec "github.com/cosmos/cosmos-sdk/codec/address"
 	
 )
 
@@ -88,11 +90,12 @@ txCmd := &cobra.Command{
 		RunE:                       client.ValidateCmd,
 	}
 	txCmd.AddCommand(
-		authcmd.GetSignCommand(),
-		authcmd.GetBroadcastCommand(),
-		powcli.NewTxCmd(),
-		governancecli.NewTxCmd(),
-	)
+	authcmd.GetSignCommand(),
+	authcmd.GetBroadcastCommand(),
+	powcli.NewTxCmd(),
+	governancecli.NewTxCmd(),
+	bankcli.NewTxCmd(addresscodec.NewBech32Codec("cosmos")),
+)
 	rootCmd.AddCommand(txCmd)
 	
 	queryCmd := &cobra.Command{
