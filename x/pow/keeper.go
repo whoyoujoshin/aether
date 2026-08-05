@@ -611,11 +611,19 @@ func (k Keeper) GetBondCooldown(ctx sdk.Context) int64 {
 	return c
 }
 
-// AddEscrow increases minerAddr's pending escrowed balance and (re)sets
-// their unlock height to the current block height plus the cooldown
-// period. Called whenever an active validator earns a reward (their own
-// mining reward, or their share of other miners' treasury cut) -- see
-// msg_server.go's SubmitPoW.
+// AddEscrow credits amount to a validator's escrow balance, and resets
+// their unlock height forward by a full BondCooldown from the CURRENT
+// block -- every single time, including for a validator who is already
+// actively earning and re-crediting escrow continuously. This is
+// intentional bonding behavior, not an oversight: a continuously
+// active validator's bond stays perpetually locked for as long as they
+// remain active, which is precisely the security property bonding is
+// meant to provide -- you do not want an actively-signing validator's
+// bond to unlock and become withdrawable while they still have a real,
+// ongoing opportunity to equivocate. The unlock height only stops
+// resetting, and the cooldown timer finally starts counting down for
+// real, once a validator stops earning new escrow (e.g. after leaving
+// the active set) -- see ReleaseMaturedEscrows.
 func (k Keeper) AddEscrow(ctx sdk.Context, minerAddr sdk.AccAddress, amount math.Int) {
 	current := k.GetEscrowBalance(ctx, minerAddr)
 	newBalance := current.Add(amount)
@@ -962,8 +970,17 @@ func (k Keeper) RecordValidatorSigning(ctx sdk.Context, minerAddr sdk.AccAddress
 	store.Set(indexKey, sdk.Uint64ToBigEndian(uint64(index)))
 	store.Set(missedKey, sdk.Uint64ToBigEndian(uint64(missed)))
 
-	missRate := float64(missed) / float64(LivenessWindowSize)
-	return missRate > LivenessMissThreshold
+// Pure integer comparison -- confirmed mathematically exact
+// equivalent to "missed/LivenessWindowSize > LivenessMissThreshold"
+// (0.5) for all integer values of missed from 0 to LivenessWindowSize.
+// Avoids float64 in this consensus-critical path entirely, matching
+// this project's consistent principle (see tail-emission-decision.md)
+// of never relying on floating-point arithmetic where deterministic
+// integer/Dec math is available -- the practical risk here was
+// genuinely low (small-integer division is bit-exact under IEEE 754
+// across real platforms), but there's no reason to make an exception
+// to the rule when an exact integer equivalent costs nothing.
+return missed*2 > LivenessWindowSize
 }
 
 // ClearValidatorLiveness resets a validator's liveness tracking
