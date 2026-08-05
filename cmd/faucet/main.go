@@ -23,9 +23,15 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	"github.com/whoyoujoshin/aether/app"
 )
 
-var bech32Pattern = regexp.MustCompile(`^cosmos1[a-z0-9]{38,90}$`)
+func init() {
+	app.SetAddressPrefixes()
+}
+
+var bech32Pattern = regexp.MustCompile(`^aether1[a-z0-9]{38,90}$`)
 
 type faucetServer struct {
 	mu          sync.Mutex // serializes real sends to avoid account-sequence races
@@ -117,14 +123,15 @@ func (f *faucetServer) sendCoins(address string) (string, error) {
 	amountStr := fmt.Sprintf("%duaeth", f.amountUaeth)
 
 	cmd := exec.Command("aetherd", "tx", "bank", "send",
-		f.fromKey, address, amountStr,
-		"--chain-id", f.chainID,
-		"--keyring-backend", f.keyringFlag,
-		"--fees", "0uaeth",
-		"--broadcast-mode", "sync",
-		"--output", "json",
-		"-y",
-	)
+	f.fromKey, address, amountStr,
+	"--chain-id", f.chainID,
+	"--keyring-backend", f.keyringFlag,
+	"--fees", "0uaeth",
+	"--gas", "400000", // ML-DSA-44 signatures need more than the SDK's default 200,000
+	"--broadcast-mode", "sync",
+	"--output", "json",
+	"-y",
+)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

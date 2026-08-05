@@ -23,7 +23,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"github.com/whoyoujoshin/aether/app"
 )
+
+func init() {
+	app.SetAddressPrefixes()
+}
 
 // fetchLatestHeight asks CometBFT's RPC (not the gRPC query server) for the
 // current chain height. This is a separate, simpler endpoint that reliably

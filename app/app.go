@@ -58,6 +58,28 @@ func init() {
 	DefaultNodeHome = filepath.Join(home, ".aether")
 }
 
+// Bech32MainPrefix is Aether's own real account address prefix,
+// replacing the SDK's generic default ("cosmos") everywhere an
+// address codec is constructed.
+const Bech32MainPrefix = "aether"
+
+// SetAddressPrefixes configures the SDK's global bech32 address
+// encoding to use Aether's real prefixes, then seals the config.
+// Every separate binary in this project (aetherd, and every
+// standalone cmd/ tool that constructs or displays an address) is
+// its own independent process with its own independent copy of the
+// SDK's global config -- setting this in one binary has zero effect
+// on any other. This function exists as the single, shared
+// implementation every binary's own init() calls, rather than
+// duplicating the same literal prefix strings across many files.
+func SetAddressPrefixes() {
+	config := sdk.GetConfig()
+	config.SetBech32PrefixForAccount(Bech32MainPrefix, Bech32MainPrefix+"pub")
+	config.SetBech32PrefixForValidator(Bech32MainPrefix+"valoper", Bech32MainPrefix+"valoperpub")
+	config.SetBech32PrefixForConsensusNode(Bech32MainPrefix+"valcons", Bech32MainPrefix+"valconspub")
+	config.Seal()
+}
+
 var ModuleBasics = module.NewBasicManager(
 	auth.AppModuleBasic{},
 	bank.AppModuleBasic{},
@@ -77,7 +99,7 @@ func MakeEncodingConfig() EncodingConfig {
 	interfaceRegistry, err := cdctypes.NewInterfaceRegistryWithOptions(cdctypes.InterfaceRegistryOptions{
 	ProtoFiles: proto.HybridResolver,
 	SigningOptions: signing.Options{
-		AddressCodec:          address.NewBech32Codec(sdk.Bech32MainPrefix),
+		AddressCodec:          address.NewBech32Codec(Bech32MainPrefix),
 		ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
 	},
 })
@@ -96,7 +118,7 @@ if err != nil {
 	txCfg, err := tx.NewTxConfigWithOptions(appCodec, tx.ConfigOptions{
 	EnabledSignModes: tx.DefaultSignModes,
 	SigningOptions: &signing.Options{
-		AddressCodec:          address.NewBech32Codec(sdk.Bech32MainPrefix),
+		AddressCodec:          address.NewBech32Codec(Bech32MainPrefix),
 		ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
 	},
 })
@@ -175,7 +197,7 @@ func New(
 	interfaceRegistry, err := cdctypes.NewInterfaceRegistryWithOptions(cdctypes.InterfaceRegistryOptions{
 	ProtoFiles: proto.HybridResolver,
 	SigningOptions: signing.Options{
-		AddressCodec:          address.NewBech32Codec(sdk.Bech32MainPrefix),
+		AddressCodec:          address.NewBech32Codec(Bech32MainPrefix),
 		ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
 	},
 })
@@ -219,8 +241,8 @@ app.AccountKeeper = authkeeper.NewAccountKeeper(
 	runtime.NewKVStoreService(app.keys[authtypes.StoreKey]),
 	authtypes.ProtoBaseAccount,
 	maccPerms,
-	address.NewBech32Codec(sdk.Bech32MainPrefix),
-	sdk.Bech32MainPrefix,
+	address.NewBech32Codec(Bech32MainPrefix),
+	Bech32MainPrefix,
 	authtypes.NewModuleAddress("gov").String(),
 )
 
@@ -258,7 +280,7 @@ governanceModule := governance.NewAppModule(appCodec, app.GovernanceKeeper)
 	txConfig, err := tx.NewTxConfigWithOptions(appCodec, tx.ConfigOptions{
 	EnabledSignModes: tx.DefaultSignModes,
 	SigningOptions: &signing.Options{
-		AddressCodec:          address.NewBech32Codec(sdk.Bech32MainPrefix),
+		AddressCodec:          address.NewBech32Codec(Bech32MainPrefix),
 		ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
 	},
 })

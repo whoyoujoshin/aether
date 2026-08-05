@@ -31,7 +31,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"golang.org/x/crypto/scrypt"
 	"github.com/whoyoujoshin/aether/x/pow"
+	"github.com/whoyoujoshin/aether/app"
 )
+
+func init() {
+	app.SetAddressPrefixes()
+}
 
 // header mirrors pow.MiningHeader's field layout exactly, matching
 // x/pow/keeper.go's headerToBytes byte-for-byte.

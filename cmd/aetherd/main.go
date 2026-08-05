@@ -48,6 +48,10 @@ var initClientCtx = client.Context{}.
 		options.SupportedAlgos = append(options.SupportedAlgos, mldsa.Algo)
 	})
 
+func init() {
+	app.SetAddressPrefixes()
+}
+
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "aetherd",
@@ -94,7 +98,7 @@ txCmd := &cobra.Command{
 	authcmd.GetBroadcastCommand(),
 	powcli.NewTxCmd(),
 	governancecli.NewTxCmd(),
-	bankcli.NewTxCmd(addresscodec.NewBech32Codec("cosmos")),
+	bankcli.NewTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
 )
 	rootCmd.AddCommand(txCmd)
 	

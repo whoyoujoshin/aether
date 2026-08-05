@@ -24,10 +24,14 @@ import (
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
+	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/x/governance"
 	"github.com/whoyoujoshin/aether/x/pow"
 )
+
+func init() {
+	app.SetAddressPrefixes()
+}
 
 var (
 	grpcEndpoint string

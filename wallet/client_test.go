@@ -20,7 +20,7 @@ func TestClient_GetBalance_ReturnsRealBalance(t *testing.T) {
 	defer client.Close()
 
 	// The faucet account, funded via genesis earlier in this project.
-	balance, err := client.GetBalance("cosmos1gq80ffgcaq803gzmev6my3hr9atax47qsfwzln92ezlpg0r0ehnqgq9lqm")
+	balance, err := client.GetBalance("aether1gq80ffgcaq803gzmev6my3hr9atax47qsfwzln92ezlpg0r0ehnqhcl4cd")
 	require.NoError(t, err)
 	require.NotEmpty(t, balance, "a genesis-funded account must show a real, non-empty balance")
 }
@@ -30,7 +30,7 @@ func TestClient_GetAccountInfo_ReturnsRealSequenceAndAccountNumber(t *testing.T)
 	require.NoError(t, err)
 	defer client.Close()
 
-	accountNumber, sequence, err := client.GetAccountInfo("cosmos1gq80ffgcaq803gzmev6my3hr9atax47qsfwzln92ezlpg0r0ehnqgq9lqm")
+	accountNumber, sequence, err := client.GetAccountInfo("aether1gq80ffgcaq803gzmev6my3hr9atax47qsfwzln92ezlpg0r0ehnqhcl4cd")
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, sequence, uint64(0))
 	_ = accountNumber // just confirming the call succeeds without error; exact value depends on genesis ordering

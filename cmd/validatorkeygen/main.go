@@ -20,7 +20,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/whoyoujoshin/aether/app"
 )
+
+func init() {
+	app.SetAddressPrefixes()
+}
 
 func main() {
 	minerAddr := flag.String("miner", "", "bech32 miner address to bind this consensus key to (required)")
