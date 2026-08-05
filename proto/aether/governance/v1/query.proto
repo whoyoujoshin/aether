@@ -1,0 +1,32 @@
+syntax = "proto3";
+package aether.governance.v1;
+
+import "gogoproto/gogo.proto";
+import "aether/governance/v1/governance.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/governance";
+
+service Query {
+  rpc Proposal(QueryProposalRequest) returns (QueryProposalResponse);
+  rpc Proposals(QueryProposalsRequest) returns (QueryProposalsResponse);
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse);
+}
+
+message QueryProposalRequest {
+  uint64 proposal_id = 1;
+}
+message QueryProposalResponse {
+  Proposal proposal = 1;
+}
+
+message QueryProposalsRequest {}
+message QueryProposalsResponse {
+  repeated Proposal proposals = 1;
+}
+
+message QueryParamsRequest {}
+message QueryParamsResponse {
+  int64 min_deposit = 1;
+  int64 deposit_period = 2;
+  int64 voting_period = 3;
+}
