@@ -2,7 +2,7 @@
 
 Aether is a sovereign, staking-free proof-of-work blockchain built on Cosmos SDK and CometBFT. Core design principle: **fair launch via mining, no early validator or founder dominance** — validators are chosen entirely by real, tracked mining work, not capital or staking, and mining rewards flow to everyday participants rather than a pre-mined or founder-allocated supply.
 
-> \*\*⚠️ This project has not undergone a professional, independent security audit.\*\* It is early-stage software. Do not use it with real funds you cannot afford to lose entirely. See \[Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and the security review prep document in this repo for an honest account of what has and hasn't been independently reviewed.
+> \\\*\\\*⚠️ This project has not undergone a professional, independent security audit.\\\*\\\* It is early-stage software. Do not use it with real funds you cannot afford to lose entirely. See \\\[Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and the security review prep document in this repo for an honest account of what has and hasn't been independently reviewed.
 
 Full design history, live-verification write-ups, and every locked architectural decision (with complete reasoning) are tracked in the [project wiki](../../wiki).
 
@@ -69,7 +69,7 @@ aetherd start
 
 ```toml
 
-\# config/config.toml, under \[rpc]
+\\# config/config.toml, under \\\[rpc]
 
 laddr = "tcp://0.0.0.0:26657"
 
@@ -79,7 +79,7 @@ laddr = "tcp://0.0.0.0:26657"
 
 ```toml
 
-\# config/app.toml, under \[grpc]
+\\# config/app.toml, under \\\[grpc]
 
 address = "0.0.0.0:9090"
 
@@ -94,6 +94,12 @@ This is a real, easy-to-miss gap — the firewall being open is necessary but no
 **This is a real, early-stage public network — not audited, and subject to resets.** Only use test funds you're comfortable losing entirely. See the disclosure notice at the top of this README.
 
 **Note on the faucet and explorer**: both are real, working, tested tools (see below), but currently run only locally by the maintainer — there is not yet an always-on, publicly-hosted faucet or explorer endpoint. This is a known, honest gap, not an oversight; deploying them persistently alongside the seed node is a natural next step.
+
+
+
+\*\*A related historical note\*\*: for roughly the first 10 hours of this testnet's life, `timeout\_commit` was still at CometBFT's own default (\~5 seconds), not the intended 60 seconds — meaning the chain produced blocks about 10x faster than designed during that window. This was caught, confirmed via real before/after timing measurements, and fixed live (see commit history). The practical effect: block height on this network is noticeably higher than you'd expect for its actual real-world age, since roughly 7,000 blocks accumulated in that first \~10-hour period alone. Not a consensus or security issue, just a real, disclosed quirk of this network's specific history.
+
+
 
 ## Quick Start (single-node devnet)
 
