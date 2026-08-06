@@ -2,28 +2,28 @@
 
 Aether is a sovereign, staking-free proof-of-work blockchain built on Cosmos SDK and CometBFT. Core design principle: **fair launch via mining, no early validator or founder dominance** — validators are chosen entirely by real, tracked mining work, not capital or staking, and mining rewards flow to everyday participants rather than a pre-mined or founder-allocated supply.
 
-> **⚠️ This project has not undergone a professional, independent security audit.** It is early-stage software. Do not use it with real funds you cannot afford to lose entirely. See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and the security review prep document in this repo for an honest account of what has and hasn't been independently reviewed.
+> \*\*⚠️ This project has not undergone a professional, independent security audit.\*\* It is early-stage software. Do not use it with real funds you cannot afford to lose entirely. See \[Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and the security review prep document in this repo for an honest account of what has and hasn't been independently reviewed.
 
 Full design history, live-verification write-ups, and every locked architectural decision (with complete reasoning) are tracked in the [project wiki](../../wiki).
 
 ## Current Status
 
-| Area | Status |
-|---|---|
-| Core PoW mining, Scrypt hashing, difficulty retargeting, height-based reward decay and tail emission | ✅ Built, tested, live-verified |
-| Epoch-based Top-K validator selection (no staking module) | ✅ Built, tested, live-verified on a 2-node network |
-| Validator bonding, equivocation slashing, automatic escrow release | ✅ Built, tested, live-verified with real constructed equivocation evidence |
-| Validator liveness (downtime) detection — distinct from equivocation | ✅ Built, tested, live-verified |
-| Ancestor validation (prevents work-inflation via unvalidated headers) | ✅ Built, tested, live-verified |
-| AuxPoW (merged mining) — self-verifying, Litecoin/Dogecoin-family | ✅ Built, tested, live-verified against primary-source binary formats |
-| Post-quantum signatures (ML-DSA-44 / Dilithium2), mandatory from genesis | ✅ Built, tested, live-verified — real keys, real ante-handler enforcement |
-| Full governance module (deposit-gated proposals, tenure-weighted voting, treasury execution, full query service) | ✅ Built, tested, live-verified |
-| `uaeth` sub-unit (1,000,000 uaeth = 1 aeth) and `aether` bech32 address prefix | ✅ Built, migrated, live-verified |
-| Wallet library and CLI (account management, chain queries, send) | ✅ Built, tested, live-verified |
-| Testnet faucet and minimal block explorer | ✅ Built and live-verified — currently run locally, not yet deployed publicly (see note below) |
-| **Public testnet** | ✅ **Live** — see below |
-| Account abstraction, native IBC | ⬜ Not built |
-| Independent professional security audit | ⬜ Not yet performed |
+|Area|Status|
+|-|-|
+|Core PoW mining, Scrypt hashing, difficulty retargeting, height-based reward decay and tail emission|✅ Built, tested, live-verified|
+|Epoch-based Top-K validator selection (no staking module)|✅ Built, tested, live-verified on a 2-node network|
+|Validator bonding, equivocation slashing, automatic escrow release|✅ Built, tested, live-verified with real constructed equivocation evidence|
+|Validator liveness (downtime) detection — distinct from equivocation|✅ Built, tested, live-verified|
+|Ancestor validation (prevents work-inflation via unvalidated headers)|✅ Built, tested, live-verified|
+|AuxPoW (merged mining) — self-verifying, Litecoin/Dogecoin-family|✅ Built, tested, live-verified against primary-source binary formats|
+|Post-quantum signatures (ML-DSA-44 / Dilithium2), mandatory from genesis|✅ Built, tested, live-verified — real keys, real ante-handler enforcement|
+|Full governance module (deposit-gated proposals, tenure-weighted voting, treasury execution, full query service)|✅ Built, tested, live-verified|
+|`uaeth` sub-unit (1,000,000 uaeth = 1 aeth) and `aether` bech32 address prefix|✅ Built, migrated, live-verified|
+|Wallet library and CLI (account management, chain queries, send)|✅ Built, tested, live-verified|
+|Testnet faucet and minimal block explorer|✅ Built and live-verified — currently run locally, not yet deployed publicly (see note below)|
+|**Public testnet**|✅ **Live** — see below|
+|Account abstraction, native IBC|⬜ Not built|
+|Independent professional security audit|⬜ Not yet performed|
 
 See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) for an honest, detailed accounting of every known gap and deferred item, and [Roadmap](../../wiki/Roadmap) for what's next.
 
@@ -37,11 +37,11 @@ Aether also requires **ML-DSA-44 (Dilithium2, NIST FIPS 204) post-quantum signat
 
 Aether's public testnet is live.
 
-- **Chain ID**: `aether-testnet-1`
-- **Seed node**: `dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656`
-- **RPC endpoint**: `http://157.245.252.221:26657`
-- **gRPC endpoint**: `157.245.252.221:9090`
-- **Genesis file**: [`testnet/genesis.json`](testnet/genesis.json)
+* **Chain ID**: `aether-testnet-1`
+* **Seed node**: `dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656`
+* **RPC endpoint**: `http://157.245.252.221:26657`
+* **gRPC endpoint**: `157.245.252.221:9090`
+* **Genesis file**: [`testnet/genesis.json`](testnet/genesis.json)
 
 ### Connecting a node
 
@@ -60,6 +60,36 @@ Then start your node as usual:
 ```powershell
 aetherd start
 ```
+
+
+
+\*\*If you want your node reachable by others\*\* (not just as a local client of the network), note that CometBFT's RPC server and the SDK's gRPC server both default to binding only to `localhost`, regardless of firewall rules. Edit `config/config.toml` and `config/app.toml` before starting:
+
+
+
+```toml
+
+\# config/config.toml, under \[rpc]
+
+laddr = "tcp://0.0.0.0:26657"
+
+```
+
+
+
+```toml
+
+\# config/app.toml, under \[grpc]
+
+address = "0.0.0.0:9090"
+
+```
+
+
+
+This is a real, easy-to-miss gap — the firewall being open is necessary but not sufficient; the server itself also needs to actually bind to a public-facing address.
+
+
 
 **This is a real, early-stage public network — not audited, and subject to resets.** Only use test funds you're comfortable losing entirely. See the disclosure notice at the top of this README.
 
@@ -157,9 +187,9 @@ Aether supports merged mining with Litecoin and Dogecoin (both Scrypt-based). A 
 
 ## Block reward schedule
 
-Block rewards decay on a real, height-based schedule (deterministic, no wall-clock dependency): 5.00 AETH at genesis, decaying ~34% per year (discrete yearly steps) for 8 years, then a permanent 0.20 AETH tail. See `tail-emission-decision.md` in the wiki for the full derivation, including a correction of an earlier, mathematically-inconsistent draft figure and an honest accounting of the real (not a flattering cherry-picked) long-term inflation rate.
+Block rewards decay on a real, height-based schedule (deterministic, no wall-clock dependency): 5.00 AETH at genesis, decaying \~34% per year (discrete yearly steps) for 8 years, then a permanent 0.20 AETH tail. See `tail-emission-decision.md` in the wiki for the full derivation, including a correction of an earlier, mathematically-inconsistent draft figure and an honest accounting of the real (not a flattering cherry-picked) long-term inflation rate.
 
-## Governance & Treasury
+## Governance \& Treasury
 
 Aether has a full, working governance system: anyone can submit a deposit-gated treasury-spend proposal (25,000,000 uaeth minimum deposit), active validators vote with tenure-weighted power (a 30-day ramp rewarding sustained, continuous participation), and passing proposals (60% quorum, 2/3 threshold, with a 1/3 veto override) automatically execute a real transfer from the treasury.
 
@@ -171,22 +201,22 @@ aetherd query governance proposal <proposal-id>
 
 ## Repo Layout
 
-- `x/pow` — the core module: mining verification (Scrypt + AuxPoW), difficulty retargeting, height-based reward decay, reward distribution, validator selection/bonding/slashing/liveness, ancestor validation
-- `x/governance` — deposit-gated proposals, tenure-weighted voting, quorum/threshold resolution, full query service
-- `x/treasury` — single source of truth for spendable community funds, spent only via governance-authorized proposals
-- `crypto/mldsa` — the ML-DSA-44 post-quantum signature scheme: real keys, ADR-028 addressing, keyring integration
-- `wallet/` — CLI/UI-agnostic Go library: account management, chain queries, transaction construction/signing/broadcasting
-- `cmd/aetherd` — the node binary
-- `cmd/wallet` — thin CLI wrapper over the wallet library
-- `cmd/faucet` — rate-limited testnet faucet HTTP service
-- `cmd/explorer` — minimal live block explorer dashboard
-- `cmd/powminer` — standalone tool that queries real chain state and brute-forces a valid native PoW nonce
-- `cmd/auxpowtest` — standalone tool that constructs a real, valid test AuxPoW (merged-mining) submission
-- `cmd/scryptbench` — benchmarks real Scrypt hash throughput, used to responsibly retune difficulty constants
-- `cmd/validatorkeygen` — generates/loads a consensus keypair and produces the registration proof-of-possession signature
-- `cmd/balancecheck` — gRPC bank balance checker (works around `bank`'s query CLI not being fully wired via autocli in this SDK version)
-- `cmd/equivocationtest` — constructs real, cryptographically valid equivocation evidence, used to live-verify the slashing path
-- `testnet/genesis.json` — the real, live public testnet's genesis file
+* `x/pow` — the core module: mining verification (Scrypt + AuxPoW), difficulty retargeting, height-based reward decay, reward distribution, validator selection/bonding/slashing/liveness, ancestor validation
+* `x/governance` — deposit-gated proposals, tenure-weighted voting, quorum/threshold resolution, full query service
+* `x/treasury` — single source of truth for spendable community funds, spent only via governance-authorized proposals
+* `crypto/mldsa` — the ML-DSA-44 post-quantum signature scheme: real keys, ADR-028 addressing, keyring integration
+* `wallet/` — CLI/UI-agnostic Go library: account management, chain queries, transaction construction/signing/broadcasting
+* `cmd/aetherd` — the node binary
+* `cmd/wallet` — thin CLI wrapper over the wallet library
+* `cmd/faucet` — rate-limited testnet faucet HTTP service
+* `cmd/explorer` — minimal live block explorer dashboard
+* `cmd/powminer` — standalone tool that queries real chain state and brute-forces a valid native PoW nonce
+* `cmd/auxpowtest` — standalone tool that constructs a real, valid test AuxPoW (merged-mining) submission
+* `cmd/scryptbench` — benchmarks real Scrypt hash throughput, used to responsibly retune difficulty constants
+* `cmd/validatorkeygen` — generates/loads a consensus keypair and produces the registration proof-of-possession signature
+* `cmd/balancecheck` — gRPC bank balance checker (works around `bank`'s query CLI not being fully wired via autocli in this SDK version)
+* `cmd/equivocationtest` — constructs real, cryptographically valid equivocation evidence, used to live-verify the slashing path
+* `testnet/genesis.json` — the real, live public testnet's genesis file
 
 ## Multi-node devnet
 
@@ -199,3 +229,4 @@ This project has an unusually well-documented debugging history — several genu
 ## Security
 
 This project has not undergone a professional third-party security audit. The maintainer welcomes community review, bug reports, and independent researcher attention — see open issues or reach out directly. If you are a security researcher or firm interested in reviewing this project, a consolidated project summary and honest known-gaps document is available in this repo to help scope an engagement.
+
