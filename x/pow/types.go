@@ -63,7 +63,10 @@ func DefaultGenesisState() GenesisState {
 			EpochLength:       1440, // ~24h at 60s target blocks
 			TopKSize:          21,   // BFT-performance sweet spot; see design doc §4
 			BondCooldown: 100, // arbitrary placeholder for testing; production value needs real analysis
-			RecencyWindowK: 10,
+			RecencyWindowK: 60, // widened from the original 10 after live testing showed
+                    // real Scrypt mining introduces genuine multi-minute
+                    // submission variance -- 10 was too tight and rejected
+                    // honest, valid submissions. See liveness-detection-decision.md.
 		},
 	}
 }
