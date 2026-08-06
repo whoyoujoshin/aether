@@ -110,7 +110,33 @@ See the [Architecture](../../wiki/Architecture) and [Phase 1](../../wiki/Phase-1
 
 ## Public testnet
 
-Aether is moving toward a public testnet. If you're reading this before that's live: the chain is currently devnet-only, running on the maintainer's own machine, not yet reachable by outside nodes. Watch the wiki and this README for updates on real network details (seed nodes, genesis file, chain-id) once the public testnet is live.
+Aether's public testnet is live.
+
+- **Chain ID**: `aether-testnet-1`
+- **Seed node**: `dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656`
+- **RPC endpoint**: `http://157.245.252.221:26657`
+- **gRPC endpoint**: `157.245.252.221:9090`
+- **Genesis file**: [`testnet/genesis.json`](testnet/genesis.json)
+
+### Connecting a node
+
+```powershell
+aetherd init <your-moniker> --chain-id aether-testnet-1
+```
+
+Replace the freshly-generated `config/genesis.json` with [`testnet/genesis.json`](testnet/genesis.json) from this repo, then edit `config/config.toml` and set:
+
+```toml
+seeds = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"
+```
+
+Then start your node as usual:
+
+```powershell
+aetherd start
+```
+
+**This is a real, early-stage public network — not audited, and subject to resets.** Only use test funds you're comfortable losing entirely. See the disclosure notice at the top of this README.
 
 ## Contributing / Development Notes
 

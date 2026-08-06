@@ -1,0 +1,131 @@
+{
+  "app_name": "<appd>",
+  "app_version": "",
+  "genesis_time": "2026-08-06T02:27:48.5505215Z",
+  "chain_id": "aether-testnet-1",
+  "initial_height": 1,
+  "app_hash": null,
+  "app_state": {
+    "auth": {
+      "params": {
+        "max_memo_characters": "256",
+        "tx_sig_limit": "7",
+        "tx_size_cost_per_byte": "10",
+        "sig_verify_cost_ed25519": "590",
+        "sig_verify_cost_secp256k1": "1000"
+      },
+      "accounts": [
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "aether1ztk997p44a773c0c89vljazfua7g62uqgwu4gm8hme2suapxjfwqxpcy47",
+          "pub_key": null,
+          "account_number": "0",
+          "sequence": "0"
+        }
+      ]
+    },
+    "bank": {
+      "params": {
+        "send_enabled": [],
+        "default_send_enabled": true
+      },
+      "balances": [
+        {
+          "address": "aether1ztk997p44a773c0c89vljazfua7g62uqgwu4gm8hme2suapxjfwqxpcy47",
+          "coins": [
+            {
+              "denom": "uaeth",
+              "amount": "50000000"
+            }
+          ]
+        }
+      ],
+      "supply": [
+        {
+          "denom": "uaeth",
+          "amount": "50000000"
+        }
+      ],
+      "denom_metadata": [
+        {
+          "description": "The native token of the Aether chain",
+          "denom_units": [
+            {
+              "denom": "uaeth",
+              "exponent": 0,
+              "aliases": [
+                "microaeth"
+              ]
+            },
+            {
+              "denom": "aeth",
+              "exponent": 6,
+              "aliases": []
+            }
+          ],
+          "base": "uaeth",
+          "display": "aeth",
+          "name": "Aether",
+          "symbol": "AETH"
+        }
+      ],
+      "send_enabled": []
+    },
+    "governance": {
+      "params": {
+        "min_deposit": 25000000,
+        "deposit_period": 1209600,
+        "voting_period": 604800
+      }
+    },
+    "pow": {
+      "params": {
+        "target_block_time": 60,
+        "initial_difficulty": 285960,
+        "min_difficulty": 1024,
+        "max_difficulty": 100000000,
+        "difficulty": 285960,
+        "block_reward": 5000000,
+        "tail_emission": false,
+        "epoch_length": 1440,
+        "top_k_size": 21,
+        "bond_cooldown": 100,
+        "recency_window_k": 60
+      }
+    }
+  },
+  "consensus": {
+    "params": {
+      "block": {
+        "max_bytes": "22020096",
+        "max_gas": "-1"
+      },
+      "evidence": {
+        "max_age_num_blocks": "100000",
+        "max_age_duration": "172800000000000",
+        "max_bytes": "1048576"
+      },
+      "validator": {
+        "pub_key_types": [
+          "ed25519"
+        ]
+      },
+      "version": {
+        "app": "0"
+      },
+      "abci": {
+        "vote_extensions_enable_height": "0"
+      }
+    },
+    "validators": [
+      {
+        "pub_key": {
+          "type": "tendermint/PubKeyEd25519",
+          "value": "kCys/7xE/7Jzv+3mEKHA3Vc2X3ws0rflSJkKng4wD4w="
+        },
+        "power": "1000000000000",
+        "name": "aether-seed-1"
+      }
+    ]
+  }
+}
