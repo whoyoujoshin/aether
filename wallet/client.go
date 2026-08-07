@@ -3,9 +3,12 @@ package wallet
 import (
 	"context"
 	"strconv"
+	"fmt"
+	"sort"
 
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"google.golang.org/grpc"
@@ -85,4 +88,74 @@ const HeightMetadataKey = "x-cosmos-block-height"
 // gRPC metadata key above expects.
 func FormatHeight(height int64) string {
 	return strconv.FormatInt(height, 10)
+}
+
+// Transaction is a simplified view of a real, on-chain transaction
+// involving a given address -- either as sender or recipient.
+type Transaction struct {
+	Hash      string
+	Height    int64
+	Code      uint32
+	Direction string // "sent" or "received"
+	Amount    string
+	Timestamp string
+}
+
+// GetTransactionHistory returns real, on-chain transactions involving
+// the given address, most recent first. Queries both directions
+// (sender and recipient) separately -- CometBFT's tx-search query
+// language does not cleanly support "sender OR recipient" in a
+// single query -- then merges and sorts the results.
+func (c *Client) GetTransactionHistory(address string, limit uint64) ([]Transaction, error) {
+	txClient := txtypes.NewServiceClient(c.conn)
+
+	var all []Transaction
+
+	for _, q := range []struct {
+		query     string
+		direction string
+	}{
+		{fmt.Sprintf("message.sender='%s'", address), "sent"},
+		{fmt.Sprintf("transfer.recipient='%s'", address), "received"},
+	} {
+		resp, err := txClient.GetTxsEvent(context.Background(), &txtypes.GetTxsEventRequest{
+			Query:   q.query,
+			OrderBy: txtypes.OrderBy_ORDER_BY_DESC,
+			Limit:   limit,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to query %s transactions: %w", q.direction, err)
+		}
+
+		for _, txResp := range resp.TxResponses {
+			amount := ""
+			for _, event := range txResp.Events {
+				if event.Type == "transfer" {
+					for _, attr := range event.Attributes {
+						if attr.Key == "amount" {
+							amount = attr.Value
+						}
+					}
+				}
+			}
+			all = append(all, Transaction{
+				Hash:      txResp.TxHash,
+				Height:    txResp.Height,
+				Code:      txResp.Code,
+				Direction: q.direction,
+				Amount:    amount,
+				Timestamp: txResp.Timestamp,
+			})
+		}
+	}
+
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].Height > all[j].Height
+	})
+
+	if uint64(len(all)) > limit {
+		all = all[:limit]
+	}
+
+	return all, nil
 }
