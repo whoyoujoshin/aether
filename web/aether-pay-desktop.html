@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Aether Pay Desktop</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #08090a; }
+    #root { min-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useCallback } = React;
+
+    const ACC = "#2ad4c4";
+    const GOLD = "#e3b25f";
+    const API = "http://localhost:8090";
+
+    const NAV = [
+      ["home", "Home", "◎"],
+      ["send", "Send", "↗"],
+      ["receive", "Receive", "▣"],
+      ["activity", "Activity", "≡"],
+      ["faucet", "Faucet", "◈"],
+      ["buy", "Buy AETH", "$"],
+      ["swap", "Swap", "⇄"],
+    ];
+
+    function fmt(n, min = 4) {
+      return Number(n).toLocaleString("en-US", { minimumFractionDigits: min, maximumFractionDigits: 6 });
+    }
+    function uaethToAeth(uaeth) {
+      return Number(uaeth) / 1000000;
+    }
+    function short(addr) {
+      if (!addr) return "";
+      return addr.slice(0, 11) + "…" + addr.slice(-6);
+    }
+
+    function AetherPayDesktop() {
+      const [screen, setScreen] = useState("home");
+      const [accounts, setAccounts] = useState([]);
+      const [accountName, setAccountName] = useState("");
+      const [account, setAccount] = useState(null);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState("");
+
+      const [sendTo, setSendTo] = useState("");
+      const [sendAmt, setSendAmt] = useState("");
+      const [sendStep, setSendStep] = useState(0);
+      const [sending, setSending] = useState(false);
+      const [sendResult, setSendResult] = useState(null);
+
+      const [activity, setActivity] = useState([]);
+      const [activityLoading, setActivityLoading] = useState(false);
+
+      const [faucetState, setFaucetState] = useState("idle");
+      const [faucetMsg, setFaucetMsg] = useState("");
+
+      const [copied, setCopied] = useState(false);
+
+      const loadAccounts = useCallback(async () => {
+        try {
+          const res = await fetch(API + "/api/accounts");
+          const data = await res.json();
+          setAccounts(data || []);
+          if (data && data.length > 0 && !accountName) {
+            setAccountName(data[0].Name || data[0].name);
+          }
+        } catch (e) {
+          setError("Could not reach the local wallet API at localhost:8090. Is it running? (go run ./cmd/walletapi)");
+        }
+      }, [accountName]);
+
+      const loadAccount = useCallback(async (name) => {
+        if (!name) return;
+        setLoading(true);
+        setError("");
+        try {
+          const res = await fetch(API + "/api/account?name=" + encodeURIComponent(name));
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "failed to load account");
+          setAccount(data);
+        } catch (e) {
+          setError(e.message);
+          setAccount(null);
+        }
+        setLoading(false);
+      }, []);
+
+      const loadActivity = useCallback(async (address) => {
+        if (!address) return;
+        setActivityLoading(true);
+        try {
+          const res = await fetch(API + "/api/history?address=" + encodeURIComponent(address));
+          const data = await res.json();
+          setActivity(data || []);
+        } catch (e) {
+          setActivity([]);
+        }
+        setActivityLoading(false);
+      }, []);
+
+      useEffect(() => { loadAccounts(); }, []);
+      useEffect(() => { if (accountName) loadAccount(accountName); }, [accountName]);
+      useEffect(() => { if (account && account.address && (screen === "activity" || screen === "home")) loadActivity(account.address); }, [account, screen]);
+
+      const balanceAeth = account ? uaethToAeth(account.balance) : 0;
+      const validTo = /^aether1[a-z0-9]{38,90}$/.test(sendTo);
+      const amtNum = parseFloat(sendAmt) || 0;
+      const amtOk = amtNum > 0 && amtNum <= balanceAeth;
+
+      async function doSend() {
+        setSending(true);
+        try {
+          const uaeth = Math.round(amtNum * 1000000).toString();
+          const res = await fetch(API + "/api/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ from: accountName, to: sendTo, amount: uaeth }),
+          });
+          const data = await res.json();
+          setSendResult(data);
+          if (data.success) {
+            setSendStep(3);
+            setTimeout(() => loadAccount(accountName), 3000);
+          }
+        } catch (e) {
+          setSendResult({ success: false, message: e.message });
+        }
+        setSending(false);
+      }
+
+      async function requestFaucet() {
+        if (!account || !account.address) return;
+        setFaucetState("sending");
+        try {
+          const res = await fetch("http://157.245.252.221:8080/request", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ address: account.address }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            setFaucetState("done");
+            setFaucetMsg("Sent. tx " + (data.tx_hash ? data.tx_hash.slice(0, 16) : "") + "…");
+            setTimeout(() => loadAccount(accountName), 4000);
+          } else {
+            setFaucetState("idle");
+            setFaucetMsg(data.message || "Request failed");
+          }
+        } catch (e) {
+          setFaucetState("idle");
+          setFaucetMsg("Could not reach the public faucet.");
+        }
+      }
+
+      const wrap = { minHeight: "100vh", background: "#08090a", color: "#f2f4f3", fontFamily: "'IBM Plex Sans', sans-serif", display: "flex" };
+      const mono = { fontFamily: "'IBM Plex Mono', monospace" };
+
+      const navBtn = (active) => ({
+        display: "flex", alignItems: "center", gap: 11, width: "100%",
+        background: active ? "rgba(42,212,196,.09)" : "none",
+        border: "none", borderLeft: "2px solid " + (active ? ACC : "transparent"),
+        color: active ? "#f2f4f3" : "#8b9490", padding: "10px 12px",
+        borderRadius: "0 9px 9px 0", cursor: "pointer",
+        font: (active ? 600 : 500) + " 12.5px/1 'IBM Plex Sans',sans-serif", textAlign: "left",
+      });
+
+      const primaryBtn = (enabled) => ({
+        background: enabled ? ACC : "#1a1f20", color: enabled ? "#000" : "#7a8481",
+        border: "none", borderRadius: 50, padding: "14px 24px",
+        font: "600 13px/1 'IBM Plex Sans',sans-serif", cursor: enabled ? "pointer" : "not-allowed", flex: 1,
+      });
+
+      const card = { background: "#0d1011", border: "1px solid rgba(255,255,255,.08)", borderRadius: 14, padding: 20 };
+
+      return React.createElement("div", { style: wrap },
+        React.createElement("div", { style: { width: 220, borderRight: "1px solid rgba(255,255,255,.08)", padding: "20px 10px", display: "flex", flexDirection: "column", gap: 4 } },
+          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "0 12px 20px", fontWeight: 700, fontSize: 16, color: ACC } }, "⚡ Aether Pay"),
+          NAV.map(([key, label, glyph]) =>
+            React.createElement("button", { key: key, style: navBtn(screen === key), onClick: () => setScreen(key) },
+              React.createElement("span", null, glyph), " " + label
+            )
+          ),
+          React.createElement("div", { style: { marginTop: "auto", padding: 12 } },
+            React.createElement("label", { style: Object.assign({}, mono, { fontSize: 10, color: "#6b7570" }) }, "ACCOUNT"),
+            React.createElement("select", {
+              value: accountName,
+              onChange: (e) => setAccountName(e.target.value),
+              style: Object.assign({ width: "100%", marginTop: 6, background: "#0d1011", color: "#f2f4f3", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, padding: 8 }, mono, { fontSize: 11 })
+            }, accounts.map((a) => React.createElement("option", { key: a.Name || a.name, value: a.Name || a.name }, a.Name || a.name)))
+          )
+        ),
+        React.createElement("div", { style: { flex: 1, padding: 32, maxWidth: 700 } },
+          error && React.createElement("div", { style: { background: "rgba(255,122,107,.08)", border: "1px solid rgba(255,122,107,.3)", borderRadius: 10, padding: 14, marginBottom: 20, color: "#ff9b8f", fontSize: 12.5 } }, error),
+
+          screen === "home" && React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 20 } },
+            React.createElement("div", { style: card },
+              React.createElement("div", { style: { color: "#8b9490", fontSize: 11.5, marginBottom: 6 } }, "BALANCE"),
+              React.createElement("div", { style: Object.assign({ fontSize: 40, fontWeight: 600 }, mono) },
+                loading ? "…" : fmt(balanceAeth), " ", React.createElement("span", { style: { fontSize: 18, color: "#8b9490" } }, "AETH")
+              ),
+              React.createElement("div", { style: Object.assign({}, mono, { fontSize: 10.5, color: "#6b7570", marginTop: 8 }) },
+                account ? (account.balance + " uaeth · " + short(account.address)) : "no account loaded"
+              ),
+              React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 18 } },
+                React.createElement("button", { style: primaryBtn(true), onClick: () => setScreen("send") }, "Send"),
+                React.createElement("button", { style: Object.assign({}, primaryBtn(true), { background: "#1a1f20", color: "#f2f4f3" }), onClick: () => setScreen("receive") }, "Receive")
+              )
+            ),
+            React.createElement("div", null,
+              React.createElement("div", { style: { color: "#8b9490", fontSize: 11.5, marginBottom: 10 } }, "RECENT ACTIVITY"),
+              activity.slice(0, 4).map((t) => React.createElement(TxRow, { key: t.Hash, t: t })),
+              activity.length === 0 && React.createElement("div", { style: { color: "#6b7570", fontSize: 12.5 } }, "No transactions yet.")
+            )
+          ),
+
+          screen === "send" && React.createElement("div", { style: card },
+            React.createElement("h2", { style: { marginTop: 0 } }, "Send AETH"),
+            sendStep < 3 && React.createElement(React.Fragment, null,
+              React.createElement("label", { style: Object.assign({}, mono, { fontSize: 10.5, color: "#8b9490" }) }, "RECIPIENT ADDRESS"),
+              React.createElement("input", {
+                value: sendTo, onChange: (e) => setSendTo(e.target.value.trim()), placeholder: "aether1...",
+                style: Object.assign({ width: "100%", background: "#0a0c0d", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: 12, color: "#f2f4f3" }, mono, { fontSize: 12.5, marginTop: 6, marginBottom: 4 })
+              }),
+              React.createElement("div", { style: Object.assign({}, mono, { fontSize: 10.5, color: sendTo === "" ? "transparent" : (validTo ? ACC : "#ff7a6b"), marginBottom: 14 }) },
+                sendTo === "" ? "-" : (validTo ? "✓ valid aether1 address" : "✕ doesn't match aether1 format")
+              ),
+              React.createElement("label", { style: Object.assign({}, mono, { fontSize: 10.5, color: "#8b9490" }) }, "AMOUNT (AETH)"),
+              React.createElement("input", {
+                value: sendAmt, onChange: (e) => setSendAmt(e.target.value.replace(/[^0-9.]/g, "")), placeholder: "0.00",
+                style: Object.assign({ width: "100%", background: "#0a0c0d", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: 12, color: "#f2f4f3" }, mono, { fontSize: 12.5, marginTop: 6, marginBottom: 4 })
+              }),
+              React.createElement("div", { style: Object.assign({}, mono, { fontSize: 10.5, color: "#6b7570", marginBottom: 18 }) },
+                "available " + fmt(balanceAeth) + " AETH · fee 0 uaeth · gas 400,000"
+              ),
+              React.createElement("button", {
+                style: primaryBtn(validTo && amtOk && !sending), disabled: !(validTo && amtOk) || sending, onClick: doSend
+              }, sending ? "Signing with ML-DSA-44…" : "Sign & broadcast")
+            ),
+            sendStep === 3 && sendResult && React.createElement("div", null,
+              React.createElement("div", { style: { color: sendResult.success ? ACC : "#ff7a6b", fontSize: 14, marginBottom: 10 } },
+                sendResult.success ? "✓ Sent" : "✕ Failed"
+              ),
+              React.createElement("div", { style: Object.assign({}, mono, { fontSize: 11, color: "#8b9490", wordBreak: "break-all" }) },
+                sendResult.tx_hash ? ("TX " + sendResult.tx_hash) : sendResult.message
+              ),
+              React.createElement("button", {
+                style: Object.assign({}, primaryBtn(true), { marginTop: 18 }),
+                onClick: () => { setSendStep(0); setSendTo(""); setSendAmt(""); setSendResult(null); }
+              }, "Send another")
+            )
+          ),
+
+          screen === "receive" && account && React.createElement("div", { style: card },
+            React.createElement("h2", { style: { marginTop: 0 } }, "Receive"),
+            React.createElement("div", { style: Object.assign({}, mono, { fontSize: 13, wordBreak: "break-all", background: "#0a0c0d", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: 16, marginBottom: 14 }) }, account.address),
+            React.createElement("button", {
+              style: Object.assign({}, primaryBtn(true), { background: copied ? "rgba(42,212,196,.15)" : ACC, color: copied ? ACC : "#000" }),
+              onClick: () => { navigator.clipboard.writeText(account.address); setCopied(true); setTimeout(() => setCopied(false), 1600); }
+            }, copied ? "Copied to clipboard" : "Copy address")
+          ),
+
+          screen === "activity" && React.createElement("div", null,
+            React.createElement("h2", null, "Activity"),
+            activityLoading && React.createElement("div", { style: { color: "#6b7570" } }, "Loading real chain data…"),
+            !activityLoading && activity.length === 0 && React.createElement("div", { style: { color: "#6b7570" } }, "No transactions yet."),
+            activity.map((t) => React.createElement(TxRow, { key: t.Hash, t: t, full: true }))
+          ),
+
+          screen === "faucet" && React.createElement("div", { style: card },
+            React.createElement("h2", { style: { marginTop: 0 } }, "Testnet Faucet"),
+            React.createElement("p", { style: { color: "#8b9490", fontSize: 12.5 } }, "Requests real testnet AETH from the public faucet at 157.245.252.221. Rate-limited per address."),
+            React.createElement("button", {
+              style: primaryBtn(faucetState === "idle"), disabled: faucetState !== "idle", onClick: requestFaucet
+            }, faucetState === "sending" ? "Broadcasting…" : (faucetState === "done" ? "Cooldown active" : "Request testnet AETH")),
+            faucetMsg && React.createElement("div", { style: Object.assign({ marginTop: 12, fontSize: 11.5, color: "#8b9490" }, mono) }, faucetMsg)
+          ),
+
+          (screen === "buy" || screen === "swap") && React.createElement("div", { style: card },
+            React.createElement("h2", { style: { marginTop: 0 } }, screen === "buy" ? "Buy AETH" : "Swap into AETH"),
+            React.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 10, background: "rgba(227,178,95,.08)", border: "1px solid rgba(227,178,95,.3)", borderRadius: 10, padding: 14 } },
+              React.createElement("span", { style: { color: GOLD } }, "⚠"),
+              React.createElement("div", { style: { fontSize: 12.5, color: "#e8bf78" } },
+                "Not built yet. " + (screen === "buy" ? "A fiat on-ramp" : "Cross-chain swaps") +
+                (screen === "swap" ? " would require infrastructure Aether doesn't have yet -- native IBC is explicitly listed as not built in the project README." : " would require real payment processor infrastructure that doesn't exist for this project yet.")
+              )
+            )
+          )
+        )
+      );
+    }
+
+    function TxRow(props) {
+      const t = props.t;
+      const aeth = uaethToAeth(parseFloat(t.Amount) || 0);
+      const isSent = t.Direction === "sent";
+      const failed = t.Code !== 0;
+      return React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,.06)" } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
+          React.createElement("div", {
+            style: {
+              width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+              background: failed ? "rgba(255,122,107,.1)" : (isSent ? "rgba(255,255,255,.05)" : "rgba(42,212,196,.1)"),
+              border: "1px solid " + (failed ? "rgba(255,122,107,.3)" : (isSent ? "rgba(255,255,255,.1)" : "rgba(42,212,196,.28)")),
+              color: failed ? "#ff7a6b" : (isSent ? "#f2f4f3" : ACC), fontFamily: "'IBM Plex Mono',monospace",
+            }
+          }, isSent ? "↗" : "↙"),
+          React.createElement("div", null,
+            React.createElement("div", { style: { fontSize: 12.5 } }, isSent ? "Sent" : "Received"),
+            React.createElement("div", { style: { fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: "#6b7570" } },
+              (props.full ? t.Hash : t.Hash.slice(0, 20) + "…") + " · height " + t.Height
+            )
+          )
+        ),
+        React.createElement("div", { style: { fontFamily: "'IBM Plex Mono',monospace", fontSize: 12.5, color: failed ? "#ff7a6b" : (isSent ? "#f2f4f3" : ACC) } },
+          (isSent ? "−" : "+") + fmt(aeth) + " AETH"
+        )
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(React.createElement(AetherPayDesktop));
+  </script>
+</body>
+</html>
