@@ -1,0 +1,84 @@
+name: Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+          - goos: windows
+            goarch: amd64
+            suffix: windows-amd64
+            ext: .exe
+          - goos: darwin
+            goarch: amd64
+            suffix: macos-intel
+          - goos: darwin
+            goarch: arm64
+            suffix: macos-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build binaries
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          go build -o dist/aetherd${{ matrix.ext }} ./cmd/aetherd
+          go build -o dist/wallet${{ matrix.ext }} ./cmd/wallet
+          go build -o dist/faucet${{ matrix.ext }} ./cmd/faucet
+          go build -o dist/explorer${{ matrix.ext }} ./cmd/explorer
+
+      - name: Package archive
+        run: |
+          cd dist
+          tar -czf ../aether-${{ matrix.suffix }}.tar.gz *
+          cd ..
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aether-${{ matrix.suffix }}
+          path: aether-${{ matrix.suffix }}.tar.gz
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.tar.gz
+          body: |
+            Pre-built Aether binaries for this release.
+
+            **This project has not undergone a professional security audit.** Early-stage software -- do not use with real funds you cannot afford to lose entirely.
+
+            Download the archive matching your platform, extract it, and run `aetherd` (or `aetherd.exe` on Windows). See the [README](https://github.com/whoyoujoshin/aether#public-testnet) for setup instructions and public testnet connection details.
+
+            Includes: `aetherd` (the node), `wallet` (CLI wallet), `faucet` (testnet faucet service), `explorer` (block explorer dashboard).
+          draft: false
+          prerelease: true
