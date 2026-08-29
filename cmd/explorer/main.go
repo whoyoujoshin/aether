@@ -296,20 +296,34 @@ type addressPageData struct {
 func handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 
+	// Empty or whitespace-only input isn't a real search at all --
+	// send back to the dashboard rather than attempting any lookup
+	// and surfacing a raw, unfriendly RPC decode error.
+	if q == "" {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
 	if strings.HasPrefix(q, "aether1") {
 		http.Redirect(w, r, "/address?addr="+url.QueryEscape(q), http.StatusFound)
 		return
 	}
 
-	isHex := len(q) >= 32
-	for _, c := range q {
+	// A leading 0x/0X prefix is a common convention from
+	// Ethereum-style tooling; strip it before checking hex-ness and
+	// before passing the value along, since real Aether tx hashes
+	// (matching Cosmos SDK convention) are plain, unprefixed hex.
+	hexCandidate := strings.TrimPrefix(strings.TrimPrefix(q, "0x"), "0X")
+
+	isHex := len(hexCandidate) >= 32
+	for _, c := range hexCandidate {
 		if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
 			isHex = false
 			break
 		}
 	}
 	if isHex {
-		http.Redirect(w, r, "/tx?hash="+url.QueryEscape(q), http.StatusFound)
+		http.Redirect(w, r, "/tx?hash="+url.QueryEscape(hexCandidate), http.StatusFound)
 		return
 	}
 
