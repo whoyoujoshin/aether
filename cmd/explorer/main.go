@@ -19,6 +19,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"net/url"
+	"strings"
 
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
@@ -60,11 +62,6 @@ const dashboardTemplate = `
 	<style>
 		body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #0b0e14; color: #e0e0e0; }
 		h1 { color: #7fd1ff; }
-		<form action="/address" method="get" style="margin: 20px 0;">
-	<input type="text" name="addr" placeholder="aether1... or a tx hash" style="width: 400px; padding: 8px; background: #14181f; border: 1px solid #333; color: #e0e0e0; border-radius: 4px;">
-	<button type="submit" style="padding: 8px 16px; background: #7fd1ff; border: none; border-radius: 4px; cursor: pointer;">Search Address</button>
-	<a href="/tx" style="margin-left: 10px; color: #7fd1ff;">Look up a transaction →</a>
-</form>
 		h2 { color: #9fe3a0; margin-top: 40px; border-bottom: 1px solid #333; padding-bottom: 6px; }
 		table { width: 100%; border-collapse: collapse; margin-top: 10px; }
 		td, th { padding: 6px 10px; text-align: left; border-bottom: 1px solid #222; }
@@ -77,6 +74,10 @@ const dashboardTemplate = `
 </head>
 <body>
 	<h1>⚡ Aether Explorer</h1>
+	<form action="/search" method="get" style="margin: 20px 0;">
+		<input type="text" name="q" placeholder="aether1... or a tx hash" style="width: 400px; padding: 8px; background: #14181f; border: 1px solid #333; color: #e0e0e0; border-radius: 4px;">
+		<button type="submit" style="padding: 8px 16px; background: #7fd1ff; border: none; border-radius: 4px; cursor: pointer;">Search</button>
+	</form>
 	{{if .Error}}
 	<div class="error">{{.Error}}</div>
 	{{end}}
@@ -288,6 +289,36 @@ type addressPageData struct {
 	Error        string
 }
 
+// handleSearch inspects a single, shared search box's input and routes
+// to the correct existing handler -- an address (starting with the
+// real bech32 prefix) or a transaction hash (a hex string) -- rather
+// than forcing the user to know which page to use themselves.
+func handleSearch(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	if strings.HasPrefix(q, "aether1") {
+		http.Redirect(w, r, "/address?addr="+url.QueryEscape(q), http.StatusFound)
+		return
+	}
+
+	isHex := len(q) >= 32
+	for _, c := range q {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+			isHex = false
+			break
+		}
+	}
+	if isHex {
+		http.Redirect(w, r, "/tx?hash="+url.QueryEscape(q), http.StatusFound)
+		return
+	}
+
+	// Doesn't clearly look like either -- fall back to the address
+	// page, which already produces a clear, honest error message
+	// rather than silently guessing wrong.
+	http.Redirect(w, r, "/address?addr="+url.QueryEscape(q), http.StatusFound)
+}
+
 func buildAddressPage(addr string) addressPageData {
 	data := addressPageData{Address: addr}
 
@@ -358,6 +389,8 @@ func main() {
 			log.Printf("template execution error: %v", err)
 		}
 	})
+
+http.HandleFunc("/search", handleSearch)
 
 http.HandleFunc("/address", func(w http.ResponseWriter, r *http.Request) {
 	addr := r.URL.Query().Get("addr")
