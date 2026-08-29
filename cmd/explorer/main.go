@@ -27,6 +27,7 @@ import (
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/x/governance"
 	"github.com/whoyoujoshin/aether/x/pow"
+	"github.com/whoyoujoshin/aether/wallet"
 )
 
 func init() {
@@ -59,6 +60,11 @@ const dashboardTemplate = `
 	<style>
 		body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #0b0e14; color: #e0e0e0; }
 		h1 { color: #7fd1ff; }
+		<form action="/address" method="get" style="margin: 20px 0;">
+	<input type="text" name="addr" placeholder="aether1... or a tx hash" style="width: 400px; padding: 8px; background: #14181f; border: 1px solid #333; color: #e0e0e0; border-radius: 4px;">
+	<button type="submit" style="padding: 8px 16px; background: #7fd1ff; border: none; border-radius: 4px; cursor: pointer;">Search Address</button>
+	<a href="/tx" style="margin-left: 10px; color: #7fd1ff;">Look up a transaction →</a>
+</form>
 		h2 { color: #9fe3a0; margin-top: 40px; border-bottom: 1px solid #333; padding-bottom: 6px; }
 		table { width: 100%; border-collapse: collapse; margin-top: 10px; }
 		td, th { padding: 6px 10px; text-align: left; border-bottom: 1px solid #222; }
@@ -201,6 +207,143 @@ func buildDashboard() dashboardData {
 	return data
 }
 
+const addressTemplate = `
+<!DOCTYPE html>
+<html><head><title>Aether Explorer — Address</title><meta charset="utf-8">
+<style>
+	body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #0b0e14; color: #e0e0e0; }
+	h1 { color: #7fd1ff; }
+	table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+	td, th { padding: 6px 10px; text-align: left; border-bottom: 1px solid #222; }
+	.address { font-family: monospace; font-size: 0.85em; color: #7fd1ff; word-break: break-all; }
+	.error { color: #ff6b6b; background: #2a1515; padding: 10px; border-radius: 4px; }
+	a { color: #7fd1ff; }
+</style></head>
+<body>
+	<a href="/">← back to dashboard</a>
+	<h1>Address</h1>
+	<p class="address">{{.Address}}</p>
+	{{if .Error}}<div class="error">{{.Error}}</div>{{else}}
+	<h2>Balance: {{.Balance}} uaeth</h2>
+	<h3>Transactions ({{len .Transactions}})</h3>
+	<table>
+		<tr><th>Direction</th><th>Amount</th><th>Height</th><th>Hash</th></tr>
+		{{range .Transactions}}
+		<tr>
+			<td>{{.Direction}}</td>
+			<td>{{.Amount}}</td>
+			<td>{{.Height}}</td>
+			<td><a href="/tx?hash={{.Hash}}">{{.Hash}}</a></td>
+		</tr>
+		{{end}}
+	</table>
+	{{end}}
+</body></html>
+`
+
+const txTemplate = `
+<!DOCTYPE html>
+<html><head><title>Aether Explorer — Transaction</title><meta charset="utf-8">
+<style>
+	body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #0b0e14; color: #e0e0e0; }
+	h1 { color: #7fd1ff; }
+	table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+	td, th { padding: 6px 10px; text-align: left; border-bottom: 1px solid #222; }
+	.address { font-family: monospace; font-size: 0.85em; color: #7fd1ff; word-break: break-all; }
+	.error { color: #ff6b6b; background: #2a1515; padding: 10px; border-radius: 4px; }
+	.success { color: #9fe3a0; }
+	.failure { color: #ff6b6b; }
+	form { margin: 20px 0; }
+	input { width: 400px; padding: 8px; background: #14181f; border: 1px solid #333; color: #e0e0e0; border-radius: 4px; }
+	button { padding: 8px 16px; background: #7fd1ff; border: none; border-radius: 4px; cursor: pointer; }
+	a { color: #7fd1ff; }
+</style></head>
+<body>
+	<a href="/">← back to dashboard</a>
+	<h1>Transaction</h1>
+	<form action="/tx" method="get">
+		<input type="text" name="hash" placeholder="transaction hash" value="{{.Hash}}">
+		<button type="submit">Look up</button>
+	</form>
+	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+	{{if .Detail}}
+	<table>
+		<tr><td>Status</td><td class="{{if eq .Detail.Code 0}}success{{else}}failure{{end}}">{{if eq .Detail.Code 0}}Success{{else}}Failed (code {{.Detail.Code}}){{end}}</td></tr>
+		<tr><td>Height</td><td>{{.Detail.Height}}</td></tr>
+		<tr><td>From</td><td class="address"><a href="/address?addr={{.Detail.From}}">{{.Detail.From}}</a></td></tr>
+		<tr><td>To</td><td class="address"><a href="/address?addr={{.Detail.To}}">{{.Detail.To}}</a></td></tr>
+		<tr><td>Amount</td><td>{{.Detail.Amount}}</td></tr>
+		<tr><td>Gas used / wanted</td><td>{{.Detail.GasUsed}} / {{.Detail.GasWanted}}</td></tr>
+		<tr><td>Timestamp</td><td>{{.Detail.Timestamp}}</td></tr>
+		{{if .Detail.RawLog}}<tr><td>Error</td><td>{{.Detail.RawLog}}</td></tr>{{end}}
+	</table>
+	{{end}}
+</body></html>
+`
+
+type addressPageData struct {
+	Address      string
+	Balance      string
+	Transactions []wallet.Transaction
+	Error        string
+}
+
+func buildAddressPage(addr string) addressPageData {
+	data := addressPageData{Address: addr}
+
+	client, err := wallet.NewClient(grpcEndpoint)
+	if err != nil {
+		data.Error = fmt.Sprintf("failed to connect: %v", err)
+		return data
+	}
+	defer client.Close()
+
+	balance, err := client.GetBalance(addr)
+	if err != nil {
+		data.Error = fmt.Sprintf("failed to fetch balance (is this a valid address?): %v", err)
+		return data
+	}
+	data.Balance = balance.AmountOf("uaeth").String()
+
+	txs, err := client.GetTransactionHistory(addr, 20)
+	if err != nil {
+		data.Error = fmt.Sprintf("failed to fetch transaction history: %v", err)
+		return data
+	}
+	data.Transactions = txs
+
+	return data
+}
+
+type txPageData struct {
+	Hash   string
+	Detail *wallet.TransactionDetail
+	Error  string
+}
+
+func buildTxPage(hash string) txPageData {
+	data := txPageData{Hash: hash}
+	if hash == "" {
+		return data
+	}
+
+	client, err := wallet.NewClient(grpcEndpoint)
+	if err != nil {
+		data.Error = fmt.Sprintf("failed to connect: %v", err)
+		return data
+	}
+	defer client.Close()
+
+	detail, err := client.GetTransactionByHash(hash)
+	if err != nil {
+		data.Error = fmt.Sprintf("transaction not found: %v", err)
+		return data
+	}
+	data.Detail = detail
+
+	return data
+}
+
 func main() {
 	flag.StringVar(&grpcEndpoint, "grpc", "localhost:9090", "node gRPC endpoint")
 	flag.StringVar(&rpcEndpoint, "rpc", "http://localhost:26657", "node CometBFT RPC endpoint")
@@ -215,6 +358,24 @@ func main() {
 			log.Printf("template execution error: %v", err)
 		}
 	})
+
+http.HandleFunc("/address", func(w http.ResponseWriter, r *http.Request) {
+	addr := r.URL.Query().Get("addr")
+	data := buildAddressPage(addr)
+	tmpl := template.Must(template.New("address").Parse(addressTemplate))
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("template execution error: %v", err)
+	}
+})
+
+http.HandleFunc("/tx", func(w http.ResponseWriter, r *http.Request) {
+	hash := r.URL.Query().Get("hash")
+	data := buildTxPage(hash)
+	tmpl := template.Must(template.New("tx").Parse(txTemplate))
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("template execution error: %v", err)
+	}
+})
 
 	addr := ":" + *port
 	log.Printf("Aether explorer listening on %s (querying gRPC %s, RPC %s)", addr, grpcEndpoint, rpcEndpoint)

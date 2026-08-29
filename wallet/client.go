@@ -159,3 +159,58 @@ func (c *Client) GetTransactionHistory(address string, limit uint64) ([]Transact
 
 	return all, nil
 }
+
+// TransactionDetail is a fuller view of a single transaction, for
+// direct hash lookups (as opposed to Transaction, the summarized view
+// used for per-address history listings).
+type TransactionDetail struct {
+	Hash      string
+	Height    int64
+	Code      uint32
+	RawLog    string
+	GasUsed   int64
+	GasWanted int64
+	From      string
+	To        string
+	Amount    string
+	Timestamp string
+}
+
+// GetTransactionByHash looks up a single, specific real transaction by
+// its hash, returning full detail rather than the summarized view
+// GetTransactionHistory provides.
+func (c *Client) GetTransactionByHash(hash string) (*TransactionDetail, error) {
+	txClient := txtypes.NewServiceClient(c.conn)
+
+	resp, err := txClient.GetTx(context.Background(), &txtypes.GetTxRequest{Hash: hash})
+	if err != nil {
+		return nil, err
+	}
+
+	detail := &TransactionDetail{
+		Hash:      resp.TxResponse.TxHash,
+		Height:    resp.TxResponse.Height,
+		Code:      resp.TxResponse.Code,
+		RawLog:    resp.TxResponse.RawLog,
+		GasUsed:   resp.TxResponse.GasUsed,
+		GasWanted: resp.TxResponse.GasWanted,
+		Timestamp: resp.TxResponse.Timestamp,
+	}
+
+	for _, event := range resp.TxResponse.Events {
+		if event.Type == "transfer" {
+			for _, attr := range event.Attributes {
+				switch attr.Key {
+				case "sender":
+					detail.From = attr.Value
+				case "recipient":
+					detail.To = attr.Value
+				case "amount":
+					detail.Amount = attr.Value
+				}
+			}
+		}
+	}
+
+	return detail, nil
+}
