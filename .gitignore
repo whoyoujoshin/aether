@@ -15,3 +15,16 @@ artifact/
 # OS
 .DS_Store
 Thumbs.db
+
+# Cross-compiled binaries (built locally for VPS deployment, not committed)
+*-linux
+aetherd-linux
+faucet-linux
+explorer-linux
+balancecheck-linux
+
+# Local test/scratch artifacts
+auxpow.json
+
+# Personal monitoring script, not part of the project proper
+aether_monitor.py
