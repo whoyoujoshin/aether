@@ -108,3 +108,35 @@ func (c *Client) BroadcastTx(signed SignedTx) (BroadcastResult, error) {
 
 var _ client.TxBuilder // referenced only to confirm the import resolves; TxBuilder itself is used via factory.BuildUnsignedTx's return type
 var _ keyring.Keyring   // referenced only to confirm the import resolves; used via Wallet.kr's type
+
+// BuildAndSignMsgTx builds and signs a transaction wrapping an
+// arbitrary sdk.Msg -- a more general form of BuildAndSignSendTx, for
+// message types other than a bank send (e.g. MsgSubmitPoW).
+func (w *Wallet) BuildAndSignMsgTx(fromName string, msg sdk.Msg, params TxParams) (SignedTx, error) {
+	encodingConfig := app.MakeEncodingConfig()
+
+	factory := tx.Factory{}.
+		WithTxConfig(encodingConfig.TxConfig).
+		WithKeybase(w.kr).
+		WithChainID(params.ChainID).
+		WithAccountNumber(params.AccountNumber).
+		WithSequence(params.Sequence).
+		WithGas(params.GasLimit).
+		WithFees(params.Fees.String())
+
+	txBuilder, err := factory.BuildUnsignedTx(msg)
+	if err != nil {
+		return SignedTx{}, fmt.Errorf("failed to build unsigned tx: %w", err)
+	}
+
+	if err := tx.Sign(context.Background(), factory, fromName, txBuilder, true); err != nil {
+		return SignedTx{}, fmt.Errorf("failed to sign tx: %w", err)
+	}
+
+	bz, err := encodingConfig.TxConfig.TxEncoder()(txBuilder.GetTx())
+	if err != nil {
+		return SignedTx{}, fmt.Errorf("failed to encode signed tx: %w", err)
+	}
+
+	return SignedTx{Bytes: bz}, nil
+}
