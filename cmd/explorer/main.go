@@ -397,9 +397,13 @@ func main() {
 
 	tmpl := template.Must(template.New("dashboard").Parse(dashboardTemplate))
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		data := buildDashboard()
-		if err := tmpl.Execute(w, data); err != nil {
+http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	data := buildDashboard()
+	if err := tmpl.Execute(w, data); err != nil {
 			log.Printf("template execution error: %v", err)
 		}
 	})
