@@ -127,27 +127,75 @@ func (c *Client) GetTransactionHistory(address string, limit uint64) ([]Transact
 			return nil, fmt.Errorf("failed to query %s transactions: %w", q.direction, err)
 		}
 
-		for _, txResp := range resp.TxResponses {
-			amount := ""
-			for _, event := range txResp.Events {
-				if event.Type == "transfer" {
-					for _, attr := range event.Attributes {
-						if attr.Key == "amount" {
-							amount = attr.Value
+								for _, txResp := range resp.TxResponses {
+				amount := ""
+				direction := q.direction
+				for _, event := range txResp.Events {
+					if event.Type == "transfer" {
+						var eventSender, eventRecipient, eventAmount string
+						for _, attr := range event.Attributes {
+							switch attr.Key {
+							case "sender":
+								eventSender = attr.Value
+							case "recipient":
+								eventRecipient = attr.Value
+							case "amount":
+								eventAmount = attr.Value
+							}
+						}
+						// A single transaction (like MsgSubmitPoW,
+						// which distributes a miner cut and a
+						// treasury cut as two separate real
+						// transfers) can contain more than one
+						// transfer event -- only use the one that
+						// actually involves this address, not
+						// whichever happens to be processed last.
+						// Direction is determined here too, from the
+						// real transfer's own sender/recipient
+						// fields, not from which query happened to
+						// find this transaction first -- a miner
+						// submitting MsgSubmitPoW is genuinely both
+						// the message's sender and a transfer
+						// recipient of their own reward, and
+						// "received" is the more honest, useful
+						// label for a real balance gain, regardless
+						// of which query matched it.
+						if eventRecipient == address {
+							amount = eventAmount
+							direction = "received"
+						} else if eventSender == address {
+							amount = eventAmount
+							direction = "sent"
 						}
 					}
 				}
+				all = append(all, Transaction{
+					Hash:      txResp.TxHash,
+					Height:    txResp.Height,
+					Code:      txResp.Code,
+					Direction: direction,
+					Amount:    amount,
+					Timestamp: txResp.Timestamp,
+				})
 			}
-			all = append(all, Transaction{
-				Hash:      txResp.TxHash,
-				Height:    txResp.Height,
-				Code:      txResp.Code,
-				Direction: q.direction,
-				Amount:    amount,
-				Timestamp: txResp.Timestamp,
-			})
-		}
 	}
+
+		// A single real transaction can genuinely match both queries above
+	// -- MsgSubmitPoW's miner is simultaneously the message sender and
+	// a transfer recipient of their own reward, unlike an ordinary
+	// bank send, where an address is normally only ever one or the
+	// other. Deduplicate by hash so each real transaction appears
+	// exactly once, keeping whichever entry was found first.
+	seen := make(map[string]bool)
+	var deduped []Transaction
+	for _, t := range all {
+		if seen[t.Hash] {
+			continue
+		}
+		seen[t.Hash] = true
+		deduped = append(deduped, t)
+	}
+	all = deduped
 
 	sort.Slice(all, func(i, j int) bool {
 		return all[i].Height > all[j].Height
