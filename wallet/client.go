@@ -174,6 +174,18 @@ type TransactionDetail struct {
 	To        string
 	Amount    string
 	Timestamp string
+	Transfers []Transfer
+}
+
+// Transfer is one real bank transfer within a transaction. A single
+// transaction can genuinely contain multiple transfers -- a
+// MsgSubmitPoW, for instance, distributes the miner's cut, the
+// treasury's cut, and potentially a validator's cut, as separate real
+// transfer events, not just one.
+type Transfer struct {
+	From   string
+	To     string
+	Amount string
 }
 
 // GetTransactionByHash looks up a single, specific real transaction by
@@ -197,20 +209,32 @@ func (c *Client) GetTransactionByHash(hash string) (*TransactionDetail, error) {
 		Timestamp: resp.TxResponse.Timestamp,
 	}
 
-	for _, event := range resp.TxResponse.Events {
+		for _, event := range resp.TxResponse.Events {
 		if event.Type == "transfer" {
+			var t Transfer
 			for _, attr := range event.Attributes {
 				switch attr.Key {
 				case "sender":
-					detail.From = attr.Value
+					t.From = attr.Value
 				case "recipient":
-					detail.To = attr.Value
+					t.To = attr.Value
 				case "amount":
-					detail.Amount = attr.Value
+					t.Amount = attr.Value
 				}
 			}
+			detail.Transfers = append(detail.Transfers, t)
 		}
 	}
 
+	// From/To/Amount stay as a simple summary (the first real transfer
+	// found), matching this struct's original, narrower shape -- but
+	// Transfers holds the complete, honest picture for anything with
+	// more than one real transfer, like a MsgSubmitPoW's miner and
+	// treasury cuts.
+	if len(detail.Transfers) > 0 {
+		detail.From = detail.Transfers[0].From
+		detail.To = detail.Transfers[0].To
+		detail.Amount = detail.Transfers[0].Amount
+	}
 	return detail, nil
 }

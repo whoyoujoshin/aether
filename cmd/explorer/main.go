@@ -271,12 +271,21 @@ const txTemplate = `
 	<table>
 		<tr><td>Status</td><td class="{{if eq .Detail.Code 0}}success{{else}}failure{{end}}">{{if eq .Detail.Code 0}}Success{{else}}Failed (code {{.Detail.Code}}){{end}}</td></tr>
 		<tr><td>Height</td><td>{{.Detail.Height}}</td></tr>
-		<tr><td>From</td><td class="address"><a href="/address?addr={{.Detail.From}}">{{.Detail.From}}</a></td></tr>
-		<tr><td>To</td><td class="address"><a href="/address?addr={{.Detail.To}}">{{.Detail.To}}</a></td></tr>
-		<tr><td>Amount</td><td>{{.Detail.Amount}}</td></tr>
 		<tr><td>Gas used / wanted</td><td>{{.Detail.GasUsed}} / {{.Detail.GasWanted}}</td></tr>
 		<tr><td>Timestamp</td><td>{{.Detail.Timestamp}}</td></tr>
 		{{if .Detail.RawLog}}<tr><td>Error</td><td>{{.Detail.RawLog}}</td></tr>{{end}}
+	</table>
+		</table>
+	<h3>Transfers ({{len .Detail.Transfers}})</h3>
+	<table>
+		<tr><th>From</th><th>To</th><th>Amount</th></tr>
+		{{range .Detail.Transfers}}
+		<tr>
+			<td class="address"><a href="/address?addr={{.From}}">{{.From}}</a></td>
+			<td class="address"><a href="/address?addr={{.To}}">{{.To}}</a></td>
+			<td>{{.Amount}}</td>
+		</tr>
+		{{end}}
 	</table>
 	{{end}}
 </body></html>
