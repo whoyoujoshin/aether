@@ -141,8 +141,16 @@ func (am AppModule) EndBlock(ctx context.Context) ([]abci.ValidatorUpdate, error
 				updates = append(updates, update)
 			}
 		}
-		am.keeper.ClearPendingRemoval(sdkCtx, minerAddr)
+				am.keeper.ClearPendingRemoval(sdkCtx, minerAddr)
 	}
+
+	// A genuine, one-time, live correction -- unconditional, every
+	// block, independent of epoch timing -- for a real gap: the
+	// genesis bootstrap validator's actual voting power was never
+	// corrected down to the standard flat value. Runs at most once
+	// ever (see CorrectBootstrapPower's own guard); a no-op on every
+	// subsequent block after that.
+	updates = append(updates, am.keeper.CorrectBootstrapPower(sdkCtx)...)
 
 	epochLength := am.keeper.GetEpochLength(sdkCtx)
 	if epochLength <= 0 {

@@ -119,3 +119,11 @@ const (
 // arithmetic is not guaranteed to produce identical results across
 // different systems, which would risk a consensus fork.
 var BlockRewardDecayFactor = math.LegacyMustNewDecFromStr("0.66")
+
+// KeyBootstrapPowerCorrected guards a genuine, one-time, live
+// correction (see Keeper.CorrectBootstrapPower) for a real,
+// previously-shipped gap: the genesis bootstrap validator's real
+// CometBFT-visible voting power was never actually reduced from its
+// large genesis placeholder down to the standard flat power every
+// other Top-K-selected validator receives.
+var KeyBootstrapPowerCorrected = []byte("bootstrap_power_corrected")

@@ -1056,3 +1056,44 @@ func (k Keeper) ComputeScheduledBlockReward(ctx sdk.Context, height int64) math.
 	}
 	return reward.TruncateInt()
 }
+
+// CorrectBootstrapPower is a genuine, one-time, idempotent live
+// correction for a real gap: the genesis bootstrap validator's actual
+// CometBFT-visible voting power was never reduced from its large
+// genesis placeholder value down to the same flat ValidatorVotingPower
+// every other Top-K-selected validator receives. BootstrapValidator
+// (called once, at genesis) only ever updated this module's own
+// internal state tracking -- it never emitted the real
+// abci.ValidatorUpdate needed to correct the value CometBFT itself
+// actually uses for proposer selection and voting weight. Confirmed
+// live on the real public testnet (an external node's own /validators
+// query still showed the original placeholder power at real height
+// 40,000+), not something caught in earlier devnet testing.
+//
+// Runs at most once, ever, guarded by a persisted flag. Corrects
+// every currently active validator to the standard flat power --
+// harmless/idempotent for any validator already at the correct value
+// -- since ordinary Top-K re-selection at each future epoch boundary
+// already assigns the correct flat power to anyone selected from then
+// on; this only needs to clean up validators whose power predates
+// that logic ever running for them.
+func (k Keeper) CorrectBootstrapPower(ctx sdk.Context) []abci.ValidatorUpdate {
+	store := ctx.KVStore(k.storeKey)
+	if store.Get(KeyBootstrapPowerCorrected) != nil {
+		return nil
+	}
+
+	var updates []abci.ValidatorUpdate
+	for _, minerAddr := range k.IterateActiveValidators(ctx) {
+		pubkey, ok := k.GetValidatorPubkey(ctx, minerAddr)
+		if !ok {
+			continue
+		}
+		if update, ok := k.toValidatorUpdate(pubkey, ValidatorVotingPower, minerAddr); ok {
+			updates = append(updates, update)
+		}
+	}
+
+	store.Set(KeyBootstrapPowerCorrected, []byte{1})
+	return updates
+}

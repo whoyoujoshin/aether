@@ -1751,3 +1751,65 @@ func TestGetBlockReward_ExplicitOverrideTakesPrecedenceOverSchedule(t *testing.T
 	reward := k.GetBlockReward(ctx)
 	require.True(t, reward.Equal(math.NewInt(999_999)), "an explicit SetBlockReward override must take precedence over the computed schedule")
 }
+
+// --- Bootstrap validator power correction ---
+
+func TestCorrectBootstrapPower_CorrectsActiveValidatorsToFlatPower(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	minerAddr := sdk.AccAddress("bootstrap_power_test____")
+	fakePubkey := make([]byte, 32)
+	k.SetValidatorPubkey(ctx, minerAddr, fakePubkey)
+	k.SetActiveValidator(ctx, minerAddr)
+
+	updates := k.CorrectBootstrapPower(ctx)
+
+	require.Len(t, updates, 1, "must emit exactly one correcting update for the one active validator")
+	require.Equal(t, int64(pow.ValidatorVotingPower), updates[0].Power, "corrected power must match the standard flat constant, not any prior placeholder value")
+}
+
+func TestCorrectBootstrapPower_IsIdempotent_RunsAtMostOnce(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	minerAddr := sdk.AccAddress("bootstrap_idempotent____")
+	fakePubkey := make([]byte, 32)
+	k.SetValidatorPubkey(ctx, minerAddr, fakePubkey)
+	k.SetActiveValidator(ctx, minerAddr)
+
+	first := k.CorrectBootstrapPower(ctx)
+	require.Len(t, first, 1, "first call must genuinely correct the validator")
+
+	second := k.CorrectBootstrapPower(ctx)
+	require.Nil(t, second, "second call must be a genuine no-op, not re-emit the same update again")
+}
+
+func TestCorrectBootstrapPower_HandlesMultipleActiveValidators(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	addr1 := sdk.AccAddress("bootstrap_multi_validator1")
+	addr2 := sdk.AccAddress("bootstrap_multi_validator2")
+	k.SetValidatorPubkey(ctx, addr1, make([]byte, 32))
+	k.SetValidatorPubkey(ctx, addr2, make([]byte, 32))
+	k.SetActiveValidator(ctx, addr1)
+	k.SetActiveValidator(ctx, addr2)
+
+	updates := k.CorrectBootstrapPower(ctx)
+
+	require.Len(t, updates, 2, "must correct every currently active validator, not just one")
+	for _, u := range updates {
+		require.Equal(t, int64(pow.ValidatorVotingPower), u.Power)
+	}
+}
+
+func TestCorrectBootstrapPower_NoActiveValidators_ReturnsNoUpdatesButStillSetsFlag(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	updates := k.CorrectBootstrapPower(ctx)
+	require.Nil(t, updates, "no active validators means nothing to correct")
+
+	// Confirm the one-time flag was still set, even with nothing to
+	// correct -- otherwise this would keep re-running forever on an
+	// empty validator set.
+	second := k.CorrectBootstrapPower(ctx)
+	require.Nil(t, second)
+}
