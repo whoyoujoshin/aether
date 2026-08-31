@@ -406,7 +406,16 @@ func main() {
 
 	tmpl := template.Must(template.New("dashboard").Parse(dashboardTemplate))
 
-http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	// Deliberately use our own dedicated mux, never the shared global
+	// http.DefaultServeMux -- the same real issue found live in the
+	// faucet: a transitive dependency silently registers Go's pprof
+	// debug handlers on the global default mux as an import side
+	// effect. Passing nil to ListenAndServe meant this public
+	// dashboard was unknowingly also serving full profiling/heap-dump
+	// endpoints to the internet.
+	mux := http.NewServeMux()
+
+mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
@@ -417,9 +426,9 @@ http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 
-http.HandleFunc("/search", handleSearch)
+mux.HandleFunc("/search", handleSearch)
 
-http.HandleFunc("/address", func(w http.ResponseWriter, r *http.Request) {
+mux.HandleFunc("/address", func(w http.ResponseWriter, r *http.Request) {
 	addr := r.URL.Query().Get("addr")
 	data := buildAddressPage(addr)
 	tmpl := template.Must(template.New("address").Parse(addressTemplate))
@@ -428,7 +437,7 @@ http.HandleFunc("/address", func(w http.ResponseWriter, r *http.Request) {
 	}
 })
 
-http.HandleFunc("/tx", func(w http.ResponseWriter, r *http.Request) {
+mux.HandleFunc("/tx", func(w http.ResponseWriter, r *http.Request) {
 	hash := r.URL.Query().Get("hash")
 	data := buildTxPage(hash)
 	tmpl := template.Must(template.New("tx").Parse(txTemplate))
@@ -439,5 +448,5 @@ http.HandleFunc("/tx", func(w http.ResponseWriter, r *http.Request) {
 
 	addr := ":" + *port
 	log.Printf("Aether explorer listening on %s (querying gRPC %s, RPC %s)", addr, grpcEndpoint, rpcEndpoint)
-	log.Fatal(http.ListenAndServe(addr, nil))
+	log.Fatal(http.ListenAndServe(addr, mux))
 }

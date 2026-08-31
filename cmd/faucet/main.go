@@ -212,10 +212,23 @@ func main() {
 		sequence:      sequence,
 	}
 
-	http.HandleFunc("/request", server.handleRequest)
+		// Deliberately use our own dedicated mux, never the shared global
+	// http.DefaultServeMux -- a real, severe issue found live: some
+	// transitive dependency in the Cosmos SDK/gRPC stack silently
+	// registers Go's pprof debug handlers on the global default mux
+	// as an import side effect, with no explicit pprof import
+	// anywhere in this project's own code. Passing nil to
+	// ListenAndServe (which falls back to that shared global mux)
+	// meant this internet-facing faucet -- actively holding a real
+	// private key in memory to sign transactions -- was unknowingly
+	// serving a full heap-dump endpoint to the entire public
+	// internet. A dedicated mux only ever serves handlers this file
+	// explicitly registers.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/request", server.handleRequest)
 
 	addr := ":" + *port
 	log.Printf("Aether faucet listening on %s (dispensing %d uaeth per request, %d-minute cooldown, from %s on chain %q, starting sequence %d)",
 		addr, *amount, *cooldownMinutes, account.Address, *chainID, sequence)
-	log.Fatal(http.ListenAndServe(addr, nil))
+	log.Fatal(http.ListenAndServe(addr, mux))
 }
