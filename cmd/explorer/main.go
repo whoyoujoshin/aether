@@ -120,7 +120,7 @@ const dashboardTemplate = `
 			<td>{{.Id}}</td>
 			<td>{{.Status}}</td>
 			<td class="address">{{.Recipient}}</td>
-			<td>{{.Amount}} uaeth</td>
+			<td>{{.Amount}}</td>
 			<td>{{.TotalDeposit}} uaeth</td>
 		</tr>
 		{{end}}
