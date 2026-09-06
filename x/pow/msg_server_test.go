@@ -671,13 +671,138 @@ func TestSubmitPoW_RejectsDuplicateWork(t *testing.T) {
 	},
 }
 
-	_, err := srv.SubmitPoW(ctx, msg)
+		_, err := srv.SubmitPoW(ctx, msg)
 	require.NoError(t, err, "first submission of this exact header should succeed")
 
-	// Re-submit the EXACT same header (same miner, height, prevHash, nonce,
-	// timestamp, difficulty) -- this must be rejected as duplicate work,
-	// even though nothing about signing/sequence numbers changed.
+	// Advance to a genuinely new real block height before resubmitting,
+	// so this test isolates duplicate-work detection specifically,
+	// independent of the separate, later-added per-block-height
+	// submission limit -- otherwise both protections would trigger on
+	// the same resubmission and this test couldn't tell them apart.
+	ctx = setupRecentBlock(k, ctx, 21, []byte("real-hash-duplicate-test-2"), 1)
+	ctx = ctx.WithBlockHeight(23)
+
+	// Re-submit the EXACT same header (same miner, claimed height,
+	// prevHash, nonce, timestamp, difficulty) -- this must still be
+	// rejected as duplicate work, even from a genuinely new real block,
+	// since nothing about the header itself changed.
 	_, err = srv.SubmitPoW(ctx, msg)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, types.ErrDuplicateWork))
+}
+
+func TestSubmitPoW_RejectsSecondSubmissionAtSameHeight(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	realHash := []byte("real-hash-for-same-height-test")
+	ctx = setupRecentBlock(k, ctx, 1, realHash, 1)
+	ctx = ctx.WithBlockHeight(2)
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+
+	_, addrStr := validMinerAddr(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	firstMsg := &pow.MsgSubmitPoW{
+		Miner: addrStr,
+		Submission: &pow.MsgSubmitPoW_Native{
+			Native: &pow.NativeSubmission{
+				Height: 1, Timestamp: time.Now().Unix(), PrevHash: realHash,
+				MerkleRoot: []byte("merkle"), Nonce: 1, Difficulty: 1,
+			},
+		},
+	}
+	_, err := srv.SubmitPoW(ctx, firstMsg)
+	require.NoError(t, err, "the first submission at this height must succeed")
+
+	secondMsg := &pow.MsgSubmitPoW{
+		Miner: addrStr,
+		Submission: &pow.MsgSubmitPoW_Native{
+			Native: &pow.NativeSubmission{
+				Height: 1, Timestamp: time.Now().Unix(), PrevHash: realHash,
+				MerkleRoot: []byte("merkle"), Nonce: 2, Difficulty: 1, // a different nonce -- a genuinely distinct submission, not a duplicate-work rejection
+			},
+		},
+	}
+	_, err = srv.SubmitPoW(ctx, secondMsg)
+	require.Error(t, err, "a second submission at the same height must be rejected")
+	require.Contains(t, err.Error(), "already been accepted at height")
+}
+
+func TestSubmitPoW_AllowsSubmissionAtNextHeight(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	realHash := []byte("real-hash-for-next-height-test")
+	ctx = setupRecentBlock(k, ctx, 1, realHash, 1)
+	ctx = ctx.WithBlockHeight(2)
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+
+	_, addrStr := validMinerAddr(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	firstMsg := &pow.MsgSubmitPoW{
+		Miner: addrStr,
+		Submission: &pow.MsgSubmitPoW_Native{
+			Native: &pow.NativeSubmission{
+				Height: 1, Timestamp: time.Now().Unix(), PrevHash: realHash,
+				MerkleRoot: []byte("merkle"), Nonce: 1, Difficulty: 1,
+			},
+		},
+	}
+	_, err := srv.SubmitPoW(ctx, firstMsg)
+	require.NoError(t, err)
+
+	// Move to the next real block height and its own real ancestor.
+	nextHash := []byte("real-hash-for-next-height-test-2")
+	ctx = setupRecentBlock(k, ctx, 2, nextHash, 1)
+	ctx = ctx.WithBlockHeight(3)
+
+	secondMsg := &pow.MsgSubmitPoW{
+		Miner: addrStr,
+		Submission: &pow.MsgSubmitPoW_Native{
+			Native: &pow.NativeSubmission{
+				Height: 2, Timestamp: time.Now().Unix(), PrevHash: nextHash,
+				MerkleRoot: []byte("merkle"), Nonce: 1, Difficulty: 1,
+			},
+		},
+	}
+	_, err = srv.SubmitPoW(ctx, secondMsg)
+	require.NoError(t, err, "a submission at a genuinely new block height must succeed")
+}
+
+func TestSubmitPoW_FailedSubmission_DoesNotConsumeThisHeightsSlot(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	realHash := []byte("real-hash-for-failed-then-valid-test")
+	ctx = setupRecentBlock(k, ctx, 1, realHash, 1)
+	ctx = ctx.WithBlockHeight(2)
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+
+	_, addrStr := validMinerAddr(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	// A genuinely invalid submission (wrong PrevHash) -- must fail
+	// verification, not consume the height's slot.
+	badMsg := &pow.MsgSubmitPoW{
+		Miner: addrStr,
+		Submission: &pow.MsgSubmitPoW_Native{
+			Native: &pow.NativeSubmission{
+				Height: 1, Timestamp: time.Now().Unix(), PrevHash: []byte("wrong-hash-entirely"),
+				MerkleRoot: []byte("merkle"), Nonce: 1, Difficulty: 1,
+			},
+		},
+	}
+	_, err := srv.SubmitPoW(ctx, badMsg)
+	require.Error(t, err, "a genuinely invalid submission must fail")
+
+	goodMsg := &pow.MsgSubmitPoW{
+		Miner: addrStr,
+		Submission: &pow.MsgSubmitPoW_Native{
+			Native: &pow.NativeSubmission{
+				Height: 1, Timestamp: time.Now().Unix(), PrevHash: realHash,
+				MerkleRoot: []byte("merkle"), Nonce: 1, Difficulty: 1,
+			},
+		},
+	}
+	_, err = srv.SubmitPoW(ctx, goodMsg)
+	require.NoError(t, err, "a genuinely valid submission at the same height must still succeed, since the earlier failed attempt shouldn't have consumed the slot")
 }

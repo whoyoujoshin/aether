@@ -117,6 +117,28 @@ func (k Keeper) GetLastBlockTime(ctx sdk.Context) (int64, bool) {
 	return t, true
 }
 
+// SetLastAcceptedSubmissionHeight and GetLastAcceptedSubmissionHeight
+// track the block height of the most recently accepted PoW submission
+// (native or AuxPoW) -- used to enforce at most one accepted
+// submission per block height. Found live: nothing previously limited
+// this, which at low real difficulty allowed many rapid, cheap
+// submissions to each mint a full, uncapped block reward within a
+// single block, faster than difficulty retargeting could react.
+func (k Keeper) SetLastAcceptedSubmissionHeight(ctx sdk.Context, height int64) {
+	bz, _ := json.Marshal(height)
+	ctx.KVStore(k.storeKey).Set(KeyLastAcceptedSubmissionHeight, bz)
+}
+
+func (k Keeper) GetLastAcceptedSubmissionHeight(ctx sdk.Context) (int64, bool) {
+	bz := ctx.KVStore(k.storeKey).Get(KeyLastAcceptedSubmissionHeight)
+	if bz == nil {
+		return 0, false
+	}
+	var height int64
+	_ = json.Unmarshal(bz, &height)
+	return height, true
+}
+
 func validatorPubkeyKey(minerAddr sdk.AccAddress) []byte {
 	return append(KeyValidatorPubkeyPrefix, minerAddr.Bytes()...)
 }

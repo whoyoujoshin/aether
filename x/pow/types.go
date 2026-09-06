@@ -96,6 +96,7 @@ var (
 	KeyLivenessBitmapPrefix = []byte("liveness_bitmap/") // validator addr -> [60]byte (0/1 per slot)
 	KeyLivenessIndexPrefix  = []byte("liveness_index/")  // validator addr -> current write index (0-59)
 	KeyLivenessMissedPrefix = []byte("liveness_missed/") // validator addr -> current miss count in window
+	KeyLastAcceptedSubmissionHeight = []byte("last_accepted_submission_height")
 )
 
 // Locked block-reward decay schedule (see tail-emission-decision.md).

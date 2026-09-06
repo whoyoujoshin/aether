@@ -55,14 +55,39 @@ func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubm
 		return nil, sdkerrors.Wrapf(types.ErrInvalidCreator, "invalid miner address %q: %s", msg.Miner, err)
 	}
 
+	// A real, live-discovered gap: nothing previously limited how many
+	// PoW submissions (native or AuxPoW) could be accepted within a
+	// single block height. At low real difficulty -- particularly for
+	// AuxPoW, whose self-consistency check doesn't require real
+	// external mining work -- this allowed many rapid, cheap
+	// submissions to each mint a full, uncapped block reward faster
+	// than difficulty retargeting could react (retargeting itself
+	// silently no-ops when elapsed <= 0, i.e. multiple submissions at
+	// the same block timestamp). The chain was always implicitly
+	// designed around roughly one accepted submission per block; this
+	// makes that assumption an enforced rule instead of an unstated
+	// one, closing both the minting and the retargeting blind spot at
+	// their shared root cause.
+	if lastHeight, ok := k.Keeper.GetLastAcceptedSubmissionHeight(ctx); ok && lastHeight == ctx.BlockHeight() {
+		return nil, sdkerrors.Wrapf(types.ErrTooManySubmissionsThisBlock,
+			"a PoW submission has already been accepted at height %d; try again next block", ctx.BlockHeight())
+	}
+
+	var resp *MsgSubmitPoWResponse
 	switch submission := msg.Submission.(type) {
 	case *MsgSubmitPoW_Native:
-		return k.submitNativePoW(ctx, minerAddr, submission.Native)
+		resp, err = k.submitNativePoW(ctx, minerAddr, submission.Native)
 	case *MsgSubmitPoW_AuxPow:
-		return k.submitAuxPoW(ctx, minerAddr, submission.AuxPow)
+		resp, err = k.submitAuxPoW(ctx, minerAddr, submission.AuxPow)
 	default:
 		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "submission must include either native or aux_pow data")
 	}
+	if err != nil {
+		return nil, err
+	}
+
+	k.Keeper.SetLastAcceptedSubmissionHeight(ctx, ctx.BlockHeight())
+	return resp, nil
 }
 
 // submitNativePoW handles a native Scrypt submission -- identical
