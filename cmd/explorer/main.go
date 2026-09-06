@@ -286,7 +286,15 @@ const txTemplate = `
 			<td>{{.Amount}}</td>
 		</tr>
 		{{end}}
+		</table>
+	{{if .Detail.AuxPow}}
+	<h3>AuxPoW (merged-mining) data</h3>
+	<table>
+		<tr><td>Parent header (base64)</td><td style="word-break: break-all;">{{.Detail.AuxPow.ParentHeaderBase64}}</td></tr>
+		<tr><td>Coinbase tx (base64)</td><td style="word-break: break-all;">{{.Detail.AuxPow.CoinbaseTxBase64}}</td></tr>
+		<tr><td>Aux block hash (base64)</td><td style="word-break: break-all;">{{.Detail.AuxPow.AuxBlockHashBase64}}</td></tr>
 	</table>
+	{{end}}
 	{{end}}
 </body></html>
 `

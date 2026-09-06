@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"fmt"
 	"sort"
+	"encoding/base64"
 
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
@@ -13,6 +14,8 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"github.com/cosmos/gogoproto/proto"
+	"github.com/whoyoujoshin/aether/x/pow"
 )
 
 // Client wraps a real gRPC connection to a specific Aether node,
@@ -223,6 +226,7 @@ type TransactionDetail struct {
 	Amount    string
 	Timestamp string
 	Transfers []Transfer
+	AuxPow    *AuxPowInfo
 }
 
 // Transfer is one real bank transfer within a transaction. A single
@@ -284,5 +288,34 @@ func (c *Client) GetTransactionByHash(hash string) (*TransactionDetail, error) {
 		detail.To = detail.Transfers[0].To
 		detail.Amount = detail.Transfers[0].Amount
 	}
+
+	if resp.Tx != nil && resp.Tx.Body != nil {
+		for _, anyMsg := range resp.Tx.Body.Messages {
+			if anyMsg.TypeUrl != "/aether.pow.v1.MsgSubmitPoW" {
+				continue
+			}
+			var msg pow.MsgSubmitPoW
+			if err := proto.Unmarshal(anyMsg.Value, &msg); err != nil {
+				continue
+			}
+			if auxPow, ok := msg.Submission.(*pow.MsgSubmitPoW_AuxPow); ok {
+				detail.AuxPow = &AuxPowInfo{
+					ParentHeaderBase64: base64.StdEncoding.EncodeToString(auxPow.AuxPow.ParentHeader),
+					CoinbaseTxBase64:   base64.StdEncoding.EncodeToString(auxPow.AuxPow.CoinbaseTx),
+					AuxBlockHashBase64: base64.StdEncoding.EncodeToString(auxPow.AuxPow.AuxBlockHash),
+				}
+			}
+		}
+	}
 	return detail, nil
+}
+
+// AuxPowInfo surfaces the AuxPoW-specific fields of a MsgSubmitPoW
+// transaction, when present -- for full transparency on the
+// explorer's transaction detail page, rather than only showing the
+// generic transfer/gas/status fields that apply to any transaction.
+type AuxPowInfo struct {
+	ParentHeaderBase64 string
+	CoinbaseTxBase64   string
+	AuxBlockHashBase64 string
 }
