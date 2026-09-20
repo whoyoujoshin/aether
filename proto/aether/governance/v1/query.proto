@@ -3,6 +3,7 @@ package aether.governance.v1;
 
 import "gogoproto/gogo.proto";
 import "aether/governance/v1/governance.proto";
+import "aether/governance/v1/vote.proto";
 
 option go_package = "github.com/whoyoujoshin/aether/x/governance";
 
@@ -10,6 +11,9 @@ service Query {
   rpc Proposal(QueryProposalRequest) returns (QueryProposalResponse);
   rpc Proposals(QueryProposalsRequest) returns (QueryProposalsResponse);
   rpc Params(QueryParamsRequest) returns (QueryParamsResponse);
+  rpc Vote(QueryVoteRequest) returns (QueryVoteResponse);
+  rpc Votes(QueryVotesRequest) returns (QueryVotesResponse);
+  rpc Tally(QueryTallyRequest) returns (QueryTallyResponse);
 }
 
 message QueryProposalRequest {
@@ -29,4 +33,38 @@ message QueryParamsResponse {
   int64 min_deposit = 1;
   int64 deposit_period = 2;
   int64 voting_period = 3;
+}
+
+// A real, previously-missing gap (Section 3 item 6): no query exposed
+// an individual vote or a tally breakdown, forcing anyone verifying a
+// proposal's outcome to infer it indirectly from status alone.
+message QueryVoteRequest {
+  uint64 proposal_id = 1;
+  string voter = 2;
+}
+message QueryVoteResponse {
+  Vote vote = 1;
+}
+
+message QueryVotesRequest {
+  uint64 proposal_id = 1;
+}
+message QueryVotesResponse {
+  repeated Vote votes = 1;
+}
+
+// Mirrors Keeper.TallyResult (see keeper.go) plus the quorum threshold
+// it's compared against, so a tally can be interpreted without needing
+// to separately query params and recompute the ceiling-division by
+// hand.
+message QueryTallyRequest {
+  uint64 proposal_id = 1;
+}
+message QueryTallyResponse {
+  int64 valid_voter_count = 1;
+  string yes_power = 2;
+  string no_power = 3;
+  string abstain_power = 4;
+  string veto_power = 5;
+  int64 quorum_threshold = 6;
 }
