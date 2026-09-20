@@ -267,6 +267,60 @@ func TestSubmitProposal_RejectsInvalidRecipient(t *testing.T) {
 	require.True(t, errors.Is(err, governance.ErrInvalidRecipient))
 }
 
+// TestSubmitProposal_BeforeActivation_AcceptsMalformedAmount pins down
+// the historical (pre-fix) behavior below
+// AmountValidationActivationHeight, matching what actually happens on
+// this chain today: msg.Amount is never validated at submission, only
+// later at execution. A fresh replay of any pre-activation history
+// must reproduce that exactly.
+func TestSubmitProposal_BeforeActivation_AcceptsMalformedAmount(t *testing.T) {
+	k, ctx, _, _ := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+
+	_, proposerStr := validProposerAddr(t)
+	msg := &governance.MsgSubmitProposal{
+		Proposer:  proposerStr,
+		Recipient: proposerStr,
+		Amount:    "not-a-number",
+		Deposit:   "0",
+	}
+
+	_, err := srv.SubmitProposal(ctx, msg)
+	require.NoError(t, err, "before the activation height, a malformed amount must still be accepted, matching real pre-fix chain history")
+
+	proposal, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, "not-a-number", proposal.Amount)
+}
+
+// TestSubmitProposal_AfterActivation_RejectsMalformedAmount is the
+// regression test for the actual fix: at and after
+// AmountValidationActivationHeight, a malformed or non-positive amount
+// must be rejected immediately, before a proposal is ever created --
+// not silently accepted only to fail weeks later at execution.
+func TestSubmitProposal_AfterActivation_RejectsMalformedAmount(t *testing.T) {
+	k, ctx, _, _ := setupKeeper(t)
+	srv := governance.NewMsgServerImpl(k)
+	ctx = ctx.WithBlockHeight(governance.AmountValidationActivationHeight)
+
+	_, proposerStr := validProposerAddr(t)
+
+	for _, amount := range []string{"not-a-number", "-5", "0", ""} {
+		msg := &governance.MsgSubmitProposal{
+			Proposer:  proposerStr,
+			Recipient: proposerStr,
+			Amount:    amount,
+			Deposit:   "0",
+		}
+		_, err := srv.SubmitProposal(ctx, msg)
+		require.Error(t, err, "amount %q must be rejected at submission", amount)
+		require.True(t, errors.Is(err, governance.ErrInvalidAmount))
+	}
+
+	_, ok := k.GetProposal(ctx, 1)
+	require.False(t, ok, "no proposal should have been created for any of the rejected amounts")
+}
+
 func TestDeposit_AccumulatesAcrossMultipleContributors(t *testing.T) {
 	k, ctx, _, _ := setupKeeper(t)
 	srv := governance.NewMsgServerImpl(k)

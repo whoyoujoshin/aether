@@ -32,6 +32,22 @@ func (k msgServer) SubmitProposal(goCtx context.Context, msg *MsgSubmitProposal)
 		return nil, sdkerrors.Wrapf(ErrInvalidDeposit, "invalid deposit amount %q", msg.Deposit)
 	}
 
+	// A real, live-flagged gap (Gitty, Section 3 item 5): msg.Amount --
+	// the actual treasury spend amount -- was never validated here,
+	// only at executeTreasurySpend, which only ever runs if the
+	// proposal reaches PASSED. A malformed Amount could sit through the
+	// full deposit period plus multi-day voting period only to fail at
+	// the very last step, with the failure only ever logged (proposal
+	// status already committed to PASSED beforehand). Gated on
+	// AmountValidationActivationHeight per the same discipline as every
+	// other fix in this project -- see that constant's doc comment.
+	if ctx.BlockHeight() >= AmountValidationActivationHeight {
+		amount, ok := math.NewIntFromString(msg.Amount)
+		if !ok || !amount.IsPositive() {
+			return nil, sdkerrors.Wrapf(ErrInvalidAmount, "invalid or non-positive amount %q", msg.Amount)
+		}
+	}
+
 	proposalID := k.Keeper.NextProposalID(ctx)
 	now := ctx.BlockTime().Unix()
 	depositPeriod := k.Keeper.GetDepositPeriod(ctx)

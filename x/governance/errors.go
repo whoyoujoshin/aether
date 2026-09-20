@@ -10,4 +10,5 @@ var (
 	ErrDepositPeriodEnded = sdkerrors.Register(ModuleName, 5, "proposal is not in its deposit period")
 	ErrNotInVotingPeriod = sdkerrors.Register(ModuleName, 6, "proposal is not in its voting period")
 	ErrInvalidVoteOption = sdkerrors.Register(ModuleName, 7, "invalid or unspecified vote option")
+	ErrInvalidAmount     = sdkerrors.Register(ModuleName, 8, "invalid treasury spend amount")
 )
