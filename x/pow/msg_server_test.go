@@ -157,24 +157,18 @@ Difficulty: 1,
 	require.Equal(t, ctx.BlockTime().Unix(), lastTime)
 }
 
-// TestSubmitPoW_BannedMiner_StillMintsFullBlockReward is a real,
-// live-flagged concern (Gitty, Section 3 item 3): does a permanently
-// banned (post-equivocation) miner actually get rejected at the
-// message-handling level, or only excluded from Top-K/rewards?
-//
-// Confirmed: neither submitNativePoW nor submitAuxPoW calls IsBanned
-// anywhere. IsBanned is checked in exactly one place in the entire
-// module -- ComputeValidatorUpdates's Top-K qualification filter,
-// which only decides who's eligible to be an ACTIVE VALIDATOR. It has
-// no bearing on SubmitPoW at all. A banned miner can keep submitting
-// indefinitely (subject only to the one-per-block-height cap and
-// duplicate-work rejection, neither of which are ban-specific) and
-// receives the FULL real block reward every time, exactly as if they
-// were never banned. This is worse than "excluded from Top-K/rewards"
-// -- it is not excluded from rewards at all, only from becoming a
-// validator again. A banned miner keeps farming real minted AETH
-// forever.
-func TestSubmitPoW_BannedMiner_StillMintsFullBlockReward(t *testing.T) {
+// TestSubmitPoW_BannedMiner_BeforeActivation_StillMintsFullBlockReward
+// pins down the historical (pre-fix) behavior below
+// BanEnforcementActivationHeight, matching what a live-history audit
+// confirmed actually happened on-chain: neither submitNativePoW nor
+// submitAuxPoW ever called IsBanned. IsBanned was checked in exactly
+// one place in the entire module -- ComputeValidatorUpdates's Top-K
+// qualification filter, which only decides who's eligible to be an
+// ACTIVE VALIDATOR. Before the activation height, a banned miner keeps
+// minting the full real block reward exactly as before -- a fresh
+// replay of any pre-activation history must match that, not the fixed
+// behavior.
+func TestSubmitPoW_BannedMiner_BeforeActivation_StillMintsFullBlockReward(t *testing.T) {
 	k, ctx, mockBank := setupKeeper(t)
 	srv := pow.NewMsgServerImpl(k)
 
@@ -198,11 +192,47 @@ func TestSubmitPoW_BannedMiner_StillMintsFullBlockReward(t *testing.T) {
 	}
 
 	resp, err := srv.SubmitPoW(ctx, msg)
-	require.NoError(t, err, "BUG: a banned miner's submission currently succeeds -- SubmitPoW never checks IsBanned")
+	require.NoError(t, err, "before the activation height, a banned miner's submission must still succeed, matching real pre-fix chain history")
 	require.NotNil(t, resp)
 
-	require.Len(t, mockBank.MintCalls, 1, "BUG: a banned miner still triggers a real MintCoins call for the full block reward")
+	require.Len(t, mockBank.MintCalls, 1, "before the activation height, a banned miner still triggers a real MintCoins call for the full block reward, matching history")
 	require.Equal(t, "5000000uaeth", mockBank.MintCalls[0].Coins.String())
+}
+
+// TestSubmitPoW_BannedMiner_AfterActivation_IsRejected is the
+// regression test for the actual fix: at and after
+// BanEnforcementActivationHeight, a banned miner's submission must be
+// rejected before it ever reaches submitNativePoW/submitAuxPoW, and
+// must mint nothing.
+func TestSubmitPoW_BannedMiner_AfterActivation_IsRejected(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	activationHeight := pow.BanEnforcementActivationHeight
+	ancestorHeight := activationHeight - 1
+
+	realHash := []byte("real-hash-for-banned-miner-post-activation-test")
+	ctx = setupRecentBlock(k, ctx, ancestorHeight, realHash, 1)
+	ctx = ctx.WithBlockHeight(activationHeight)
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+
+	minerAddr, addrStr := validMinerAddr(t)
+	k.SetBanned(ctx, minerAddr)
+
+	msg := &pow.MsgSubmitPoW{
+		Miner: addrStr,
+		Submission: &pow.MsgSubmitPoW_Native{
+			Native: &pow.NativeSubmission{
+				Height: uint64(ancestorHeight), Timestamp: time.Now().Unix(), PrevHash: realHash,
+				MerkleRoot: []byte("merkle"), Nonce: 1, Difficulty: 1,
+			},
+		},
+	}
+
+	_, err := srv.SubmitPoW(ctx, msg)
+	require.Error(t, err, "at and after the activation height, a banned miner's submission must be rejected")
+	require.True(t, errors.Is(err, types.ErrBannedMiner))
+	require.Empty(t, mockBank.MintCalls, "a rejected submission must never reach DistributeBlockReward")
 }
 
 func TestSubmitPoW_PropagatesRewardDistributionError(t *testing.T) {
@@ -551,29 +581,21 @@ func TestRegisterValidatorPubkey_PopulatesConsensusToMinerIndex(t *testing.T) {
 	require.Equal(t, minerAddr, foundMiner)
 }
 
-// TestRegisterValidatorPubkey_RotationOrphansOldKeysCometBFTPower is a
-// real, live-flagged concern (Gitty, Section 3 item 1): does
-// re-registering a new consensus pubkey for an already-active miner
-// retire the old one? It does not, and this is a genuine consensus
-// vulnerability, not just stale bookkeeping.
-//
-// RegisterValidatorPubkey itself never emits an abci.ValidatorUpdate --
-// it only rewrites keeper state. The ONLY code path that can ever
-// revoke a validator's real CometBFT voting power is the epoch-boundary
-// removal loop in ComputeValidatorUpdates, and that loop builds its
-// revocation from whatever GetValidatorPubkey CURRENTLY returns for the
-// miner -- never whatever pubkey actually held power at the time. So a
-// miner who is active (real power under key A), then registers a new
-// key B, then later gets dropped from Top-K, has their removal update
-// issued for B -- a key that never held any power to begin with. Key
-// A's real, live CometBFT voting power is never targeted by any
-// revocation anywhere in this module and stays live in the validator
-// set forever (until/unless some unrelated event, like a future
-// equivocation catch against A specifically, removes it). A miner can
-// use this to accumulate multiple simultaneously-powered validator
-// identities under one economic actor by simply rotating keys while
-// active, undetectable from active-validator-count alone.
-func TestRegisterValidatorPubkey_RotationOrphansOldKeysCometBFTPower(t *testing.T) {
+// TestRegisterValidatorPubkey_BeforeActivation_RotationOrphansOldKeysCometBFTPower
+// pins down the historical (pre-fix) behavior below
+// RotationRevocationActivationHeight, matching what a live-history
+// audit confirmed actually happened on-chain: RegisterValidatorPubkey
+// never emitted any abci.ValidatorUpdate, and the ONLY code path that
+// could ever revoke a validator's real CometBFT voting power was the
+// epoch-boundary removal loop in ComputeValidatorUpdates, which builds
+// its revocation from whatever GetValidatorPubkey CURRENTLY returns --
+// never whatever pubkey actually held power at the time. Before the
+// activation height, a fresh replay of any pre-activation history must
+// reproduce that exactly: a miner active under key A who rotates to
+// key B and later drops from Top-K gets a removal issued for B (which
+// never held power), while A's real power is never targeted by
+// anything.
+func TestRegisterValidatorPubkey_BeforeActivation_RotationOrphansOldKeysCometBFTPower(t *testing.T) {
 	k, ctx, _ := setupKeeper(t)
 	srv := pow.NewMsgServerImpl(k)
 
@@ -635,6 +657,80 @@ func TestRegisterValidatorPubkey_RotationOrphansOldKeysCometBFTPower(t *testing.
 	require.NotNil(t, removalUpdate, "the no-longer-qualified miner must produce a removal update")
 	require.Equal(t, newKeyProto, removalUpdate.PubKey, "the removal update is issued for the NEW key, which never held any power")
 	require.NotEqual(t, oldKeyProto, removalUpdate.PubKey, "the OLD key -- the one that actually held real CometBFT voting power -- is never targeted by any revocation, and stays live in the validator set indefinitely")
+}
+
+// TestRegisterValidatorPubkey_AfterActivation_SchedulesOldKeyRevocation
+// is the regression test for the actual fix: at and after
+// RotationRevocationActivationHeight, rotating the consensus key of an
+// ALREADY-ACTIVE miner must schedule the OLD key -- specifically, not
+// whatever's current later -- for revocation. Followed at the keeper
+// level (IteratePendingKeyRevocations), matching how this module's
+// existing equivocation-driven removal scheduling
+// (MarkPendingRemoval/IteratePendingRemovals) is tested -- the actual
+// EndBlock wiring that turns a scheduled revocation into a real
+// abci.ValidatorUpdate is simple, untested glue in this codebase for
+// that existing path too.
+func TestRegisterValidatorPubkey_AfterActivation_SchedulesOldKeyRevocation(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+	ctx = ctx.WithBlockHeight(pow.RotationRevocationActivationHeight)
+
+	minerAddr, addrStr := validMinerAddr(t)
+
+	oldPub, oldPriv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	oldSig := ed25519.Sign(oldPriv, []byte(addrStr))
+	_, err = srv.RegisterValidatorPubkey(ctx, &pow.MsgRegisterValidatorPubkey{
+		Miner: addrStr, ConsensusPubkey: oldPub, Signature: oldSig,
+	})
+	require.NoError(t, err)
+	k.SetActiveValidator(ctx, minerAddr)
+
+	newPub, newPriv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	newSig := ed25519.Sign(newPriv, []byte(addrStr))
+	_, err = srv.RegisterValidatorPubkey(ctx, &pow.MsgRegisterValidatorPubkey{
+		Miner: addrStr, ConsensusPubkey: newPub, Signature: newSig,
+	})
+	require.NoError(t, err)
+
+	pending := k.IteratePendingKeyRevocations(ctx)
+	require.Len(t, pending, 1, "rotating an active miner's key must schedule exactly one revocation")
+	require.Equal(t, minerAddr, pending[0].MinerAddr)
+	require.Equal(t, []byte(oldPub), pending[0].OldPubkey, "the scheduled revocation must target the OLD key -- the one that actually held power -- not the new one")
+}
+
+// TestRegisterValidatorPubkey_AfterActivation_NoRevocationWhenNotActive
+// confirms the fix doesn't over-trigger: rotating a key before ever
+// becoming an active validator (the ordinary, expected case -- nobody
+// registers a key while already holding real power except by rotating)
+// must not schedule a spurious revocation, since the old key never
+// held any power to begin with.
+func TestRegisterValidatorPubkey_AfterActivation_NoRevocationWhenNotActive(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+	ctx = ctx.WithBlockHeight(pow.RotationRevocationActivationHeight)
+
+	_, addrStr := validMinerAddr(t)
+
+	oldPub, oldPriv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	oldSig := ed25519.Sign(oldPriv, []byte(addrStr))
+	_, err = srv.RegisterValidatorPubkey(ctx, &pow.MsgRegisterValidatorPubkey{
+		Miner: addrStr, ConsensusPubkey: oldPub, Signature: oldSig,
+	})
+	require.NoError(t, err)
+	// Deliberately never SetActiveValidator -- this miner has never held any power.
+
+	newPub, newPriv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	newSig := ed25519.Sign(newPriv, []byte(addrStr))
+	_, err = srv.RegisterValidatorPubkey(ctx, &pow.MsgRegisterValidatorPubkey{
+		Miner: addrStr, ConsensusPubkey: newPub, Signature: newSig,
+	})
+	require.NoError(t, err)
+
+	require.Empty(t, k.IteratePendingKeyRevocations(ctx), "no revocation should be scheduled for a miner who was never active under the old key")
 }
 
 // Helper to set up a valid recent-block context for ancestor validation

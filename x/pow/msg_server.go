@@ -39,6 +39,28 @@ func (k msgServer) RegisterValidatorPubkey(goCtx context.Context, msg *MsgRegist
 			"signature does not verify against the provided consensus pubkey for miner %s", msg.Miner)
 	}
 
+	// A real, live-flagged gap (Gitty, Section 3 item 1): this handler
+	// never emitted any abci.ValidatorUpdate, so an active miner
+	// rotating consensus keys left their OLD key's real CometBFT
+	// voting power live forever -- nothing else in this module ever
+	// builds a revocation from anything but the CURRENT registered
+	// pubkey. Gated on RotationRevocationActivationHeight per the same
+	// discipline as the other gates, even though a live-history audit
+	// found this was never actually exercised (no miner has ever
+	// registered a second consensus pubkey while active) -- see that
+	// constant's doc comment. Scheduling the revocation here (rather
+	// than emitting it directly, which a Msg handler cannot do) mirrors
+	// the existing MarkPendingRemoval/IteratePendingRemovals pattern
+	// this module already uses for immediate equivocation-driven
+	// removal -- see module.go's EndBlock.
+	if ctx.BlockHeight() >= RotationRevocationActivationHeight {
+		if oldPubkey, ok := k.Keeper.GetValidatorPubkey(ctx, minerAddr); ok &&
+			!bytes.Equal(oldPubkey, msg.ConsensusPubkey) &&
+			k.Keeper.IsActiveValidator(ctx, minerAddr) {
+			k.Keeper.MarkPendingKeyRevocation(ctx, minerAddr, oldPubkey)
+		}
+	}
+
 	k.Keeper.SetValidatorPubkey(ctx, minerAddr, msg.ConsensusPubkey)
 
 	consensusAddr := cometed25519.PubKey(msg.ConsensusPubkey).Address()
@@ -53,6 +75,22 @@ func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubm
 	minerAddr, err := sdk.AccAddressFromBech32(msg.Miner)
 	if err != nil {
 		return nil, sdkerrors.Wrapf(types.ErrInvalidCreator, "invalid miner address %q: %s", msg.Miner, err)
+	}
+
+	// A real, live-flagged gap (Gitty, Section 3 item 3): IsBanned was
+	// only ever checked in Top-K qualification filtering -- nothing
+	// here rejected a banned miner's submission itself, so they kept
+	// minting the full real block reward forever, just permanently
+	// excluded from ever becoming an active validator again. Gated on
+	// BanEnforcementActivationHeight per the same discipline as the
+	// other gates, even though a live-history audit found this was
+	// never actually exercised (no miner has ever been banned) -- see
+	// that constant's doc comment.
+	if ctx.BlockHeight() >= BanEnforcementActivationHeight {
+		if k.Keeper.IsBanned(ctx, minerAddr) {
+			return nil, sdkerrors.Wrapf(types.ErrBannedMiner,
+				"miner %s is permanently banned and may not submit further work", minerAddr.String())
+		}
 	}
 
 	// A real, live-discovered gap: nothing previously limited how many

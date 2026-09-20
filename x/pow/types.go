@@ -97,6 +97,7 @@ var (
 	KeyLivenessIndexPrefix  = []byte("liveness_index/")  // validator addr -> current write index (0-59)
 	KeyLivenessMissedPrefix = []byte("liveness_missed/") // validator addr -> current miss count in window
 	KeyLastAcceptedSubmissionHeight = []byte("last_accepted_submission_height")
+	KeyPendingKeyRevocationPrefix = []byte("pending_key_revocation/") // miner addr -> old consensus pubkey bytes
 )
 
 // Locked block-reward decay schedule (see tail-emission-decision.md).
@@ -189,3 +190,46 @@ const BootstrapPowerCorrectionHeight int64 = 40866
 // never existed yet), and from this height on every node runs it
 // identically, which is exactly what the live seed has done since.
 const SubmissionCapActivationHeight int64 = 51007
+
+// BanEnforcementActivationHeight and RotationRevocationActivationHeight
+// gate two real, live-flagged fixes (Gitty, Section 3 items 3 and 1):
+// a permanently-banned miner was never actually rejected by SubmitPoW
+// (IsBanned was only ever checked in Top-K qualification filtering, so
+// a banned miner kept minting the full real block reward forever), and
+// RegisterValidatorPubkey never revoked an old consensus key's real
+// CometBFT voting power on rotation (the only revocation path builds
+// its update from whatever pubkey is CURRENTLY registered, never the
+// one that actually held power).
+//
+// A live-history audit (tx_search across every MsgSubmitPoW and
+// MsgRegisterValidatorPubkey ever submitted, cross-checked against
+// ban-status for every miner address that ever appeared) confirmed
+// both paths are clean: no miner has ever been banned at all, and no
+// miner has ever registered a second consensus pubkey while active.
+// Unlike BootstrapPowerCorrectionHeight and SubmissionCapActivationHeight,
+// this means neither fix actually needs a height gate to replay
+// history correctly -- the buggy behavior was never historically
+// exercised, so a fresh replay computes identically with or without
+// the gate.
+//
+// Gated anyway, on principle, matching the same family as the other
+// two: an unconditional accept/reject change to SubmitPoW,
+// RegisterValidatorPubkey, or Top-K removal is exactly the class of
+// change that has twice now silently broken fresh-node replay on this
+// chain. A future re-audit finding either check wrong would be exactly
+// as costly as the first two times; gating costs nothing when the
+// history is clean and is the only thing that costs nothing when it
+// turns out not to be.
+//
+// Set to a near-future height past the in-progress dual-validator/
+// liveness test (tip ~74355, epoch 50 boundary at 74879 as of this
+// writing) -- deliberately NOT tied to today's exact tip, so there's
+// real deploy/propagation buffer before it takes effect, the same way
+// a real chain upgrade height is scheduled ahead rather than pinned to
+// "whatever height happens to be current when the code is written."
+// Confirm/adjust this against the seed's actual height immediately
+// before deploying.
+const (
+	BanEnforcementActivationHeight     int64 = 77000
+	RotationRevocationActivationHeight int64 = 77000
+)

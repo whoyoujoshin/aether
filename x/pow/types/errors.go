@@ -13,4 +13,5 @@ var (
 	ErrStaleAncestor   = sdkerrors.Register(ModuleName, 6, "claimed ancestor height is outside the recency window")
 		ErrDuplicateWork   = sdkerrors.Register(ModuleName, 7, "this exact mining header has already been accepted")
 	ErrTooManySubmissionsThisBlock = sdkerrors.Register(ModuleName, 8, "a PoW submission has already been accepted at this block height")
+	ErrBannedMiner                 = sdkerrors.Register(ModuleName, 9, "this miner is permanently banned and may not submit further work")
 )

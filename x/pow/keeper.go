@@ -608,6 +608,54 @@ func (k Keeper) GetMinerByConsensusAddr(ctx sdk.Context, consensusAddr []byte) (
 	return sdk.AccAddress(bz), true
 }
 
+// PendingKeyRevocationEntry pairs a miner with the specific old
+// consensus pubkey that needs its real CometBFT voting power revoked
+// -- see MarkPendingKeyRevocation.
+type PendingKeyRevocationEntry struct {
+	MinerAddr sdk.AccAddress
+	OldPubkey []byte
+}
+
+// MarkPendingKeyRevocation records that minerAddr's OLD consensus
+// pubkey -- specifically the one passed here, not whatever
+// GetValidatorPubkey returns later -- needs its real CometBFT voting
+// power revoked. This is the fix for a real, live-flagged gap (Gitty,
+// Section 3 item 1): RegisterValidatorPubkey never emitted any
+// abci.ValidatorUpdate, so an active miner rotating consensus keys
+// left their OLD key's real power live forever -- nothing in this
+// module ever built a revocation from anything other than the
+// CURRENT registered pubkey, which by the time any removal ran would
+// already be the NEW key (which never held power).
+//
+// Keyed by miner address, storing the specific old pubkey as the
+// value, precisely so the EndBlock revocation (see module.go) targets
+// the key that actually held power, not whatever's current by then.
+func (k Keeper) MarkPendingKeyRevocation(ctx sdk.Context, minerAddr sdk.AccAddress, oldPubkey []byte) {
+	ctx.KVStore(k.storeKey).Set(append(KeyPendingKeyRevocationPrefix, minerAddr.Bytes()...), oldPubkey)
+}
+
+func (k Keeper) IteratePendingKeyRevocations(ctx sdk.Context) []PendingKeyRevocationEntry {
+	store := ctx.KVStore(k.storeKey)
+	iterator := store.Iterator(KeyPendingKeyRevocationPrefix, storetypes.PrefixEndBytes(KeyPendingKeyRevocationPrefix))
+	defer iterator.Close()
+
+	var entries []PendingKeyRevocationEntry
+	for ; iterator.Valid(); iterator.Next() {
+		addrBytes := iterator.Key()[len(KeyPendingKeyRevocationPrefix):]
+		oldPubkey := make([]byte, len(iterator.Value()))
+		copy(oldPubkey, iterator.Value())
+		entries = append(entries, PendingKeyRevocationEntry{
+			MinerAddr: sdk.AccAddress(addrBytes),
+			OldPubkey: oldPubkey,
+		})
+	}
+	return entries
+}
+
+func (k Keeper) ClearPendingKeyRevocation(ctx sdk.Context, minerAddr sdk.AccAddress) {
+	ctx.KVStore(k.storeKey).Delete(append(KeyPendingKeyRevocationPrefix, minerAddr.Bytes()...))
+}
+
 // Permanent ban -- once set, never cleared. A banned address must never be
 // selected as a validator again, regardless of future mining work.
 func (k Keeper) SetBanned(ctx sdk.Context, minerAddr sdk.AccAddress) {

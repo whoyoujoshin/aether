@@ -144,6 +144,24 @@ func (am AppModule) EndBlock(ctx context.Context) ([]abci.ValidatorUpdate, error
 				am.keeper.ClearPendingRemoval(sdkCtx, minerAddr)
 	}
 
+	// Immediate revocation of an OLD consensus key's real CometBFT
+	// voting power on rotation -- unconditional, every block,
+	// independent of epoch timing, same as the removals above.
+	// Height-gated (see RotationRevocationActivationHeight) for the
+	// same reason as every other gate in this file: an unconditional
+	// change to what gets emitted here is exactly the class of change
+	// that has twice now broken fresh-node replay on this chain, even
+	// though a live-history audit found this specific path was never
+	// actually exercised.
+	if sdkCtx.BlockHeight() >= RotationRevocationActivationHeight {
+		for _, entry := range am.keeper.IteratePendingKeyRevocations(sdkCtx) {
+			if update, ok := am.keeper.toValidatorUpdate(entry.OldPubkey, 0, entry.MinerAddr); ok {
+				updates = append(updates, update)
+			}
+			am.keeper.ClearPendingKeyRevocation(sdkCtx, entry.MinerAddr)
+		}
+	}
+
 	// A genuine, one-time, live correction -- unconditional, every
 	// block, independent of epoch timing -- for a real gap: the
 	// genesis bootstrap validator's actual voting power was never
