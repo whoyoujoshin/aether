@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"strconv"
 
+	"cosmossdk.io/math"
 	"github.com/spf13/cobra"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/tx"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/whoyoujoshin/aether/x/governance"
 )
@@ -31,10 +33,24 @@ func NewSubmitProposalCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "submit-proposal [recipient] [amount] [deposit]",
 		Short: "Submit a treasury-spend proposal, with an initial deposit",
-		Args:  cobra.ExactArgs(3),
+		Long: `Submit a treasury-spend proposal, with an initial deposit.
+
+[amount] and [deposit] must both be a plain uaeth integer -- e.g. 5000000,
+NOT a denom-suffixed coin string like 5000000uaeth. This has caused a real
+submission mistake before: the amount was accepted as-is with no denom
+suffix stripped, and would only have failed much later, at execution,
+had the proposal passed.`,
+		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
+				return err
+			}
+
+			if err := requirePlainUaethAmount("amount", args[1]); err != nil {
+				return err
+			}
+			if err := requirePlainUaethAmount("deposit", args[2]); err != nil {
 				return err
 			}
 
@@ -51,11 +67,34 @@ func NewSubmitProposalCmd() *cobra.Command {
 	return cmd
 }
 
+// requirePlainUaethAmount catches, client-side and before ever
+// broadcasting, the exact real mistake that produced Proposal 1's
+// malformed amount: passing a denom-suffixed coin string (e.g.
+// "5000000uaeth") where a plain uaeth integer is expected. Both amount
+// and deposit fields are parsed on-chain via math.NewIntFromString,
+// which has no concept of a denom suffix -- this just surfaces that
+// same rejection immediately and helpfully, instead of as an opaque
+// on-chain error (or, before the on-chain validation fix, silently
+// weeks later at execution).
+func requirePlainUaethAmount(fieldName, value string) error {
+	if _, ok := math.NewIntFromString(value); !ok {
+		if coin, err := sdk.ParseCoinNormalized(value); err == nil {
+			return fmt.Errorf("%s %q looks like a denom-suffixed coin string -- pass a plain uaeth integer instead, e.g. %s not %s", fieldName, value, coin.Amount.String(), value)
+		}
+		return fmt.Errorf("%s %q is not a valid integer", fieldName, value)
+	}
+	return nil
+}
+
 func NewDepositCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deposit [proposal-id] [amount]",
 		Short: "Contribute additional deposit to an existing proposal",
-		Args:  cobra.ExactArgs(2),
+		Long: `Contribute additional deposit to an existing proposal.
+
+[amount] must be a plain uaeth integer -- e.g. 5000000, NOT a
+denom-suffixed coin string like 5000000uaeth.`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
@@ -65,6 +104,10 @@ func NewDepositCmd() *cobra.Command {
 			proposalID, err := strconv.ParseUint(args[0], 10, 64)
 			if err != nil {
 				return fmt.Errorf("invalid proposal-id: %w", err)
+			}
+
+			if err := requirePlainUaethAmount("amount", args[1]); err != nil {
+				return err
 			}
 
 			msg := &governance.MsgDeposit{
