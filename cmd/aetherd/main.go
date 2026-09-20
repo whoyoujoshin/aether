@@ -22,6 +22,7 @@ import (
 	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
 	powcli "github.com/whoyoujoshin/aether/x/pow/client/cli"
 	governancecli "github.com/whoyoujoshin/aether/x/governance/client/cli"
+	treasurycli "github.com/whoyoujoshin/aether/x/treasury/client/cli"
 	"github.com/whoyoujoshin/aether/app"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/cosmos-sdk/client/rpc"
@@ -117,6 +118,7 @@ txCmd := &cobra.Command{
 	)
 	queryCmd.AddCommand(powcli.GetQueryCmd())
 	queryCmd.AddCommand(governancecli.GetQueryCmd())
+	queryCmd.AddCommand(treasurycli.GetQueryCmd())
 
 	app.ModuleBasics.AddQueryCommands(queryCmd)
 	rootCmd.AddCommand(queryCmd)

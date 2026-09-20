@@ -8,12 +8,14 @@ import (
 	"cosmossdk.io/store/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
 
 var ErrInsufficientTreasuryBalance = sdkerrors.Register(ModuleName, 1, "treasury balance is insufficient for requested spend")
 
 type BankKeeper interface {
 	SendCoinsFromModuleToAccount(ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) error
+	GetBalance(ctx context.Context, addr sdk.AccAddress, denom string) sdk.Coin
 }
 
 type Keeper struct {
@@ -57,6 +59,18 @@ func (k Keeper) GetTreasuryBalance(ctx sdk.Context) math.Int {
 	var balance math.Int
 	balance.UnmarshalAmino(bz)
 	return balance
+}
+
+// GetRealBankBalance returns the treasury module account's actual,
+// real uaeth bank balance -- the authoritative figure, as distinct
+// from GetTreasuryBalance's internally-tracked ledger. See
+// QueryBalanceResponse's doc comment (query.proto) for why these two
+// can drift: anyone can send uaeth directly to the treasury module's
+// address via an ordinary MsgSend, which raises this without ever
+// touching the tracked ledger.
+func (k Keeper) GetRealBankBalance(ctx sdk.Context) math.Int {
+	addr := authtypes.NewModuleAddress(ModuleName)
+	return k.bankKeeper.GetBalance(ctx, addr, "uaeth").Amount
 }
 
 func (k Keeper) Heartbeat(ctx sdk.Context) {

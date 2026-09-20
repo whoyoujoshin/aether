@@ -1,0 +1,38 @@
+syntax = "proto3";
+package aether.treasury.v1;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/treasury";
+
+// A real, previously-missing gap (Section 3 item 8): treasury had no
+// query service at all, so its own internally-tracked balance couldn't
+// even be checked externally, let alone checked against the module
+// account's real bank balance -- the exact question raised ("is this a
+// real on-chain balance or an internal paper ledger?") had no way to
+// be answered by anyone outside the app itself.
+service Query {
+  rpc Balance(QueryBalanceRequest) returns (QueryBalanceResponse);
+}
+
+message QueryBalanceRequest {}
+
+message QueryBalanceResponse {
+  // The internally-tracked ledger figure (Keeper.GetTreasuryBalance) --
+  // incremented/decremented explicitly by FundTreasury and Spend.
+  string tracked_balance = 1;
+  // The treasury module account's actual real bank balance, queried
+  // directly -- the authoritative figure. Anyone can send uaeth
+  // directly to the treasury module's address via an ordinary MsgSend
+  // (nothing prevents it, and this has already happened to a
+  // different module account on this exact chain), which would raise
+  // this without ever touching tracked_balance.
+  string real_bank_balance = 2;
+  // False means the two have drifted apart -- real funds exist that
+  // the tracked ledger doesn't know about (or, in principle, the
+  // reverse, though Spend's real bank transfer would simply fail
+  // first in that direction). A drift means those real funds are
+  // currently inaccessible to governance-authorized spends, since
+  // Spend checks tracked_balance, not the real bank balance.
+  bool ledger_matches_bank_balance = 3;
+}

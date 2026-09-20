@@ -59,7 +59,9 @@ func (am AppModule) IsAppModule() {}
 
 func (am AppModule) IsOnePerModuleType() {}
 
-func (am AppModule) RegisterServices(cfg module.Configurator) {}
+func (am AppModule) RegisterServices(cfg module.Configurator) {
+	RegisterQueryServer(cfg.QueryServer(), NewQueryServerImpl(am.keeper))
+}
 
 func (am AppModule) ConsensusVersion() uint64 {
 	return 1
