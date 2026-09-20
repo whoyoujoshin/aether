@@ -52,6 +52,9 @@ type faucetServer struct {
 
 	accountNumber uint64
 	sequence      uint64 // tracked in-memory; incremented locally after each successful broadcast, never re-queried from the chain per-request -- avoids the exact stale-sequence race a real, independent stress test found: re-querying the chain for sequence on every send fails whenever two sends happen within the same ~60s block window, since sequence only updates once a tx is actually included in a block, not merely broadcast.
+
+	confirmTimeout      time.Duration
+	confirmPollInterval time.Duration
 }
 
 type requestBody struct {
@@ -64,7 +67,7 @@ type responseBody struct {
 	TxHash  string `json:"tx_hash,omitempty"`
 }
 
-func (f *faucetServer) checkAndUpdateCooldown(address string) (bool, time.Duration) {
+func (f *faucetServer) checkAndUpdateCooldown(address string) (bool, time.Duration, time.Time) {
 	f.cooldownMu.Lock()
 	defer f.cooldownMu.Unlock()
 
@@ -73,11 +76,32 @@ func (f *faucetServer) checkAndUpdateCooldown(address string) (bool, time.Durati
 	if seen {
 		elapsed := now.Sub(last)
 		if elapsed < f.cooldown {
-			return false, f.cooldown - elapsed
+			return false, f.cooldown - elapsed, time.Time{}
 		}
 	}
 	f.lastRequest[address] = now
-	return true, 0
+	return true, 0, now
+}
+
+// releaseCooldownIfUnchanged undoes checkAndUpdateCooldown's recording
+// when the send it was guarding turns out to have failed -- a real,
+// live-flagged gap (Section 3 item 9): recording the cooldown before
+// confirming the send succeeds means any failure (network error,
+// on-chain rejection, insufficient faucet balance) burns the address's
+// full cooldown for nothing. The early recording itself is deliberate
+// and stays -- it closes a real race where two concurrent requests for
+// the same address could both pass the check while the first send is
+// still in flight -- so this only rolls it back, and only if nothing
+// else has touched that address's record since (recordedAt still
+// matches exactly), so a genuinely newer request's own record is never
+// clobbered.
+func (f *faucetServer) releaseCooldownIfUnchanged(address string, recordedAt time.Time) {
+	f.cooldownMu.Lock()
+	defer f.cooldownMu.Unlock()
+
+	if last, seen := f.lastRequest[address]; seen && last.Equal(recordedAt) {
+		delete(f.lastRequest, address)
+	}
 }
 
 func (f *faucetServer) handleRequest(w http.ResponseWriter, r *http.Request) {
@@ -102,7 +126,7 @@ func (f *faucetServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ok, wait := f.checkAndUpdateCooldown(req.Address)
+	ok, wait, recordedAt := f.checkAndUpdateCooldown(req.Address)
 	if !ok {
 		w.WriteHeader(http.StatusTooManyRequests)
 		json.NewEncoder(w).Encode(responseBody{
@@ -119,14 +143,72 @@ func (f *faucetServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 	f.mu.Unlock()
 
 	if err != nil {
+		f.releaseCooldownIfUnchanged(req.Address, recordedAt)
 		log.Printf("faucet send failed for %s: %v", req.Address, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(responseBody{Success: false, Message: "send failed, please try again later"})
 		return
 	}
 
-	log.Printf("faucet sent %d uaeth to %s, tx %s", f.amountUaeth, req.Address, txHash)
+	// BroadcastTx's SYNC mode (the only real option left -- COMMIT/BLOCK
+	// mode was removed in SDK v0.47+) only confirms the tx passed
+	// CheckTx and entered the mempool, not that it actually succeeded.
+	// bank's own Send handler, which enforces the real balance check,
+	// only runs at DeliverTx, never at CheckTx -- so a tx that passes
+	// CheckTx here can still genuinely fail once included in a block
+	// (e.g. the faucet account's real balance running low). Per this
+	// project's own standing rule ("never trust broadcast acceptance as
+	// proof of anything"), confirm the real on-chain result before ever
+	// telling the caller "sent".
+	detail, confirmErr := f.confirmTxOnChain(txHash)
+	switch {
+	case confirmErr != nil:
+		// Genuinely inconclusive within the timeout -- deliberately
+		// does NOT release the cooldown: the tx may still land later,
+		// and releasing here risks letting the same address claim
+		// twice for what might turn out to be one real send.
+		log.Printf("faucet could not confirm tx %s for %s within %s: %v", txHash, req.Address, f.confirmTimeout, confirmErr)
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(responseBody{
+			Success: false,
+			Message: fmt.Sprintf("broadcast accepted but not yet confirmed on-chain; check tx %s later", txHash),
+			TxHash:  txHash,
+		})
+		return
+	case detail.Code != 0:
+		// Passed CheckTx, failed for real at DeliverTx -- a genuine
+		// send failure, so the cooldown is released the same as any
+		// other failure.
+		f.releaseCooldownIfUnchanged(req.Address, recordedAt)
+		log.Printf("faucet tx %s for %s failed on-chain: %s", txHash, req.Address, detail.RawLog)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(responseBody{Success: false, Message: "send failed on-chain, please try again later", TxHash: txHash})
+		return
+	}
+
+	log.Printf("faucet sent %d uaeth to %s, tx %s (confirmed at height %d)", f.amountUaeth, req.Address, txHash, detail.Height)
 	json.NewEncoder(w).Encode(responseBody{Success: true, Message: "sent", TxHash: txHash})
+}
+
+// confirmTxOnChain polls GetTransactionByHash until the transaction is
+// actually found (meaning it was included in a block and its real
+// DeliverTx result is known) or confirmTimeout elapses. See
+// handleRequest's comment for why this exists: SYNC-mode broadcast
+// acceptance alone is not proof the send genuinely succeeded.
+func (f *faucetServer) confirmTxOnChain(txHash string) (*wallet.TransactionDetail, error) {
+	deadline := time.Now().Add(f.confirmTimeout)
+	var lastErr error
+	for {
+		detail, err := f.client.GetTransactionByHash(txHash)
+		if err == nil {
+			return detail, nil
+		}
+		lastErr = err
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("not found after %s: %w", f.confirmTimeout, lastErr)
+		}
+		time.Sleep(f.confirmPollInterval)
+	}
 }
 
 func (f *faucetServer) sendCoins(address string) (string, error) {
@@ -164,6 +246,8 @@ func main() {
 	grpcEndpoint := flag.String("grpc", "localhost:9090", "node gRPC endpoint")
 	cooldownMinutes := flag.Int("cooldown-minutes", 60, "minutes an address must wait between requests")
 	port := flag.String("port", "8080", "HTTP port to listen on")
+	confirmTimeoutSeconds := flag.Int("confirm-timeout-seconds", 90, "how long to wait for a broadcast tx to actually land on-chain before giving up (comfortably more than one block interval)")
+	confirmPollSeconds := flag.Int("confirm-poll-seconds", 3, "how often to poll for on-chain confirmation while waiting")
 	flag.Parse()
 
 	dir := *keyringDir
@@ -200,16 +284,18 @@ func main() {
 	}
 
 	server := &faucetServer{
-		lastRequest:   make(map[string]time.Time),
-		wal:           wal,
-		client:        client,
-		fromKey:       *fromKey,
-		fromAddr:      account.Address,
-		chainID:       *chainID,
-		amountUaeth:   *amount,
-		cooldown:      time.Duration(*cooldownMinutes) * time.Minute,
-		accountNumber: accountNumber,
-		sequence:      sequence,
+		lastRequest:         make(map[string]time.Time),
+		wal:                 wal,
+		client:              client,
+		fromKey:             *fromKey,
+		fromAddr:            account.Address,
+		chainID:             *chainID,
+		amountUaeth:         *amount,
+		cooldown:            time.Duration(*cooldownMinutes) * time.Minute,
+		accountNumber:       accountNumber,
+		sequence:            sequence,
+		confirmTimeout:      time.Duration(*confirmTimeoutSeconds) * time.Second,
+		confirmPollInterval: time.Duration(*confirmPollSeconds) * time.Second,
 	}
 
 		// Deliberately use our own dedicated mux, never the shared global
