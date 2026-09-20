@@ -68,9 +68,22 @@ func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubm
 	// makes that assumption an enforced rule instead of an unstated
 	// one, closing both the minting and the retargeting blind spot at
 	// their shared root cause.
-	if lastHeight, ok := k.Keeper.GetLastAcceptedSubmissionHeight(ctx); ok && lastHeight == ctx.BlockHeight() {
-		return nil, sdkerrors.Wrapf(types.ErrTooManySubmissionsThisBlock,
-			"a PoW submission has already been accepted at height %d; try again next block", ctx.BlockHeight())
+	//
+	// Gated on SubmissionCapActivationHeight -- the real height this
+	// started running on the live seed -- not unconditional. This check
+	// (and its tracking write below) is itself a real, live-discovered
+	// instance of the same bug class as BootstrapPowerCorrectionHeight:
+	// deployed with no activation gate, it makes a fresh node replaying
+	// pre-deploy history pay gas for a Get/Set the seed's original
+	// execution never performed, diverging gas_used (and therefore
+	// LastResultsHash) on any historical tx that happens to hit the gas
+	// limit. See SubmissionCapActivationHeight's doc comment.
+	enforceCap := ctx.BlockHeight() >= SubmissionCapActivationHeight
+	if enforceCap {
+		if lastHeight, ok := k.Keeper.GetLastAcceptedSubmissionHeight(ctx); ok && lastHeight == ctx.BlockHeight() {
+			return nil, sdkerrors.Wrapf(types.ErrTooManySubmissionsThisBlock,
+				"a PoW submission has already been accepted at height %d; try again next block", ctx.BlockHeight())
+		}
 	}
 
 	var resp *MsgSubmitPoWResponse
@@ -86,7 +99,9 @@ func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubm
 		return nil, err
 	}
 
-	k.Keeper.SetLastAcceptedSubmissionHeight(ctx, ctx.BlockHeight())
+	if enforceCap {
+		k.Keeper.SetLastAcceptedSubmissionHeight(ctx, ctx.BlockHeight())
+	}
 	return resp, nil
 }
 

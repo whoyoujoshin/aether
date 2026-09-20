@@ -160,3 +160,32 @@ var KeyBootstrapPowerCorrected = []byte("bootstrap_power_corrected")
 // continuously-running -- apply the correction at the identical real
 // height, which is what determinism requires.
 const BootstrapPowerCorrectionHeight int64 = 40866
+
+// SubmissionCapActivationHeight is the real height at which the
+// one-accepted-submission-per-block-height cap (see SubmitPoW's
+// dispatcher in msg_server.go) actually started running on the live
+// seed -- confirmed via journalctl around the real deploy restart
+// (stopped after committing 51006, new process's first commit was
+// 51007) and cross-checked by height/timestamp regression from two
+// independently-verified anchors (40866 and 71174), which put the
+// deploy at ~51019, twelve blocks off.
+//
+// This is the SAME bug class as BootstrapPowerCorrectionHeight, found
+// independently: the cap's Get/Set pair was added with no activation
+// gate at all, so a fresh node replaying pre-deploy history pays gas
+// for a check that didn't exist yet when the seed originally processed
+// those blocks, producing a different (higher) gas_used on any tx that
+// happens to hit the gas limit -- confirmed concretely on a real
+// height-40914 MsgSubmitPoW: seed gas_used 200223, fresh replay
+// (unpatched) 201316, causing a LastResultsHash mismatch even though
+// AppHash still matched (both nodes reject the same tx, just disagree
+// on how much gas the rejection cost).
+//
+// Unlike BootstrapPowerCorrectionHeight (a single one-time event),
+// this is a permanent behavior active from this height onward -- so
+// it's gated with >=, not ==, and needs no persisted flag: before this
+// height the check and its tracking write are both skipped entirely
+// (matching the seed's real pre-deploy history, where the tracking key
+// never existed yet), and from this height on every node runs it
+// identically, which is exactly what the live seed has done since.
+const SubmissionCapActivationHeight int64 = 51007

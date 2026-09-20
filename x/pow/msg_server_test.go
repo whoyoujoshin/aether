@@ -691,12 +691,19 @@ func TestSubmitPoW_RejectsDuplicateWork(t *testing.T) {
 	require.True(t, errors.Is(err, types.ErrDuplicateWork))
 }
 
+// The submission-cap tests below run at heights past
+// pow.SubmissionCapActivationHeight -- the cap is gated on that real
+// height (see its doc comment), so exercising it below that height
+// would silently no-op the very behavior these tests check.
 func TestSubmitPoW_RejectsSecondSubmissionAtSameHeight(t *testing.T) {
 	k, ctx, _ := setupKeeper(t)
 
+	ancestorHeight := pow.SubmissionCapActivationHeight + 1
+	submitHeight := pow.SubmissionCapActivationHeight + 2
+
 	realHash := []byte("real-hash-for-same-height-test")
-	ctx = setupRecentBlock(k, ctx, 1, realHash, 1)
-	ctx = ctx.WithBlockHeight(2)
+	ctx = setupRecentBlock(k, ctx, ancestorHeight, realHash, 1)
+	ctx = ctx.WithBlockHeight(submitHeight)
 	k.SetBlockReward(ctx, math.NewInt(5_000_000))
 
 	_, addrStr := validMinerAddr(t)
@@ -706,7 +713,7 @@ func TestSubmitPoW_RejectsSecondSubmissionAtSameHeight(t *testing.T) {
 		Miner: addrStr,
 		Submission: &pow.MsgSubmitPoW_Native{
 			Native: &pow.NativeSubmission{
-				Height: 1, Timestamp: time.Now().Unix(), PrevHash: realHash,
+				Height: uint64(ancestorHeight), Timestamp: time.Now().Unix(), PrevHash: realHash,
 				MerkleRoot: []byte("merkle"), Nonce: 1, Difficulty: 1,
 			},
 		},
@@ -718,7 +725,7 @@ func TestSubmitPoW_RejectsSecondSubmissionAtSameHeight(t *testing.T) {
 		Miner: addrStr,
 		Submission: &pow.MsgSubmitPoW_Native{
 			Native: &pow.NativeSubmission{
-				Height: 1, Timestamp: time.Now().Unix(), PrevHash: realHash,
+				Height: uint64(ancestorHeight), Timestamp: time.Now().Unix(), PrevHash: realHash,
 				MerkleRoot: []byte("merkle"), Nonce: 2, Difficulty: 1, // a different nonce -- a genuinely distinct submission, not a duplicate-work rejection
 			},
 		},
@@ -731,9 +738,12 @@ func TestSubmitPoW_RejectsSecondSubmissionAtSameHeight(t *testing.T) {
 func TestSubmitPoW_AllowsSubmissionAtNextHeight(t *testing.T) {
 	k, ctx, _ := setupKeeper(t)
 
+	ancestorHeight := pow.SubmissionCapActivationHeight + 1
+	submitHeight := pow.SubmissionCapActivationHeight + 2
+
 	realHash := []byte("real-hash-for-next-height-test")
-	ctx = setupRecentBlock(k, ctx, 1, realHash, 1)
-	ctx = ctx.WithBlockHeight(2)
+	ctx = setupRecentBlock(k, ctx, ancestorHeight, realHash, 1)
+	ctx = ctx.WithBlockHeight(submitHeight)
 	k.SetBlockReward(ctx, math.NewInt(5_000_000))
 
 	_, addrStr := validMinerAddr(t)
@@ -743,7 +753,7 @@ func TestSubmitPoW_AllowsSubmissionAtNextHeight(t *testing.T) {
 		Miner: addrStr,
 		Submission: &pow.MsgSubmitPoW_Native{
 			Native: &pow.NativeSubmission{
-				Height: 1, Timestamp: time.Now().Unix(), PrevHash: realHash,
+				Height: uint64(ancestorHeight), Timestamp: time.Now().Unix(), PrevHash: realHash,
 				MerkleRoot: []byte("merkle"), Nonce: 1, Difficulty: 1,
 			},
 		},
@@ -752,15 +762,17 @@ func TestSubmitPoW_AllowsSubmissionAtNextHeight(t *testing.T) {
 	require.NoError(t, err)
 
 	// Move to the next real block height and its own real ancestor.
+	nextAncestorHeight := ancestorHeight + 1
+	nextSubmitHeight := submitHeight + 1
 	nextHash := []byte("real-hash-for-next-height-test-2")
-	ctx = setupRecentBlock(k, ctx, 2, nextHash, 1)
-	ctx = ctx.WithBlockHeight(3)
+	ctx = setupRecentBlock(k, ctx, nextAncestorHeight, nextHash, 1)
+	ctx = ctx.WithBlockHeight(nextSubmitHeight)
 
 	secondMsg := &pow.MsgSubmitPoW{
 		Miner: addrStr,
 		Submission: &pow.MsgSubmitPoW_Native{
 			Native: &pow.NativeSubmission{
-				Height: 2, Timestamp: time.Now().Unix(), PrevHash: nextHash,
+				Height: uint64(nextAncestorHeight), Timestamp: time.Now().Unix(), PrevHash: nextHash,
 				MerkleRoot: []byte("merkle"), Nonce: 1, Difficulty: 1,
 			},
 		},
@@ -772,9 +784,12 @@ func TestSubmitPoW_AllowsSubmissionAtNextHeight(t *testing.T) {
 func TestSubmitPoW_FailedSubmission_DoesNotConsumeThisHeightsSlot(t *testing.T) {
 	k, ctx, _ := setupKeeper(t)
 
+	ancestorHeight := pow.SubmissionCapActivationHeight + 1
+	submitHeight := pow.SubmissionCapActivationHeight + 2
+
 	realHash := []byte("real-hash-for-failed-then-valid-test")
-	ctx = setupRecentBlock(k, ctx, 1, realHash, 1)
-	ctx = ctx.WithBlockHeight(2)
+	ctx = setupRecentBlock(k, ctx, ancestorHeight, realHash, 1)
+	ctx = ctx.WithBlockHeight(submitHeight)
 	k.SetBlockReward(ctx, math.NewInt(5_000_000))
 
 	_, addrStr := validMinerAddr(t)
@@ -786,7 +801,7 @@ func TestSubmitPoW_FailedSubmission_DoesNotConsumeThisHeightsSlot(t *testing.T) 
 		Miner: addrStr,
 		Submission: &pow.MsgSubmitPoW_Native{
 			Native: &pow.NativeSubmission{
-				Height: 1, Timestamp: time.Now().Unix(), PrevHash: []byte("wrong-hash-entirely"),
+				Height: uint64(ancestorHeight), Timestamp: time.Now().Unix(), PrevHash: []byte("wrong-hash-entirely"),
 				MerkleRoot: []byte("merkle"), Nonce: 1, Difficulty: 1,
 			},
 		},
@@ -798,11 +813,61 @@ func TestSubmitPoW_FailedSubmission_DoesNotConsumeThisHeightsSlot(t *testing.T) 
 		Miner: addrStr,
 		Submission: &pow.MsgSubmitPoW_Native{
 			Native: &pow.NativeSubmission{
-				Height: 1, Timestamp: time.Now().Unix(), PrevHash: realHash,
+				Height: uint64(ancestorHeight), Timestamp: time.Now().Unix(), PrevHash: realHash,
 				MerkleRoot: []byte("merkle"), Nonce: 1, Difficulty: 1,
 			},
 		},
 	}
 	_, err = srv.SubmitPoW(ctx, goodMsg)
 	require.NoError(t, err, "a genuinely valid submission at the same height must still succeed, since the earlier failed attempt shouldn't have consumed the slot")
+}
+
+// TestSubmitPoW_SubmissionCap_NoOpBeforeActivationHeight is the
+// regression test for the real bug this activation gate fixes: before
+// SubmissionCapActivationHeight, a second submission at the same
+// height must still succeed (matching the seed's real pre-deploy
+// history), and the tracking write must never happen -- otherwise a
+// fresh node pays gas for a Get/Set the seed's original execution
+// never performed, which is exactly what caused the real height-40914
+// LastResultsHash divergence.
+func TestSubmitPoW_SubmissionCap_NoOpBeforeActivationHeight(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	preActivationHeight := pow.SubmissionCapActivationHeight - 100
+	ancestorHeight := preActivationHeight - 1
+
+	realHash := []byte("real-hash-pre-activation-test")
+	ctx = setupRecentBlock(k, ctx, ancestorHeight, realHash, 1)
+	ctx = ctx.WithBlockHeight(preActivationHeight)
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+
+	_, addrStr := validMinerAddr(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	firstMsg := &pow.MsgSubmitPoW{
+		Miner: addrStr,
+		Submission: &pow.MsgSubmitPoW_Native{
+			Native: &pow.NativeSubmission{
+				Height: uint64(ancestorHeight), Timestamp: time.Now().Unix(), PrevHash: realHash,
+				MerkleRoot: []byte("merkle"), Nonce: 1, Difficulty: 1,
+			},
+		},
+	}
+	_, err := srv.SubmitPoW(ctx, firstMsg)
+	require.NoError(t, err)
+
+	secondMsg := &pow.MsgSubmitPoW{
+		Miner: addrStr,
+		Submission: &pow.MsgSubmitPoW_Native{
+			Native: &pow.NativeSubmission{
+				Height: uint64(ancestorHeight), Timestamp: time.Now().Unix(), PrevHash: realHash,
+				MerkleRoot: []byte("merkle"), Nonce: 2, Difficulty: 1,
+			},
+		},
+	}
+	_, err = srv.SubmitPoW(ctx, secondMsg)
+	require.NoError(t, err, "before the real activation height, a second submission at the same height must still succeed -- matching the seed's actual pre-deploy history")
+
+	_, ok := k.GetLastAcceptedSubmissionHeight(ctx)
+	require.False(t, ok, "before the real activation height, the tracking key must never be written -- a fresh replay must not pay gas the seed's original execution never paid")
 }
