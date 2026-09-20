@@ -11,7 +11,9 @@ import (
 	"crypto/ed25519"
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/pow/types"
-	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519" 
+	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
+	cometencoding "github.com/cometbft/cometbft/crypto/encoding"
+	abci "github.com/cometbft/cometbft/abci/types"
 )
 
 // validMinerAddr is a real bech32-encoded address derived from arbitrary
@@ -155,6 +157,53 @@ Difficulty: 1,
 	require.Equal(t, ctx.BlockTime().Unix(), lastTime)
 }
 
+// TestSubmitPoW_BannedMiner_StillMintsFullBlockReward is a real,
+// live-flagged concern (Gitty, Section 3 item 3): does a permanently
+// banned (post-equivocation) miner actually get rejected at the
+// message-handling level, or only excluded from Top-K/rewards?
+//
+// Confirmed: neither submitNativePoW nor submitAuxPoW calls IsBanned
+// anywhere. IsBanned is checked in exactly one place in the entire
+// module -- ComputeValidatorUpdates's Top-K qualification filter,
+// which only decides who's eligible to be an ACTIVE VALIDATOR. It has
+// no bearing on SubmitPoW at all. A banned miner can keep submitting
+// indefinitely (subject only to the one-per-block-height cap and
+// duplicate-work rejection, neither of which are ban-specific) and
+// receives the FULL real block reward every time, exactly as if they
+// were never banned. This is worse than "excluded from Top-K/rewards"
+// -- it is not excluded from rewards at all, only from becoming a
+// validator again. A banned miner keeps farming real minted AETH
+// forever.
+func TestSubmitPoW_BannedMiner_StillMintsFullBlockReward(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	realHash := []byte("real-hash-for-banned-miner-test")
+	ctx = setupRecentBlock(k, ctx, 1, realHash, 1)
+	ctx = ctx.WithBlockHeight(2)
+	k.SetBlockReward(ctx, math.NewInt(5_000_000))
+
+	minerAddr, addrStr := validMinerAddr(t)
+	k.SetBanned(ctx, minerAddr)
+	require.True(t, k.IsBanned(ctx, minerAddr), "precondition: miner must actually be banned")
+
+	msg := &pow.MsgSubmitPoW{
+		Miner: addrStr,
+		Submission: &pow.MsgSubmitPoW_Native{
+			Native: &pow.NativeSubmission{
+				Height: 1, Timestamp: time.Now().Unix(), PrevHash: realHash,
+				MerkleRoot: []byte("merkle"), Nonce: 1, Difficulty: 1,
+			},
+		},
+	}
+
+	resp, err := srv.SubmitPoW(ctx, msg)
+	require.NoError(t, err, "BUG: a banned miner's submission currently succeeds -- SubmitPoW never checks IsBanned")
+	require.NotNil(t, resp)
+
+	require.Len(t, mockBank.MintCalls, 1, "BUG: a banned miner still triggers a real MintCoins call for the full block reward")
+	require.Equal(t, "5000000uaeth", mockBank.MintCalls[0].Coins.String())
+}
 
 func TestSubmitPoW_PropagatesRewardDistributionError(t *testing.T) {
 	k, ctx, mockBank := setupKeeper(t)
@@ -500,6 +549,92 @@ func TestRegisterValidatorPubkey_PopulatesConsensusToMinerIndex(t *testing.T) {
 	foundMiner, ok := k.GetMinerByConsensusAddr(ctx, consensusAddr)
 	require.True(t, ok)
 	require.Equal(t, minerAddr, foundMiner)
+}
+
+// TestRegisterValidatorPubkey_RotationOrphansOldKeysCometBFTPower is a
+// real, live-flagged concern (Gitty, Section 3 item 1): does
+// re-registering a new consensus pubkey for an already-active miner
+// retire the old one? It does not, and this is a genuine consensus
+// vulnerability, not just stale bookkeeping.
+//
+// RegisterValidatorPubkey itself never emits an abci.ValidatorUpdate --
+// it only rewrites keeper state. The ONLY code path that can ever
+// revoke a validator's real CometBFT voting power is the epoch-boundary
+// removal loop in ComputeValidatorUpdates, and that loop builds its
+// revocation from whatever GetValidatorPubkey CURRENTLY returns for the
+// miner -- never whatever pubkey actually held power at the time. So a
+// miner who is active (real power under key A), then registers a new
+// key B, then later gets dropped from Top-K, has their removal update
+// issued for B -- a key that never held any power to begin with. Key
+// A's real, live CometBFT voting power is never targeted by any
+// revocation anywhere in this module and stays live in the validator
+// set forever (until/unless some unrelated event, like a future
+// equivocation catch against A specifically, removes it). A miner can
+// use this to accumulate multiple simultaneously-powered validator
+// identities under one economic actor by simply rotating keys while
+// active, undetectable from active-validator-count alone.
+func TestRegisterValidatorPubkey_RotationOrphansOldKeysCometBFTPower(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	minerAddr, addrStr := validMinerAddr(t)
+
+	// Miner registers key A and (in the real world) is selected into
+	// Top-K under it, so CometBFT grants key A real voting power.
+	// Simulating that directly here, the same way the rest of this
+	// suite treats "already active" as a precondition.
+	oldPub, oldPriv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	oldSig := ed25519.Sign(oldPriv, []byte(addrStr))
+	_, err = srv.RegisterValidatorPubkey(ctx, &pow.MsgRegisterValidatorPubkey{
+		Miner: addrStr, ConsensusPubkey: oldPub, Signature: oldSig,
+	})
+	require.NoError(t, err)
+	k.SetActiveValidator(ctx, minerAddr)
+
+	oldConsensusAddr := cometed25519.PubKey(oldPub).Address()
+
+	// Miner rotates to a new key B -- e.g. routine key hygiene, nothing
+	// malicious required to trigger this.
+	newPub, newPriv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	newSig := ed25519.Sign(newPriv, []byte(addrStr))
+	_, err = srv.RegisterValidatorPubkey(ctx, &pow.MsgRegisterValidatorPubkey{
+		Miner: addrStr, ConsensusPubkey: newPub, Signature: newSig,
+	})
+	require.NoError(t, err)
+
+	// The old consensus address is still live in the reverse index --
+	// it is never cleared on rotation.
+	_, stillIndexed := k.GetMinerByConsensusAddr(ctx, oldConsensusAddr)
+	require.True(t, stillIndexed, "the OLD consensus address must still resolve after rotation -- SetConsensusToMiner is additive-only, nothing ever deletes the prior entry")
+
+	// Now the miner fails to qualify for the next epoch (no mining
+	// work) and must be removed. ComputeValidatorUpdates short-circuits
+	// to a no-op whenever NOBODY mined this epoch (the empty-qualified-
+	// pool safety guard), so a second, unrelated miner needs real
+	// qualifying work this epoch for the removal loop to run at all.
+	epoch := k.CurrentEpoch(ctx)
+	otherMinerAddr := sdk.AccAddress("rotation_test_other_miner")
+	k.SetValidatorPubkey(ctx, otherMinerAddr, make([]byte, 32))
+	k.AddMiningWork(ctx, epoch, otherMinerAddr, 1)
+
+	updates := k.ComputeValidatorUpdates(ctx, epoch)
+
+	newKeyProto, err := cometencoding.PubKeyToProto(cometed25519.PubKey(newPub))
+	require.NoError(t, err)
+	oldKeyProto, err := cometencoding.PubKeyToProto(cometed25519.PubKey(oldPub))
+	require.NoError(t, err)
+
+	var removalUpdate *abci.ValidatorUpdate
+	for i := range updates {
+		if updates[i].Power == 0 {
+			removalUpdate = &updates[i]
+		}
+	}
+	require.NotNil(t, removalUpdate, "the no-longer-qualified miner must produce a removal update")
+	require.Equal(t, newKeyProto, removalUpdate.PubKey, "the removal update is issued for the NEW key, which never held any power")
+	require.NotEqual(t, oldKeyProto, removalUpdate.PubKey, "the OLD key -- the one that actually held real CometBFT voting power -- is never targeted by any revocation, and stays live in the validator set indefinitely")
 }
 
 // Helper to set up a valid recent-block context for ancestor validation
