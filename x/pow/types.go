@@ -131,9 +131,22 @@ var KeyBootstrapPowerCorrected = []byte("bootstrap_power_corrected")
 
 // BootstrapPowerCorrectionHeight is the real, historical block height
 // on aether-testnet-1 at which Keeper.CorrectBootstrapPower actually
-// fired on the live seed node (157.245.252.221) -- confirmed via
-// journalctl bisection after the fact, since the original deploy
-// (Aug 29, 2026) predates this height gate existing.
+// fired on the live seed node (157.245.252.221) -- confirmed by an
+// independent fresh-sync AppHash bisection (Gitty), since the original
+// deploy (Aug 29, 2026) predates this height gate existing.
+//
+// A first attempt at this constant (71100) was wrong -- it came from a
+// journalctl timestamp lookup that did not actually correspond to the
+// correction height and was never cross-checked against AppHash. Trust
+// the AppHash-level bisection over log-timestamp inference: it directly
+// confirmed AppHash agreement with the seed through height 40866, then
+// divergence when validating block 40867's header. Per CometBFT's
+// deferred-execution convention, block H's header carries the AppHash
+// resulting from *committing block H-1*, not block H itself (the
+// header is finalized before that block's own Commit runs) -- so a
+// mismatch surfacing on block 40867's header means the state after
+// committing block 40866 already differed, i.e. the diverging
+// execution was block 40866's EndBlock, not 40867's.
 //
 // This MUST be a fixed height, not a store-flag check ("has my own
 // local state ever run this before"): a node replaying chain history
@@ -146,4 +159,4 @@ var KeyBootstrapPowerCorrected = []byte("bootstrap_power_corrected")
 // pattern real chain upgrades use) makes every node -- fresh or
 // continuously-running -- apply the correction at the identical real
 // height, which is what determinism requires.
-const BootstrapPowerCorrectionHeight int64 = 71100
+const BootstrapPowerCorrectionHeight int64 = 40866
