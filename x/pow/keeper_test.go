@@ -1756,6 +1756,7 @@ func TestGetBlockReward_ExplicitOverrideTakesPrecedenceOverSchedule(t *testing.T
 
 func TestCorrectBootstrapPower_CorrectsActiveValidatorsToFlatPower(t *testing.T) {
 	k, ctx, _ := setupKeeper(t)
+	ctx = ctx.WithBlockHeight(pow.BootstrapPowerCorrectionHeight)
 
 	minerAddr := sdk.AccAddress("bootstrap_power_test____")
 	fakePubkey := make([]byte, 32)
@@ -1770,6 +1771,7 @@ func TestCorrectBootstrapPower_CorrectsActiveValidatorsToFlatPower(t *testing.T)
 
 func TestCorrectBootstrapPower_IsIdempotent_RunsAtMostOnce(t *testing.T) {
 	k, ctx, _ := setupKeeper(t)
+	ctx = ctx.WithBlockHeight(pow.BootstrapPowerCorrectionHeight)
 
 	minerAddr := sdk.AccAddress("bootstrap_idempotent____")
 	fakePubkey := make([]byte, 32)
@@ -1780,11 +1782,12 @@ func TestCorrectBootstrapPower_IsIdempotent_RunsAtMostOnce(t *testing.T) {
 	require.Len(t, first, 1, "first call must genuinely correct the validator")
 
 	second := k.CorrectBootstrapPower(ctx)
-	require.Nil(t, second, "second call must be a genuine no-op, not re-emit the same update again")
+	require.Nil(t, second, "second call at the same height must be a genuine no-op, not re-emit the same update again")
 }
 
 func TestCorrectBootstrapPower_HandlesMultipleActiveValidators(t *testing.T) {
 	k, ctx, _ := setupKeeper(t)
+	ctx = ctx.WithBlockHeight(pow.BootstrapPowerCorrectionHeight)
 
 	addr1 := sdk.AccAddress("bootstrap_multi_validator1")
 	addr2 := sdk.AccAddress("bootstrap_multi_validator2")
@@ -1803,6 +1806,7 @@ func TestCorrectBootstrapPower_HandlesMultipleActiveValidators(t *testing.T) {
 
 func TestCorrectBootstrapPower_NoActiveValidators_ReturnsNoUpdatesButStillSetsFlag(t *testing.T) {
 	k, ctx, _ := setupKeeper(t)
+	ctx = ctx.WithBlockHeight(pow.BootstrapPowerCorrectionHeight)
 
 	updates := k.CorrectBootstrapPower(ctx)
 	require.Nil(t, updates, "no active validators means nothing to correct")
@@ -1812,4 +1816,31 @@ func TestCorrectBootstrapPower_NoActiveValidators_ReturnsNoUpdatesButStillSetsFl
 	// empty validator set.
 	second := k.CorrectBootstrapPower(ctx)
 	require.Nil(t, second)
+}
+
+// TestCorrectBootstrapPower_NoOpAtAnyOtherHeight is the regression test
+// for the real AppHash-divergence bug this height gate fixes: a fresh
+// node replaying chain history from genesis must NOT apply this
+// correction at its own "first EndBlock ever" (height 1) -- it must
+// only ever apply at the one real historical height the live seed
+// applied it at. Before this fix, the gate was a store flag ("have I
+// personally run this before"), which fired at height 1 for a fresh
+// node and at BootstrapPowerCorrectionHeight for a continuously-running
+// node -- two different heights computing two different AppHashes for
+// identical chain history.
+func TestCorrectBootstrapPower_NoOpAtAnyOtherHeight(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	minerAddr := sdk.AccAddress("bootstrap_wrong_height__")
+	k.SetValidatorPubkey(ctx, minerAddr, make([]byte, 32))
+	k.SetActiveValidator(ctx, minerAddr)
+
+	for _, h := range []int64{0, 1, pow.BootstrapPowerCorrectionHeight - 1, pow.BootstrapPowerCorrectionHeight + 1} {
+		updates := k.CorrectBootstrapPower(ctx.WithBlockHeight(h))
+		require.Nil(t, updates, "must be a genuine no-op at height %d -- a fresh node's own first EndBlock (height 1) must never apply this correction", h)
+	}
+
+	// Confirm it still fires, exactly once, at the real historical height.
+	updates := k.CorrectBootstrapPower(ctx.WithBlockHeight(pow.BootstrapPowerCorrectionHeight))
+	require.Len(t, updates, 1, "must still correct at the real historical height after being skipped everywhere else")
 }

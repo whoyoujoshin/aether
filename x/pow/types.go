@@ -128,3 +128,22 @@ var BlockRewardDecayFactor = math.LegacyMustNewDecFromStr("0.66")
 // large genesis placeholder down to the standard flat power every
 // other Top-K-selected validator receives.
 var KeyBootstrapPowerCorrected = []byte("bootstrap_power_corrected")
+
+// BootstrapPowerCorrectionHeight is the real, historical block height
+// on aether-testnet-1 at which Keeper.CorrectBootstrapPower actually
+// fired on the live seed node (157.245.252.221) -- confirmed via
+// journalctl bisection after the fact, since the original deploy
+// (Aug 29, 2026) predates this height gate existing.
+//
+// This MUST be a fixed height, not a store-flag check ("has my own
+// local state ever run this before"): a node replaying chain history
+// from genesis reaches its own "first EndBlock ever" at height 1, not
+// at the real historical height the live network was at when this
+// first deployed. A store-flag gate makes a fresh node apply the
+// ValidatorUpdate at a different height than a node that was running
+// continuously, so the two compute different state and AppHash
+// diverges permanently starting at block 2. Height-gating (the same
+// pattern real chain upgrades use) makes every node -- fresh or
+// continuously-running -- apply the correction at the identical real
+// height, which is what determinism requires.
+const BootstrapPowerCorrectionHeight int64 = 71100

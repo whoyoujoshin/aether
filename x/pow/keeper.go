@@ -1092,14 +1092,25 @@ func (k Keeper) ComputeScheduledBlockReward(ctx sdk.Context, height int64) math.
 // query still showed the original placeholder power at real height
 // 40,000+), not something caught in earlier devnet testing.
 //
-// Runs at most once, ever, guarded by a persisted flag. Corrects
-// every currently active validator to the standard flat power --
-// harmless/idempotent for any validator already at the correct value
-// -- since ordinary Top-K re-selection at each future epoch boundary
-// already assigns the correct flat power to anyone selected from then
-// on; this only needs to clean up validators whose power predates
-// that logic ever running for them.
+// Gated on BootstrapPowerCorrectionHeight -- the real, fixed height
+// this correction actually fired at on the live seed -- not on a
+// store flag. A store-flag gate ("has this node ever run this
+// before") is not equivalent to a height gate for a replicated state
+// machine: a fresh node replaying history from genesis hits its own
+// "first time" at height 1, while a continuously-running node already
+// hit it at the real historical height, so the two would compute
+// different state and diverge AppHash permanently. See
+// BootstrapPowerCorrectionHeight's doc comment.
+//
+// The persisted flag is kept as a secondary, defense-in-depth guard
+// so this can never double-apply even if EndBlock were somehow
+// invoked twice for the same height; it is not what makes this
+// correct across a fresh replay -- the height check is.
 func (k Keeper) CorrectBootstrapPower(ctx sdk.Context) []abci.ValidatorUpdate {
+	if ctx.BlockHeight() != BootstrapPowerCorrectionHeight {
+		return nil
+	}
+
 	store := ctx.KVStore(k.storeKey)
 	if store.Get(KeyBootstrapPowerCorrected) != nil {
 		return nil
