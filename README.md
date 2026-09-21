@@ -215,6 +215,7 @@ aetherd query governance proposal <proposal-id>
 ## Multi-node and further docs
 
 - [Technical Whitepaper](docs/WHITEPAPER.md) — system design, economics, crypto, security limitations (incl. BFT/Top-K and height gates)
+- [Agent & Bot Integration](docs/AGENT_INTEGRATION.md) — participating as software agents (current surface + proposed APIs/policy)
 - Wiki: [Architecture](../../wiki/Architecture), [Phase 1 Multi-Validator Selection](../../wiki/Phase-1-Multi-Validator-Selection), [Known Issues](../../wiki/Known-Issues-and-Technical-Debt)
 
 ## Contributing
