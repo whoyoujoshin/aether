@@ -207,11 +207,14 @@ Several enforcement and validation behaviors activate only at or after fixed hei
 |------|--------|
 | `BootstrapPowerCorrectionHeight` | 40866 |
 | `SubmissionCapActivationHeight` | 51007 |
-| `BanEnforcementActivationHeight` | 77000 |
-| `RotationRevocationActivationHeight` | 77000 |
-| `AmountValidationActivationHeight` | 77000 |
+| `BanEnforcementActivationHeight` | 90000 |
+| `RotationRevocationActivationHeight` | 90000 |
+| `AmountValidationActivationHeight` | 90000 |
+| `ParamChangeGovernanceActivationHeight` | 90000 |
 
 Clients and researchers replaying the chain must respect these gates; behavior below a gate is intentionally different from post-activation rules.
+
+The three 90000 gates above were originally set to 77000/80000, but were never actually crossed by a coordinated, fleet-wide binary upgrade before the chain's tip reached them -- a solo-upgraded node diverged (LastResultsHash mismatch) when it replayed/continued past 77000 with the new gate logic against a chain whose real history had been finalized by the old, ungated logic. Those heights are permanently burned for this reason; a single shared future height (90000) replaces them, to be crossed only after seed, sync3, sync4, and peer-1 all swap to the same binary together and confirm matching AppHash.
 
 ### 8.4 Other limitations (non-exhaustive)
 

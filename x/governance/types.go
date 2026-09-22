@@ -55,7 +55,20 @@ var (
 // positive integer before assuming this gate needs no accompanying
 // height-specific care, the same way the pow module gates were each
 // checked against real history first.
-const AmountValidationActivationHeight int64 = 77000
+//
+// Originally set to 77000 alongside x/pow's BanEnforcement/
+// RotationRevocation gates -- part of the same binary (commit
+// 796e9c8) that was never actually rolled out fleet-wide before the
+// live chain's tip passed that height. See
+// BanEnforcementActivationHeight's doc comment in x/pow/types.go for
+// the full incident: a solo-upgraded node diverged immediately because
+// replaying/continuing past a gate height with new logic disagrees
+// with a chain whose real history was finalized by the old, ungated
+// logic. 77000 is burned for the same reason here, whether or not a
+// malformed Amount was ever actually submitted in that window --
+// re-set to 90000 in lockstep with the pow module's gates, to be
+// crossed only after a coordinated, whole-fleet binary swap.
+const AmountValidationActivationHeight int64 = 90000
 
 // ParamChangeGovernanceActivationHeight gates two things together,
 // both brand new:
@@ -82,4 +95,14 @@ const AmountValidationActivationHeight int64 = 77000
 // Before this height, treasury-spend execution behaves exactly as it
 // always has; at and after it, both proposal kinds use the safer,
 // cached-context pattern with the new distinct failure status.
-const ParamChangeGovernanceActivationHeight int64 = 80000
+//
+// Originally set to 80000. Re-set to 90000, in lockstep with x/pow's
+// BanEnforcement/RotationRevocation gates and this file's own
+// AmountValidationActivationHeight, after Gitty flagged that the tip
+// (~79959) was only ~41 blocks from 80000 with no coordinated
+// fleet upgrade in place -- merging or running this code past that
+// height ungated across the fleet would have burned it exactly the
+// way 77000 was burned (see BanEnforcementActivationHeight's doc
+// comment in x/pow/types.go). Confirm/adjust against the seed's actual
+// height immediately before the coordinated cutover.
+const ParamChangeGovernanceActivationHeight int64 = 90000

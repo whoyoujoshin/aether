@@ -221,15 +221,29 @@ const SubmissionCapActivationHeight int64 = 51007
 // history is clean and is the only thing that costs nothing when it
 // turns out not to be.
 //
-// Set to a near-future height past the in-progress dual-validator/
-// liveness test (tip ~74355, epoch 50 boundary at 74879 as of this
-// writing) -- deliberately NOT tied to today's exact tip, so there's
-// real deploy/propagation buffer before it takes effect, the same way
-// a real chain upgrade height is scheduled ahead rather than pinned to
-// "whatever height happens to be current when the code is written."
-// Confirm/adjust this against the seed's actual height immediately
-// before deploying.
+// Originally set to 77000, on the assumption the whole fleet would
+// upgrade to this binary before the chain reached that height. That
+// assumption broke: seed and sync3 never upgraded, the live chain
+// crossed 77000 running the old pre-gate binary, and when peer-1
+// solo-upgraded to this code at tip ~79808 it diverged immediately
+// (LastResultsHash mismatch) -- because replaying/continuing past
+// 77000 with the NEW gate logic disagrees with what the network's
+// actual historical blocks were finalized with (the OLD, ungated
+// logic). Gitty confirmed and rolled peer-1 back to the pre-gate
+// binary.
+//
+// This means 77000 is now a burned height: it can never be used by
+// this code again, on any node, for the same reason a fresh replay
+// through that window would compute differently than the live chain
+// did. Re-set to 90000 -- comfortably ahead of the tip at the time of
+// this fix (~79959) -- and, critically, this new height must not take
+// effect on ANY node until the full fleet (seed, sync3, sync4, peer-1)
+// swaps to this binary together, confirms matching AppHash, and only
+// then is allowed to cross 90000. Confirm/adjust this against the
+// seed's actual height immediately before the coordinated cutover --
+// if the fleet won't be ready with real margin before 90000, bump it
+// further rather than repeat this exact mistake a third time.
 const (
-	BanEnforcementActivationHeight     int64 = 77000
-	RotationRevocationActivationHeight int64 = 77000
+	BanEnforcementActivationHeight     int64 = 90000
+	RotationRevocationActivationHeight int64 = 90000
 )
