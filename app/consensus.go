@@ -6,6 +6,9 @@ import (
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/whoyoujoshin/aether/x/governance"
 )
 
 // consensusParamsMigratingStore adapts the real x/consensus keeper's
@@ -61,13 +64,30 @@ func (s consensusParamsMigratingStore) Set(ctx context.Context, cp tmproto.Conse
 
 // MigrateConsensusParamsToNewStore performs the one-time copy from the
 // old hand-rolled store into the real x/consensus keeper's store, the
-// first time it's called after this binary deploys. Safe to call every
-// block (cheap Has() check, idempotent once the copy has happened) --
-// deliberately not height-gated, unlike this project's other live
-// migrations, because consensusParamsMigratingStore's read fallback
-// already makes correctness independent of exactly when this runs; a
-// height gate would add complexity without adding any real safety here.
-func (app *App) MigrateConsensusParamsToNewStore(ctx context.Context) error {
+// first time it's called after this binary deploys.
+//
+// Height-gated at governance.ParamChangeGovernanceActivationHeight --
+// reversing this function's original design, which reasoned (correctly,
+// but incompletely) that consensusParamsMigratingStore's read fallback
+// makes correctness independent of exactly when the copy runs, and
+// concluded no gate was needed. That reasoning only covered read
+// correctness. It missed that the copy is a WRITE into the "consensus"
+// KVStore, which is part of the committed multistore that feeds
+// AppHash: the instant any single node runs this binary and processes
+// one block, it performs this write while every still-old-binary peer
+// does not, computing a different AppHash for that height -- the same
+// divergence mechanism that already forced peer-1's solo-upgrade
+// rollback (see BanEnforcementActivationHeight's doc comment in
+// x/pow/types.go), just via this migration instead of a gate check.
+// Gating the write itself here means no node performs it before every
+// node is expected to have upgraded, making a rolling (non-instantaneous)
+// fleet cutover safe rather than requiring literal single-block
+// simultaneity across independently-run machines.
+func (app *App) MigrateConsensusParamsToNewStore(ctx sdk.Context) error {
+	if ctx.BlockHeight() < governance.ParamChangeGovernanceActivationHeight {
+		return nil
+	}
+
 	has, err := app.ConsensusParamsKeeper.ParamsStore.Has(ctx)
 	if err != nil {
 		return err
