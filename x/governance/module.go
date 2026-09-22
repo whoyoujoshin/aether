@@ -28,6 +28,7 @@ func (AppModuleBasic) RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {}
 
 func (AppModuleBasic) RegisterInterfaces(registry cdctypes.InterfaceRegistry) {
 	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgSubmitProposal{})
+	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgSubmitParamChangeProposal{})
 	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgDeposit{})
 	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgVote{})
 }

@@ -11,14 +11,39 @@ import (
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/codec/address"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"cosmossdk.io/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	consensustypes "github.com/cosmos/cosmos-sdk/x/consensus/types"
+	signing "cosmossdk.io/x/tx/signing"
+	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/require"
 
 	"github.com/whoyoujoshin/aether/x/governance"
 	"github.com/whoyoujoshin/aether/x/governance/testutil"
 )
+
+// newSigningCapableInterfaceRegistry builds an InterfaceRegistry
+// configured with a real address codec -- required for
+// GetMsgV1Signers/UnpackAny to work on messages like
+// consensustypes.MsgUpdateParams that use the newer, address-codec-
+// based signer resolution, which the plain
+// codectypes.NewInterfaceRegistry() constructor doesn't set up.
+func newSigningCapableInterfaceRegistry(t *testing.T) codectypes.InterfaceRegistry {
+	t.Helper()
+	prefix := sdk.GetConfig().GetBech32AccountAddrPrefix()
+	registry, err := codectypes.NewInterfaceRegistryWithOptions(codectypes.InterfaceRegistryOptions{
+		ProtoFiles: proto.HybridResolver,
+		SigningOptions: signing.Options{
+			AddressCodec:          address.NewBech32Codec(prefix),
+			ValidatorAddressCodec: address.NewBech32Codec(prefix + "valoper"),
+		},
+	})
+	require.NoError(t, err)
+	consensustypes.RegisterInterfaces(registry)
+	return registry
+}
 
 func setupKeeper(t *testing.T) (governance.Keeper, sdk.Context, *testutil.MockBankKeeper, *testutil.MockPowKeeper) {
 	t.Helper()
@@ -38,9 +63,35 @@ func setupKeeper(t *testing.T) (governance.Keeper, sdk.Context, *testutil.MockBa
 	mockBank := testutil.NewMockBankKeeper()
 	mockPow := testutil.NewMockPowKeeper()
 	mockTreasury := testutil.NewMockTreasuryKeeper()
-	k := governance.NewKeeper(cdc, storeKey, mockBank, mockPow, mockTreasury)
+	k := governance.NewKeeper(cdc, storeKey, mockBank, mockPow, mockTreasury, testutil.NewMockMessageRouter())
 
 	return k, ctx, mockBank, mockPow
+}
+
+// setupKeeperWithRouter is setupKeeper plus access to the mock message
+// router, for the param-change proposal tests specifically -- kept
+// separate rather than widening setupKeeper's own return signature,
+// which every other test in this file already depends on.
+func setupKeeperWithRouter(t *testing.T) (governance.Keeper, sdk.Context, *testutil.MockMessageRouter, *testutil.MockPowKeeper) {
+	t.Helper()
+
+	storeKey := storetypes.NewKVStoreKey(governance.StoreKey)
+
+	db := dbm.NewMemDB()
+	stateStore := store.NewCommitMultiStore(db, log.NewNopLogger(), metrics.NewNoOpMetrics())
+	stateStore.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, db)
+	require.NoError(t, stateStore.LoadLatestVersion())
+
+	ctx := sdk.NewContext(stateStore, tmproto.Header{}, false, log.NewNopLogger())
+
+	interfaceRegistry := newSigningCapableInterfaceRegistry(t)
+	cdc := codec.NewProtoCodec(interfaceRegistry)
+
+	router := testutil.NewMockMessageRouter()
+	mockPow := testutil.NewMockPowKeeper()
+	k := governance.NewKeeper(cdc, storeKey, testutil.NewMockBankKeeper(), mockPow, testutil.NewMockTreasuryKeeper(), router)
+
+	return k, ctx, router, mockPow
 }
 
 func setupKeeperWithTreasury(t *testing.T) (governance.Keeper, sdk.Context, *testutil.MockBankKeeper, *testutil.MockPowKeeper, *testutil.MockTreasuryKeeper) {
@@ -61,7 +112,7 @@ func setupKeeperWithTreasury(t *testing.T) (governance.Keeper, sdk.Context, *tes
 	mockBank := testutil.NewMockBankKeeper()
 	mockPow := testutil.NewMockPowKeeper()
 	mockTreasury := testutil.NewMockTreasuryKeeper()
-	k := governance.NewKeeper(cdc, storeKey, mockBank, mockPow, mockTreasury)
+	k := governance.NewKeeper(cdc, storeKey, mockBank, mockPow, mockTreasury, testutil.NewMockMessageRouter())
 
 	return k, ctx, mockBank, mockPow, mockTreasury
 }

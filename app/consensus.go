@@ -1,0 +1,96 @@
+package app
+
+import (
+	"context"
+
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+
+	"github.com/cosmos/cosmos-sdk/baseapp"
+)
+
+// consensusParamsMigratingStore adapts the real x/consensus keeper's
+// ParamsStore (collections-backed, a different storage key than the
+// old hand-rolled consensusParamsStore ever used) to fall back to that
+// old store for any read that finds nothing yet in the new location.
+//
+// This closes the one real risk in swapping storage backends for
+// something baseapp reads every single block to enforce real
+// consensus rules (block.max_gas among them): without a fallback, the
+// first block processed after this binary deploys could momentarily
+// see a zero-valued ConsensusParams -- before MigrateConsensusParams
+// (called from BeginBlock) gets a chance to copy the real values
+// across -- which risks halting the chain outright, a far worse
+// failure mode than anything else this project has hit. With the
+// fallback, every read is correct regardless of exactly when in a
+// block's processing the migration itself runs: reads fall through to
+// the old store until the copy has genuinely happened, then read from
+// the new store forever after.
+//
+// All writes go to the new store only -- once MsgUpdateParams starts
+// being used for real, the old store is never touched again.
+type consensusParamsMigratingStore struct {
+	newStore baseapp.ParamStore
+	oldStore consensusParamsStore
+}
+
+func (s consensusParamsMigratingStore) Get(ctx context.Context) (tmproto.ConsensusParams, error) {
+	has, err := s.newStore.Has(ctx)
+	if err != nil {
+		return tmproto.ConsensusParams{}, err
+	}
+	if has {
+		return s.newStore.Get(ctx)
+	}
+	return s.oldStore.Get(ctx)
+}
+
+func (s consensusParamsMigratingStore) Has(ctx context.Context) (bool, error) {
+	has, err := s.newStore.Has(ctx)
+	if err != nil {
+		return false, err
+	}
+	if has {
+		return true, nil
+	}
+	return s.oldStore.Has(ctx)
+}
+
+func (s consensusParamsMigratingStore) Set(ctx context.Context, cp tmproto.ConsensusParams) error {
+	return s.newStore.Set(ctx, cp)
+}
+
+// MigrateConsensusParamsToNewStore performs the one-time copy from the
+// old hand-rolled store into the real x/consensus keeper's store, the
+// first time it's called after this binary deploys. Safe to call every
+// block (cheap Has() check, idempotent once the copy has happened) --
+// deliberately not height-gated, unlike this project's other live
+// migrations, because consensusParamsMigratingStore's read fallback
+// already makes correctness independent of exactly when this runs; a
+// height gate would add complexity without adding any real safety here.
+func (app *App) MigrateConsensusParamsToNewStore(ctx context.Context) error {
+	has, err := app.ConsensusParamsKeeper.ParamsStore.Has(ctx)
+	if err != nil {
+		return err
+	}
+	if has {
+		return nil
+	}
+
+	old := consensusParamsStore{storeKey: app.keys["consensus"]}
+	oldHas, err := old.Has(ctx)
+	if err != nil {
+		return err
+	}
+	if !oldHas {
+		// A genuinely fresh chain (never had the old store populated
+		// either, e.g. a brand-new devnet) -- nothing to migrate, the
+		// new store will be populated the normal way, by InitChain.
+		return nil
+	}
+
+	cp, err := old.Get(ctx)
+	if err != nil {
+		return err
+	}
+	return app.ConsensusParamsKeeper.ParamsStore.Set(ctx, cp)
+}

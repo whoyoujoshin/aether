@@ -3,6 +3,7 @@ package aether.governance.v1;
 
 import "gogoproto/gogo.proto";
 import "cosmos/msg/v1/msg.proto";
+import "google/protobuf/any.proto";
 import "aether/governance/v1/vote.proto";
 
 option go_package = "github.com/whoyoujoshin/aether/x/governance";
@@ -11,6 +12,7 @@ service Msg {
   rpc SubmitProposal(MsgSubmitProposal) returns (MsgSubmitProposalResponse);
   rpc Deposit(MsgDeposit) returns (MsgDepositResponse);
   rpc Vote(MsgVote) returns (MsgVoteResponse);
+  rpc SubmitParamChangeProposal(MsgSubmitParamChangeProposal) returns (MsgSubmitParamChangeProposalResponse);
 }
 
 message MsgSubmitProposal {
@@ -45,3 +47,28 @@ message MsgVote {
 }
 
 message MsgVoteResponse {}
+
+// SubmitParamChangeProposal is the generic path for governance to
+// authorize any module's authority-gated message (block-gas limits
+// via x/consensus's MsgUpdateParams being the first real use) --
+// deliberately generic (an encoded Any, not per-parameter typed
+// fields) so extending governance control to a future module's
+// parameters never needs a new message here again: that module just
+// needs to expose its own standard authority-gated message.
+message MsgSubmitParamChangeProposal {
+  option (cosmos.msg.v1.signer) = "proposer";
+
+  string proposer = 1;
+  string deposit  = 2; // initial deposit contributed at creation time; may be less than MinDeposit
+  // The message to execute if this proposal passes. Must have this
+  // module's own account (authtypes.NewModuleAddress("governance")) as
+  // its sole signer, and the chain's message router must have a
+  // handler for it -- both checked at submission time, not just at
+  // execution time (see MsgSubmitProposal's own Amount-validation fix
+  // for why validating late is a real, previously-shipped bug here).
+  google.protobuf.Any execute_msg = 3;
+}
+
+message MsgSubmitParamChangeProposalResponse {
+  uint64 proposal_id = 1;
+}

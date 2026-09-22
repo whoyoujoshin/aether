@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 
 	"cosmossdk.io/math"
@@ -10,6 +11,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/tx"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/whoyoujoshin/aether/x/governance"
@@ -24,6 +26,7 @@ func NewTxCmd() *cobra.Command {
 		RunE:                       client.ValidateCmd,
 	}
 	cmd.AddCommand(NewSubmitProposalCmd())
+	cmd.AddCommand(NewSubmitParamChangeProposalCmd())
 	cmd.AddCommand(NewDepositCmd())
 	cmd.AddCommand(NewVoteCmd())
 	return cmd
@@ -59,6 +62,81 @@ had the proposal passed.`,
 				Recipient: args[0],
 				Amount:    args[1],
 				Deposit:   args[2],
+			}
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
+// NewSubmitParamChangeProposalCmd is the generic path for proposing any
+// authority-gated message on any module -- e.g. x/consensus's
+// MsgUpdateParams, to change block.max_gas. See
+// MsgSubmitParamChangeProposal's proto comment and
+// ParamChangeGovernanceActivationHeight's doc comment for why this
+// exists and why it is height-gated.
+//
+// [msg-json-file] must contain a single sdk.Msg in proto JSON form,
+// including its "@type" field, e.g.:
+//
+//	{
+//	  "@type": "/cosmos.consensus.v1.MsgUpdateParams",
+//	  "authority": "<this chain's governance module account>",
+//	  "block": {"max_bytes": "22020096", "max_gas": "10000000"},
+//	  "evidence": {...},
+//	  "validator": {"pub_key_types": ["ed25519"]}
+//	}
+//
+// The message's authority/signer field is validated on-chain (not just
+// here) to be exactly this chain's governance module account -- see
+// SubmitParamChangeProposal's on-chain checks -- so this file cannot be
+// used to grant anyone but governance itself the ability to execute it.
+func NewSubmitParamChangeProposalCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "submit-param-change-proposal [msg-json-file] [deposit]",
+		Short: "Submit a proposal to execute an authority-gated message (e.g. x/consensus MsgUpdateParams) on any module, with an initial deposit",
+		Long: `Submit a proposal to execute an authority-gated message on any module, with an initial deposit.
+
+[msg-json-file] must be a JSON file containing a single Cosmos SDK message in
+proto JSON form, including its "@type" field -- e.g. a
+/cosmos.consensus.v1.MsgUpdateParams message to change block.max_gas. Its
+authority/signer field will be checked on-chain: it must be exactly this
+chain's governance module account, or the proposal will be rejected at
+submission.
+
+[deposit] must be a plain uaeth integer -- e.g. 5000000, NOT a
+denom-suffixed coin string like 5000000uaeth.`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			if err := requirePlainUaethAmount("deposit", args[1]); err != nil {
+				return err
+			}
+
+			contents, err := os.ReadFile(args[0])
+			if err != nil {
+				return fmt.Errorf("could not read msg-json-file %q: %w", args[0], err)
+			}
+
+			var sdkMsg sdk.Msg
+			if err := clientCtx.Codec.UnmarshalInterfaceJSON(contents, &sdkMsg); err != nil {
+				return fmt.Errorf("could not parse msg-json-file as a registered sdk.Msg: %w", err)
+			}
+
+			executeMsg, err := codectypes.NewAnyWithValue(sdkMsg)
+			if err != nil {
+				return fmt.Errorf("could not pack execute_msg: %w", err)
+			}
+
+			msg := &governance.MsgSubmitParamChangeProposal{
+				Proposer:   clientCtx.GetFromAddress().String(),
+				Deposit:    args[1],
+				ExecuteMsg: executeMsg,
 			}
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
