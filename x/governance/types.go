@@ -56,3 +56,30 @@ var (
 // height-specific care, the same way the pow module gates were each
 // checked against real history first.
 const AmountValidationActivationHeight int64 = 77000
+
+// ParamChangeGovernanceActivationHeight gates two things together,
+// both brand new:
+//
+//  1. MsgSubmitParamChangeProposal -- rejected unconditionally before
+//     this height. A genuinely new message type needs no gate for
+//     fresh-replay correctness (no historical block can ever contain
+//     a message type that didn't exist yet, so there's no "old vs new
+//     code disagrees" risk the way there is for changing existing
+//     decision logic) -- gated anyway purely so the whole feature
+//     turns on at one clean, predictable height rather than "the
+//     instant this binary deploys."
+//
+//  2. The cached-context-with-rollback execution pattern for BOTH
+//     proposal kinds (treasury-spend and param-change), landing in a
+//     new PROPOSAL_STATUS_EXECUTION_FAILED status on failure instead
+//     of the old behavior (treasury-spend only, today: run directly on
+//     ctx with no rollback, log-but-still-mark-PASSED on failure). This
+//     DOES modify existing, already-live decision logic, so per this
+//     project's standing discipline it's gated even though the PASSED
+//     branch has zero historical footprint -- no proposal has ever
+//     reached it (Proposal 1 resolved FAILED_QUORUM first).
+//
+// Before this height, treasury-spend execution behaves exactly as it
+// always has; at and after it, both proposal kinds use the safer,
+// cached-context pattern with the new distinct failure status.
+const ParamChangeGovernanceActivationHeight int64 = 80000

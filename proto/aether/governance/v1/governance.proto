@@ -2,6 +2,7 @@ syntax = "proto3";
 package aether.governance.v1;
 
 import "gogoproto/gogo.proto";
+import "google/protobuf/any.proto";
 
 option go_package = "github.com/whoyoujoshin/aether/x/governance";
 
@@ -13,6 +14,23 @@ enum ProposalStatus {
   PROPOSAL_STATUS_REJECTED       = 4;
   PROPOSAL_STATUS_FAILED_QUORUM  = 5;
   PROPOSAL_STATUS_EXPIRED        = 6;
+  // Passed the vote, but the proposal's own message failed to execute
+  // (e.g. an unroutable/invalid packed message for a param-change
+  // proposal, or a genuine runtime failure like the treasury lacking
+  // sufficient funds). Distinct from PASSED specifically so a proposal
+  // that never actually took effect is never indistinguishable, from
+  // any query, from one that passed and executed successfully -- a
+  // real, previously-missing gap (Section 3 item 5's related finding).
+  PROPOSAL_STATUS_EXECUTION_FAILED = 7;
+}
+
+// Distinguishes the two kinds of proposal this module supports.
+// TREASURY_SPEND is the original, default kind (field absent/zero on
+// any proposal stored before this type existed -- including Proposal
+// 1 -- decodes correctly as TREASURY_SPEND, preserving history exactly).
+enum ProposalType {
+  PROPOSAL_TYPE_TREASURY_SPEND = 0;
+  PROPOSAL_TYPE_PARAM_CHANGE   = 1;
 }
 
 message Proposal {
@@ -25,6 +43,12 @@ message Proposal {
   int64 deposit_end_time = 7;
   int64 voting_start_time = 8;
   int64 voting_end_time = 9;
+  ProposalType proposal_type = 10;
+  // Set only for PARAM_CHANGE proposals -- the message to route and
+  // execute if this proposal passes. Must have this module's own
+  // account as its sole signer and a registered message-router
+  // handler; both are checked at submission time.
+  google.protobuf.Any execute_msg = 11;
 }
 
 message Deposit {

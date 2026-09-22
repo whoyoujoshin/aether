@@ -1,11 +1,13 @@
 package governance
 
 import (
+	"bytes"
 	"context"
 
 	sdkerrors "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"cosmossdk.io/math"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
 
 type msgServer struct {
@@ -70,6 +72,94 @@ func (k msgServer) SubmitProposal(goCtx context.Context, msg *MsgSubmitProposal)
 	}
 
 	return &MsgSubmitProposalResponse{ProposalId: proposalID}, nil
+}
+
+// SubmitParamChangeProposal is the generic path for governance to
+// authorize any module's authority-gated message -- see
+// ParamChangeGovernanceActivationHeight's doc comment for why this is
+// gated, and MsgSubmitParamChangeProposal's proto comment for why the
+// execute_msg field is a generic Any rather than per-parameter typed
+// fields.
+//
+// Validation mirrors stock Cosmos SDK gov's own SubmitProposal exactly
+// (see x/gov/keeper/proposal.go): the packed message must decode, run
+// ValidateBasic if it has one, have exactly one signer, that signer
+// must be this module's own account (never a real, externally-signed
+// address -- a module account has no private key), and the chain's
+// message router must have a registered handler for it. All checked
+// at submission time, not deferred to execution -- exactly the
+// discipline the Amount-validation fix (above) exists to enforce.
+func (k msgServer) SubmitParamChangeProposal(goCtx context.Context, msg *MsgSubmitParamChangeProposal) (*MsgSubmitParamChangeProposalResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	if ctx.BlockHeight() < ParamChangeGovernanceActivationHeight {
+		return nil, sdkerrors.Wrapf(ErrUnroutableProposalMsg, "param-change proposals are not active until height %d", ParamChangeGovernanceActivationHeight)
+	}
+
+	proposerAddr, err := sdk.AccAddressFromBech32(msg.Proposer)
+	if err != nil {
+		return nil, sdkerrors.Wrapf(ErrInvalidProposer, "invalid proposer address %q: %s", msg.Proposer, err)
+	}
+
+	depositAmount, ok := math.NewIntFromString(msg.Deposit)
+	if !ok || depositAmount.IsNegative() {
+		return nil, sdkerrors.Wrapf(ErrInvalidDeposit, "invalid deposit amount %q", msg.Deposit)
+	}
+
+	if msg.ExecuteMsg == nil {
+		return nil, sdkerrors.Wrap(ErrInvalidExecuteMsg, "execute_msg is required")
+	}
+
+	var sdkMsg sdk.Msg
+	if err := k.Keeper.cdc.InterfaceRegistry().UnpackAny(msg.ExecuteMsg, &sdkMsg); err != nil {
+		return nil, sdkerrors.Wrapf(ErrInvalidExecuteMsg, "could not unpack execute_msg: %s", err)
+	}
+
+	if m, ok := sdkMsg.(sdk.HasValidateBasic); ok {
+		if err := m.ValidateBasic(); err != nil {
+			return nil, sdkerrors.Wrapf(ErrInvalidExecuteMsg, "execute_msg failed validation: %s", err)
+		}
+	}
+
+	signers, _, err := k.Keeper.cdc.GetMsgV1Signers(sdkMsg)
+	if err != nil {
+		return nil, sdkerrors.Wrapf(ErrInvalidExecuteMsg, "could not determine execute_msg's signers: %s", err)
+	}
+	if len(signers) != 1 {
+		return nil, sdkerrors.Wrapf(ErrInvalidExecuteMsgSigner, "execute_msg must have exactly one signer, got %d", len(signers))
+	}
+	governanceAddr := authtypes.NewModuleAddress(ModuleName)
+	if !bytes.Equal(signers[0], governanceAddr) {
+		return nil, sdkerrors.Wrapf(ErrInvalidExecuteMsgSigner, "execute_msg's signer must be %s, got %s", governanceAddr.String(), sdk.AccAddress(signers[0]).String())
+	}
+
+	if k.Keeper.router.Handler(sdkMsg) == nil {
+		return nil, sdkerrors.Wrapf(ErrUnroutableProposalMsg, "no registered handler for %s", sdk.MsgTypeURL(sdkMsg))
+	}
+
+	proposalID := k.Keeper.NextProposalID(ctx)
+	now := ctx.BlockTime().Unix()
+	depositPeriod := k.Keeper.GetDepositPeriod(ctx)
+
+	proposal := Proposal{
+		Id:             proposalID,
+		Amount:         "0",
+		TotalDeposit:   "0",
+		Status:         ProposalStatus_PROPOSAL_STATUS_DEPOSIT_PERIOD,
+		SubmitTime:     now,
+		DepositEndTime: now + depositPeriod,
+		ProposalType:   ProposalType_PROPOSAL_TYPE_PARAM_CHANGE,
+		ExecuteMsg:     msg.ExecuteMsg,
+	}
+	k.Keeper.SetProposal(ctx, proposal)
+
+	if depositAmount.IsPositive() {
+		if err := k.Keeper.addDeposit(ctx, proposalID, proposerAddr, depositAmount); err != nil {
+			return nil, err
+		}
+	}
+
+	return &MsgSubmitParamChangeProposalResponse{ProposalId: proposalID}, nil
 }
 
 func (k msgServer) Deposit(goCtx context.Context, msg *MsgDeposit) (*MsgDepositResponse, error) {

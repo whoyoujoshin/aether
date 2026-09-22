@@ -1,6 +1,7 @@
 package governance
 
 import (
+	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"cosmossdk.io/store/types"
@@ -11,20 +12,22 @@ import (
 )
 
 type Keeper struct {
-	cdc            codec.BinaryCodec
+	cdc            codec.Codec
 	storeKey       types.StoreKey
 	bankKeeper     BankKeeper
 	powKeeper      PowKeeper
 	treasuryKeeper TreasuryKeeper
+	router         baseapp.MessageRouter
 }
 
-func NewKeeper(cdc codec.BinaryCodec, storeKey types.StoreKey, bankKeeper BankKeeper, powKeeper PowKeeper, treasuryKeeper TreasuryKeeper) Keeper {
+func NewKeeper(cdc codec.Codec, storeKey types.StoreKey, bankKeeper BankKeeper, powKeeper PowKeeper, treasuryKeeper TreasuryKeeper, router baseapp.MessageRouter) Keeper {
 	return Keeper{
 		cdc:            cdc,
 		storeKey:       storeKey,
 		bankKeeper:     bankKeeper,
 		powKeeper:      powKeeper,
 		treasuryKeeper: treasuryKeeper,
+		router:         router,
 	}
 }
 
@@ -436,6 +439,10 @@ func (k Keeper) ResolveProposal(ctx sdk.Context, proposal Proposal, quorumThresh
 
 		yesRatio := result.YesPower.Quo(nonAbstainPower)
 if yesRatio.GTE(math.LegacyNewDec(2).QuoInt64(3)) {
+	if ctx.BlockHeight() >= ParamChangeGovernanceActivationHeight {
+		return k.resolvePassedProposal(ctx, proposal)
+	}
+
 	proposal.Status = ProposalStatus_PROPOSAL_STATUS_PASSED
 	k.SetProposal(ctx, proposal)
 
@@ -513,4 +520,65 @@ func (k Keeper) executeTreasurySpend(ctx sdk.Context, proposal Proposal) error {
 	// funds for an unrelated deposit refund. Treasury is the single
 	// source of truth for spendable funds; governance only authorizes.
 	return k.treasuryKeeper.Spend(ctx, recipientAddr, amount)
+}
+
+// resolvePassedProposal executes a passed proposal's action (a
+// treasury spend, or for a param-change proposal, its packed
+// execute_msg) in a cached context, writing state back only on
+// success -- mirroring stock Cosmos SDK gov's own pattern
+// (x/gov/keeper/abci.go) for the same reason: a failing execution must
+// never leak partial state changes, and must land in a genuinely
+// distinct status (EXECUTION_FAILED) instead of being silently
+// recorded as PASSED. Gated by ParamChangeGovernanceActivationHeight
+// -- see that constant's doc comment for why this differs from the
+// pre-gate behavior still used for treasury-spend proposals below
+// this height.
+func (k Keeper) resolvePassedProposal(ctx sdk.Context, proposal Proposal) error {
+	cacheCtx, writeCache := ctx.CacheContext()
+
+	var execErr error
+	switch proposal.ProposalType {
+	case ProposalType_PROPOSAL_TYPE_PARAM_CHANGE:
+		execErr = k.executeParamChange(cacheCtx, proposal)
+	default:
+		execErr = k.executeTreasurySpend(cacheCtx, proposal)
+	}
+
+	if execErr != nil {
+		proposal.Status = ProposalStatus_PROPOSAL_STATUS_EXECUTION_FAILED
+		k.SetProposal(ctx, proposal)
+		k.Logger(ctx).Error("proposal passed but execution failed", "proposal_id", proposal.Id, "proposal_type", proposal.ProposalType, "error", execErr)
+	} else {
+		writeCache()
+		proposal.Status = ProposalStatus_PROPOSAL_STATUS_PASSED
+		k.SetProposal(ctx, proposal)
+	}
+
+	// Deposits refund regardless of execution outcome -- the vote
+	// genuinely passed either way, and the depositors did nothing
+	// wrong if the proposal's own action later failed to execute.
+	return k.refundDeposits(ctx, proposal.Id)
+}
+
+// executeParamChange unpacks and routes a param-change proposal's
+// execute_msg. Re-validating the handler exists here (not just
+// trusting SubmitParamChangeProposal's own submission-time check) is
+// deliberate: the message router's set of registered handlers is
+// itself part of the running binary, and a proposal can sit through a
+// multi-day voting period during which nothing guarantees the exact
+// same binary (and therefore the exact same registered routes) is
+// still running.
+func (k Keeper) executeParamChange(ctx sdk.Context, proposal Proposal) error {
+	var sdkMsg sdk.Msg
+	if err := k.cdc.InterfaceRegistry().UnpackAny(proposal.ExecuteMsg, &sdkMsg); err != nil {
+		return sdkerrors.Wrapf(ErrInvalidExecuteMsg, "could not unpack execute_msg: %s", err)
+	}
+
+	handler := k.router.Handler(sdkMsg)
+	if handler == nil {
+		return sdkerrors.Wrapf(ErrUnroutableProposalMsg, "no registered handler for %s", sdk.MsgTypeURL(sdkMsg))
+	}
+
+	_, err := handler(ctx, sdkMsg)
+	return err
 }

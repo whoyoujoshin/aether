@@ -29,6 +29,8 @@ import (
 	"github.com/whoyoujoshin/aether/x/governance"
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/treasury"
+	"github.com/cosmos/cosmos-sdk/x/consensus"
+	consensuskeeper "github.com/cosmos/cosmos-sdk/x/consensus/keeper"
 	"github.com/cosmos/cosmos-sdk/codec/address"
 	"github.com/cosmos/cosmos-sdk/runtime"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
@@ -83,6 +85,7 @@ func SetAddressPrefixes() {
 var ModuleBasics = module.NewBasicManager(
 	auth.AppModuleBasic{},
 	bank.AppModuleBasic{},
+	consensus.AppModuleBasic{},
 	pow.AppModuleBasic{},
 	treasury.AppModuleBasic{},
 	governance.AppModuleBasic{},
@@ -172,11 +175,12 @@ type App struct {
 	interfaceRegistry cdctypes.InterfaceRegistry
 	keys              map[string]*storetypes.KVStoreKey
 
-	AccountKeeper    authkeeper.AccountKeeper
-	BankKeeper       bankkeeper.BaseKeeper
-	PowKeeper        pow.Keeper
-	TreasuryKeeper   treasury.Keeper
-	GovernanceKeeper governance.Keeper
+	AccountKeeper         authkeeper.AccountKeeper
+	BankKeeper            bankkeeper.BaseKeeper
+	PowKeeper             pow.Keeper
+	TreasuryKeeper        treasury.Keeper
+	GovernanceKeeper      governance.Keeper
+	ConsensusParamsKeeper consensuskeeper.Keeper
 
 	sm *module.Manager
 	BasicModuleManager   module.BasicManager
@@ -227,8 +231,7 @@ if err != nil {
 	app.SetInterfaceRegistry(app.interfaceRegistry)
 	
 	app.MountKVStores(app.keys)
-	app.SetParamStore(consensusParamsStore{storeKey: app.keys["consensus"]})
-	
+
 	maccPerms := map[string][]string{
 	authtypes.FeeCollectorName: nil,
 	pow.ModuleName:             {authtypes.Minter},
@@ -257,15 +260,38 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 	// Initialize keepers
 	app.TreasuryKeeper = treasury.NewKeeper(appCodec, app.keys[treasury.StoreKey], app.BankKeeper)
 	app.PowKeeper = pow.NewKeeper(appCodec, app.keys[pow.StoreKey], logger, app.BankKeeper, app.TreasuryKeeper)
-	app.GovernanceKeeper = governance.NewKeeper(appCodec, app.keys[governance.StoreKey], app.BankKeeper, app.PowKeeper, app.TreasuryKeeper)	
+
+	// authority is governance's own module account -- a module account
+	// has no private key, so MsgUpdateParams can only ever be invoked
+	// from inside governance's own execution path (see
+	// SubmitParamChangeProposal/ResolveProposal), never by a real,
+	// externally-signed tx.
+	app.ConsensusParamsKeeper = consensuskeeper.NewKeeper(
+		appCodec,
+		runtime.NewKVStoreService(app.keys["consensus"]),
+		authtypes.NewModuleAddress(governance.ModuleName).String(),
+		runtime.EventService{},
+	)
+	// See consensus.go: this wraps the real keeper's store with a
+	// fallback to the pre-existing hand-rolled consensusParamsStore, so
+	// swapping storage backends for something read every single block
+	// can't ever risk a block seeing zero-valued consensus params.
+	app.SetParamStore(consensusParamsMigratingStore{
+		newStore: &app.ConsensusParamsKeeper.ParamsStore,
+		oldStore: consensusParamsStore{storeKey: app.keys["consensus"]},
+	})
+
+	app.GovernanceKeeper = governance.NewKeeper(appCodec, app.keys[governance.StoreKey], app.BankKeeper, app.PowKeeper, app.TreasuryKeeper, bApp.MsgServiceRouter())
 	// Module manager
 	powModule := pow.NewAppModule(appCodec, app.PowKeeper)
 
 governanceModule := governance.NewAppModule(appCodec, app.GovernanceKeeper)
+consensusModule := consensus.NewAppModule(appCodec, app.ConsensusParamsKeeper)
 
 	app.sm = module.NewManager(
 	auth.NewAppModule(appCodec, app.AccountKeeper, nil, nil),
 	bank.NewAppModule(appCodec, app.BankKeeper, app.AccountKeeper, nil),
+	consensusModule,
 	powModule,
 	treasury.NewAppModule(appCodec, app.TreasuryKeeper),
 	governanceModule,
@@ -371,6 +397,9 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 	}, nil
 }
 func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
+	if err := app.MigrateConsensusParamsToNewStore(ctx); err != nil {
+		return sdk.BeginBlock{}, err
+	}
 	app.PowKeeper.Heartbeat(ctx)
 	app.TreasuryKeeper.Heartbeat(ctx)
 	app.GovernanceKeeper.Heartbeat(ctx)
