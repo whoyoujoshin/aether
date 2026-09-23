@@ -84,6 +84,7 @@ func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.
 	am.keeper.SetTopKSize(ctx, genState.Params.TopKSize)
 	am.keeper.SetBondCooldown(ctx, genState.Params.BondCooldown)
 	am.keeper.SetRecencyWindowK(ctx, genState.Params.RecencyWindowK)
+	am.keeper.SetBeaconRoundsPerBlock(ctx, genState.Params.BeaconRoundsPerBlock)
 
 	// This ValidatorUpdate is a genuinely dummy placeholder -- a zeroed
 // ed25519 key with an arbitrary large power -- never actually used as
@@ -128,6 +129,14 @@ func (am AppModule) EndBlock(ctx context.Context) ([]abci.ValidatorUpdate, error
 
 	am.keeper.ReleaseMaturedEscrows(sdkCtx)
 	am.keeper.RecordRecentBlock(sdkCtx)
+
+	// Folds this block into the current epoch's randomness-beacon
+	// accumulator (a no-op before RandomnessBeaconActivationHeight).
+	// Run before this epoch's own ComputeValidatorUpdates call below,
+	// though correctness doesn't actually depend on that ordering --
+	// selection uses epoch-1's already-finalized seed, never this
+	// epoch's own. See beacon.go.
+	am.keeper.AdvanceBeacon(sdkCtx)
 
 	// Immediate removals from misbehavior: unconditional, every block --
 	// independent of epoch timing. A banned validator must lose voting

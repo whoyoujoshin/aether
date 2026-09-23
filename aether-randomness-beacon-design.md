@@ -1,5 +1,5 @@
 # Aether Randomness Beacon & Validator Bonding — Design Spec v0.1
-**Status:** Draft — pre-implementation, needs external cryptographic review before any mainnet path
+**Status:** Phases 1-3 implemented and tested on devnet (x/pow/keeper.go, x/pow/beacon.go). Phase 3 is gated behind `RandomnessBeaconActivationHeight` (a placeholder height, not yet chosen for deployment) and, per this doc's own requirement below, still needs external cryptographic review before any mainnet claim of production-readiness -- implementing and testing it on devnet does not satisfy that requirement.
 **Scope:** Resolves the multi-validator design question (epoch-based, hashrate-derived validator set) and the grinding-resistance question (randomness beacon) identified in prior design sessions.
 
 ---
@@ -44,20 +44,20 @@ Rather than reaching for a cryptographic name that doesn't actually fit Aether's
 
 Consistent with prior guidance: sequence the complexity, don't design and ship it all simultaneously.
 
-### Phase 1 — Buildable now: deterministic epoch-based Top-K
-- No VRF, no hash-chain beacon, no escrow yet.
-- Validator set recomputed every epoch from the top-K addresses by recent mining output (tracked as real on-chain state, not inferred after the fact).
-- Ships a working multi-validator devnet. Grindable at the margin — acceptable at this phase, since the goal is proving the epoch/`ValidatorUpdates` mechanics work at all.
+### Phase 1 — DONE: deterministic epoch-based Top-K
+- Validator set recomputed every epoch from the top-K addresses by recent mining output, tracked as real on-chain state (`x/pow/keeper.go`'s `AddMiningWork`/`IterateEpochWork`/`ComputeValidatorUpdates`).
+- Live and tested on devnet.
 
-### Phase 2 — Bonding & evidence
-- Newly-mined rewards held in escrow for a cooldown period (sourced from mining output, not external capital — preserves fair-launch principles all the way through).
-- Real evidence-submission mechanism for equivocation, adapted from the pattern in Cosmos SDK's `x/evidence` module rather than invented from scratch.
-- This is a full subsystem in its own right and deserves its own design pass once Phase 1 is live and real block-timing data exists to inform it.
+### Phase 2 — DONE: bonding & evidence
+- Newly-mined rewards held in escrow for a cooldown period (`AddEscrow`/`ReleaseMaturedEscrows`/`BondCooldown`), sourced from mining output, not external capital.
+- Real evidence-based equivocation detection and forfeiture (`ProcessMisbehavior`, reading CometBFT's own `ctx.CometInfo().GetEvidence()` -- CometBFT verifies the evidence cryptographically before the app ever sees it, so no separate submission/verification subsystem needed to be invented).
+- 18 passing tests covering escrow lifecycle, misbehavior banning/forfeiture, and release/maturity edge cases (`x/pow/keeper_test.go`).
 
-### Phase 3 — Grinding resistance via sequential-hashing beacon
-- Implement the hash-chain epoch seed described in §2.
-- Feed the resulting seed into sampling the final validator set from the Top-K pool.
-- This is the phase that should get external cryptographic review before being considered production-ready — not because the mechanism is exotic, but because *any* consensus-critical randomness source deserves adversarial review before real value depends on it.
+### Phase 3 — Implemented on devnet, NOT externally reviewed: grinding resistance via sequential-hashing beacon
+- `x/pow/beacon.go` implements the hash-chain epoch seed described in §2: each block folds its real header hash into a running per-epoch accumulator plus a modest number of sequential SHA-256 mixing rounds (`AdvanceBeacon`), finalized as that epoch's seed on its last block.
+- `ComputeValidatorUpdates` now uses the PRIOR epoch's already-finalized seed (never an epoch's own -- see the one-epoch-lag rationale in `beacon.go`) to do weighted-random sampling without replacement (`SampleValidatorsWithBeacon`) from the full qualified candidate pool, replacing deterministic top-K truncation once `RandomnessBeaconActivationHeight` is reached. Falls back to deterministic truncation gracefully if no prior seed exists yet (the first epoch transition right after activation).
+- Gated behind `RandomnessBeaconActivationHeight`, currently a placeholder value in the code that has NOT been chosen for any real deployment.
+- **This is the phase that should get external cryptographic review before being considered production-ready** -- not because the mechanism is exotic, but because *any* consensus-critical randomness source deserves adversarial review before real value depends on it. Being implemented and tested on devnet does not satisfy this. A known, unresolved "last-revealer" limitation is documented directly in `beacon.go`'s `SampleValidatorsWithBeacon` doc comment -- the one-epoch lag mitigates but does not eliminate it.
 
 ### Explicitly deferred, not forgotten
 - "Loyalty scoring" (decay-weighted historical participation) — treat as a v2+ tuning parameter once Phase 1-3 are live and real usage patterns exist to calibrate against. Designing decay curves against a hypothetical network is guesswork; against a real one, it's an engineering task.
@@ -76,8 +76,9 @@ Consistent with prior guidance: sequence the complexity, don't design and ship i
 
 ## 5. What "done" looks like for this design track
 
-- [ ] Phase 1 epoch-based Top-K implemented, tested on devnet, `ValidatorUpdates` mechanics proven against real CometBFT epoch-transition delay (N+2 activation)
-- [ ] Phase 2 evidence/escrow subsystem specified in its own design doc, informed by real Phase 1 devnet data
-- [ ] Phase 3 hash-chain beacon implemented, clearly labeled as a sequential-hashing delay mechanism (not marketed as "VDF")
-- [ ] External cryptographic review completed on Phase 2 + Phase 3 before any public testnet claims production-readiness
+- [x] Phase 1 epoch-based Top-K implemented, tested on devnet (`x/pow/keeper.go`)
+- [x] Phase 2 escrow/bonding and evidence-based slashing implemented and tested (`x/pow/keeper.go`, 18 tests)
+- [x] Phase 3 hash-chain beacon implemented on devnet, clearly labeled as a sequential-hashing delay mechanism, not marketed as "VDF" (`x/pow/beacon.go`), with its own test suite (`x/pow/beacon_test.go`)
+- [ ] `RandomnessBeaconActivationHeight` chosen as a real deployment height (currently a placeholder) and confirmed against live tip before any coordinated fleet cutover
+- [ ] External cryptographic review completed on Phase 2 + Phase 3 before any public testnet claims production-readiness -- still outstanding; implementation and test coverage do not satisfy this
 - [ ] Loyalty scoring and/or genuinely post-quantum VDF migration tracked as explicit, revisited research items — not silently dropped

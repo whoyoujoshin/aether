@@ -24,6 +24,7 @@ type Params struct {
 	TopKSize          int64 `json:"top_k_size" yaml:"top_k_size"`       // Max number of validators selected per epoch; see randomness-beacon design doc §4
 	BondCooldown int64 `json:"bond_cooldown" yaml:"bond_cooldown"` // Blocks an active validator's rewards stay escrowed before automatic release
 	RecencyWindowK int64 `json:"recency_window_k" yaml:"recency_window_k"` // Max blocks between a mining header's claimed ancestor and current height
+	BeaconRoundsPerBlock int64 `json:"beacon_rounds_per_block" yaml:"beacon_rounds_per_block"` // Sequential SHA-256 mixing rounds run per block by the randomness beacon; see beacon.go and RandomnessBeaconActivationHeight
 }
 
 type MiningHeader struct {
@@ -67,6 +68,10 @@ func DefaultGenesisState() GenesisState {
                     // real Scrypt mining introduces genuine multi-minute
                     // submission variance -- 10 was too tight and rejected
                     // honest, valid submissions. See liveness-detection-decision.md.
+			BeaconRoundsPerBlock: 5_000, // sub-millisecond SHA-256 cost per block; see beacon.go's
+                                 // AdvanceBeacon doc comment for why this stays small on
+                                 // purpose (the delay comes from spanning real blocks
+                                 // across an epoch, not from a large per-block round count).
 		},
 	}
 }
@@ -98,6 +103,9 @@ var (
 	KeyLivenessMissedPrefix = []byte("liveness_missed/") // validator addr -> current miss count in window
 	KeyLastAcceptedSubmissionHeight = []byte("last_accepted_submission_height")
 	KeyPendingKeyRevocationPrefix = []byte("pending_key_revocation/") // miner addr -> old consensus pubkey bytes
+	KeyBeaconRoundsPerBlock = []byte("beacon_rounds_per_block")
+	KeyBeaconStatePrefix    = []byte("beacon_state/") // epoch (big-endian) -> in-progress accumulator, cleared on finalization
+	KeyBeaconSeedPrefix     = []byte("beacon_seed/")  // epoch (big-endian) -> finalized seed, kept forever
 )
 
 // Locked block-reward decay schedule (see tail-emission-decision.md).
@@ -247,3 +255,35 @@ const (
 	BanEnforcementActivationHeight     int64 = 90000
 	RotationRevocationActivationHeight int64 = 90000
 )
+
+// RandomnessBeaconActivationHeight gates Phase 3 of
+// aether-randomness-beacon-design.md (see beacon.go): the
+// sequential-hashing epoch beacon and the switch from deterministic
+// top-K-by-work truncation to beacon-seeded weighted random sampling
+// for validator selection. This is a substantially bigger change than
+// any other gate in this file -- it changes WHICH ADDRESSES become
+// validators each epoch, not just an accept/reject rule on individual
+// messages -- so it gets the same discipline plus extra margin.
+//
+// DELIBERATELY set far beyond 90000 (the height every other pending
+// gate in this codebase, plus the governance param-change proposal,
+// is coordinating a fleet-wide cutover toward as of this writing) --
+// piling a brand-new validator-selection algorithm onto that exact
+// same in-flight cutover would conflate two separate upgrade events
+// and add risk to a coordination effort already in progress. This
+// height is a placeholder and MUST be replaced with a real,
+// deliberately-chosen value -- confirmed against live tip, and
+// scheduled comfortably after the 90000 cutover has completed and run
+// stable for a real stretch of time -- before this code is ever
+// deployed to the live network. Following this same project's
+// standing discipline: never guess a height from a rough estimate,
+// always confirm against the seed's actual tip immediately before any
+// coordinated cutover.
+//
+// This code has NOT been reviewed by anyone but the author, and
+// aether-randomness-beacon-design.md explicitly requires external
+// cryptographic review before any mainnet claim of
+// production-readiness -- deploying this to devnet for testing does
+// not satisfy that requirement, and nothing in this codebase should
+// ever claim it does.
+const RandomnessBeaconActivationHeight int64 = 500_000

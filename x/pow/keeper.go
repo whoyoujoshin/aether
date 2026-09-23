@@ -520,14 +520,19 @@ func (k Keeper) toValidatorUpdate(rawPubkey []byte, power int64, minerAddr sdk.A
 	}, true
 }
 
+// qualifiedEntry is a candidate for this epoch's validator set: has
+// mined real work, holds a registered consensus pubkey, and isn't
+// banned. Shared between ComputeValidatorUpdates and beacon.go's
+// weighted sampling, which both need the same candidate shape.
+type qualifiedEntry struct {
+	MinerAddr sdk.AccAddress
+	Pubkey    []byte
+	Work      uint64
+}
+
 func (k Keeper) ComputeValidatorUpdates(ctx sdk.Context, epoch int64) []abci.ValidatorUpdate {
 	workEntries := k.IterateEpochWork(ctx, epoch)
 
-	type qualifiedEntry struct {
-		MinerAddr sdk.AccAddress
-		Pubkey    []byte
-		Work      uint64
-	}
 	var qualified []qualifiedEntry
 	for _, entry := range workEntries {
 		if k.IsBanned(ctx, entry.MinerAddr) {
@@ -557,8 +562,35 @@ func (k Keeper) ComputeValidatorUpdates(ctx sdk.Context, epoch int64) []abci.Val
 	})
 
 	topK := k.GetTopKSize(ctx)
-	if int64(len(qualified)) > topK {
-		qualified = qualified[:topK]
+
+	// Before RandomnessBeaconActivationHeight: unchanged, deterministic
+	// top-K-by-work truncation, exactly as Phase 1 always did -- a fresh
+	// node replaying pre-activation history must compute this identically
+	// to a continuously-running node, same discipline as every other gate
+	// in this file.
+	//
+	// At and after it: sample topK winners from the FULL qualified pool
+	// (not pre-truncated) using the beacon seed FINALIZED A FULL EPOCH
+	// EARLIER (epoch-1, not this epoch's own seed) -- see beacon.go's
+	// AdvanceBeacon and SampleValidatorsWithBeacon doc comments for why
+	// the one-epoch lag matters (it denies whoever mines this epoch's
+	// last block any way to know, at grinding time, what this epoch's
+	// own candidate pool and work totals will even be).
+	if ctx.BlockHeight() >= RandomnessBeaconActivationHeight {
+		seed, ok := k.GetBeaconSeed(ctx, epoch-1)
+		if ok {
+			qualified = k.SampleValidatorsWithBeacon(seed, qualified, topK)
+		} else {
+			k.logger.Info("randomness beacon has no finalized seed yet for this epoch transition (expected only immediately after activation) -- falling back to deterministic Top-K for this one transition",
+				"epoch", epoch)
+			if int64(len(qualified)) > topK {
+				qualified = qualified[:topK]
+			}
+		}
+	} else {
+		if int64(len(qualified)) > topK {
+			qualified = qualified[:topK]
+		}
 	}
 
 	selected := make(map[string]qualifiedEntry, len(qualified))
