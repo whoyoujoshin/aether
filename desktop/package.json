@@ -1,0 +1,44 @@
+{
+  "name": "aether-pay-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aether Pay Desktop -- installable wrapper around the existing walletapi backend and web UI",
+  "main": "main.js",
+  "scripts": {
+    "build-backend": "node scripts/build-backend.js",
+    "start": "electron .",
+    "dist": "npm run build-backend && electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.aether.paydesktop",
+    "productName": "Aether Pay",
+    "files": [
+      "main.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/${os}-${arch}",
+        "to": "backend",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../web/aether-pay-desktop.html",
+        "to": "web/aether-pay-desktop.html"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
