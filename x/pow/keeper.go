@@ -1088,8 +1088,9 @@ func (k Keeper) RecordValidatorSigning(ctx sdk.Context, minerAddr sdk.AccAddress
 // equivalent to "missed/LivenessWindowSize > LivenessMissThreshold"
 // (0.5) for all integer values of missed from 0 to LivenessWindowSize.
 // Avoids float64 in this consensus-critical path entirely, matching
-// this project's consistent principle (see tail-emission-decision.md)
-// of never relying on floating-point arithmetic where deterministic
+// this project's consistent principle (see BlockRewardDecayFactor's
+// own doc comment in types.go for another instance of it) of never
+// relying on floating-point arithmetic where deterministic
 // integer/Dec math is available -- the practical risk here was
 // genuinely low (small-integer division is bit-exact under IEEE 754
 // across real platforms), but there's no reason to make an exception
@@ -1145,8 +1146,8 @@ func (k Keeper) CheckValidatorLiveness(ctx sdk.Context) {
 }
 
 // ComputeScheduledBlockReward returns the real, locked block reward
-// for a given height, per the decay schedule in
-// tail-emission-decision.md: 5.00 AETH decaying ~34%/year (multiplicative,
+// for a given height, per the locked decay schedule constants in
+// types.go: 5.00 AETH decaying ~34%/year (multiplicative,
 // discrete yearly steps, not smooth per-block decay) for 8 years, then
 // a permanent 0.20 AETH tail. Deterministic, height-based (never
 // wall-clock-time-based, matching the same principle difficulty

@@ -51,8 +51,7 @@
         "min_difficulty": 1024,
         "max_difficulty": 1099511627776,
         "difficulty": 1048576,
-        "block_reward": 5000000,
-        "tail_emission": false
+        "block_reward": 5000000
       }
     },
     "treasury": {

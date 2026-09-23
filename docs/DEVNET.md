@@ -53,7 +53,7 @@ go run ./cmd/aetherd comet show-validator
 
 Copy the `"key"` value from step 3's output. Then, **before running `start` for the
 first time**, edit `$env:USERPROFILE\.aether\config\genesis.json` and replace the
-entire file with the contents of `docs/genesis.template.json` (updated with TailEmission),
+entire file with the contents of `docs/genesis.template.json`,
 substituting:
 - `genesis_time` → current UTC timestamp (or leave whatever `init` generated)
 - the `pub_key.value` under `consensus.validators[0]` → the key from step 3
@@ -91,9 +91,10 @@ With node running:
 go run ./cmd/powminer
 # or craft a MsgSubmitPoW via aetherd tx pow submit-pow ...
 
-# Check params (should show TailEmission: false, BlockReward: 5000000)
-# (once query CLI is fully registered)
-# go run ./cmd/aetherd query pow params
+# Check params (reports every x/pow param with live keeper state --
+# see QueryParamsResponse's proto comment for which genesis fields are
+# excluded and why)
+go run ./cmd/aetherd query pow params
 
 # Check balances / supply after reward distribution
 # go run ./cmd/aetherd query bank balances <miner-address>
@@ -113,13 +114,17 @@ Expected: Miner receives ~85% of block reward (4.25 AETH), 15% routes to fee col
 
 - ✅ MsgSubmitPoW + verification + DistributeBlockReward (15% treasury)
 - ✅ BeginBlocker difficulty adjustment (responsive to 60s target)
-- ✅ TailEmission param in Params / DefaultGenesis / genesis.template.json
 - ✅ PostQuantumDecorator stub wired into ante handler (pass-through for now)
 - ✅ Genesis templates aligned
+- ✅ Query CLI registration for pow params (`aetherd query pow params`)
 
-## Remaining for Full Testnet
+Note: this section is a stale point-in-time snapshot from an early
+devnet milestone, kept for history rather than corrected line-by-line
+-- e.g. AuxPoW merged mining (listed below as remaining) has since
+shipped. Don't treat "Remaining for Full Testnet" as current.
 
-- Full query CLI registration for pow params
+## Remaining for Full Testnet (as of the snapshot above -- see note)
+
 - Real Dilithium/Falcon integration (replace stub)
 - AuxPoW merged mining
 - Proto-marshaled params instead of raw JSON

@@ -60,9 +60,13 @@ message MsgSubmitPoWResponse {}
 // (ComputeScheduledBlockReward derives blocksPerYear from
 // TargetBlockTime), and deserve their own dedicated design pass before
 // being governance-adjustable, not a casual inclusion here.
-// InitialDifficulty, BlockReward, and TailEmission are excluded because
-// they have no live keeper storage at all (see QueryParamsResponse's
-// comment) -- there is nothing for this message to update.
+// InitialDifficulty is excluded because it has no live keeper storage
+// at all (see QueryParamsResponse's comment) -- there is nothing for
+// this message to update. BlockReward is excluded because it now
+// defaults to a computed decay curve rather than a governance-set
+// value (see the same comment). TailEmission, a similarly inert field,
+// was removed from Params entirely rather than merely excluded here --
+// see its removal note in x/pow/types.go.
 //
 // This is a full-replace message, matching x/consensus's own
 // MsgUpdateParams convention in this codebase: submit ALL five fields

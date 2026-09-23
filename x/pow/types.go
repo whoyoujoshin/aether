@@ -19,7 +19,6 @@ type Params struct {
 	MaxDifficulty     int   `json:"max_difficulty" yaml:"max_difficulty"`
 	Difficulty        int   `json:"difficulty" yaml:"difficulty"`
 	BlockReward       int   `json:"block_reward" yaml:"block_reward"`
-	TailEmission      bool  `json:"tail_emission" yaml:"tail_emission"` // For sustainable model post-initial phase
 	EpochLength       int64 `json:"epoch_length" yaml:"epoch_length"`   // Blocks per validator-selection epoch; see randomness-beacon design doc §4
 	TopKSize          int64 `json:"top_k_size" yaml:"top_k_size"`       // Max number of validators selected per epoch; see randomness-beacon design doc §4
 	BondCooldown int64 `json:"bond_cooldown" yaml:"bond_cooldown"` // Blocks an active validator's rewards stay escrowed before automatic release
@@ -56,11 +55,12 @@ func DefaultGenesisState() GenesisState {
                                 // headroom for faster hardware / more miners joining later.
 			Difficulty:        285_960,     // Starts equal to InitialDifficulty.
 			BlockReward: 5_000_000, // 5,000,000 uaeth = 5.00 AETH -- matches Year 1 of the locked
-                        // decay schedule (see tail-emission-decision.md), though this
-                        // flat genesis default will be superseded once DistributeBlockReward
-                        // is wired to compute the real height-based decay curve rather than
-                        // reading this single static value.
-			TailEmission:      false,
+                        // decay schedule (InitialBlockReward/BlockRewardDecayYears/
+                        // TailBlockReward/BlockRewardDecayFactor below). This genesis
+                        // value is itself inert on a real chain: GetBlockReward falls
+                        // through to ComputeScheduledBlockReward's real height-based
+                        // decay curve unless something has explicitly called
+                        // SetBlockReward, which module.go's InitGenesis no longer does.
 			EpochLength:       1440, // ~24h at 60s target blocks
 			TopKSize:          21,   // BFT-performance sweet spot; see design doc §4
 			BondCooldown: BondCooldownProduction,
@@ -108,11 +108,31 @@ var (
 	KeyBeaconSeedPrefix     = []byte("beacon_seed/")  // epoch (big-endian) -> finalized seed, kept forever
 )
 
-// Locked block-reward decay schedule (see tail-emission-decision.md).
-// These are permanent protocol constants, not genesis-tunable
-// parameters -- Aether's monetary policy is meant to be as fixed and
-// predictable as Bitcoin's halving schedule, not something an operator
-// can casually reconfigure per-deployment.
+// Locked block-reward decay schedule. These are permanent protocol
+// constants, not genesis-tunable parameters -- Aether's monetary
+// policy is meant to be as fixed and predictable as Bitcoin's halving
+// schedule, not something an operator can casually reconfigure
+// per-deployment.
+//
+// This IS this chain's tail-emission policy: TailBlockReward is a
+// permanent, unconditional floor from BlockRewardDecayYears onward --
+// see ComputeScheduledBlockReward. There used to be a separate
+// Params.TailEmission bool alongside these, apparently from an
+// earlier design phase where whether to have a tail at all was still
+// an open question. It was removed (not deprecated -- deleted) after
+// this session found it had never actually been wired to any keeper
+// storage or read anywhere outside genesis JSON round-tripping: the
+// real decision was already made and hardcoded here, unconditionally,
+// with nothing left for that flag to toggle. Its genesis default
+// (false) was actively misleading -- a reader could reasonably
+// conclude from testnet/genesis.json that this chain has no tail
+// emission, when the real, live behavior is a permanent 0.20 AETH/block
+// floor forever. Removing the struct field is safe for the already-
+// live chain: since InitGenesis never read it into any state-affecting
+// call, a node initializing from a genesis.json that still has the
+// now-unrecognized "tail_emission" key computes byte-identical keeper
+// state to one that doesn't -- unlike every other change in this file,
+// this needed no height gate, because nothing ever depended on it.
 const (
 	InitialBlockReward    int64 = 5_000_000 // 5.00 AETH, in uaeth
 	BlockRewardDecayYears int64 = 8

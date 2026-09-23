@@ -86,7 +86,6 @@
         "max_difficulty": 100000000,
         "difficulty": 285960,
         "block_reward": 5000000,
-        "tail_emission": false,
         "epoch_length": 1440,
         "top_k_size": 21,
         "bond_cooldown": 100,

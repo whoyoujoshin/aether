@@ -51,17 +51,22 @@ message QueryCurrentEpochResponse {
   int64 epoch = 1;
 }
 
-// QueryParamsResponse deliberately omits InitialDifficulty, BlockReward,
-// and TailEmission from x/pow's genesis Params struct -- none of the
-// three have any live keeper storage (no Get/Set beyond genesis
-// init), so there is no "current value" to report beyond the
-// already-superseded genesis default. Difficulty and BlockReward are
-// both live, keeper-tracked values already exposed by their own
-// dedicated queries (Difficulty, BlockReward) -- Difficulty is
-// repeated here too for one-call convenience; BlockReward is not,
-// since it now defaults to ComputeScheduledBlockReward's real decay
-// curve rather than reading a static override in the normal case, and
-// duplicating that nuance here risked being misread as a plain param.
+// QueryParamsResponse deliberately omits two fields from x/pow's
+// genesis Params struct, for two different reasons:
+//   - InitialDifficulty has no live keeper storage at all (no Get/Set
+//     beyond genesis init) -- there is no "current value" to report
+//     beyond the already-superseded genesis default. (A similar field,
+//     TailEmission, was removed from the Params struct entirely for
+//     the same reason -- see its removal note in x/pow/types.go.)
+//   - BlockReward DOES have live keeper storage and its own dedicated
+//     query (BlockReward), deliberately not repeated here: it now
+//     defaults to ComputeScheduledBlockReward's real decay curve
+//     rather than reading a static override in the normal case, and
+//     duplicating that nuance in a plain int/string field here risked
+//     it being misread as a simple genesis-set parameter.
+// Difficulty is live-tracked too and has its own dedicated query, but
+// is repeated here for one-call convenience -- it carries no similar
+// risk of being misread.
 message QueryParamsRequest {}
 message QueryParamsResponse {
   int64 target_block_time = 1;
