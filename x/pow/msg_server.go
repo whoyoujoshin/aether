@@ -233,3 +233,47 @@ func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPo
 
 	return &MsgSubmitPoWResponse{}, nil
 }
+
+// UpdateParams is x/pow's authority-gated params-update handler --
+// see MsgUpdateParams's proto comment for scope (five operational
+// knobs only) and the full-replace convention. Reachable only via
+// x/governance's generic MsgSubmitParamChangeProposal path: a regular
+// user transaction can never satisfy the authority check below, since
+// the governance module account has no private key to sign with. No
+// separate activation-height gate is needed here -- this handler is
+// already transitively unreachable before
+// governance.ParamChangeGovernanceActivationHeight, since BOTH
+// SubmitParamChangeProposal (submission) and ResolveProposal
+// (execution) already refuse to operate before that height, and this
+// message has no other path to ever execute.
+func (k msgServer) UpdateParams(goCtx context.Context, msg *MsgUpdateParams) (*MsgUpdateParamsResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	if k.Keeper.GetAuthority() != msg.Authority {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidAuthority, "expected %s, got %s", k.Keeper.GetAuthority(), msg.Authority)
+	}
+
+	if msg.EpochLength <= 0 {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidParamValue, "epoch_length must be positive, got %d", msg.EpochLength)
+	}
+	if msg.TopKSize <= 0 {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidParamValue, "top_k_size must be positive, got %d", msg.TopKSize)
+	}
+	if msg.BondCooldown <= 0 {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidParamValue, "bond_cooldown must be positive, got %d", msg.BondCooldown)
+	}
+	if msg.RecencyWindowK <= 0 {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidParamValue, "recency_window_k must be positive, got %d", msg.RecencyWindowK)
+	}
+	if msg.BeaconRoundsPerBlock < 0 {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidParamValue, "beacon_rounds_per_block must not be negative, got %d", msg.BeaconRoundsPerBlock)
+	}
+
+	k.Keeper.SetEpochLength(ctx, msg.EpochLength)
+	k.Keeper.SetTopKSize(ctx, msg.TopKSize)
+	k.Keeper.SetBondCooldown(ctx, msg.BondCooldown)
+	k.Keeper.SetRecencyWindowK(ctx, msg.RecencyWindowK)
+	k.Keeper.SetBeaconRoundsPerBlock(ctx, msg.BeaconRoundsPerBlock)
+
+	return &MsgUpdateParamsResponse{}, nil
+}

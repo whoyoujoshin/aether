@@ -1102,3 +1102,173 @@ func TestSubmitPoW_SubmissionCap_NoOpBeforeActivationHeight(t *testing.T) {
 	_, ok := k.GetLastAcceptedSubmissionHeight(ctx)
 	require.False(t, ok, "before the real activation height, the tracking key must never be written -- a fresh replay must not pay gas the seed's original execution never paid")
 }
+// --- UpdateParams ---
+
+func TestUpdateParams_RejectsWrongAuthority(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	msg := &pow.MsgUpdateParams{
+		Authority:            "not_the_real_governance_module_address",
+		EpochLength:          1440,
+		TopKSize:             21,
+		BondCooldown:         4320,
+		RecencyWindowK:       60,
+		BeaconRoundsPerBlock: 5000,
+	}
+
+	_, err := srv.UpdateParams(ctx, msg)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, types.ErrInvalidAuthority))
+}
+
+func TestUpdateParams_RejectsNonPositiveEpochLength(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	msg := &pow.MsgUpdateParams{
+		Authority:            testAuthority,
+		EpochLength:          0,
+		TopKSize:             21,
+		BondCooldown:         4320,
+		RecencyWindowK:       60,
+		BeaconRoundsPerBlock: 5000,
+	}
+
+	_, err := srv.UpdateParams(ctx, msg)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, types.ErrInvalidParamValue))
+}
+
+func TestUpdateParams_RejectsNonPositiveTopKSize(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	msg := &pow.MsgUpdateParams{
+		Authority:            testAuthority,
+		EpochLength:          1440,
+		TopKSize:             -1,
+		BondCooldown:         4320,
+		RecencyWindowK:       60,
+		BeaconRoundsPerBlock: 5000,
+	}
+
+	_, err := srv.UpdateParams(ctx, msg)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, types.ErrInvalidParamValue))
+}
+
+func TestUpdateParams_RejectsNonPositiveBondCooldown(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	msg := &pow.MsgUpdateParams{
+		Authority:            testAuthority,
+		EpochLength:          1440,
+		TopKSize:             21,
+		BondCooldown:         0,
+		RecencyWindowK:       60,
+		BeaconRoundsPerBlock: 5000,
+	}
+
+	_, err := srv.UpdateParams(ctx, msg)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, types.ErrInvalidParamValue))
+}
+
+func TestUpdateParams_RejectsNonPositiveRecencyWindowK(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	msg := &pow.MsgUpdateParams{
+		Authority:            testAuthority,
+		EpochLength:          1440,
+		TopKSize:             21,
+		BondCooldown:         4320,
+		RecencyWindowK:       0,
+		BeaconRoundsPerBlock: 5000,
+	}
+
+	_, err := srv.UpdateParams(ctx, msg)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, types.ErrInvalidParamValue))
+}
+
+func TestUpdateParams_RejectsNegativeBeaconRoundsPerBlock(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	msg := &pow.MsgUpdateParams{
+		Authority:            testAuthority,
+		EpochLength:          1440,
+		TopKSize:             21,
+		BondCooldown:         4320,
+		RecencyWindowK:       60,
+		BeaconRoundsPerBlock: -1,
+	}
+
+	_, err := srv.UpdateParams(ctx, msg)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, types.ErrInvalidParamValue))
+}
+
+func TestUpdateParams_AllowsZeroBeaconRoundsPerBlock(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	msg := &pow.MsgUpdateParams{
+		Authority:            testAuthority,
+		EpochLength:          1440,
+		TopKSize:             21,
+		BondCooldown:         4320,
+		RecencyWindowK:       60,
+		BeaconRoundsPerBlock: 0,
+	}
+
+	_, err := srv.UpdateParams(ctx, msg)
+	require.NoError(t, err, "zero mixing rounds is a minimal but valid configuration, not an error")
+	require.Equal(t, int64(0), k.GetBeaconRoundsPerBlock(ctx))
+}
+
+func TestUpdateParams_AppliesAllFiveFieldsOnSuccess(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	msg := &pow.MsgUpdateParams{
+		Authority:            testAuthority,
+		EpochLength:          2880,
+		TopKSize:             31,
+		BondCooldown:         8640,
+		RecencyWindowK:       120,
+		BeaconRoundsPerBlock: 10_000,
+	}
+
+	_, err := srv.UpdateParams(ctx, msg)
+	require.NoError(t, err)
+
+	require.Equal(t, int64(2880), k.GetEpochLength(ctx))
+	require.Equal(t, int64(31), k.GetTopKSize(ctx))
+	require.Equal(t, int64(8640), k.GetBondCooldown(ctx))
+	require.Equal(t, int64(120), k.GetRecencyWindowK(ctx))
+	require.Equal(t, int64(10_000), k.GetBeaconRoundsPerBlock(ctx))
+}
+
+func TestUpdateParams_RejectsBeforeValidatingAuthority_DoesNotPartiallyApply(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+
+	original := k.GetEpochLength(ctx)
+
+	msg := &pow.MsgUpdateParams{
+		Authority:            "wrong_authority",
+		EpochLength:          99999,
+		TopKSize:             21,
+		BondCooldown:         4320,
+		RecencyWindowK:       60,
+		BeaconRoundsPerBlock: 5000,
+	}
+
+	_, err := srv.UpdateParams(ctx, msg)
+	require.Error(t, err)
+	require.Equal(t, original, k.GetEpochLength(ctx), "a rejected update must not partially apply any field")
+}

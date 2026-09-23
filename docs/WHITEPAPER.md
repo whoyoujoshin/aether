@@ -211,15 +211,22 @@ Several enforcement and validation behaviors activate only at or after fixed hei
 | `RotationRevocationActivationHeight` | 90000 |
 | `AmountValidationActivationHeight` | 90000 |
 | `ParamChangeGovernanceActivationHeight` | 90000 |
+| `RandomnessBeaconActivationHeight` | 500000 (placeholder -- see §8.3.1) |
 
 Clients and researchers replaying the chain must respect these gates; behavior below a gate is intentionally different from post-activation rules.
+
+#### 8.3.1 Governance-adjustable x/pow parameters
+
+x/pow exposes an authority-gated `MsgUpdateParams` (governance module account only, reachable solely through x/governance's generic `MsgSubmitParamChangeProposal` path -- no new governance-side code was needed). Deliberately scoped to five operational tuning knobs: `EpochLength`, `TopKSize`, `BondCooldown`, `RecencyWindowK`, `BeaconRoundsPerBlock`. `TargetBlockTime`, `MinDifficulty`, `MaxDifficulty`, and `Difficulty` are intentionally excluded -- they interact directly with mining economics and the reward decay schedule, and warrant a dedicated design pass before being governance-adjustable. `InitialDifficulty`, `BlockReward`, and `TailEmission` are excluded because they have no live keeper storage at all (see `QueryParamsResponse`'s proto comment) -- there is nothing for a governance message to update. `aetherd tx pow draft-update-params` fetches current live values and writes a ready-to-submit proposal file, changing only whichever fields are explicitly flagged.
+
+`RandomnessBeaconActivationHeight` (Phase 3 of the randomness-beacon design, §4.4-adjacent) is currently a placeholder value, deliberately far beyond the in-flight 90000 cutover to avoid conflating two separate upgrade events -- it has not been chosen for any real deployment and must be confirmed against live tip before one is scheduled.
 
 The three 90000 gates above were originally set to 77000/80000, but were never actually crossed by a coordinated, fleet-wide binary upgrade before the chain's tip reached them -- a solo-upgraded node diverged (LastResultsHash mismatch) when it replayed/continued past 77000 with the new gate logic against a chain whose real history had been finalized by the old, ungated logic. Those heights are permanently burned for this reason; a single shared future height (90000) replaces them, to be crossed only after seed, sync3, sync4, and peer-1 all swap to the same binary together and confirm matching AppHash.
 
 ### 8.4 Other limitations (non-exhaustive)
 
 - No account abstraction; no native IBC (as of the documented commit)
-- Bond cooldown: the code default is now `BondCooldownProduction` (4320 blocks, 3 days at the 60s target), derived from genesis's own CometBFT evidence-validity window (48h) plus a 24h safety margin -- see `x/pow/types.go`. This is the default for a *new* chain from genesis; it does not retroactively change a chain (e.g. the live testnet) already initialized with the prior 100-block placeholder, which would need either a fresh genesis or a governance-driven params update (not yet built for x/pow's own parameters) to move forward.
+- Bond cooldown: the code default is now `BondCooldownProduction` (4320 blocks, 3 days at the 60s target), derived from genesis's own CometBFT evidence-validity window (48h) plus a 24h safety margin -- see `x/pow/types.go`. This is the default for a *new* chain from genesis; it does not retroactively change a chain (e.g. the live testnet) already initialized with the prior 100-block placeholder. x/pow now has its own governance-gated `MsgUpdateParams` (see §8.3.1), so moving the live chain's BondCooldown forward no longer requires a fresh genesis or a binary upgrade, just a governance proposal once one is submitted and passed.
 - Public testnet may reset; faucet funds are worthless outside the testnet
 - Early testnet history included a period with unintended ~5s `timeout_commit` (later corrected to the designed ~60s interval), inflating height relative to wall-clock age — disclosed in project docs, not a consensus bug
 

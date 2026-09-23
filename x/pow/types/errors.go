@@ -14,4 +14,6 @@ var (
 		ErrDuplicateWork   = sdkerrors.Register(ModuleName, 7, "this exact mining header has already been accepted")
 	ErrTooManySubmissionsThisBlock = sdkerrors.Register(ModuleName, 8, "a PoW submission has already been accepted at this block height")
 	ErrBannedMiner                 = sdkerrors.Register(ModuleName, 9, "this miner is permanently banned and may not submit further work")
+	ErrInvalidAuthority            = sdkerrors.Register(ModuleName, 10, "invalid authority for MsgUpdateParams")
+	ErrInvalidParamValue           = sdkerrors.Register(ModuleName, 11, "invalid parameter value in MsgUpdateParams")
 )

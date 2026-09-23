@@ -27,6 +27,11 @@ import (
 	"github.com/whoyoujoshin/aether/x/treasury"
 )
 
+// testAuthority stands in for the real governance module address in
+// tests that don't specifically exercise UpdateParams' authority
+// check -- see msg_server_test.go for tests that do.
+const testAuthority = "test_authority_address"
+
 // setupKeeper builds a pow.Keeper against an in-memory store with a
 // MockBankKeeper, independent of the rest of the app.
 
@@ -47,7 +52,7 @@ func setupKeeper(t *testing.T) (pow.Keeper, sdk.Context, *testutil.MockBankKeepe
 
 	mockBank := testutil.NewMockBankKeeper()
 	mockTreasury := testutil.NewMockTreasuryKeeper()
-	k := pow.NewKeeper(cdc, storeKey, log.NewNopLogger(), mockBank, mockTreasury)
+	k := pow.NewKeeper(cdc, storeKey, log.NewNopLogger(), mockBank, mockTreasury, testAuthority)
 
 	return k, ctx, mockBank
 }
@@ -69,7 +74,7 @@ func setupKeeperWithTreasury(t *testing.T) (pow.Keeper, sdk.Context, *testutil.M
 
 	mockBank := testutil.NewMockBankKeeper()
 	mockTreasury := testutil.NewMockTreasuryKeeper()
-	k := pow.NewKeeper(cdc, storeKey, log.NewNopLogger(), mockBank, mockTreasury)
+	k := pow.NewKeeper(cdc, storeKey, log.NewNopLogger(), mockBank, mockTreasury, testAuthority)
 
 	return k, ctx, mockBank, mockTreasury
 }

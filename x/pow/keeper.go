@@ -28,16 +28,28 @@ type Keeper struct {
 	logger         log.Logger
 	bankKeeper     types.BankKeeper
 	treasuryKeeper types.TreasuryKeeper
+	authority      string
 }
 
-func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, logger log.Logger, bankKeeper types.BankKeeper, treasuryKeeper types.TreasuryKeeper) Keeper {
+// NewKeeper's authority parameter is the address MsgUpdateParams
+// requires as its signer -- the governance module's own account,
+// passed in from app.go exactly the way x/consensus's keeper already
+// takes it, rather than x/pow importing x/governance directly (which
+// would create an import cycle, since x/governance already imports
+// x/pow for PowKeeper).
+func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, logger log.Logger, bankKeeper types.BankKeeper, treasuryKeeper types.TreasuryKeeper, authority string) Keeper {
 	return Keeper{
 		cdc:            cdc,
 		storeKey:       storeKey,
 		logger:         logger,
 		bankKeeper:     bankKeeper,
 		treasuryKeeper: treasuryKeeper,
+		authority:      authority,
 	}
+}
+
+func (k Keeper) GetAuthority() string {
+	return k.authority
 }
 
 // --- Difficulty ---

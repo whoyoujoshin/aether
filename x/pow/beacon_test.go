@@ -21,6 +21,8 @@ import (
 	"github.com/whoyoujoshin/aether/x/pow/types"
 )
 
+const testAuthority = "test_authority_address"
+
 func genBeaconTestPubkey(t *testing.T) []byte {
 	t.Helper()
 	pub, _, err := ed25519.GenerateKey(nil)
@@ -50,7 +52,7 @@ func newBeaconTestKeeper(t *testing.T) (Keeper, sdk.Context) {
 
 	mockBank := testutil.NewMockBankKeeper()
 	mockTreasury := testutil.NewMockTreasuryKeeper()
-	k := NewKeeper(cdc, storeKey, log.NewNopLogger(), mockBank, mockTreasury)
+	k := NewKeeper(cdc, storeKey, log.NewNopLogger(), mockBank, mockTreasury, testAuthority)
 
 	return k, ctx
 }

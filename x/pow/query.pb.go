@@ -540,6 +540,161 @@ func (m *QueryCurrentEpochResponse) GetEpoch() int64 {
 	return 0
 }
 
+// QueryParamsResponse deliberately omits InitialDifficulty, BlockReward,
+// and TailEmission from x/pow's genesis Params struct -- none of the
+// three have any live keeper storage (no Get/Set beyond genesis
+// init), so there is no "current value" to report beyond the
+// already-superseded genesis default. Difficulty and BlockReward are
+// both live, keeper-tracked values already exposed by their own
+// dedicated queries (Difficulty, BlockReward) -- Difficulty is
+// repeated here too for one-call convenience; BlockReward is not,
+// since it now defaults to ComputeScheduledBlockReward's real decay
+// curve rather than reading a static override in the normal case, and
+// duplicating that nuance here risked being misread as a plain param.
+type QueryParamsRequest struct {
+}
+
+func (m *QueryParamsRequest) Reset()         { *m = QueryParamsRequest{} }
+func (m *QueryParamsRequest) String() string { return proto.CompactTextString(m) }
+func (*QueryParamsRequest) ProtoMessage()    {}
+func (*QueryParamsRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a41ac12f13f071ba, []int{12}
+}
+func (m *QueryParamsRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *QueryParamsRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_QueryParamsRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *QueryParamsRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryParamsRequest.Merge(m, src)
+}
+func (m *QueryParamsRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *QueryParamsRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryParamsRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryParamsRequest proto.InternalMessageInfo
+
+type QueryParamsResponse struct {
+	TargetBlockTime      int64  `protobuf:"varint,1,opt,name=target_block_time,json=targetBlockTime,proto3" json:"target_block_time,omitempty"`
+	MinDifficulty        string `protobuf:"bytes,2,opt,name=min_difficulty,json=minDifficulty,proto3" json:"min_difficulty,omitempty"`
+	MaxDifficulty        string `protobuf:"bytes,3,opt,name=max_difficulty,json=maxDifficulty,proto3" json:"max_difficulty,omitempty"`
+	Difficulty           string `protobuf:"bytes,4,opt,name=difficulty,proto3" json:"difficulty,omitempty"`
+	EpochLength          int64  `protobuf:"varint,5,opt,name=epoch_length,json=epochLength,proto3" json:"epoch_length,omitempty"`
+	TopKSize             int64  `protobuf:"varint,6,opt,name=top_k_size,json=topKSize,proto3" json:"top_k_size,omitempty"`
+	BondCooldown         int64  `protobuf:"varint,7,opt,name=bond_cooldown,json=bondCooldown,proto3" json:"bond_cooldown,omitempty"`
+	RecencyWindowK       int64  `protobuf:"varint,8,opt,name=recency_window_k,json=recencyWindowK,proto3" json:"recency_window_k,omitempty"`
+	BeaconRoundsPerBlock int64  `protobuf:"varint,9,opt,name=beacon_rounds_per_block,json=beaconRoundsPerBlock,proto3" json:"beacon_rounds_per_block,omitempty"`
+}
+
+func (m *QueryParamsResponse) Reset()         { *m = QueryParamsResponse{} }
+func (m *QueryParamsResponse) String() string { return proto.CompactTextString(m) }
+func (*QueryParamsResponse) ProtoMessage()    {}
+func (*QueryParamsResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a41ac12f13f071ba, []int{13}
+}
+func (m *QueryParamsResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *QueryParamsResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_QueryParamsResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *QueryParamsResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryParamsResponse.Merge(m, src)
+}
+func (m *QueryParamsResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *QueryParamsResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryParamsResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryParamsResponse proto.InternalMessageInfo
+
+func (m *QueryParamsResponse) GetTargetBlockTime() int64 {
+	if m != nil {
+		return m.TargetBlockTime
+	}
+	return 0
+}
+
+func (m *QueryParamsResponse) GetMinDifficulty() string {
+	if m != nil {
+		return m.MinDifficulty
+	}
+	return ""
+}
+
+func (m *QueryParamsResponse) GetMaxDifficulty() string {
+	if m != nil {
+		return m.MaxDifficulty
+	}
+	return ""
+}
+
+func (m *QueryParamsResponse) GetDifficulty() string {
+	if m != nil {
+		return m.Difficulty
+	}
+	return ""
+}
+
+func (m *QueryParamsResponse) GetEpochLength() int64 {
+	if m != nil {
+		return m.EpochLength
+	}
+	return 0
+}
+
+func (m *QueryParamsResponse) GetTopKSize() int64 {
+	if m != nil {
+		return m.TopKSize
+	}
+	return 0
+}
+
+func (m *QueryParamsResponse) GetBondCooldown() int64 {
+	if m != nil {
+		return m.BondCooldown
+	}
+	return 0
+}
+
+func (m *QueryParamsResponse) GetRecencyWindowK() int64 {
+	if m != nil {
+		return m.RecencyWindowK
+	}
+	return 0
+}
+
+func (m *QueryParamsResponse) GetBeaconRoundsPerBlock() int64 {
+	if m != nil {
+		return m.BeaconRoundsPerBlock
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*QueryDifficultyRequest)(nil), "aether.pow.v1.QueryDifficultyRequest")
 	proto.RegisterType((*QueryDifficultyResponse)(nil), "aether.pow.v1.QueryDifficultyResponse")
@@ -553,47 +708,62 @@ func init() {
 	proto.RegisterType((*QueryActiveValidatorsResponse)(nil), "aether.pow.v1.QueryActiveValidatorsResponse")
 	proto.RegisterType((*QueryCurrentEpochRequest)(nil), "aether.pow.v1.QueryCurrentEpochRequest")
 	proto.RegisterType((*QueryCurrentEpochResponse)(nil), "aether.pow.v1.QueryCurrentEpochResponse")
+	proto.RegisterType((*QueryParamsRequest)(nil), "aether.pow.v1.QueryParamsRequest")
+	proto.RegisterType((*QueryParamsResponse)(nil), "aether.pow.v1.QueryParamsResponse")
 }
 
 func init() { proto.RegisterFile("aether/pow/v1/query.proto", fileDescriptor_a41ac12f13f071ba) }
 
 var fileDescriptor_a41ac12f13f071ba = []byte{
-	// 555 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x54, 0x4f, 0x6f, 0xd3, 0x4e,
-	0x10, 0x8d, 0x7f, 0xf9, 0x25, 0xb4, 0xd3, 0x54, 0xaa, 0x96, 0x50, 0x1c, 0x0b, 0xac, 0xd4, 0xb4,
-	0x10, 0x41, 0xb1, 0x09, 0x9c, 0x38, 0x00, 0xa2, 0x50, 0x89, 0x1b, 0x60, 0x24, 0x84, 0x40, 0x22,
-	0x5a, 0x3b, 0xdb, 0xd8, 0x90, 0xec, 0xba, 0xf6, 0x3a, 0x26, 0x57, 0x3e, 0x01, 0x5f, 0x89, 0x1b,
-	0xc7, 0x1e, 0x39, 0xa2, 0xe4, 0x8b, 0x20, 0xef, 0x6e, 0xfe, 0x35, 0x6e, 0xc3, 0x2d, 0xf3, 0xe6,
-	0xbd, 0x37, 0x13, 0xcf, 0xd3, 0x42, 0x03, 0x13, 0x1e, 0x90, 0xd8, 0x89, 0x58, 0xe6, 0x0c, 0xdb,
-	0xce, 0x69, 0x4a, 0xe2, 0x91, 0x1d, 0xc5, 0x8c, 0x33, 0xb4, 0x2d, 0x5b, 0x76, 0xc4, 0x32, 0x7b,
-	0xd8, 0x36, 0xea, 0x3d, 0xd6, 0x63, 0xa2, 0xe3, 0xe4, 0xbf, 0x24, 0xc9, 0xd2, 0x61, 0xf7, 0x6d,
-	0xae, 0x79, 0x19, 0x9e, 0x9c, 0x84, 0x7e, 0xda, 0xe7, 0x23, 0x97, 0x9c, 0xa6, 0x24, 0xe1, 0xd6,
-	0x63, 0xb8, 0xbe, 0xd2, 0x49, 0x22, 0x46, 0x13, 0x82, 0x4c, 0x80, 0xee, 0x0c, 0xd5, 0xb5, 0xa6,
-	0xd6, 0xda, 0x74, 0x17, 0x10, 0xab, 0xa1, 0xa4, 0x47, 0x7d, 0xe6, 0x7f, 0x75, 0x49, 0x86, 0xe3,
-	0xee, 0xd4, 0xf5, 0x09, 0xe8, 0xab, 0x2d, 0x65, 0xbb, 0x07, 0x35, 0x2f, 0x87, 0x3b, 0xb1, 0xc0,
-	0x95, 0xf1, 0x96, 0x37, 0xa7, 0x5a, 0x77, 0x01, 0x09, 0xf9, 0x71, 0xe2, 0xc7, 0x2c, 0x53, 0xa6,
-	0xa8, 0x0e, 0x95, 0x41, 0x48, 0x49, 0xac, 0x14, 0xb2, 0xb0, 0xbe, 0x6b, 0x70, 0x75, 0x89, 0xac,
-	0xc6, 0xe8, 0x70, 0xc5, 0xc3, 0x7d, 0x4c, 0x7d, 0xa2, 0xf8, 0xd3, 0x12, 0xdd, 0x82, 0xed, 0x94,
-	0x8a, 0x0d, 0x02, 0x12, 0xf6, 0x02, 0xae, 0xff, 0xd7, 0xd4, 0x5a, 0x65, 0xb7, 0x26, 0xc1, 0x57,
-	0x02, 0x43, 0x87, 0x80, 0x02, 0x9c, 0x74, 0x22, 0x42, 0xbb, 0x21, 0xed, 0x75, 0x88, 0x30, 0xd7,
-	0xcb, 0x4d, 0xad, 0xb5, 0xe1, 0xee, 0x04, 0x38, 0x79, 0x23, 0x1b, 0x72, 0xa8, 0x75, 0x1f, 0xae,
-	0xc9, 0xff, 0x8b, 0xe9, 0x3b, 0x8e, 0x79, 0x9a, 0x5c, 0xbe, 0xf3, 0x03, 0x75, 0x8e, 0x05, 0xba,
-	0xda, 0x7a, 0x17, 0xaa, 0x1e, 0xa6, 0x94, 0xc8, 0xcf, 0xb2, 0xe1, 0xaa, 0xca, 0x32, 0xe1, 0x86,
-	0x50, 0x3c, 0xf7, 0x79, 0x38, 0x24, 0xef, 0x71, 0x3f, 0xec, 0x62, 0xce, 0xe2, 0xe9, 0x1c, 0xeb,
-	0x19, 0xdc, 0xbc, 0xa0, 0x3f, 0x3f, 0xe6, 0x70, 0x86, 0xea, 0x5a, 0xb3, 0x9c, 0x1f, 0x73, 0x8e,
-	0x58, 0x86, 0xba, 0xd8, 0x8b, 0x34, 0x8e, 0x09, 0xe5, 0xc7, 0x11, 0xf3, 0x83, 0xa9, 0x79, 0x1b,
-	0x1a, 0x05, 0x3d, 0x65, 0x5c, 0x87, 0x0a, 0xc9, 0x01, 0xb1, 0x70, 0xd9, 0x95, 0xc5, 0xc3, 0x9f,
-	0xff, 0x43, 0x45, 0x68, 0xd0, 0x27, 0x80, 0x79, 0xb6, 0xd0, 0x81, 0xbd, 0x14, 0x57, 0xbb, 0x38,
-	0x95, 0xc6, 0xed, 0x75, 0x34, 0x35, 0xfc, 0x33, 0x6c, 0x2d, 0x44, 0x0c, 0x15, 0xca, 0x56, 0xe3,
-	0x69, 0xdc, 0x59, 0xcb, 0x53, 0xfe, 0xaf, 0xa1, 0x2a, 0x2f, 0x8c, 0xf6, 0x8a, 0x24, 0x4b, 0xf9,
-	0x34, 0xac, 0xcb, 0x28, 0xca, 0xf0, 0x03, 0x6c, 0xce, 0x8e, 0x8e, 0xf6, 0x0b, 0xd7, 0x38, 0x17,
-	0x21, 0xe3, 0x60, 0x0d, 0x4b, 0x39, 0x0f, 0x60, 0xe7, 0xfc, 0xf1, 0xd1, 0xbd, 0x22, 0xe9, 0x05,
-	0x11, 0x32, 0x0e, 0xff, 0x8d, 0xac, 0xc6, 0x61, 0xa8, 0x2d, 0xc6, 0x01, 0x15, 0x7e, 0xd2, 0x82,
-	0x30, 0x19, 0xad, 0xf5, 0x44, 0x39, 0xe2, 0xe8, 0xe9, 0xaf, 0xb1, 0xa9, 0x9d, 0x8d, 0x4d, 0xed,
-	0xcf, 0xd8, 0xd4, 0x7e, 0x4c, 0xcc, 0xd2, 0xd9, 0xc4, 0x2c, 0xfd, 0x9e, 0x98, 0xa5, 0x8f, 0xfb,
-	0xbd, 0x90, 0x07, 0xa9, 0x67, 0xfb, 0x6c, 0xe0, 0x64, 0x01, 0x1b, 0xb1, 0xf4, 0x0b, 0x4b, 0x82,
-	0x90, 0x3a, 0xea, 0x99, 0xfc, 0x96, 0x3f, 0x94, 0x5e, 0x55, 0xbc, 0x7d, 0x8f, 0xfe, 0x06, 0x00,
-	0x00, 0xff, 0xff, 0xbd, 0x43, 0xa6, 0x95, 0x3d, 0x05, 0x00, 0x00,
+	// 764 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x55, 0x41, 0x6f, 0xe3, 0x44,
+	0x14, 0xae, 0x1b, 0x92, 0x4d, 0x5f, 0xdb, 0xa5, 0x0c, 0x61, 0xd7, 0xb5, 0x16, 0x2b, 0x6b, 0x76,
+	0x21, 0x5a, 0x96, 0x84, 0x82, 0x38, 0x70, 0x00, 0xc4, 0x2e, 0x2b, 0x21, 0x2d, 0x12, 0xc5, 0x8b,
+	0x00, 0x81, 0x84, 0x35, 0xb6, 0xa7, 0xf1, 0xd0, 0x78, 0xc6, 0x1d, 0x8f, 0xe3, 0xa6, 0x47, 0x7e,
+	0x01, 0xe2, 0x57, 0x71, 0xec, 0x91, 0x23, 0x6a, 0xff, 0x03, 0x67, 0xe4, 0x99, 0x49, 0xe2, 0xb4,
+	0x6e, 0xc3, 0x2d, 0xf3, 0xbd, 0xef, 0x7d, 0xf3, 0xf2, 0xde, 0xfb, 0xc6, 0xb0, 0x8f, 0x89, 0x4c,
+	0x88, 0x18, 0x65, 0xbc, 0x1c, 0x4d, 0x0f, 0x46, 0x27, 0x05, 0x11, 0xb3, 0x61, 0x26, 0xb8, 0xe4,
+	0x68, 0x57, 0x87, 0x86, 0x19, 0x2f, 0x87, 0xd3, 0x03, 0xa7, 0x37, 0xe6, 0x63, 0xae, 0x22, 0xa3,
+	0xea, 0x97, 0x26, 0x79, 0x36, 0xdc, 0xfb, 0xae, 0xca, 0xf9, 0x8a, 0x1e, 0x1d, 0xd1, 0xa8, 0x98,
+	0xc8, 0x99, 0x4f, 0x4e, 0x0a, 0x92, 0x4b, 0xef, 0x53, 0xb8, 0x7f, 0x2d, 0x92, 0x67, 0x9c, 0xe5,
+	0x04, 0xb9, 0x00, 0xf1, 0x02, 0xb5, 0xad, 0xbe, 0x35, 0xd8, 0xf2, 0x6b, 0x88, 0xb7, 0x6f, 0x52,
+	0x9f, 0x4d, 0x78, 0x74, 0xec, 0x93, 0x12, 0x8b, 0x78, 0xae, 0xfa, 0x19, 0xd8, 0xd7, 0x43, 0x46,
+	0xf6, 0x21, 0xec, 0x84, 0x15, 0x1c, 0x08, 0x85, 0x1b, 0xe1, 0xed, 0x70, 0x49, 0xf5, 0x9e, 0x00,
+	0x52, 0xe9, 0x2f, 0xf2, 0x48, 0xf0, 0xd2, 0x88, 0xa2, 0x1e, 0xb4, 0x53, 0xca, 0x88, 0x30, 0x19,
+	0xfa, 0xe0, 0xfd, 0x6e, 0xc1, 0x9b, 0x2b, 0x64, 0x73, 0x8d, 0x0d, 0x77, 0x42, 0x3c, 0xc1, 0x2c,
+	0x22, 0x86, 0x3f, 0x3f, 0xa2, 0x77, 0x60, 0xb7, 0x60, 0xaa, 0x82, 0x84, 0xd0, 0x71, 0x22, 0xed,
+	0xcd, 0xbe, 0x35, 0x68, 0xf9, 0x3b, 0x1a, 0xfc, 0x5a, 0x61, 0xe8, 0x29, 0xa0, 0x04, 0xe7, 0x41,
+	0x46, 0x58, 0x4c, 0xd9, 0x38, 0x20, 0x4a, 0xdc, 0x6e, 0xf5, 0xad, 0x41, 0xd7, 0xdf, 0x4b, 0x70,
+	0x7e, 0xa8, 0x03, 0xfa, 0x52, 0xef, 0x03, 0x78, 0x4b, 0xff, 0x5f, 0xcc, 0x5e, 0x49, 0x2c, 0x8b,
+	0xfc, 0xf6, 0x9a, 0x3f, 0x34, 0xe3, 0xa8, 0xd1, 0x4d, 0xd5, 0xf7, 0xa0, 0x13, 0x62, 0xc6, 0x88,
+	0x6e, 0x4b, 0xd7, 0x37, 0x27, 0xcf, 0x85, 0x07, 0x2a, 0xe3, 0xcb, 0x48, 0xd2, 0x29, 0xf9, 0x01,
+	0x4f, 0x68, 0x8c, 0x25, 0x17, 0xf3, 0x7b, 0xbc, 0x2f, 0xe0, 0xed, 0x1b, 0xe2, 0xcb, 0x61, 0x4e,
+	0x17, 0xa8, 0x6d, 0xf5, 0x5b, 0xd5, 0x30, 0x97, 0x88, 0xe7, 0x98, 0x89, 0x3d, 0x2f, 0x84, 0x20,
+	0x4c, 0xbe, 0xc8, 0x78, 0x94, 0xcc, 0xc5, 0x0f, 0x60, 0xbf, 0x21, 0x66, 0x84, 0x7b, 0xd0, 0x26,
+	0x15, 0xa0, 0x0a, 0x6e, 0xf9, 0xfa, 0xe0, 0xf5, 0xcc, 0x04, 0x0f, 0xb1, 0xc0, 0xe9, 0xa2, 0xca,
+	0x7f, 0x37, 0xcd, 0xac, 0xe6, 0xb0, 0xd1, 0x78, 0x02, 0x6f, 0x48, 0x2c, 0xc6, 0x44, 0x06, 0x7a,
+	0x33, 0x24, 0x4d, 0x89, 0xd1, 0x7b, 0x5d, 0x07, 0xd4, 0x22, 0x7d, 0x4f, 0x53, 0x82, 0x1e, 0xc3,
+	0xdd, 0x94, 0xb2, 0xa0, 0xb6, 0x99, 0x9b, 0xaa, 0xb5, 0xbb, 0x29, 0x65, 0xcb, 0x25, 0x56, 0x34,
+	0x7c, 0x5a, 0xa7, 0xb5, 0x0c, 0x0d, 0x9f, 0xd6, 0x68, 0xab, 0x3b, 0xfe, 0xda, 0xd5, 0x1d, 0xaf,
+	0x96, 0x55, 0xfd, 0xa1, 0x60, 0x42, 0xd8, 0x58, 0x26, 0x76, 0x5b, 0x15, 0xb5, 0xad, 0xb0, 0x6f,
+	0x14, 0x84, 0x1e, 0x00, 0x48, 0x9e, 0x05, 0xc7, 0x41, 0x4e, 0xcf, 0x88, 0xdd, 0x51, 0x84, 0xae,
+	0xe4, 0xd9, 0xcb, 0x57, 0xf4, 0x4c, 0x2d, 0x5b, 0xc8, 0x59, 0x1c, 0x44, 0x9c, 0x4f, 0x62, 0x5e,
+	0x32, 0xfb, 0x8e, 0x5e, 0xb6, 0x0a, 0x7c, 0x6e, 0x30, 0x34, 0x80, 0x3d, 0x41, 0x22, 0xc2, 0xa2,
+	0x59, 0x50, 0x52, 0x16, 0xf3, 0x32, 0x38, 0xb6, 0xbb, 0x8a, 0x77, 0xd7, 0xe0, 0x3f, 0x2a, 0xf8,
+	0x25, 0xfa, 0x04, 0xee, 0x87, 0x04, 0x47, 0x9c, 0x05, 0x82, 0x17, 0x2c, 0xae, 0x16, 0x54, 0xe8,
+	0xa6, 0xd9, 0x5b, 0x2a, 0xa1, 0xa7, 0xc3, 0xbe, 0x8a, 0x1e, 0x12, 0xa1, 0x1a, 0xf7, 0xd1, 0x9f,
+	0x6d, 0x68, 0xab, 0xc6, 0xa3, 0x5f, 0x00, 0xea, 0x5d, 0x1a, 0xae, 0xbc, 0x1e, 0xc3, 0xe6, 0x47,
+	0xc2, 0x79, 0x77, 0x1d, 0xcd, 0xcc, 0xf1, 0x57, 0xd8, 0xae, 0x39, 0x1e, 0x35, 0xa6, 0x5d, 0x7f,
+	0x2d, 0x9c, 0xf7, 0xd6, 0xf2, 0x8c, 0xfe, 0xb7, 0xd0, 0xd1, 0x86, 0x43, 0x0f, 0x9b, 0x52, 0x56,
+	0x9e, 0x0b, 0xc7, 0xbb, 0x8d, 0x62, 0x04, 0x7f, 0x82, 0xad, 0x85, 0x07, 0xd1, 0xa3, 0xc6, 0x32,
+	0xae, 0x38, 0xda, 0x79, 0xbc, 0x86, 0x65, 0x94, 0x53, 0xd8, 0xbb, 0xea, 0x45, 0xf4, 0x7e, 0x53,
+	0xea, 0x0d, 0x8e, 0x76, 0x9e, 0xfe, 0x3f, 0xb2, 0xb9, 0x0e, 0xc3, 0x4e, 0xdd, 0x9d, 0xa8, 0xb1,
+	0xa5, 0x0d, 0xde, 0x76, 0x06, 0xeb, 0x89, 0xcb, 0xe6, 0x6b, 0xdb, 0x36, 0x37, 0x7f, 0xc5, 0xe9,
+	0xcd, 0xcd, 0x5f, 0x75, 0xfd, 0xb3, 0xcf, 0xff, 0xba, 0x70, 0xad, 0xf3, 0x0b, 0xd7, 0xfa, 0xe7,
+	0xc2, 0xb5, 0xfe, 0xb8, 0x74, 0x37, 0xce, 0x2f, 0xdd, 0x8d, 0xbf, 0x2f, 0xdd, 0x8d, 0x9f, 0x1f,
+	0x8d, 0xa9, 0x4c, 0x8a, 0x70, 0x18, 0xf1, 0x74, 0x54, 0x26, 0x7c, 0xc6, 0x8b, 0xdf, 0x78, 0x9e,
+	0x50, 0x36, 0x32, 0x9f, 0xc1, 0xd3, 0xea, 0x43, 0x18, 0x76, 0xd4, 0xb7, 0xed, 0xe3, 0xff, 0x02,
+	0x00, 0x00, 0xff, 0xff, 0x0c, 0xe5, 0x50, 0xd1, 0x1d, 0x07, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -614,6 +784,7 @@ type QueryClient interface {
 	BanStatus(ctx context.Context, in *QueryBanStatusRequest, opts ...grpc.CallOption) (*QueryBanStatusResponse, error)
 	ActiveValidators(ctx context.Context, in *QueryActiveValidatorsRequest, opts ...grpc.CallOption) (*QueryActiveValidatorsResponse, error)
 	CurrentEpoch(ctx context.Context, in *QueryCurrentEpochRequest, opts ...grpc.CallOption) (*QueryCurrentEpochResponse, error)
+	Params(ctx context.Context, in *QueryParamsRequest, opts ...grpc.CallOption) (*QueryParamsResponse, error)
 }
 
 type queryClient struct {
@@ -678,6 +849,15 @@ func (c *queryClient) CurrentEpoch(ctx context.Context, in *QueryCurrentEpochReq
 	return out, nil
 }
 
+func (c *queryClient) Params(ctx context.Context, in *QueryParamsRequest, opts ...grpc.CallOption) (*QueryParamsResponse, error) {
+	out := new(QueryParamsResponse)
+	err := c.cc.Invoke(ctx, "/aether.pow.v1.Query/Params", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QueryServer is the server API for Query service.
 type QueryServer interface {
 	Difficulty(context.Context, *QueryDifficultyRequest) (*QueryDifficultyResponse, error)
@@ -686,6 +866,7 @@ type QueryServer interface {
 	BanStatus(context.Context, *QueryBanStatusRequest) (*QueryBanStatusResponse, error)
 	ActiveValidators(context.Context, *QueryActiveValidatorsRequest) (*QueryActiveValidatorsResponse, error)
 	CurrentEpoch(context.Context, *QueryCurrentEpochRequest) (*QueryCurrentEpochResponse, error)
+	Params(context.Context, *QueryParamsRequest) (*QueryParamsResponse, error)
 }
 
 // UnimplementedQueryServer can be embedded to have forward compatible implementations.
@@ -709,6 +890,9 @@ func (*UnimplementedQueryServer) ActiveValidators(ctx context.Context, req *Quer
 }
 func (*UnimplementedQueryServer) CurrentEpoch(ctx context.Context, req *QueryCurrentEpochRequest) (*QueryCurrentEpochResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CurrentEpoch not implemented")
+}
+func (*UnimplementedQueryServer) Params(ctx context.Context, req *QueryParamsRequest) (*QueryParamsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Params not implemented")
 }
 
 func RegisterQueryServer(s grpc1.Server, srv QueryServer) {
@@ -823,6 +1007,24 @@ func _Query_CurrentEpoch_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Query_Params_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryParamsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).Params(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/aether.pow.v1.Query/Params",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).Params(ctx, req.(*QueryParamsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var Query_serviceDesc = _Query_serviceDesc
 var _Query_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "aether.pow.v1.Query",
@@ -851,6 +1053,10 @@ var _Query_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CurrentEpoch",
 			Handler:    _Query_CurrentEpoch_Handler,
+		},
+		{
+			MethodName: "Params",
+			Handler:    _Query_Params_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -1207,6 +1413,103 @@ func (m *QueryCurrentEpochResponse) MarshalToSizedBuffer(dAtA []byte) (int, erro
 	return len(dAtA) - i, nil
 }
 
+func (m *QueryParamsRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *QueryParamsRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QueryParamsRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	return len(dAtA) - i, nil
+}
+
+func (m *QueryParamsResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *QueryParamsResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QueryParamsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.BeaconRoundsPerBlock != 0 {
+		i = encodeVarintQuery(dAtA, i, uint64(m.BeaconRoundsPerBlock))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.RecencyWindowK != 0 {
+		i = encodeVarintQuery(dAtA, i, uint64(m.RecencyWindowK))
+		i--
+		dAtA[i] = 0x40
+	}
+	if m.BondCooldown != 0 {
+		i = encodeVarintQuery(dAtA, i, uint64(m.BondCooldown))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.TopKSize != 0 {
+		i = encodeVarintQuery(dAtA, i, uint64(m.TopKSize))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.EpochLength != 0 {
+		i = encodeVarintQuery(dAtA, i, uint64(m.EpochLength))
+		i--
+		dAtA[i] = 0x28
+	}
+	if len(m.Difficulty) > 0 {
+		i -= len(m.Difficulty)
+		copy(dAtA[i:], m.Difficulty)
+		i = encodeVarintQuery(dAtA, i, uint64(len(m.Difficulty)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.MaxDifficulty) > 0 {
+		i -= len(m.MaxDifficulty)
+		copy(dAtA[i:], m.MaxDifficulty)
+		i = encodeVarintQuery(dAtA, i, uint64(len(m.MaxDifficulty)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.MinDifficulty) > 0 {
+		i -= len(m.MinDifficulty)
+		copy(dAtA[i:], m.MinDifficulty)
+		i = encodeVarintQuery(dAtA, i, uint64(len(m.MinDifficulty)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.TargetBlockTime != 0 {
+		i = encodeVarintQuery(dAtA, i, uint64(m.TargetBlockTime))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintQuery(dAtA []byte, offset int, v uint64) int {
 	offset -= sovQuery(v)
 	base := offset
@@ -1360,6 +1663,54 @@ func (m *QueryCurrentEpochResponse) Size() (n int) {
 	_ = l
 	if m.Epoch != 0 {
 		n += 1 + sovQuery(uint64(m.Epoch))
+	}
+	return n
+}
+
+func (m *QueryParamsRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	return n
+}
+
+func (m *QueryParamsResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.TargetBlockTime != 0 {
+		n += 1 + sovQuery(uint64(m.TargetBlockTime))
+	}
+	l = len(m.MinDifficulty)
+	if l > 0 {
+		n += 1 + l + sovQuery(uint64(l))
+	}
+	l = len(m.MaxDifficulty)
+	if l > 0 {
+		n += 1 + l + sovQuery(uint64(l))
+	}
+	l = len(m.Difficulty)
+	if l > 0 {
+		n += 1 + l + sovQuery(uint64(l))
+	}
+	if m.EpochLength != 0 {
+		n += 1 + sovQuery(uint64(m.EpochLength))
+	}
+	if m.TopKSize != 0 {
+		n += 1 + sovQuery(uint64(m.TopKSize))
+	}
+	if m.BondCooldown != 0 {
+		n += 1 + sovQuery(uint64(m.BondCooldown))
+	}
+	if m.RecencyWindowK != 0 {
+		n += 1 + sovQuery(uint64(m.RecencyWindowK))
+	}
+	if m.BeaconRoundsPerBlock != 0 {
+		n += 1 + sovQuery(uint64(m.BeaconRoundsPerBlock))
 	}
 	return n
 }
@@ -2215,6 +2566,316 @@ func (m *QueryCurrentEpochResponse) Unmarshal(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.Epoch |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipQuery(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *QueryParamsRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowQuery
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: QueryParamsRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: QueryParamsRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipQuery(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *QueryParamsResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowQuery
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: QueryParamsResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: QueryParamsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TargetBlockTime", wireType)
+			}
+			m.TargetBlockTime = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TargetBlockTime |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinDifficulty", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthQuery
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MinDifficulty = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxDifficulty", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthQuery
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MaxDifficulty = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Difficulty", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthQuery
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Difficulty = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field EpochLength", wireType)
+			}
+			m.EpochLength = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.EpochLength |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TopKSize", wireType)
+			}
+			m.TopKSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TopKSize |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BondCooldown", wireType)
+			}
+			m.BondCooldown = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.BondCooldown |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RecencyWindowK", wireType)
+			}
+			m.RecencyWindowK = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.RecencyWindowK |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BeaconRoundsPerBlock", wireType)
+			}
+			m.BeaconRoundsPerBlock = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.BeaconRoundsPerBlock |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

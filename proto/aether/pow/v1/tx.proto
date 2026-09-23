@@ -10,6 +10,7 @@ option go_package = "github.com/whoyoujoshin/aether/x/pow";
 service Msg {
   rpc SubmitPoW(MsgSubmitPoW) returns (MsgSubmitPoWResponse);
   rpc RegisterValidatorPubkey(MsgRegisterValidatorPubkey) returns (MsgRegisterValidatorPubkeyResponse);
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
 }
 
 message MsgRegisterValidatorPubkey {
@@ -44,3 +45,39 @@ message MsgSubmitPoW {
 }
 
 message MsgSubmitPoWResponse {}
+
+// MsgUpdateParams is x/pow's authority-gated params-update message,
+// meant to be executed only via x/governance's generic
+// MsgSubmitParamChangeProposal path (see that message's own proto
+// comment) -- never signed directly by a real user, since `authority`
+// must equal the governance module account, which has no private key.
+//
+// Deliberately scoped to the operational tuning knobs only:
+// EpochLength, TopKSize, BondCooldown, RecencyWindowK, and
+// BeaconRoundsPerBlock. TargetBlockTime, MinDifficulty, MaxDifficulty,
+// and Difficulty are intentionally excluded -- they interact directly
+// with mining economics and the reward decay schedule
+// (ComputeScheduledBlockReward derives blocksPerYear from
+// TargetBlockTime), and deserve their own dedicated design pass before
+// being governance-adjustable, not a casual inclusion here.
+// InitialDifficulty, BlockReward, and TailEmission are excluded because
+// they have no live keeper storage at all (see QueryParamsResponse's
+// comment) -- there is nothing for this message to update.
+//
+// This is a full-replace message, matching x/consensus's own
+// MsgUpdateParams convention in this codebase: submit ALL five fields
+// with their intended final values, not just the one being changed.
+// The CLI command fetches current live values first specifically so
+// callers don't have to hand-assemble the other four from memory.
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+
+  string authority = 1;
+  int64 epoch_length = 2;
+  int64 top_k_size = 3;
+  int64 bond_cooldown = 4;
+  int64 recency_window_k = 5;
+  int64 beacon_rounds_per_block = 6;
+}
+
+message MsgUpdateParamsResponse {}

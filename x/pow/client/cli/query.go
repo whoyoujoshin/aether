@@ -27,6 +27,7 @@ func GetQueryCmd() *cobra.Command {
 		GetBanStatusCmd(),
 		GetActiveValidatorsCmd(),
 		GetCurrentEpochCmd(),
+		GetParamsCmd(),
 	)
 
 	return cmd
@@ -154,6 +155,28 @@ func GetCurrentEpochCmd() *cobra.Command {
 			}
 			queryClient := pow.NewQueryClient(clientCtx)
 			res, err := queryClient.CurrentEpoch(context.Background(), &pow.QueryCurrentEpochRequest{})
+			if err != nil {
+				return err
+			}
+			return clientCtx.PrintProto(res)
+		},
+	}
+	flags.AddQueryFlagsToCmd(cmd)
+	return cmd
+}
+
+func GetParamsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "params",
+		Short: "Query current x/pow parameters (only those with live keeper state -- see QueryParamsResponse's proto comment)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+			queryClient := pow.NewQueryClient(clientCtx)
+			res, err := queryClient.Params(context.Background(), &pow.QueryParamsRequest{})
 			if err != nil {
 				return err
 			}

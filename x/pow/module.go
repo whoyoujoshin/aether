@@ -30,6 +30,7 @@ func (AppModuleBasic) RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {}
 func (AppModuleBasic) RegisterInterfaces(registry cdctypes.InterfaceRegistry) {
 	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgSubmitPoW{})
 	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgRegisterValidatorPubkey{})
+	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgUpdateParams{})
 }
 
 func (AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {

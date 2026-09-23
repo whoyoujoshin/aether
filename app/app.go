@@ -259,7 +259,7 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 )
 	// Initialize keepers
 	app.TreasuryKeeper = treasury.NewKeeper(appCodec, app.keys[treasury.StoreKey], app.BankKeeper)
-	app.PowKeeper = pow.NewKeeper(appCodec, app.keys[pow.StoreKey], logger, app.BankKeeper, app.TreasuryKeeper)
+	app.PowKeeper = pow.NewKeeper(appCodec, app.keys[pow.StoreKey], logger, app.BankKeeper, app.TreasuryKeeper, authtypes.NewModuleAddress(governance.ModuleName).String())
 
 	// authority is governance's own module account -- a module account
 	// has no private key, so MsgUpdateParams can only ever be invoked

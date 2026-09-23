@@ -79,3 +79,22 @@ func (q queryServer) CurrentEpoch(goCtx context.Context, req *QueryCurrentEpochR
 		Epoch: q.Keeper.CurrentEpoch(ctx),
 	}, nil
 }
+
+// Params reports every x/pow parameter that has real, live keeper
+// storage -- see QueryParamsResponse's proto comment for exactly which
+// genesis Params fields are excluded, and why (no live storage to
+// report).
+func (q queryServer) Params(goCtx context.Context, req *QueryParamsRequest) (*QueryParamsResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+	return &QueryParamsResponse{
+		TargetBlockTime:      q.Keeper.GetTargetBlockTime(ctx),
+		MinDifficulty:        q.Keeper.GetMinDifficulty(ctx).String(),
+		MaxDifficulty:        q.Keeper.GetMaxDifficulty(ctx).String(),
+		Difficulty:           q.Keeper.GetDifficulty(ctx).String(),
+		EpochLength:          q.Keeper.GetEpochLength(ctx),
+		TopKSize:             q.Keeper.GetTopKSize(ctx),
+		BondCooldown:         q.Keeper.GetBondCooldown(ctx),
+		RecencyWindowK:       q.Keeper.GetRecencyWindowK(ctx),
+		BeaconRoundsPerBlock: q.Keeper.GetBeaconRoundsPerBlock(ctx),
+	}, nil
+}
