@@ -37,12 +37,22 @@ signed .exe from Linux, is unreliable for anything beyond the NSIS
 installer itself -- code signing and some platform-specific
 installer steps need to happen on that OS). Output lands in `dist/`.
 
+## Icon
+
+`build/icon.png` (1024x1024 master), `build/icon.ico` (Windows), and
+`build/icon.icns` (macOS) are generated from the Aether "Æ" mark.
+`package.json`'s `build.win.icon` / `build.mac.icon` /
+`build.linux.icon` reference them, and `main.js` sets the same PNG as
+the `BrowserWindow`'s icon for dev-mode/Linux (Windows and macOS pick
+their icon up from the packaged executable/app bundle instead). To
+regenerate from a new source image, see
+`desktop/scripts/build-backend.js`'s sibling icon-generation approach
+(crop to the mark's bounding box, pad to a square, export at 1024px,
+then re-save as `.ico`/`.icns`) -- there's no checked-in script for
+this since it only needs to run once per logo change.
+
 ## Known gaps / next steps
 
-- No app icon yet -- electron-builder falls back to its default. Drop
-  a real icon into `build/` and reference it under `build.win.icon`
-  / `build.mac.icon` / `build.linux.icon` in `package.json` when one
-  exists.
 - Not code-signed. Unsigned installers will trigger OS security
   warnings (Windows SmartScreen, macOS Gatekeeper) on first run --
   expected for a devnet-stage app, but something to revisit before

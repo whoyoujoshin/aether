@@ -79,6 +79,7 @@ async function createWindow() {
     minWidth: 720,
     minHeight: 560,
     title: "Aether Pay",
+    icon: path.join(__dirname, "build", "icon.png"),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
