@@ -219,7 +219,7 @@ The three 90000 gates above were originally set to 77000/80000, but were never a
 ### 8.4 Other limitations (non-exhaustive)
 
 - No account abstraction; no native IBC (as of the documented commit)
-- Bond cooldown of 100 blocks is a placeholder
+- Bond cooldown: the code default is now `BondCooldownProduction` (4320 blocks, 3 days at the 60s target), derived from genesis's own CometBFT evidence-validity window (48h) plus a 24h safety margin -- see `x/pow/types.go`. This is the default for a *new* chain from genesis; it does not retroactively change a chain (e.g. the live testnet) already initialized with the prior 100-block placeholder, which would need either a fresh genesis or a governance-driven params update (not yet built for x/pow's own parameters) to move forward.
 - Public testnet may reset; faucet funds are worthless outside the testnet
 - Early testnet history included a period with unintended ~5s `timeout_commit` (later corrected to the designed ~60s interval), inflating height relative to wall-clock age — disclosed in project docs, not a consensus bug
 

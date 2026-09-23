@@ -787,6 +787,28 @@ func TestBondCooldown_RoundTrip(t *testing.T) {
 	require.Equal(t, int64(250), k.GetBondCooldown(ctx))
 }
 
+// TestBondCooldownProduction_CoversGenesisEvidenceWindowWithMargin is a
+// regression guard for the derivation documented on
+// pow.BondCooldownProduction: it must cover genesis.json's configured
+// CometBFT evidence-validity window (48h) at the default
+// TargetBlockTime, with real safety margin -- not just today, but if
+// either constant is ever tweaked without re-deriving the other.
+func TestBondCooldownProduction_CoversGenesisEvidenceWindowWithMargin(t *testing.T) {
+	params := pow.DefaultGenesisState().Params
+
+	const evidenceMaxAgeDurationSeconds int64 = 172_800 // genesis.json / genesis.template.json: 172800000000000ns
+	cooldownSeconds := params.BondCooldown * params.TargetBlockTime
+
+	require.GreaterOrEqual(t, cooldownSeconds, evidenceMaxAgeDurationSeconds,
+		"BondCooldown must, at TargetBlockTime, cover the full genesis evidence-validity window -- "+
+			"otherwise a validator can withdraw their bond before misbehavior evidence could still be valid")
+
+	const wantMarginSeconds int64 = 86_400 // 24h margin claimed in BondCooldownProduction's doc comment
+	require.GreaterOrEqual(t, cooldownSeconds-evidenceMaxAgeDurationSeconds, wantMarginSeconds,
+		"BondCooldownProduction's doc comment claims a 24h safety margin beyond the evidence window -- "+
+			"if this fails, the doc comment and the constant have drifted apart")
+}
+
 // --- Escrow ---
 
 func TestEscrow_StartsAtZero(t *testing.T) {

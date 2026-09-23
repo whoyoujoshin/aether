@@ -63,7 +63,7 @@ func DefaultGenesisState() GenesisState {
 			TailEmission:      false,
 			EpochLength:       1440, // ~24h at 60s target blocks
 			TopKSize:          21,   // BFT-performance sweet spot; see design doc §4
-			BondCooldown: 100, // arbitrary placeholder for testing; production value needs real analysis
+			BondCooldown: BondCooldownProduction,
 			RecencyWindowK: 60, // widened from the original 10 after live testing showed
                     // real Scrypt mining introduces genuine multi-minute
                     // submission variance -- 10 was too tight and rejected
@@ -129,6 +129,48 @@ const (
 // arithmetic is not guaranteed to produce identical results across
 // different systems, which would risk a consensus fork.
 var BlockRewardDecayFactor = math.LegacyMustNewDecFromStr("0.66")
+
+// BondCooldownProduction replaces the original genesis default (100
+// blocks, ~1h40m -- an arbitrary placeholder never actually analyzed
+// against a real threat model) with a value derived from this chain's
+// own configured CometBFT evidence-validity window.
+//
+// The real security question BondCooldown answers: AddEscrow resets a
+// validator's unlock height forward every time they earn new escrow,
+// so a continuously active validator's bond never unlocks while
+// they're still signing. The actual exposure is the window AFTER a
+// validator's last active moment -- if they equivocate right before
+// going inactive, BondCooldown is the only thing between "misbehavior
+// evidence arrives" and "they already withdrew, so
+// ProcessMisbehavior's forfeiture burns a zero balance." The ban still
+// applies either way; only the economic bite depends on this.
+//
+// genesis.json / genesis.template.json configure
+// consensus.params.evidence as max_age_num_blocks=100000,
+// max_age_duration=172800000000000ns (48h). CometBFT evidence expires
+// once EITHER bound is hit, and at the 60s TargetBlockTime, 48h =
+// 2880 blocks -- far tighter than the 100,000-block ceiling, so the
+// time bound is what actually governs here, not the block-count one.
+// A BondCooldown shorter than that 48h window is a real, live
+// economic-security gap: a validator can equivocate and fully
+// withdraw before evidence could even still be considered valid.
+//
+// Set to 4320 blocks (3 days at TargetBlockTime) -- the 48h evidence
+// window plus a full 24h safety margin, absorbing realistic
+// block-time variance (this chain has real history of block-time
+// drift; see the whitepaper's disclosed timeout_commit anomaly)
+// without imposing the multi-week lockup a naive "match the
+// 100,000-block ceiling" approach would put on honestly-exiting
+// validators.
+//
+// IMPORTANT COUPLING, not automatically enforced: if
+// EvidenceParams.max_age_duration is ever increased later (e.g. via
+// the governance param-change mechanism in x/governance, which can
+// submit a real x/consensus MsgUpdateParams), this constant does NOT
+// automatically track it. Widening the evidence window without also
+// widening BondCooldown silently reopens exactly this gap. Revisit
+// together, not independently.
+const BondCooldownProduction int64 = 4_320
 
 // KeyBootstrapPowerCorrected guards a genuine, one-time, live
 // correction (see Keeper.CorrectBootstrapPower) for a real,
