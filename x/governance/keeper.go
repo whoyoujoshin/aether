@@ -289,13 +289,30 @@ func (k Keeper) ProcessProposalLifecycle(ctx sdk.Context) {
 	}
 }
 
-// computeQuorumThreshold returns ceil(0.6 * TopKSize) -- the minimum
-// number of validators who must cast a still-valid vote for a proposal's
-// resolution to count at all, per the locked 60% quorum spec. Computed
-// dynamically from x/pow's current TopKSize rather than hardcoded, so a
-// future governance-driven change to TopKSize doesn't silently leave
-// this quorum number stale.
+// computeQuorumThreshold returns the minimum number of validators who
+// must cast a still-valid vote for a proposal's resolution to count at
+// all, per the locked 60% quorum spec.
+//
+// Before QuorumActiveValidatorCountActivationHeight, this is 60% of
+// x/pow's TopKSize (the fixed target validator-set size) -- computed
+// dynamically rather than hardcoded, so a future governance-driven
+// change to TopKSize doesn't silently leave this quorum number stale.
+// At and after that height, it's 60% of the validators actually bonded
+// right now, with a floor of 1 so that zero active validators can
+// never yield a zero quorum threshold that lets a proposal with zero
+// real votes trivially pass. See that constant's doc comment for why
+// this is a deliberate, height-gated policy change rather than a plain
+// bug fix.
 func (k Keeper) computeQuorumThreshold(ctx sdk.Context) int64 {
+	if ctx.BlockHeight() >= QuorumActiveValidatorCountActivationHeight {
+		active := k.powKeeper.GetActiveValidatorCount(ctx)
+		if active == 0 {
+			return 1
+		}
+		// Ceiling division: (active*6 + 9) / 10 computes ceil(active * 0.6)
+		// using only integer math, avoiding any float/Dec rounding subtlety.
+		return (active*6 + 9) / 10
+	}
 	topK := k.powKeeper.GetTopKSize(ctx)
 	// Ceiling division: (topK*6 + 9) / 10 computes ceil(topK * 0.6)
 	// using only integer math, avoiding any float/Dec rounding subtlety.

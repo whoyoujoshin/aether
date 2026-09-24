@@ -344,6 +344,22 @@ func (k Keeper) IterateActiveValidators(ctx sdk.Context) []sdk.AccAddress {
 	return addrs
 }
 
+// GetActiveValidatorCount returns how many validators are actually
+// bonded right now, as opposed to GetTopKSize's fixed target slot
+// count -- see x/governance's QuorumActiveValidatorCountActivationHeight
+// for why the distinction matters for governance quorum.
+func (k Keeper) GetActiveValidatorCount(ctx sdk.Context) int64 {
+	store := ctx.KVStore(k.storeKey)
+	iterator := store.Iterator(KeyActiveValidatorPrefix, storetypes.PrefixEndBytes(KeyActiveValidatorPrefix))
+	defer iterator.Close()
+
+	var count int64
+	for ; iterator.Valid(); iterator.Next() {
+		count++
+	}
+	return count
+}
+
 // --- Block reward ---
 
 func (k Keeper) SetBlockReward(ctx sdk.Context, reward math.Int) {

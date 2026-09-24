@@ -15,6 +15,10 @@ func (m *MockPowKeeper) GetTopKSize(ctx sdk.Context) int64 {
 	return m.TopKSize
 }
 
+func (m *MockPowKeeper) GetActiveValidatorCount(ctx sdk.Context) int64 {
+	return int64(len(m.ActiveValidators))
+}
+
 func NewMockPowKeeper() *MockPowKeeper {
 	return &MockPowKeeper{
 		TenureRatios:     make(map[string]math.LegacyDec),

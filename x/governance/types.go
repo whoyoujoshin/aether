@@ -106,3 +106,38 @@ const AmountValidationActivationHeight int64 = 90000
 // comment in x/pow/types.go). Confirm/adjust against the seed's actual
 // height immediately before the coordinated cutover.
 const ParamChangeGovernanceActivationHeight int64 = 90000
+
+// QuorumActiveValidatorCountActivationHeight gates a change to
+// computeQuorumThreshold: before this height, quorum is 60% of
+// x/pow's GetTopKSize (the fixed target validator-set size, e.g. 21);
+// at and after it, quorum is 60% of GetActiveValidatorCount (however
+// many validators are actually bonded right now).
+//
+// This is a deliberate policy change, not a bug fix -- the original
+// TopK-based quorum (see computeQuorumThreshold's own doc comment,
+// "the locked 60% quorum spec") exists specifically so a thin
+// validator set can't have its governance captured by a small
+// colluding minority: with only 4 active validators today, 60% of
+// them is just 3, which is not a meaningful supermajority. Switching
+// to active-count quorum trades that protection away permanently in
+// exchange for governance actually being able to resolve (Proposal 1
+// and Proposal 2 both resolved FAILED_QUORUM under the TopK rule with
+// only 4 of a TopKSize=21 target bonded) -- this was an explicit,
+// discussed tradeoff, not an oversight.
+//
+// Gated per this project's standing discipline: computeQuorumThreshold
+// is existing, already-exercised decision logic (both real proposals
+// so far have gone through it), so an ungated change risks the exact
+// fresh-replay divergence documented on ParamChangeGovernanceActivationHeight
+// and AmountValidationActivationHeight above -- a node with the old
+// binary and a node with the new one would resolve the same pending
+// proposal differently at the same height.
+//
+// Placeholder height -- Gitty's report that put this fix in motion
+// had the live tip at ~91395, which is already past the 90000 gate
+// used above, so this number is NOT safe to deploy as-is. Confirm the
+// seed's actual live tip immediately before the coordinated
+// fleet-wide binary swap and raise this if the tip is already close,
+// exactly as instructed on ParamChangeGovernanceActivationHeight after
+// 77000 and 80000 were both burned the same way.
+const QuorumActiveValidatorCountActivationHeight int64 = 100_000

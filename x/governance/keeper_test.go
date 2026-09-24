@@ -2,6 +2,7 @@ package governance_test
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"cosmossdk.io/log"
@@ -872,6 +873,9 @@ func TestResolveProposal_AbstainDoesNotCountTowardThresholdRatio(t *testing.T) {
 func TestProcessProposalLifecycle_ComputesQuorumDynamicallyFromTopKSize(t *testing.T) {
 	k, ctx, _, mockPow := setupKeeper(t)
 	mockPow.TopKSize = 21
+	// Default ctx block height is 0, well below
+	// QuorumActiveValidatorCountActivationHeight, so this still
+	// exercises the pre-gate, TopK-based quorum rule.
 
 	proposal := governance.Proposal{
 		Id: 1, Status: governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD,
@@ -884,7 +888,48 @@ func TestProcessProposalLifecycle_ComputesQuorumDynamicallyFromTopKSize(t *testi
 	updated, ok := k.GetProposal(ctx, 1)
 	require.True(t, ok)
 	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_FAILED_QUORUM, updated.Status,
-		"with TopKSize=21, quorum of 13 is required; zero votes must fail quorum")
+		"before the gate, with TopKSize=21, quorum of 13 is required; zero votes must fail quorum")
+}
+
+func TestProcessProposalLifecycle_AfterGateComputesQuorumFromActiveValidatorCount(t *testing.T) {
+	k, ctx, _, mockPow := setupKeeper(t)
+	ctx = ctx.WithBlockHeight(governance.QuorumActiveValidatorCountActivationHeight)
+	mockPow.TopKSize = 21 // must be ignored post-gate
+	for i := 0; i < 4; i++ {
+		mockPow.ActiveValidators[sdk.AccAddress([]byte(fmt.Sprintf("active_validator_%d___", i))).String()] = true
+	}
+
+	proposal := governance.Proposal{
+		Id: 1, Status: governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD,
+		VotingEndTime: ctx.BlockTime().Unix() - 100, // already past
+	}
+	k.SetProposal(ctx, proposal)
+
+	k.ProcessProposalLifecycle(ctx)
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_FAILED_QUORUM, updated.Status,
+		"at/after the gate, with 4 active validators, quorum of 3 is required (not 13 from TopKSize=21); zero votes must still fail quorum")
+}
+
+func TestComputeQuorumThreshold_AfterGateFloorsAtOneWithZeroActiveValidators(t *testing.T) {
+	k, ctx, _, mockPow := setupKeeper(t)
+	ctx = ctx.WithBlockHeight(governance.QuorumActiveValidatorCountActivationHeight)
+	mockPow.TopKSize = 21
+
+	proposal := governance.Proposal{
+		Id: 1, Status: governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD,
+		VotingEndTime: ctx.BlockTime().Unix() - 100,
+	}
+	k.SetProposal(ctx, proposal)
+
+	k.ProcessProposalLifecycle(ctx)
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_FAILED_QUORUM, updated.Status,
+		"zero active validators must floor quorum at 1, not 0 -- a 0-vote proposal must never trivially pass")
 }
 
 // --- Treasury-spend execution (component 6) ---
