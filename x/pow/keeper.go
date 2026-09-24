@@ -311,6 +311,22 @@ func (k Keeper) GetValidatorTenureRatio(ctx sdk.Context, minerAddr sdk.AccAddres
 	return ratio
 }
 
+// GetValidatorEnteredAt returns the real block-time timestamp (unix
+// seconds) this validator last became active, and whether one is
+// recorded at all -- the same underlying value GetValidatorTenureRatio
+// derives its ratio from, exposed directly for display purposes (e.g.
+// "active since").
+func (k Keeper) GetValidatorEnteredAt(ctx sdk.Context, minerAddr sdk.AccAddress) (int64, bool) {
+	store := ctx.KVStore(k.storeKey)
+	entryKey := append(KeyValidatorEnteredAtPrefix, minerAddr.Bytes()...)
+	bz := store.Get(entryKey)
+	if bz == nil {
+		return 0, false
+	}
+	enteredAt := time.Unix(0, int64(sdk.BigEndianToUint64(bz)))
+	return enteredAt.Unix(), true
+}
+
 func (k Keeper) IsActiveValidator(ctx sdk.Context, minerAddr sdk.AccAddress) bool {
 	return ctx.KVStore(k.storeKey).Has(append(KeyActiveValidatorPrefix, minerAddr.Bytes()...))
 }

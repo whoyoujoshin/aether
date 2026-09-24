@@ -3,6 +3,7 @@ package wallet
 import (
 	"context"
 	"strconv"
+	"strings"
 	"fmt"
 	"sort"
 	"encoding/base64"
@@ -318,4 +319,62 @@ type AuxPowInfo struct {
 	ParentHeaderBase64 string
 	CoinbaseTxBase64   string
 	AuxBlockHashBase64 string
+}
+
+// RecentTransaction is a chain-wide (not address-scoped) summary of a
+// real transaction, for a "recent activity" feed.
+type RecentTransaction struct {
+	Hash      string
+	Height    int64
+	Code      uint32
+	MsgType   string // e.g. "MsgSubmitPoW", extracted from the first message's type URL
+	Timestamp string
+}
+
+// msgTypeFromURL turns a proto type URL like
+// "/aether.pow.v1.MsgSubmitPoW" into just "MsgSubmitPoW" -- the part
+// an explorer's viewer actually wants to read, not the full package
+// path.
+func msgTypeFromURL(typeURL string) string {
+	idx := strings.LastIndex(typeURL, ".")
+	if idx == -1 || idx == len(typeURL)-1 {
+		return typeURL
+	}
+	return typeURL[idx+1:]
+}
+
+// GetRecentTransactions returns the most recent real transactions
+// chain-wide, newest first -- not scoped to any one address. Uses the
+// same Cosmos SDK tx service GetTransactionHistory already relies on;
+// "tx.height>0" is a deliberate always-true event filter, since the
+// tx-service query language requires at least one condition and has
+// no dedicated "match everything" syntax.
+func (c *Client) GetRecentTransactions(limit uint64) ([]RecentTransaction, error) {
+	txClient := txtypes.NewServiceClient(c.conn)
+
+	resp, err := txClient.GetTxsEvent(context.Background(), &txtypes.GetTxsEventRequest{
+		Query:   "tx.height>0",
+		OrderBy: txtypes.OrderBy_ORDER_BY_DESC,
+		Limit:   limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to query recent transactions: %w", err)
+	}
+
+	txs := make([]RecentTransaction, 0, len(resp.TxResponses))
+	for i, txResp := range resp.TxResponses {
+		msgType := ""
+		if i < len(resp.Txs) && resp.Txs[i].Body != nil && len(resp.Txs[i].Body.Messages) > 0 {
+			msgType = msgTypeFromURL(resp.Txs[i].Body.Messages[0].TypeUrl)
+		}
+		txs = append(txs, RecentTransaction{
+			Hash:      txResp.TxHash,
+			Height:    txResp.Height,
+			Code:      txResp.Code,
+			MsgType:   msgType,
+			Timestamp: txResp.Timestamp,
+		})
+	}
+
+	return txs, nil
 }

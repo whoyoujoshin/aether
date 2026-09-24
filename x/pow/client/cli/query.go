@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
@@ -28,6 +29,8 @@ func GetQueryCmd() *cobra.Command {
 		GetActiveValidatorsCmd(),
 		GetCurrentEpochCmd(),
 		GetParamsCmd(),
+		GetValidatorInfoCmd(),
+		GetMinerLeaderboardCmd(),
 	)
 
 	return cmd
@@ -177,6 +180,57 @@ func GetParamsCmd() *cobra.Command {
 			}
 			queryClient := pow.NewQueryClient(clientCtx)
 			res, err := queryClient.Params(context.Background(), &pow.QueryParamsRequest{})
+			if err != nil {
+				return err
+			}
+			return clientCtx.PrintProto(res)
+		},
+	}
+	flags.AddQueryFlagsToCmd(cmd)
+	return cmd
+}
+
+func GetValidatorInfoCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "validator-info",
+		Short: "Query real tenure data for every active validator",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+			queryClient := pow.NewQueryClient(clientCtx)
+			res, err := queryClient.ValidatorInfo(context.Background(), &pow.QueryValidatorInfoRequest{})
+			if err != nil {
+				return err
+			}
+			return clientCtx.PrintProto(res)
+		},
+	}
+	flags.AddQueryFlagsToCmd(cmd)
+	return cmd
+}
+
+func GetMinerLeaderboardCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "miner-leaderboard [epoch]",
+		Short: "Query recorded mining work for an epoch, ranked highest-first (defaults to the current epoch)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+			var epoch int64
+			if len(args) == 1 {
+				epoch, err = strconv.ParseInt(args[0], 10, 64)
+				if err != nil {
+					return fmt.Errorf("invalid epoch: %w", err)
+				}
+			}
+			queryClient := pow.NewQueryClient(clientCtx)
+			res, err := queryClient.MinerLeaderboard(context.Background(), &pow.QueryMinerLeaderboardRequest{Epoch: epoch})
 			if err != nil {
 				return err
 			}

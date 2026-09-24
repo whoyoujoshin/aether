@@ -13,6 +13,8 @@ service Query {
   rpc ActiveValidators(QueryActiveValidatorsRequest) returns (QueryActiveValidatorsResponse);
   rpc CurrentEpoch(QueryCurrentEpochRequest) returns (QueryCurrentEpochResponse);
   rpc Params(QueryParamsRequest) returns (QueryParamsResponse);
+  rpc ValidatorInfo(QueryValidatorInfoRequest) returns (QueryValidatorInfoResponse);
+  rpc MinerLeaderboard(QueryMinerLeaderboardRequest) returns (QueryMinerLeaderboardResponse);
 }
 
 message QueryDifficultyRequest {}
@@ -78,4 +80,34 @@ message QueryParamsResponse {
   int64 bond_cooldown = 7;
   int64 recency_window_k = 8;
   int64 beacon_rounds_per_block = 9;
+}
+
+// ValidatorInfo enriches ActiveValidators (a bare address list) with
+// real tenure data for display purposes -- e.g. an explorer's
+// validator-set view.
+message ValidatorInfo {
+  string address = 1;
+  string tenure_ratio = 2;   // 0.0 to 1.0, decimal string; see GetValidatorTenureRatio
+  int64 entered_at_unix = 3; // unix seconds; see GetValidatorEnteredAt
+}
+
+message QueryValidatorInfoRequest {}
+message QueryValidatorInfoResponse {
+  repeated ValidatorInfo validators = 1;
+}
+
+// MinerLeaderboard reports real recorded mining work for one epoch,
+// ranked highest-work-first -- the same ranking ComputeValidatorUpdates
+// itself uses for Top-K selection, exposed read-only for display.
+message MinerLeaderboardEntry {
+  string address = 1;
+  uint64 work = 2;
+}
+
+message QueryMinerLeaderboardRequest {
+  int64 epoch = 1; // 0 means "the current epoch"
+}
+message QueryMinerLeaderboardResponse {
+  int64 epoch = 1;
+  repeated MinerLeaderboardEntry entries = 2;
 }
