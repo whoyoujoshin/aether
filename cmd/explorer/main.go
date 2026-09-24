@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -373,6 +371,31 @@ func handleTx(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toTransactionDetailDTO(detail))
 }
 
+// notFoundInterceptor lets spaFallback ask "would the wrapped handler
+// have 404'd?" without ever constructing a filesystem path from the
+// request itself -- that's left entirely to http.FileServer/http.Dir,
+// which already sanitizes against path traversal. It swallows the
+// 404 response body so callers can substitute their own.
+type notFoundInterceptor struct {
+	http.ResponseWriter
+	notFound bool
+}
+
+func (w *notFoundInterceptor) WriteHeader(status int) {
+	if status == http.StatusNotFound {
+		w.notFound = true
+		return
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *notFoundInterceptor) Write(b []byte) (int, error) {
+	if w.notFound {
+		return len(b), nil
+	}
+	return w.ResponseWriter.Write(b)
+}
+
 // spaFallback serves the file at the requested path when it exists on
 // disk (JS/CSS bundles, images, etc.), and falls back to index.html
 // otherwise -- react-router's client-side routes (e.g. /validators,
@@ -380,20 +403,13 @@ func handleTx(w http.ResponseWriter, r *http.Request) {
 // navigation or page refresh on one of those paths 404s instead of
 // loading the app.
 func spaFallback(staticDir string, fileServer http.Handler) http.Handler {
+	indexPath := filepath.Join(staticDir, "index.html")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Mirror http.Dir.Open's own sanitization: path.Clean on a
-		// leading-"/"-rooted path collapses any ".." segments without
-		// being able to escape above the root, unlike filepath.Clean
-		// on the raw (attacker-controlled) URL path, which can walk
-		// outside staticDir and turn this stat into a path-traversal
-		// probe for files elsewhere on disk.
-		cleaned := path.Clean("/" + r.URL.Path)
-		requested := filepath.Join(staticDir, filepath.FromSlash(cleaned))
-		if info, err := os.Stat(requested); err == nil && !info.IsDir() {
-			fileServer.ServeHTTP(w, r)
-			return
+		nfw := &notFoundInterceptor{ResponseWriter: w}
+		fileServer.ServeHTTP(nfw, r)
+		if nfw.notFound {
+			http.ServeFile(w, r, indexPath)
 		}
-		http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
 	})
 }
 
