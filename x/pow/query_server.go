@@ -1,7 +1,9 @@
 package pow
 
 import (
+	"bytes"
 	"context"
+	"sort"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -97,4 +99,53 @@ func (q queryServer) Params(goCtx context.Context, req *QueryParamsRequest) (*Qu
 		RecencyWindowK:       q.Keeper.GetRecencyWindowK(ctx),
 		BeaconRoundsPerBlock: q.Keeper.GetBeaconRoundsPerBlock(ctx),
 	}, nil
+}
+
+func (q queryServer) ValidatorInfo(goCtx context.Context, req *QueryValidatorInfoRequest) (*QueryValidatorInfoResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	addrs := q.Keeper.IterateActiveValidators(ctx)
+	infos := make([]*ValidatorInfo, 0, len(addrs))
+	for _, addr := range addrs {
+		enteredAt, _ := q.Keeper.GetValidatorEnteredAt(ctx, addr)
+		infos = append(infos, &ValidatorInfo{
+			Address:       addr.String(),
+			TenureRatio:   q.Keeper.GetValidatorTenureRatio(ctx, addr).String(),
+			EnteredAtUnix: enteredAt,
+		})
+	}
+
+	return &QueryValidatorInfoResponse{Validators: infos}, nil
+}
+
+// MinerLeaderboard reports one epoch's recorded work, ranked
+// highest-first using the identical comparator ComputeValidatorUpdates
+// uses for real Top-K selection (work desc, address asc tiebreak) --
+// this is a read-only display of that same real ranking, not a
+// separate one that could disagree with it.
+func (q queryServer) MinerLeaderboard(goCtx context.Context, req *QueryMinerLeaderboardRequest) (*QueryMinerLeaderboardResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	epoch := req.Epoch
+	if epoch == 0 {
+		epoch = q.Keeper.CurrentEpoch(ctx)
+	}
+
+	work := q.Keeper.IterateEpochWork(ctx, epoch)
+	sort.Slice(work, func(i, j int) bool {
+		if work[i].Work != work[j].Work {
+			return work[i].Work > work[j].Work
+		}
+		return bytes.Compare(work[i].MinerAddr.Bytes(), work[j].MinerAddr.Bytes()) < 0
+	})
+
+	entries := make([]*MinerLeaderboardEntry, 0, len(work))
+	for _, w := range work {
+		entries = append(entries, &MinerLeaderboardEntry{
+			Address: w.MinerAddr.String(),
+			Work:    w.Work,
+		})
+	}
+
+	return &QueryMinerLeaderboardResponse{Epoch: epoch, Entries: entries}, nil
 }

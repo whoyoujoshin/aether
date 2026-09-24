@@ -3,6 +3,7 @@ package pow_test
 import (
 	"testing"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/whoyoujoshin/aether/x/pow"
@@ -44,4 +45,58 @@ func TestQueryParams_FallsBackToDefaultsWhenNothingSet(t *testing.T) {
 	require.Equal(t, params.BondCooldown, resp.BondCooldown)
 	require.Equal(t, params.RecencyWindowK, resp.RecencyWindowK)
 	require.Equal(t, params.BeaconRoundsPerBlock, resp.BeaconRoundsPerBlock)
+}
+
+func TestQueryValidatorInfo_ReportsRealTenureData(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	addr := sdk.AccAddress("validator_info_test___")
+	k.SetActiveValidator(ctx, addr)
+
+	q := pow.NewQueryServerImpl(k)
+	resp, err := q.ValidatorInfo(ctx, &pow.QueryValidatorInfoRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Validators, 1)
+	require.Equal(t, addr.String(), resp.Validators[0].Address)
+	require.NotZero(t, resp.Validators[0].EnteredAtUnix)
+}
+
+func TestQueryValidatorInfo_EmptyActiveSetReturnsEmptyList(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+
+	q := pow.NewQueryServerImpl(k)
+	resp, err := q.ValidatorInfo(ctx, &pow.QueryValidatorInfoRequest{})
+	require.NoError(t, err)
+	require.Empty(t, resp.Validators)
+}
+
+func TestQueryMinerLeaderboard_RanksHighestWorkFirst(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	epoch := k.CurrentEpoch(ctx)
+
+	low := sdk.AccAddress("leaderboard_low_worker")
+	high := sdk.AccAddress("leaderboard_high_worke")
+	k.AddMiningWork(ctx, epoch, low, 10)
+	k.AddMiningWork(ctx, epoch, high, 50)
+
+	q := pow.NewQueryServerImpl(k)
+	resp, err := q.MinerLeaderboard(ctx, &pow.QueryMinerLeaderboardRequest{})
+	require.NoError(t, err)
+	require.Equal(t, epoch, resp.Epoch)
+	require.Len(t, resp.Entries, 2)
+	require.Equal(t, high.String(), resp.Entries[0].Address)
+	require.Equal(t, uint64(50), resp.Entries[0].Work)
+	require.Equal(t, low.String(), resp.Entries[1].Address)
+}
+
+func TestQueryMinerLeaderboard_ExplicitEpochOverridesCurrent(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	addr := sdk.AccAddress("leaderboard_past_epoch")
+	k.AddMiningWork(ctx, 5, addr, 30)
+
+	q := pow.NewQueryServerImpl(k)
+	resp, err := q.MinerLeaderboard(ctx, &pow.QueryMinerLeaderboardRequest{Epoch: 5})
+	require.NoError(t, err)
+	require.Equal(t, int64(5), resp.Epoch)
+	require.Len(t, resp.Entries, 1)
+	require.Equal(t, addr.String(), resp.Entries[0].Address)
 }

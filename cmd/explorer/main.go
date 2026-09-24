@@ -1,13 +1,17 @@
 // cmd/explorer/main.go
 //
-// A minimal, read-only block explorer dashboard for Aether. Queries
-// real chain state via gRPC (x/pow, x/governance, bank) and CometBFT
-// RPC (latest height), rendering a simple server-side HTML page on
-// each request -- no caching needed at this scale, no JavaScript
-// framework, no client-side build step.
+// A read-only JSON API for Aether's block explorer frontend
+// (explorer-web/). Queries real chain state via gRPC (x/pow,
+// x/governance, bank) and CometBFT RPC (latest height) on every
+// request -- no caching at this scale.
+//
+// This used to render server-side HTML directly; that moved to a real
+// React frontend (see explorer-web/README.md), so this binary's only
+// job now is serving JSON.
 //
 // Usage:
-//   go run ./cmd/explorer --grpc localhost:9090 --rpc http://localhost:26657 --port 8081
+//
+//	go run ./cmd/explorer --grpc localhost:9090 --rpc http://localhost:26657 --port 8081
 package main
 
 import (
@@ -15,21 +19,21 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
-	"net/url"
 	"strings"
 
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
 	"github.com/whoyoujoshin/aether/app"
+	"github.com/whoyoujoshin/aether/wallet"
 	"github.com/whoyoujoshin/aether/x/governance"
 	"github.com/whoyoujoshin/aether/x/pow"
-	"github.com/whoyoujoshin/aether/wallet"
 )
 
 func init() {
@@ -41,98 +45,31 @@ var (
 	rpcEndpoint  string
 )
 
-type dashboardData struct {
-	LatestHeight     int64
-	Difficulty       string
-	BlockReward      string
-	CurrentEpoch     int64
-	ActiveValidators []string
-	TreasuryBalance  string
-	Proposals        []*governance.Proposal
-	GovParams        *governance.QueryParamsResponse
-	Error            string
+// --- shared helpers ---
+
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
 }
 
-const dashboardTemplate = `
-<!DOCTYPE html>
-<html>
-<head>
-	<title>Aether Explorer</title>
-	<meta charset="utf-8">
-	<style>
-		body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #0b0e14; color: #e0e0e0; }
-		h1 { color: #7fd1ff; }
-		h2 { color: #9fe3a0; margin-top: 40px; border-bottom: 1px solid #333; padding-bottom: 6px; }
-		table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-		td, th { padding: 6px 10px; text-align: left; border-bottom: 1px solid #222; }
-		.stat-label { color: #888; }
-		.stat-value { font-weight: bold; color: #fff; }
-		.address { font-family: monospace; font-size: 0.85em; color: #7fd1ff; word-break: break-all; }
-		.error { color: #ff6b6b; background: #2a1515; padding: 10px; border-radius: 4px; }
-		.empty { color: #666; font-style: italic; }
-	</style>
-</head>
-<body>
-	<h1>⚡ Aether Explorer</h1>
-	<form action="/search" method="get" style="margin: 20px 0;">
-		<input type="text" name="q" placeholder="aether1... or a tx hash" style="width: 400px; padding: 8px; background: #14181f; border: 1px solid #333; color: #e0e0e0; border-radius: 4px;">
-		<button type="submit" style="padding: 8px 16px; background: #7fd1ff; border: none; border-radius: 4px; cursor: pointer;">Search</button>
-	</form>
-	{{if .Error}}
-	<div class="error">{{.Error}}</div>
-	{{end}}
+func writeError(w http.ResponseWriter, status int, err error) {
+	writeJSON(w, status, map[string]string{"error": err.Error()})
+}
 
-	<h2>Chain Status</h2>
-	<table>
-		<tr><td class="stat-label">Latest Height</td><td class="stat-value">{{.LatestHeight}}</td></tr>
-		<tr><td class="stat-label">Current Difficulty</td><td class="stat-value">{{.Difficulty}}</td></tr>
-		<tr><td class="stat-label">Current Block Reward</td><td class="stat-value">{{.BlockReward}}</td></tr>
-		<tr><td class="stat-label">Current Epoch</td><td class="stat-value">{{.CurrentEpoch}}</td></tr>
-		<tr><td class="stat-label">Treasury Balance</td><td class="stat-value">{{.TreasuryBalance}}</td></tr>
-	</table>
-
-	<h2>Active Validators ({{len .ActiveValidators}})</h2>
-	{{if .ActiveValidators}}
-	<table>
-		{{range .ActiveValidators}}
-		<tr><td class="address">{{.}}</td></tr>
-		{{end}}
-	</table>
-	{{else}}
-	<p class="empty">No active validators.</p>
-	{{end}}
-
-	<h2>Governance</h2>
-	{{if .GovParams}}
-	<table>
-		<tr><td class="stat-label">Min Deposit</td><td class="stat-value">{{.GovParams.MinDeposit}} uaeth</td></tr>
-		<tr><td class="stat-label">Deposit Period</td><td class="stat-value">{{.GovParams.DepositPeriod}}s</td></tr>
-		<tr><td class="stat-label">Voting Period</td><td class="stat-value">{{.GovParams.VotingPeriod}}s</td></tr>
-	</table>
-	{{end}}
-
-	<h3>Proposals ({{len .Proposals}})</h3>
-	{{if .Proposals}}
-	<table>
-		<tr><th>ID</th><th>Status</th><th>Recipient</th><th>Amount</th><th>Deposit</th></tr>
-		{{range .Proposals}}
-		<tr>
-			<td>{{.Id}}</td>
-			<td>{{.Status}}</td>
-			<td class="address">{{.Recipient}}</td>
-			<td>{{.Amount}}</td>
-			<td>{{.TotalDeposit}} uaeth</td>
-		</tr>
-		{{end}}
-	</table>
-	{{else}}
-	<p class="empty">No proposals yet.</p>
-	{{end}}
-
-	<p style="margin-top:40px;color:#555;font-size:0.8em;">Refreshes on reload. Not a substitute for a full audited explorer -- read-only view of real chain state.</p>
-</body>
-</html>
-`
+func withCORS(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		h(w, r)
+	}
+}
 
 func fetchLatestHeight(rpcAddr string) (int64, error) {
 	resp, err := http.Get(rpcAddr + "/status")
@@ -154,184 +91,249 @@ func fetchLatestHeight(rpcAddr string) (int64, error) {
 	return strconv.ParseInt(status.Result.SyncInfo.LatestBlockHeight, 10, 64)
 }
 
-func buildDashboard() dashboardData {
-	data := dashboardData{}
+// --- GET /api/stats ---
 
+type statsResponse struct {
+	LatestHeight    int64  `json:"latestHeight"`
+	Difficulty      string `json:"difficulty"`
+	BlockReward     string `json:"blockReward"`
+	CurrentEpoch    int64  `json:"currentEpoch"`
+	TreasuryBalance string `json:"treasuryBalance"`
+}
+
+func handleStats(w http.ResponseWriter, r *http.Request) {
 	height, err := fetchLatestHeight(rpcEndpoint)
 	if err != nil {
-		data.Error = fmt.Sprintf("failed to fetch latest height: %v", err)
-		return data
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to fetch latest height: %w", err))
+		return
 	}
-	data.LatestHeight = height
 
 	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		data.Error = fmt.Sprintf("failed to connect to gRPC server: %v", err)
-		return data
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to connect to gRPC server: %w", err))
+		return
 	}
 	defer conn.Close()
 
 	ctx := context.Background()
+	resp := statsResponse{LatestHeight: height}
 
 	powClient := pow.NewQueryClient(conn)
 	if diffResp, err := powClient.Difficulty(ctx, &pow.QueryDifficultyRequest{}); err == nil {
-		data.Difficulty = diffResp.Difficulty
+		resp.Difficulty = diffResp.Difficulty
 	}
 	if rewardResp, err := powClient.BlockReward(ctx, &pow.QueryBlockRewardRequest{}); err == nil {
-		data.BlockReward = rewardResp.BlockReward
+		resp.BlockReward = rewardResp.BlockReward
 	}
 	if epochResp, err := powClient.CurrentEpoch(ctx, &pow.QueryCurrentEpochRequest{}); err == nil {
-		data.CurrentEpoch = epochResp.Epoch
-	}
-	if valResp, err := powClient.ActiveValidators(ctx, &pow.QueryActiveValidatorsRequest{}); err == nil {
-		data.ActiveValidators = valResp.Validators
-	}
-
-	govClient := governance.NewQueryClient(conn)
-	if propResp, err := govClient.Proposals(ctx, &governance.QueryProposalsRequest{}); err == nil {
-		data.Proposals = propResp.Proposals
-	}
-	if paramsResp, err := govClient.Params(ctx, &governance.QueryParamsRequest{}); err == nil {
-		data.GovParams = paramsResp
+		resp.CurrentEpoch = epochResp.Epoch
 	}
 
 	bankClient := banktypes.NewQueryClient(conn)
 	treasuryAddr := authtypes.NewModuleAddress("treasury")
 	if balResp, err := bankClient.AllBalances(ctx, &banktypes.QueryAllBalancesRequest{Address: treasuryAddr.String()}); err == nil {
 		if len(balResp.Balances) > 0 {
-			data.TreasuryBalance = balResp.Balances.String()
+			resp.TreasuryBalance = balResp.Balances.String()
 		} else {
-			data.TreasuryBalance = "0uaeth"
+			resp.TreasuryBalance = "0uaeth"
 		}
 	}
 
-	return data
+	writeJSON(w, http.StatusOK, resp)
 }
 
-const addressTemplate = `
-<!DOCTYPE html>
-<html><head><title>Aether Explorer — Address</title><meta charset="utf-8">
-<style>
-	body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #0b0e14; color: #e0e0e0; }
-	h1 { color: #7fd1ff; }
-	table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-	td, th { padding: 6px 10px; text-align: left; border-bottom: 1px solid #222; }
-	.address { font-family: monospace; font-size: 0.85em; color: #7fd1ff; word-break: break-all; }
-	.error { color: #ff6b6b; background: #2a1515; padding: 10px; border-radius: 4px; }
-	a { color: #7fd1ff; }
-</style></head>
-<body>
-	<a href="/">← back to dashboard</a>
-	<h1>Address</h1>
-	<p class="address">{{.Address}}</p>
-	{{if .Error}}<div class="error">{{.Error}}</div>{{else}}
-	<h2>Balance: {{.Balance}} uaeth</h2>
-	<h3>Transactions ({{len .Transactions}})</h3>
-	<table>
-		<tr><th>Direction</th><th>Amount</th><th>Height</th><th>Hash</th></tr>
-		{{range .Transactions}}
-		<tr>
-			<td>{{.Direction}}</td>
-			<td>{{.Amount}}</td>
-			<td>{{.Height}}</td>
-			<td><a href="/tx?hash={{.Hash}}">{{.Hash}}</a></td>
-		</tr>
-		{{end}}
-	</table>
-	{{end}}
-</body></html>
-`
+// --- GET /api/validators ---
 
-const txTemplate = `
-<!DOCTYPE html>
-<html><head><title>Aether Explorer — Transaction</title><meta charset="utf-8">
-<style>
-	body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #0b0e14; color: #e0e0e0; }
-	h1 { color: #7fd1ff; }
-	table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-	td, th { padding: 6px 10px; text-align: left; border-bottom: 1px solid #222; }
-	.address { font-family: monospace; font-size: 0.85em; color: #7fd1ff; word-break: break-all; }
-	.error { color: #ff6b6b; background: #2a1515; padding: 10px; border-radius: 4px; }
-	.success { color: #9fe3a0; }
-	.failure { color: #ff6b6b; }
-	form { margin: 20px 0; }
-	input { width: 400px; padding: 8px; background: #14181f; border: 1px solid #333; color: #e0e0e0; border-radius: 4px; }
-	button { padding: 8px 16px; background: #7fd1ff; border: none; border-radius: 4px; cursor: pointer; }
-	a { color: #7fd1ff; }
-</style></head>
-<body>
-	<a href="/">← back to dashboard</a>
-	<h1>Transaction</h1>
-	<form action="/tx" method="get">
-		<input type="text" name="hash" placeholder="transaction hash" value="{{.Hash}}">
-		<button type="submit">Look up</button>
-	</form>
-	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
-	{{if .Detail}}
-	<table>
-		<tr><td>Status</td><td class="{{if eq .Detail.Code 0}}success{{else}}failure{{end}}">{{if eq .Detail.Code 0}}Success{{else}}Failed (code {{.Detail.Code}}){{end}}</td></tr>
-		<tr><td>Height</td><td>{{.Detail.Height}}</td></tr>
-		<tr><td>Gas used / wanted</td><td>{{.Detail.GasUsed}} / {{.Detail.GasWanted}}</td></tr>
-		<tr><td>Timestamp</td><td>{{.Detail.Timestamp}}</td></tr>
-		{{if .Detail.RawLog}}<tr><td>Error</td><td>{{.Detail.RawLog}}</td></tr>{{end}}
-	</table>
-		</table>
-	<h3>Transfers ({{len .Detail.Transfers}})</h3>
-	<table>
-		<tr><th>From</th><th>To</th><th>Amount</th></tr>
-		{{range .Detail.Transfers}}
-		<tr>
-			<td class="address"><a href="/address?addr={{.From}}">{{.From}}</a></td>
-			<td class="address"><a href="/address?addr={{.To}}">{{.To}}</a></td>
-			<td>{{.Amount}}</td>
-		</tr>
-		{{end}}
-		</table>
-	{{if .Detail.AuxPow}}
-	<h3>AuxPoW (merged-mining) data</h3>
-	<table>
-		<tr><td>Parent header (base64)</td><td style="word-break: break-all;">{{.Detail.AuxPow.ParentHeaderBase64}}</td></tr>
-		<tr><td>Coinbase tx (base64)</td><td style="word-break: break-all;">{{.Detail.AuxPow.CoinbaseTxBase64}}</td></tr>
-		<tr><td>Aux block hash (base64)</td><td style="word-break: break-all;">{{.Detail.AuxPow.AuxBlockHashBase64}}</td></tr>
-	</table>
-	{{end}}
-	{{end}}
-</body></html>
-`
+func handleValidators(w http.ResponseWriter, r *http.Request) {
+	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	defer conn.Close()
 
-type addressPageData struct {
-	Address      string
-	Balance      string
-	Transactions []wallet.Transaction
-	Error        string
+	powClient := pow.NewQueryClient(conn)
+	resp, err := powClient.ValidatorInfo(context.Background(), &pow.QueryValidatorInfoRequest{})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toValidatorInfoDTOs(resp.Validators))
 }
 
-// handleSearch inspects a single, shared search box's input and routes
-// to the correct existing handler -- an address (starting with the
-// real bech32 prefix) or a transaction hash (a hex string) -- rather
-// than forcing the user to know which page to use themselves.
+// --- GET /api/leaderboard?epoch= ---
+
+func handleLeaderboard(w http.ResponseWriter, r *http.Request) {
+	var epoch int64
+	if q := r.URL.Query().Get("epoch"); q != "" {
+		parsed, err := strconv.ParseInt(q, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid epoch %q", q))
+			return
+		}
+		epoch = parsed
+	}
+
+	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	defer conn.Close()
+
+	powClient := pow.NewQueryClient(conn)
+	resp, err := powClient.MinerLeaderboard(context.Background(), &pow.QueryMinerLeaderboardRequest{Epoch: epoch})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// --- GET /api/proposals ---
+
+func handleProposals(w http.ResponseWriter, r *http.Request) {
+	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	defer conn.Close()
+
+	govClient := governance.NewQueryClient(conn)
+	resp, err := govClient.Proposals(context.Background(), &governance.QueryProposalsRequest{})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toProposalDTOs(resp.Proposals))
+}
+
+// --- GET /api/proposals/tally?id= ---
+
+func handleProposalTally(w http.ResponseWriter, r *http.Request) {
+	idStr := r.URL.Query().Get("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid proposal id %q", idStr))
+		return
+	}
+
+	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	defer conn.Close()
+
+	govClient := governance.NewQueryClient(conn)
+	ctx := context.Background()
+
+	tally, err := govClient.Tally(ctx, &governance.QueryTallyRequest{ProposalId: id})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	votes, err := govClient.Votes(ctx, &governance.QueryVotesRequest{ProposalId: id})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"tally": toTallyDTO(tally),
+		"votes": toVoteDTOs(votes.Votes),
+	})
+}
+
+// --- GET /api/recent-transactions?limit= ---
+
+func handleRecentTransactions(w http.ResponseWriter, r *http.Request) {
+	limit := uint64(20)
+	if q := r.URL.Query().Get("limit"); q != "" {
+		parsed, err := strconv.ParseUint(q, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid limit %q", q))
+			return
+		}
+		limit = parsed
+	}
+
+	client, err := wallet.NewClient(grpcEndpoint)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	defer client.Close()
+
+	txs, err := client.GetRecentTransactions(limit)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toRecentTransactionDTOs(txs))
+}
+
+// --- GET /api/address?addr= ---
+
+type addressResponse struct {
+	Address      string           `json:"address"`
+	Balance      string           `json:"balance"`
+	Transactions []transactionDTO `json:"transactions"`
+}
+
+func handleAddress(w http.ResponseWriter, r *http.Request) {
+	addr := r.URL.Query().Get("addr")
+	if addr == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("missing 'addr' query parameter"))
+		return
+	}
+
+	client, err := wallet.NewClient(grpcEndpoint)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	defer client.Close()
+
+	balance, err := client.GetBalance(addr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("failed to fetch balance (is this a valid address?): %w", err))
+		return
+	}
+
+	txs, err := client.GetTransactionHistory(addr, 20)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to fetch transaction history: %w", err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, addressResponse{
+		Address:      addr,
+		Balance:      balance.AmountOf("uaeth").String(),
+		Transactions: toTransactionDTOs(txs),
+	})
+}
+
+// --- GET /api/tx?hash= ---
+
+// handleSearch inspects a single, shared search box's input and
+// reports which kind of page it resolves to -- an address (real
+// bech32 prefix) or a transaction hash (hex string) -- so the frontend
+// can navigate client-side rather than the backend issuing a redirect.
 func handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-
-	// Empty or whitespace-only input isn't a real search at all --
-	// send back to the dashboard rather than attempting any lookup
-	// and surfacing a raw, unfriendly RPC decode error.
 	if q == "" {
-		http.Redirect(w, r, "/", http.StatusFound)
+		writeError(w, http.StatusBadRequest, fmt.Errorf("empty query"))
 		return
 	}
 
 	if strings.HasPrefix(q, "aether1") {
-		http.Redirect(w, r, "/address?addr="+url.QueryEscape(q), http.StatusFound)
+		writeJSON(w, http.StatusOK, map[string]string{"kind": "address", "value": q})
 		return
 	}
 
-	// A leading 0x/0X prefix is a common convention from
-	// Ethereum-style tooling; strip it before checking hex-ness and
-	// before passing the value along, since real Aether tx hashes
-	// (matching Cosmos SDK convention) are plain, unprefixed hex.
 	hexCandidate := strings.TrimPrefix(strings.TrimPrefix(q, "0x"), "0X")
-
 	isHex := len(hexCandidate) >= 32
 	for _, c := range hexCandidate {
 		if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
@@ -340,79 +342,83 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if isHex {
-		http.Redirect(w, r, "/tx?hash="+url.QueryEscape(hexCandidate), http.StatusFound)
+		writeJSON(w, http.StatusOK, map[string]string{"kind": "tx", "value": hexCandidate})
 		return
 	}
 
-	// Doesn't clearly look like either -- fall back to the address
-	// page, which already produces a clear, honest error message
-	// rather than silently guessing wrong.
-	http.Redirect(w, r, "/address?addr="+url.QueryEscape(q), http.StatusFound)
+	writeJSON(w, http.StatusOK, map[string]string{"kind": "address", "value": q})
 }
 
-func buildAddressPage(addr string) addressPageData {
-	data := addressPageData{Address: addr}
-
-	client, err := wallet.NewClient(grpcEndpoint)
-	if err != nil {
-		data.Error = fmt.Sprintf("failed to connect: %v", err)
-		return data
-	}
-	defer client.Close()
-
-	balance, err := client.GetBalance(addr)
-	if err != nil {
-		data.Error = fmt.Sprintf("failed to fetch balance (is this a valid address?): %v", err)
-		return data
-	}
-	data.Balance = balance.AmountOf("uaeth").String()
-
-	txs, err := client.GetTransactionHistory(addr, 20)
-	if err != nil {
-		data.Error = fmt.Sprintf("failed to fetch transaction history: %v", err)
-		return data
-	}
-	data.Transactions = txs
-
-	return data
-}
-
-type txPageData struct {
-	Hash   string
-	Detail *wallet.TransactionDetail
-	Error  string
-}
-
-func buildTxPage(hash string) txPageData {
-	data := txPageData{Hash: hash}
+func handleTx(w http.ResponseWriter, r *http.Request) {
+	hash := r.URL.Query().Get("hash")
 	if hash == "" {
-		return data
+		writeError(w, http.StatusBadRequest, fmt.Errorf("missing 'hash' query parameter"))
+		return
 	}
 
 	client, err := wallet.NewClient(grpcEndpoint)
 	if err != nil {
-		data.Error = fmt.Sprintf("failed to connect: %v", err)
-		return data
+		writeError(w, http.StatusBadGateway, err)
+		return
 	}
 	defer client.Close()
 
 	detail, err := client.GetTransactionByHash(hash)
 	if err != nil {
-		data.Error = fmt.Sprintf("transaction not found: %v", err)
-		return data
+		writeError(w, http.StatusNotFound, fmt.Errorf("transaction not found: %w", err))
+		return
 	}
-	data.Detail = detail
+	writeJSON(w, http.StatusOK, toTransactionDetailDTO(detail))
+}
 
-	return data
+// notFoundInterceptor lets spaFallback ask "would the wrapped handler
+// have 404'd?" without ever constructing a filesystem path from the
+// request itself -- that's left entirely to http.FileServer/http.Dir,
+// which already sanitizes against path traversal. It swallows the
+// 404 response body so callers can substitute their own.
+type notFoundInterceptor struct {
+	http.ResponseWriter
+	notFound bool
+}
+
+func (w *notFoundInterceptor) WriteHeader(status int) {
+	if status == http.StatusNotFound {
+		w.notFound = true
+		return
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *notFoundInterceptor) Write(b []byte) (int, error) {
+	if w.notFound {
+		return len(b), nil
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+// spaFallback serves the file at the requested path when it exists on
+// disk (JS/CSS bundles, images, etc.), and falls back to index.html
+// otherwise -- react-router's client-side routes (e.g. /validators,
+// /tx/:hash) have no matching file, so without this a direct
+// navigation or page refresh on one of those paths 404s instead of
+// loading the app.
+func spaFallback(staticDir string, fileServer http.Handler) http.Handler {
+	indexPath := filepath.Join(staticDir, "index.html")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nfw := &notFoundInterceptor{ResponseWriter: w}
+		fileServer.ServeHTTP(nfw, r)
+		if nfw.notFound {
+			http.ServeFile(w, r, indexPath)
+		}
+	})
 }
 
 func main() {
 	flag.StringVar(&grpcEndpoint, "grpc", "localhost:9090", "node gRPC endpoint")
 	flag.StringVar(&rpcEndpoint, "rpc", "http://localhost:26657", "node CometBFT RPC endpoint")
-	port := flag.String("port", "8081", "HTTP port to serve the dashboard on")
+	port := flag.String("port", "8081", "HTTP port to serve the API on")
+	staticDir := flag.String("static", "", "optional path to explorer-web's built static assets to serve alongside the API")
 	flag.Parse()
-
-	tmpl := template.Must(template.New("dashboard").Parse(dashboardTemplate))
 
 	// Deliberately use our own dedicated mux, never the shared global
 	// http.DefaultServeMux -- the same real issue found live in the
@@ -423,38 +429,27 @@ func main() {
 	// endpoints to the internet.
 	mux := http.NewServeMux()
 
-mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-	data := buildDashboard()
-	if err := tmpl.Execute(w, data); err != nil {
-			log.Printf("template execution error: %v", err)
-		}
-	})
+	mux.HandleFunc("/api/stats", withCORS(handleStats))
+	mux.HandleFunc("/api/validators", withCORS(handleValidators))
+	mux.HandleFunc("/api/leaderboard", withCORS(handleLeaderboard))
+	mux.HandleFunc("/api/proposals", withCORS(handleProposals))
+	mux.HandleFunc("/api/proposals/tally", withCORS(handleProposalTally))
+	mux.HandleFunc("/api/recent-transactions", withCORS(handleRecentTransactions))
+	mux.HandleFunc("/api/address", withCORS(handleAddress))
+	mux.HandleFunc("/api/tx", withCORS(handleTx))
+	mux.HandleFunc("/api/search", withCORS(handleSearch))
 
-mux.HandleFunc("/search", handleSearch)
-
-mux.HandleFunc("/address", func(w http.ResponseWriter, r *http.Request) {
-	addr := r.URL.Query().Get("addr")
-	data := buildAddressPage(addr)
-	tmpl := template.Must(template.New("address").Parse(addressTemplate))
-	if err := tmpl.Execute(w, data); err != nil {
-		log.Printf("template execution error: %v", err)
+	// Optional: serve explorer-web's built static assets from the same
+	// process/port, so production deploys are a single binary + one
+	// static directory rather than two separately-run servers. In dev,
+	// leave --static unset and run explorer-web's own Vite dev server
+	// (which proxies /api to this process) instead.
+	if *staticDir != "" {
+		fileServer := http.FileServer(http.Dir(*staticDir))
+		mux.Handle("/", spaFallback(*staticDir, fileServer))
 	}
-})
-
-mux.HandleFunc("/tx", func(w http.ResponseWriter, r *http.Request) {
-	hash := r.URL.Query().Get("hash")
-	data := buildTxPage(hash)
-	tmpl := template.Must(template.New("tx").Parse(txTemplate))
-	if err := tmpl.Execute(w, data); err != nil {
-		log.Printf("template execution error: %v", err)
-	}
-})
 
 	addr := ":" + *port
-	log.Printf("Aether explorer listening on %s (querying gRPC %s, RPC %s)", addr, grpcEndpoint, rpcEndpoint)
+	log.Printf("Aether explorer API listening on %s (querying gRPC %s, RPC %s)", addr, grpcEndpoint, rpcEndpoint)
 	log.Fatal(http.ListenAndServe(addr, mux))
 }
