@@ -22,6 +22,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -380,7 +381,14 @@ func handleTx(w http.ResponseWriter, r *http.Request) {
 // loading the app.
 func spaFallback(staticDir string, fileServer http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requested := filepath.Join(staticDir, filepath.Clean(r.URL.Path))
+		// Mirror http.Dir.Open's own sanitization: path.Clean on a
+		// leading-"/"-rooted path collapses any ".." segments without
+		// being able to escape above the root, unlike filepath.Clean
+		// on the raw (attacker-controlled) URL path, which can walk
+		// outside staticDir and turn this stat into a path-traversal
+		// probe for files elsewhere on disk.
+		cleaned := path.Clean("/" + r.URL.Path)
+		requested := filepath.Join(staticDir, filepath.FromSlash(cleaned))
 		if info, err := os.Stat(requested); err == nil && !info.IsDir() {
 			fileServer.ServeHTTP(w, r)
 			return
