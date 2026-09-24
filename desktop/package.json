@@ -11,7 +11,7 @@
   },
   "devDependencies": {
     "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.aether.paydesktop",
@@ -24,7 +24,9 @@
       {
         "from": "resources/${os}-${arch}",
         "to": "backend",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "../web/aether-pay-desktop.html",
