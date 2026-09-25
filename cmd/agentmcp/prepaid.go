@@ -151,6 +151,10 @@ func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req pay
 		}
 		stateMu.Unlock()
 	}
+	if sent.Status == statusPendingApproval {
+		return fetchPaidOutput{Status: "approval_pending", ApprovalID: sent.ApprovalID, Message: sent.Message,
+			Payment: &fetchPaymentDTO{Scheme: paywall.SchemePrepaid, Amount: newAmountDTO(depAmount), PayTo: req.PayTo}}, nil
+	}
 	if sent.Status == statusFailed {
 		forget()
 		e := newError(sent.ErrorCode, "the deposit was rejected: "+sent.Message)

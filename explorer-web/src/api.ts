@@ -144,6 +144,24 @@ export interface BlockDetail {
   txHashes: string[];
 }
 
+export interface ServiceListing {
+  name: string;
+  description: string;
+  url: string;
+  price: string;
+  priceAeth: string;
+  schemes: string[];
+  minDeposit?: string;
+  payTo: string;
+  listedAtHeight: number;
+  txHash: string;
+}
+
+export interface ServiceDirectory {
+  directoryAddress: string;
+  services: ServiceListing[];
+}
+
 export const api = {
   stats: () => getJSON<Stats>("/api/stats"),
   validators: () => getJSON<ValidatorInfo[]>("/api/validators"),
@@ -158,4 +176,5 @@ export const api = {
   search: (q: string) => getJSON<SearchResult>(`/api/search?q=${encodeURIComponent(q)}`),
   blocks: () => getJSON<BlockSummary[]>("/api/blocks"),
   block: (height: number) => getJSON<BlockDetail>(`/api/block?height=${height}`),
+  services: () => getJSON<ServiceDirectory>("/api/services"),
 };

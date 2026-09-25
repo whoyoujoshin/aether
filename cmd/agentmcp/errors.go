@@ -48,7 +48,10 @@ const (
 	codePaymentPending         = "PAYMENT_PENDING"
 	codePaymentRejected        = "PAYMENT_REJECTED"
 	codePaymentAlreadyRedeemed = "PAYMENT_ALREADY_REDEEMED"
-	codeInternal               = "INTERNAL"
+	// announce_service
+	codeServiceUnverifiable = "SERVICE_UNVERIFIABLE"
+	codeApprovalRejected    = "APPROVAL_REJECTED"
+	codeInternal            = "INTERNAL"
 )
 
 var retryableCodes = map[string]bool{

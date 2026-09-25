@@ -47,7 +47,7 @@ func TestProxy_UpstreamSeesPayerOnlyWhenPaid(t *testing.T) {
 	})
 	require.NoError(t, err)
 	proxy := newProxy(target)
-	srv := httptest.NewServer(newHandler(proxy, pw.Middleware(withPayerHeaders(proxy)), []string{"/health"}))
+	srv := httptest.NewServer(newHandler(proxy, pw.Middleware(withPayerHeaders(proxy)), []string{"/health"}, pw.ManifestHandler("Test", "d")))
 	defer srv.Close()
 
 	do := func(path string, h map[string]string) *http.Response {
@@ -62,9 +62,15 @@ func TestProxy_UpstreamSeesPayerOnlyWhenPaid(t *testing.T) {
 		return resp
 	}
 
+	// The manifest is free and describes the service.
+	seen = nil
+	resp := do(paywall.ManifestPath, nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Nil(t, seen, "the manifest is served by the proxy, not upstream")
+
 	// A client can't claim to have paid by setting the headers itself.
 	seen = nil
-	resp := do("/health", map[string]string{headerPayer: "liar"})
+	resp = do("/health", map[string]string{headerPayer: "liar"})
 	require.Equal(t, http.StatusOK, resp.StatusCode, "free paths skip payment")
 	require.Empty(t, seen.Get(headerPayer))
 

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/whoyoujoshin/aether/app"
+	"github.com/whoyoujoshin/aether/directory"
 	"github.com/whoyoujoshin/aether/paywall"
 	"github.com/whoyoujoshin/aether/wallet"
 )
@@ -38,7 +39,9 @@ func main() {
 	price := flag.String("price", "", `price per request with its unit, e.g. "0.01 AETH" (required)`)
 	grpcEndpoint := flag.String("grpc", "localhost:9090", "node gRPC endpoint used to verify payments")
 	chainID := flag.String("chain-id", "aether-testnet-1", "chain ID payments must be on")
-	description := flag.String("description", "", "what a payment buys, shown to payers")
+	description := flag.String("description", "", "what a payment buys, shown to payers and in the service directory")
+	name := flag.String("name", "", "the service's name in its manifest and the service directory")
+	publicURL := flag.String("public-url", "", "the URL clients reach this proxy at; prints how to list it in the service directory")
 	free := flag.String("free", "", "comma-separated path prefixes served without payment, e.g. /health,/docs")
 	ttl := flag.Duration("invoice-ttl", 24*time.Hour, "how long a payer has to pay an invoice and present the payment")
 	prepaidLedger := flag.String("prepaid-ledger", "", "file holding prepaid balances; setting it also offers the aether-prepaid scheme (deposit once, then pay per request instantly -- for agents)")
@@ -92,9 +95,17 @@ func main() {
 		}
 	}
 
-	handler := newHandler(proxy, paid, freePrefixes)
+	handler := newHandler(proxy, paid, freePrefixes, pw.ManifestHandler(*name, *description))
 
 	log.Printf("paywall: %s AETH per request to %s, proxying %s on %s", wallet.FormatAeth(amount), *payTo, target, *listen)
+	if *publicURL != "" {
+		u, err := directory.NormalizeURL(*publicURL)
+		if err != nil {
+			log.Fatalf("invalid --public-url: %v", err)
+		}
+		log.Printf("paywall: to list this service in the directory, send %d uaeth from %s:\n  aetherd tx bank send <%s key> %s %duaeth --note %q --chain-id %s",
+			directory.AnnounceAmount, *payTo, *payTo, directory.Address(), directory.AnnounceAmount, directory.AnnouncePrefix+u, *chainID)
+	}
 	srv := &http.Server{Addr: *listen, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	log.Fatal(srv.ListenAndServe())
 }
@@ -128,11 +139,15 @@ func newProxy(target *url.URL) *httputil.ReverseProxy {
 	return proxy
 }
 
-func newHandler(upstream, paid http.Handler, freePrefixes []string) http.Handler {
+func newHandler(upstream, paid http.Handler, freePrefixes []string, manifest http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Only the paywall may say who paid.
 		r.Header.Del(headerPayer)
 		r.Header.Del(headerPaymentTx)
+		if r.URL.Path == paywall.ManifestPath {
+			manifest.ServeHTTP(w, r)
+			return
+		}
 		for _, p := range freePrefixes {
 			if strings.HasPrefix(r.URL.Path, p) {
 				upstream.ServeHTTP(w, r)
