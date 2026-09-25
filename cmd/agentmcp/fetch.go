@@ -57,14 +57,18 @@ type fetchPaidInput struct {
 	MaxAmount      string `json:"maxAmount" jsonschema:"the most you'll pay for this request, WITH its unit, e.g. \"0.05 AETH\". A higher price is refused without paying"`
 	IdempotencyKey string `json:"idempotencyKey" jsonschema:"unique ID for this purchase. Retrying with the same key never pays twice: it resumes the same payment"`
 	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"how long to wait for the payment to confirm (default 150, max 300); blocks are ~60s apart"`
+	Prepay         string `json:"prepay,omitempty" jsonschema:"for making many requests to one service: if it offers prepaid, deposit this much (with unit, e.g. \"1 AETH\") whenever the balance there runs out, then pay each request instantly by signature instead of one transaction per request. The seller holds the unspent balance"`
 }
 
 type fetchPaymentDTO struct {
-	TxHash   string    `json:"txHash"`
-	Amount   amountDTO `json:"amount"`
-	PayTo    string    `json:"payTo"`
-	Invoice  string    `json:"invoice"`
-	Replayed bool      `json:"replayed" jsonschema:"true if this key had already paid and no new payment was made"`
+	Scheme        string     `json:"scheme" jsonschema:"aether-memo (one transaction per request) or aether-prepaid (drawn from a deposit)"`
+	TxHash        string     `json:"txHash,omitempty"`
+	Amount        amountDTO  `json:"amount" jsonschema:"what this request cost (for a pending deposit: the deposit)"`
+	PayTo         string     `json:"payTo"`
+	Invoice       string     `json:"invoice,omitempty"`
+	Replayed      bool       `json:"replayed,omitempty" jsonschema:"true if this key had already paid and no new payment was made"`
+	Balance       *amountDTO `json:"balance,omitempty" jsonschema:"aether-prepaid: what's left of the deposit with this seller"`
+	DepositTxHash string     `json:"depositTxHash,omitempty" jsonschema:"aether-prepaid: a deposit made by this call"`
 }
 
 type fetchPaidOutput struct {
@@ -189,6 +193,12 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 	if err != nil {
 		return nil, fetchPaidOutput{}, err
 	}
+	var prepay math.Int
+	if in.Prepay != "" {
+		if prepay, err = parseAmount(in.Prepay); err != nil {
+			return nil, fetchPaidOutput{}, err
+		}
+	}
 	if in.IdempotencyKey == "" || len(in.IdempotencyKey) > maxIdempotencyKeyLength {
 		return nil, fetchPaidOutput{}, newError(codeInvalidArgument, fmt.Sprintf("idempotencyKey is required (1-%d characters) so a retried call can't pay twice", maxIdempotencyKeyLength))
 	}
@@ -216,6 +226,12 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 		}
 		if first.status != http.StatusPaymentRequired {
 			return nil, first.output("ok"), nil
+		}
+		if !prepay.IsNil() {
+			if req, ok := quoteScheme(first, paywall.SchemePrepaid); ok {
+				out, err := fetchPrepaid(ctx, in, method, req, maxAmount, prepay)
+				return nil, out, err
+			}
 		}
 		req, _, err := quote(first)
 		if err != nil {
@@ -264,7 +280,7 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 	if err != nil {
 		return nil, fetchPaidOutput{}, err
 	}
-	payment := &fetchPaymentDTO{TxHash: sent.TxHash, Amount: newAmountDTO(price), PayTo: rec.PayTo, Invoice: rec.Invoice, Replayed: sent.Replayed}
+	payment := &fetchPaymentDTO{Scheme: paywall.Scheme, TxHash: sent.TxHash, Amount: newAmountDTO(price), PayTo: rec.PayTo, Invoice: rec.Invoice, Replayed: sent.Replayed}
 	if sent.Status == statusFailed {
 		e := newError(sent.ErrorCode, "the payment was rejected: "+sent.Message)
 		e.TxHash = sent.TxHash
@@ -294,10 +310,7 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 		return nil, fetchPaidOutput{}, e
 	}
 
-	proof, err := paywall.EncodeHeader(paywall.PaymentPayload{
-		X402Version: paywall.X402Version, Scheme: paywall.Scheme, Network: chainID,
-		Payload: paywall.MemoPayment{Invoice: rec.Invoice, TxHash: sent.TxHash},
-	})
+	proof, err := paywall.EncodeMemoPayment(chainID, rec.Invoice, sent.TxHash)
 	if err != nil {
 		return nil, fetchPaidOutput{}, err
 	}
@@ -346,3 +359,5 @@ func refusedAfterPayment(reason string, res *httpResult, txHash string) error {
 	e.TxHash = txHash
 	return e
 }
+
+func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }

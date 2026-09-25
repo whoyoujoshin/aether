@@ -109,7 +109,7 @@ func (h *harness) invoice(path string) PaymentRequirements {
 }
 
 func proof(invoice, hash string) string {
-	s, _ := EncodeHeader(PaymentPayload{X402Version: 1, Scheme: Scheme, Network: "aether-testnet-1", Payload: MemoPayment{Invoice: invoice, TxHash: hash}})
+	s, _ := EncodeMemoPayment("aether-testnet-1", invoice, hash)
 	return s
 }
 
@@ -172,9 +172,6 @@ func TestPaywall_RefusesWhatDidntPay(t *testing.T) {
 	h.ledger.pay("FAILED", inv, seller(), 10_000, at, 5)
 	h.expectRefusal(proof(inv, "FAILED"), ErrPaymentFailed)
 
-	h.ledger.pay("LATE", inv, seller(), 10_000, h.now.Add(16*time.Minute), 0)
-	h.expectRefusal(proof(inv, "LATE"), ErrPaidTooLate)
-
 	// Invoices are bound to this server, this resource and a deadline.
 	tampered := inv[:len(inv)-3] + "AAA"
 	h.ledger.pay("TAMPERED", tampered, seller(), 10_000, at, 0)
@@ -186,7 +183,7 @@ func TestPaywall_RefusesWhatDidntPay(t *testing.T) {
 	h.expectRefusal(proof(other, "OTHER"), ErrResourceMismatch)
 
 	h.expectRefusal("%%%not-base64", ErrInvalidPayment)
-	wrongNet, _ := EncodeHeader(PaymentPayload{X402Version: 1, Scheme: Scheme, Network: "other-chain", Payload: MemoPayment{Invoice: inv, TxHash: "X"}})
+	wrongNet, _ := EncodeMemoPayment("other-chain", inv, "X")
 	h.expectRefusal(wrongNet, ErrUnsupportedScheme)
 
 	require.Zero(t, h.served)
@@ -196,11 +193,18 @@ func TestPaywall_RefusesWhatDidntPay(t *testing.T) {
 	resp, _ := h.get("/weather", proof(inv, "GOOD"))
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	// Past its redemption window it's dead even if paid in time.
+	// A payment that took hours to confirm is still served...
 	inv2 := h.invoice("/weather").Extra.Invoice
-	h.ledger.pay("GOOD2", inv2, seller(), 10_000, at, 0)
-	h.now = h.now.Add(15*time.Minute + time.Hour + time.Second)
-	h.expectRefusal(proof(inv2, "GOOD2"), ErrInvoiceExpired)
+	h.ledger.pay("SLOW", inv2, seller(), 10_000, h.now.Add(6*time.Hour), 0)
+	h.now = h.now.Add(6 * time.Hour)
+	resp, _ = h.get("/weather", proof(inv2, "SLOW"))
+	require.Equal(t, http.StatusOK, resp.StatusCode, "slow confirmation must not forfeit a payment")
+
+	// ...but an invoice presented after its 24h lifetime is dead.
+	inv3 := h.invoice("/weather").Extra.Invoice
+	h.ledger.pay("STALE", inv3, seller(), 10_000, h.now, 0)
+	h.now = h.now.Add(24*time.Hour + time.Second)
+	h.expectRefusal(proof(inv3, "STALE"), ErrInvoiceExpired)
 }
 
 func TestPaywall_ServerErrorLetsThePaymentBeReused(t *testing.T) {

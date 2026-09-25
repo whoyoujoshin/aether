@@ -8,6 +8,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 )
@@ -131,4 +132,16 @@ func (w *Wallet) GetAccount(name string) (Account, error) {
 
 func (w *Wallet) DeleteAccount(name string) error {
 	return w.kr.Delete(name)
+}
+// SignBytes signs an arbitrary message with the named account's key,
+// returning the signature and public key -- for off-chain
+// authorization such as a paywall's prepaid requests. Callers must
+// sign only messages they built themselves: a signature over
+// attacker-chosen bytes could authorize anything those bytes mean.
+func (w *Wallet) SignBytes(name string, msg []byte) (sig, pubKey []byte, err error) {
+	sig, pub, err := w.kr.Sign(name, msg, signing.SignMode_SIGN_MODE_DIRECT)
+	if err != nil {
+		return nil, nil, err
+	}
+	return sig, pub.Bytes(), nil
 }
