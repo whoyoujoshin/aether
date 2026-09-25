@@ -5,6 +5,7 @@ import { bech32 } from "@scure/base";
 import { AetherClient } from "./client.js";
 import { PREFIX } from "./keys.js";
 import { parseAmount, parseUaeth } from "./amount.js";
+import { trimEnd } from "./util.js";
 
 // The on-chain service directory (package directory): services announce
 // themselves with 1 uaeth to a keyless address, memo "x402-service:<url>".
@@ -42,7 +43,7 @@ export function normalizeURL(raw: string): string {
   if ((u.protocol !== "http:" && u.protocol !== "https:") || !u.host || u.username || u.password || u.search || u.hash) {
     throw new Error(`service URL "${raw}" must be a plain http(s) URL`);
   }
-  const s = `${u.protocol}//${u.host.toLowerCase()}${u.pathname}`.replace(/\/+$/, "");
+  const s = trimEnd(`${u.protocol}//${u.host.toLowerCase()}${u.pathname}`, "/");
   if (s.length > 200) throw new Error("service URL is longer than 200 characters");
   return s;
 }

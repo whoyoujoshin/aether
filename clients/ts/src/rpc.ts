@@ -4,6 +4,7 @@
 
 import { base64 } from "@scure/base";
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { trimEnd } from "./util.js";
 
 export class RpcError extends Error {
   constructor(message: string, readonly code?: number) {
@@ -28,7 +29,7 @@ export interface TxResult {
 
 export class Rpc {
   constructor(readonly url: string, private readonly fetchImpl: typeof fetch = fetch) {
-    this.url = url.replace(/\/+$/, "");
+    this.url = trimEnd(url, "/");
   }
 
   async call<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
