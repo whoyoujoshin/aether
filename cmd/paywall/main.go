@@ -6,6 +6,10 @@
 //	go run ./cmd/paywall --upstream http://localhost:8000 --pay-to aether1... \
 //	    --price "0.01 AETH" --grpc localhost:9090 --chain-id aether-testnet-1
 //
+// With --prepaid-ledger it also offers the aether-prepaid scheme: an
+// agent deposits once and pays per request by signature, with no block
+// wait. That file holds customers' balances: back it up.
+//
 // The upstream must not be reachable except through this proxy, or
 // clients can skip paying. Paid requests reach it with X-PAYMENT
 // removed and X-Aether-Payer / X-Aether-Payment-Tx added.
@@ -36,7 +40,9 @@ func main() {
 	chainID := flag.String("chain-id", "aether-testnet-1", "chain ID payments must be on")
 	description := flag.String("description", "", "what a payment buys, shown to payers")
 	free := flag.String("free", "", "comma-separated path prefixes served without payment, e.g. /health,/docs")
-	ttl := flag.Duration("invoice-ttl", 15*time.Minute, "how long a payer has to get the payment into a block")
+	ttl := flag.Duration("invoice-ttl", 24*time.Hour, "how long a payer has to pay an invoice and present the payment")
+	prepaidLedger := flag.String("prepaid-ledger", "", "file holding prepaid balances; setting it also offers the aether-prepaid scheme (deposit once, then pay per request instantly -- for agents)")
+	minDeposit := flag.String("min-deposit", "", `smallest prepaid deposit accepted, e.g. "1 AETH" (default: the price)`)
 	flag.Parse()
 
 	if *upstream == "" || *payTo == "" || *price == "" {
@@ -56,10 +62,23 @@ func main() {
 	}
 	defer client.Close()
 
-	pw, err := paywall.New(paywall.Config{
+	cfg := paywall.Config{
 		PayTo: *payTo, Price: amount, Network: *chainID, Description: *description,
 		InvoiceTTL: *ttl, Lookup: client.GetTransactionByHash,
-	})
+	}
+	if *prepaidLedger != "" {
+		ledger, err := paywall.NewFileLedger(*prepaidLedger)
+		if err != nil {
+			log.Fatal(err)
+		}
+		cfg.Prepaid = &paywall.PrepaidConfig{Ledger: ledger}
+		if *minDeposit != "" {
+			if cfg.Prepaid.MinDeposit, err = wallet.ParseAmount(*minDeposit); err != nil {
+				log.Fatalf("invalid --min-deposit: %v", err)
+			}
+		}
+	}
+	pw, err := paywall.New(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}

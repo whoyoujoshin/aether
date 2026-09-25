@@ -25,12 +25,10 @@ type Config struct {
 	Description string
 	MimeType    string
 
-	// InvoiceTTL is how long a client has to get its payment into a
-	// block (default 15m). Blocks are ~60s apart.
+	// InvoiceTTL is how long a client has to pay an invoice and present
+	// the payment (default 24h). A payment is served whenever it lands
+	// within that time -- being slow to confirm never forfeits it.
 	InvoiceTTL time.Duration
-	// RedeemWindow is how long after that the paid request may be made
-	// (default 1h).
-	RedeemWindow time.Duration
 
 	// Secret signs invoices. Nil picks a random one, so invoices die
 	// with the process -- and so can't be replayed after a restart
@@ -43,6 +41,9 @@ type Config struct {
 	// wallet.ErrTransactionNotFound if it isn't in a block.
 	Lookup func(hash string) (*wallet.TransactionDetail, error)
 	Now    func() time.Time
+
+	// Prepaid, if set, also offers the aether-prepaid scheme.
+	Prepaid *PrepaidConfig
 }
 
 // RedeemedStore remembers which invoices have been used.
@@ -72,10 +73,15 @@ func New(cfg Config) (*Paywall, error) {
 		return nil, errors.New("network and lookup are required")
 	}
 	if cfg.InvoiceTTL <= 0 {
-		cfg.InvoiceTTL = 15 * time.Minute
+		cfg.InvoiceTTL = 24 * time.Hour
 	}
-	if cfg.RedeemWindow <= 0 {
-		cfg.RedeemWindow = time.Hour
+	if cfg.Prepaid != nil {
+		if cfg.Prepaid.Ledger == nil {
+			return nil, errors.New("prepaid needs a ledger")
+		}
+		if cfg.Prepaid.MinDeposit.IsNil() || cfg.Prepaid.MinDeposit.LT(cfg.Price) {
+			cfg.Prepaid.MinDeposit = cfg.Price
+		}
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -106,11 +112,20 @@ func (p *Paywall) Middleware(next http.Handler) http.Handler {
 			p.paymentRequired(w, r, ErrInvalidPayment, "X-PAYMENT must be base64-encoded JSON", "")
 			return
 		}
-		if pay.Scheme != Scheme || pay.Network != p.cfg.Network {
-			p.paymentRequired(w, r, ErrUnsupportedScheme, fmt.Sprintf("this server accepts scheme %q on network %q", Scheme, p.cfg.Network), "")
+		if pay.Network == p.cfg.Network && pay.Scheme == SchemePrepaid && p.cfg.Prepaid != nil {
+			p.servePrepaid(w, r, pay.Payload, next)
 			return
 		}
-		invoiceID, txHash := pay.Payload.Invoice, strings.ToUpper(strings.TrimSpace(pay.Payload.TxHash))
+		if pay.Scheme != Scheme || pay.Network != p.cfg.Network {
+			p.paymentRequired(w, r, ErrUnsupportedScheme, fmt.Sprintf("this server accepts %s on network %q", strings.Join(p.schemes(), " or "), p.cfg.Network), "")
+			return
+		}
+		var memo MemoPayment
+		if err := json.Unmarshal(pay.Payload, &memo); err != nil {
+			p.paymentRequired(w, r, ErrInvalidPayment, "payload must be {invoice, txHash}", "")
+			return
+		}
+		invoiceID, txHash := memo.Invoice, strings.ToUpper(strings.TrimSpace(memo.TxHash))
 		inv, err := p.parseInvoice(invoiceID)
 		if err != nil {
 			p.paymentRequired(w, r, ErrInvalidInvoice, err.Error(), "")
@@ -120,9 +135,7 @@ func (p *Paywall) Middleware(next http.Handler) http.Handler {
 			p.paymentRequired(w, r, ErrResourceMismatch, "this invoice was issued for a different request", "")
 			return
 		}
-		now := p.cfg.Now()
-		redeemBy := inv.expiry.Add(p.cfg.RedeemWindow)
-		if now.After(redeemBy) {
+		if p.cfg.Now().After(inv.expiry) {
 			p.paymentRequired(w, r, ErrInvoiceExpired, "this invoice can no longer be redeemed", "")
 			return
 		}
@@ -154,11 +167,7 @@ func (p *Paywall) Middleware(next http.Handler) http.Handler {
 			p.paymentRequired(w, r, ErrInsufficient, fmt.Sprintf("paid %s uaeth to %s; the invoice is for %d uaeth", paid, p.cfg.PayTo, inv.price), "")
 			return
 		}
-		if paidAt, err := time.Parse(time.RFC3339, detail.Timestamp); err != nil || paidAt.After(inv.expiry) {
-			p.paymentRequired(w, r, ErrPaidTooLate, "the payment was not in a block before the invoice expired", "")
-			return
-		}
-		if !p.store.Redeem(invoiceID, redeemBy) {
+		if !p.store.Redeem(invoiceID, inv.expiry) {
 			p.paymentRequired(w, r, ErrAlreadyRedeemed, "this invoice has already been used for a response", "")
 			return
 		}
@@ -203,9 +212,21 @@ func (p *Paywall) received(d *wallet.TransactionDetail) (math.Int, string) {
 	return total, payer
 }
 
+func (p *Paywall) schemes() []string {
+	if p.cfg.Prepaid != nil {
+		return []string{Scheme, SchemePrepaid}
+	}
+	return []string{Scheme}
+}
+
 // paymentRequired writes a 402. It offers invoice if set (a payment
 // that may still confirm), else a fresh one.
 func (p *Paywall) paymentRequired(w http.ResponseWriter, r *http.Request, code, message, invoiceID string) {
+	p.paymentRequiredFor(w, r, code, message, invoiceID, "")
+}
+
+// paymentRequiredFor also reports account's prepaid balance, if named.
+func (p *Paywall) paymentRequiredFor(w http.ResponseWriter, r *http.Request, code, message, invoiceID, account string) {
 	expiry := p.cfg.Now().Add(p.cfg.InvoiceTTL).Truncate(time.Second)
 	if invoiceID != "" {
 		if inv, err := p.parseInvoice(invoiceID); err == nil {
@@ -240,6 +261,22 @@ func (p *Paywall) paymentRequired(w http.ResponseWriter, r *http.Request, code, 
 				Instructions: instructions,
 			},
 		}},
+	}
+	if p.cfg.Prepaid != nil {
+		prepaid := body.Accepts[0]
+		prepaid.Scheme = SchemePrepaid
+		prepaid.Extra = Extra{
+			AmountAeth:   wallet.FormatAeth(p.cfg.Price),
+			DepositMemo:  DepositMemoPrefix + "<address>",
+			MinDeposit:   p.cfg.Prepaid.MinDeposit.String(),
+			Instructions: prepaidInstructions,
+		}
+		if account != "" {
+			if bal, err := p.cfg.Prepaid.Ledger.Balance(account); err == nil {
+				prepaid.Extra.Balance = bal.String()
+			}
+		}
+		body.Accepts = append(body.Accepts, prepaid)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusPaymentRequired)

@@ -50,6 +50,9 @@ type agentState struct {
 	Events  []spendEvent            `json:"events"`
 	Sends   map[string]*sendRecord  `json:"sends,omitempty"`
 	Fetches map[string]*fetchRecord `json:"fetches,omitempty"` // fetch_paid's quoted invoices
+	// Prepaid holds a deposit per seller (payTo) not yet known to be
+	// credited.
+	Prepaid map[string]*prepaidDeposit `json:"prepaid,omitempty"`
 }
 
 // stateMu serializes every read-modify-write of the state file, and
@@ -58,7 +61,7 @@ type agentState struct {
 var stateMu sync.Mutex
 
 func loadState() (*agentState, error) {
-	st := &agentState{Sends: map[string]*sendRecord{}, Fetches: map[string]*fetchRecord{}}
+	st := &agentState{Sends: map[string]*sendRecord{}, Fetches: map[string]*fetchRecord{}, Prepaid: map[string]*prepaidDeposit{}}
 	bz, err := os.ReadFile(stateFile)
 	if os.IsNotExist(err) {
 		return st, nil
@@ -74,6 +77,9 @@ func loadState() (*agentState, error) {
 	}
 	if st.Fetches == nil {
 		st.Fetches = map[string]*fetchRecord{}
+	}
+	if st.Prepaid == nil {
+		st.Prepaid = map[string]*prepaidDeposit{}
 	}
 	return st, nil
 }

@@ -165,7 +165,7 @@ Built for how agents actually fail:
 - **No double payments on retry.** `send_aeth` requires an `idempotencyKey`; a retry with the same key re-sends the identical signed transaction (its sequence number is signed in, so the chain can include it at most once) and returns its status.
 - **Knows when a payment is final.** `send_aeth` returns `pending` once the node accepts it; `wait_for_transaction` waits until it's `confirmed` or `failed` in a block.
 - **Can get paid.** `create_invoice` returns a unique memo and the current height; `wait_for_payment(memo, minAmount, sinceHeight)` waits for a confirmed incoming payment that matches. It reads every incoming payment since that height, page by page, so a busy agent can't miss one. Memos are sender-controlled, so tools label them as untrusted data.
-- **Can buy from paid APIs.** `fetch_paid(url, maxAmount, idempotencyKey)` requests a URL; if the server answers HTTP 402 (see [Paid APIs](#paid-apis-x402)), it pays at most `maxAmount`, waits for the payment to confirm and returns the response. Retrying with the same key resumes the same payment, never a second one.
+- **Can buy from paid APIs.** `fetch_paid(url, maxAmount, idempotencyKey)` requests a URL; if the server answers HTTP 402 (see [Paid APIs](#paid-apis-x402)), it pays at most `maxAmount`, waits for the payment to confirm and returns the response. Retrying with the same key resumes the same payment, never a second one. For many requests to one service, add `prepay` (e.g. `"1 AETH"`): the agent deposits that once and then pays each request instantly by signature — milliseconds instead of a block.
 - **Wakes on new blocks.** Waiting tools subscribe to the node's new-block events over `--rpc` instead of polling, falling back to polling if the feed is down.
 - **No unit mistakes.** Amounts must carry a unit (`"1.5 AETH"` or `"1500000uaeth"`); a bare number is refused rather than guessed at, and every result states amounts in both units.
 - **Errors a bot can act on.** Every failure is `{"error":{"code","retryable","message"}}` with a stable code (`DAILY_LIMIT_EXCEEDED` with `retryAfterSeconds`, `INSUFFICIENT_FUNDS`, `GRANT_LIMIT_EXCEEDED`, `NODE_UNREACHABLE`, ...); a failed transaction carries an `errorCode` too.
@@ -188,7 +188,11 @@ go run ./cmd/paywall --upstream http://localhost:8000 --pay-to <your-address> \
 
 An unpaid request gets `402 Payment Required` in the [x402](https://www.x402.org) wire format with scheme `aether-memo`: a price, an address and a one-time invoice. The client pays that amount with the invoice as the memo (from any wallet — humans can pay too), then repeats the request with an `X-PAYMENT` header naming the invoice and transaction hash. The proxy checks the transaction on chain, serves the request exactly once, and tells the upstream who paid (`X-Aether-Payer`). Invoices are HMAC-signed, so issuing them stores nothing. Go services can use the `paywall` package's middleware directly.
 
-With ~60s blocks a paid request waits about one block. The upstream must be reachable only through the proxy.
+With ~60s blocks a paid request waits about one block; a payment is served whenever it lands within the invoice's 24h lifetime, so slow confirmation never forfeits it.
+
+**Prepaid, for agents.** With `--prepaid-ledger <file>` the proxy also offers `aether-prepaid`: an agent deposits once (memo `prepaid:<its address>` — anyone can fund it, e.g. a person funding their bot), then signs each request with its ML-DSA key and the price is deducted instantly. Each request ID is charged once, so a retry is never charged twice. The seller holds unspent balances in that file (back it up); agents should deposit only what they'd trust that service with. People paying occasionally just use the per-request scheme.
+
+The upstream must be reachable only through the proxy.
 
 ### On-chain agent permissions (x/authz, x/feegrant)
 

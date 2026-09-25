@@ -17,6 +17,11 @@
 // facilitator is involved. The cost is latency: with ~60s blocks, a
 // paid request waits about a block for confirmation.
 //
+// For agents making many small requests, a server can also offer the
+// "aether-prepaid" scheme (see prepaid.go): deposit once on chain, then
+// pay per request instantly by signing each request with the account's
+// ML-DSA key.
+//
 // Operational notes: issuing invoices stores nothing (they are
 // HMAC-signed), but each X-PAYMENT carrying a genuine invoice costs one
 // transaction lookup on the node, so put a rate limit in front of a
@@ -31,8 +36,12 @@ import (
 
 const (
 	X402Version = 1
-	// Scheme is this package's x402 payment scheme.
+	// Scheme is the per-request payment scheme.
 	Scheme = "aether-memo"
+	// SchemePrepaid draws requests from a deposited balance.
+	SchemePrepaid = "aether-prepaid"
+	// DepositMemoPrefix + the account to credit is a deposit's memo.
+	DepositMemoPrefix = "prepaid:"
 	// Asset is the denom prices are stated in.
 	Asset = "uaeth"
 
@@ -52,8 +61,15 @@ const (
 	ErrPaymentFailed     = "payment_failed"        // in a block, but failed
 	ErrMemoMismatch      = "memo_mismatch"
 	ErrInsufficient      = "insufficient_payment"
-	ErrPaidTooLate       = "paid_after_invoice_expiry"
 	ErrAlreadyRedeemed   = "invoice_already_redeemed"
+
+	// aether-prepaid
+	ErrInvalidSignature    = "invalid_signature"
+	ErrStaleRequest        = "stale_request" // timestamp outside the allowed window
+	ErrPriceAboveMax       = "price_above_signed_max"
+	ErrInsufficientBalance = "insufficient_balance"
+	ErrInvalidDeposit      = "invalid_deposit"
+	ErrRequestTooLarge     = "request_too_large"
 )
 
 // PaymentRequired is the body of a 402 response.
@@ -78,22 +94,29 @@ type PaymentRequirements struct {
 	Extra             Extra  `json:"extra"`
 }
 
-// Extra carries the aether-memo scheme's own fields.
+// Extra carries the schemes' own fields.
 type Extra struct {
-	// Invoice is the memo the payment must carry, and what X-PAYMENT
-	// must name.
-	Invoice      string `json:"invoice"`
-	AmountAeth   string `json:"amountAeth"`
-	ExpiresAt    string `json:"expiresAt"` // the payment must be in a block by then
+	// aether-memo: Invoice is the memo the payment must carry, and what
+	// X-PAYMENT must name.
+	Invoice    string `json:"invoice,omitempty"`
+	AmountAeth string `json:"amountAeth"`
+	ExpiresAt  string `json:"expiresAt,omitempty"` // present the payment by then
+
+	// aether-prepaid
+	DepositMemo string `json:"depositMemo,omitempty"` // with the account to credit in place of <address>
+	MinDeposit  string `json:"minDeposit,omitempty"`  // uaeth
+	Balance     string `json:"balance,omitempty"`     // uaeth, when the request named an account
+
 	Instructions string `json:"instructions"`
 }
 
-// PaymentPayload is the decoded X-PAYMENT header.
+// PaymentPayload is the decoded X-PAYMENT header. Payload's shape
+// depends on Scheme: MemoPayment or PrepaidPayment.
 type PaymentPayload struct {
-	X402Version int         `json:"x402Version"`
-	Scheme      string      `json:"scheme"`
-	Network     string      `json:"network"`
-	Payload     MemoPayment `json:"payload"`
+	X402Version int             `json:"x402Version"`
+	Scheme      string          `json:"scheme"`
+	Network     string          `json:"network"`
+	Payload     json.RawMessage `json:"payload"`
 }
 
 // MemoPayment proves payment of an invoice.
@@ -105,9 +128,23 @@ type MemoPayment struct {
 // SettlementResponse is the decoded X-PAYMENT-RESPONSE header.
 type SettlementResponse struct {
 	Success     bool   `json:"success"`
-	Transaction string `json:"transaction"`
+	Transaction string `json:"transaction,omitempty"` // aether-memo
 	Network     string `json:"network"`
 	Payer       string `json:"payer"`
+	Balance     string `json:"balance,omitempty"` // aether-prepaid: uaeth left
+}
+
+// EncodeMemoPayment builds an aether-memo X-PAYMENT header value.
+func EncodeMemoPayment(network, invoice, txHash string) (string, error) {
+	return encodePayment(Scheme, network, MemoPayment{Invoice: invoice, TxHash: txHash})
+}
+
+func encodePayment(scheme, network string, payload any) (string, error) {
+	bz, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return EncodeHeader(PaymentPayload{X402Version: X402Version, Scheme: scheme, Network: network, Payload: bz})
 }
 
 // EncodeHeader encodes an X-PAYMENT or X-PAYMENT-RESPONSE value.
@@ -131,4 +168,4 @@ func DecodeHeader(s string, v any) error {
 const instructions = "Send maxAmountRequired uaeth to payTo with memo set to exactly this invoice, wait until the transaction is in a block, " +
 	"then repeat this request with header X-PAYMENT: base64 of the JSON " +
 	`{"x402Version":1,"scheme":"aether-memo","network":"<network>","payload":{"invoice":"<invoice>","txHash":"<hash>"}}. ` +
-	"Each invoice pays for one response."
+	"Each invoice pays for one response, and must be presented by expiresAt."

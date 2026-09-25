@@ -105,6 +105,7 @@ txCmd := &cobra.Command{
 	authzcli.GetTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
 	feegrantcli.GetTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
 )
+	setDefaultGas(txCmd, defaultGasLimit)
 	rootCmd.AddCommand(txCmd)
 	
 	queryCmd := &cobra.Command{
@@ -130,6 +131,26 @@ txCmd := &cobra.Command{
 	if err := svrcmd.Execute(rootCmd, "AETHERD", app.DefaultNodeHome); err != nil {
 		fmt.Fprintln(rootCmd.OutOrStderr(), err)
 		os.Exit(1)
+	}
+}
+
+// defaultGasLimit replaces the SDK's 200,000 default: with an ML-DSA-44
+// signature (and, on an account's first transaction, its public key)
+// charged per byte, a plain send with a memo can need more -- a devnet
+// bank send with a short memo used 200,389 and failed out of gas. The
+// repo's other tools (wallet, faucet, powminer, agentmcp) already use
+// this. --gas still overrides it.
+const defaultGasLimit = "400000"
+
+// setDefaultGas sets the --gas default on every transaction command
+// under cmd.
+func setDefaultGas(cmd *cobra.Command, gas string) {
+	if f := cmd.Flags().Lookup(flags.FlagGas); f != nil {
+		f.DefValue = gas
+		_ = f.Value.Set(gas)
+	}
+	for _, sub := range cmd.Commands() {
+		setDefaultGas(sub, gas)
 	}
 }
 
