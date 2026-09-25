@@ -166,6 +166,8 @@ Built for how agents actually fail:
 - **Knows when a payment is final.** `send_aeth` returns `pending` once the node accepts it; `wait_for_transaction` waits until it's `confirmed` or `failed` in a block.
 - **Can get paid.** `create_invoice` returns a unique memo and the current height; `wait_for_payment(memo, minAmount, sinceHeight)` waits for a confirmed incoming payment that matches. It reads every incoming payment since that height, page by page, so a busy agent can't miss one. Memos are sender-controlled, so tools label them as untrusted data.
 - **Can buy from paid APIs.** `fetch_paid(url, maxAmount, idempotencyKey)` requests a URL; if the server answers HTTP 402 (see [Paid APIs](#paid-apis-x402)), it pays at most `maxAmount`, waits for the payment to confirm and returns the response. Retrying with the same key resumes the same payment, never a second one. For many requests to one service, add `prepay` (e.g. `"1 AETH"`): the agent deposits that once and then pays each request instantly by signature — milliseconds instead of a block.
+- **Can find services.** `find_services(query, maxPrice)` lists paid APIs from the on-chain [service directory](#service-directory); `announce_service` lists one the agent runs.
+- **Answers to its owner.** With `--approval-threshold "0.5 AETH" --approver <owner-address>`, bigger payments wait (nothing signed or sent) until the owner runs `agentmcp approve <id>`, which signs the decision with the **owner's** key — so the agent can't approve itself even if it can write files on the machine. `agentmcp approvals` lists what's waiting. With `--notify-webhook <url>` (and `--notify-secret` to HMAC-sign each alert), every payment, approval request and refusal is POSTed there.
 - **Wakes on new blocks.** Waiting tools subscribe to the node's new-block events over `--rpc` instead of polling, falling back to polling if the feed is down.
 - **No unit mistakes.** Amounts must carry a unit (`"1.5 AETH"` or `"1500000uaeth"`); a bare number is refused rather than guessed at, and every result states amounts in both units.
 - **Errors a bot can act on.** Every failure is `{"error":{"code","retryable","message"}}` with a stable code (`DAILY_LIMIT_EXCEEDED` with `retryAfterSeconds`, `INSUFFICIENT_FUNDS`, `GRANT_LIMIT_EXCEEDED`, `NODE_UNREACHABLE`, ...); a failed transaction carries an `errorCode` too.
@@ -193,6 +195,10 @@ With ~60s blocks a paid request waits about one block; a payment is served whene
 **Prepaid, for agents.** With `--prepaid-ledger <file>` the proxy also offers `aether-prepaid`: an agent deposits once (memo `prepaid:<its address>` — anyone can fund it, e.g. a person funding their bot), then signs each request with its ML-DSA key and the price is deducted instantly. Each request ID is charged once, so a retry is never charged twice. The seller holds unspent balances in that file (back it up); agents should deposit only what they'd trust that service with. People paying occasionally just use the per-request scheme.
 
 The upstream must be reachable only through the proxy.
+
+### Service directory
+
+Paid services list themselves on chain, so agents can find them without a central registry. `cmd/paywall` serves a manifest at `/.well-known/x402` (`--name`, `--description`) and, with `--public-url`, prints the command that lists it: 1 uaeth from the payee account to the directory address with memo `x402-service:<url>` (`x402-delist:<url>` removes it). A listing appears only if the manifest at that URL names the announcer as payee, so nobody can list someone else's service. Agents use `find_services`; the explorer shows them on its **Services** page. Manifests come from URLs anyone can announce, so fetching them refuses private and internal addresses (`--directory-allow-private` for local devnets only).
 
 ### On-chain agent permissions (x/authz, x/feegrant)
 
@@ -264,6 +270,7 @@ aetherd query governance proposal <proposal-id>
 | `cmd/explorer` | Minimal live explorer |
 | `cmd/agentmcp` | MCP server exposing the wallet as tool calls, for AI agents |
 | `paywall/`, `cmd/paywall` | Charge AETH per HTTP request (x402 format): middleware and reverse proxy |
+| `directory/` | On-chain service directory: announcements, manifest verification, safe fetching |
 | `cmd/powminer` | Native PoW nonce search against live state |
 | `cmd/auxpowtest` | Valid test AuxPoW construction |
 | `cmd/scryptbench` | Scrypt throughput benchmarks |

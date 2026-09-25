@@ -121,15 +121,16 @@ type sendAethInput struct {
 }
 
 type sendAethOutput struct {
-	Status    string    `json:"status" jsonschema:"pending (accepted, not yet in a block), confirmed, or failed"`
-	TxHash    string    `json:"txHash"`
-	Replayed  bool      `json:"replayed" jsonschema:"true if this idempotency key was already used and no new payment was made"`
-	Amount    amountDTO `json:"amount" jsonschema:"the amount paid, in both units -- check it is what you meant"`
-	From      string    `json:"from" jsonschema:"the account the funds come from: the granter in grant mode, else this agent"`
-	To        string    `json:"to"`
-	ErrorCode string    `json:"errorCode,omitempty" jsonschema:"set when status is failed, e.g. INSUFFICIENT_FUNDS or GRANT_LIMIT_EXCEEDED"`
-	Code      uint32    `json:"code,omitempty"`
-	Message   string    `json:"message,omitempty"`
+	Status     string    `json:"status" jsonschema:"pending (accepted, not yet in a block), confirmed, failed, or pending_approval (waiting for the owner: nothing sent; call again with the same idempotencyKey later)"`
+	ApprovalID string    `json:"approvalId,omitempty" jsonschema:"when pending_approval: what the owner approves"`
+	TxHash     string    `json:"txHash,omitempty"`
+	Replayed   bool      `json:"replayed" jsonschema:"true if this idempotency key was already used and no new payment was made"`
+	Amount     amountDTO `json:"amount" jsonschema:"the amount paid, in both units -- check it is what you meant"`
+	From       string    `json:"from" jsonschema:"the account the funds come from: the granter in grant mode, else this agent"`
+	To         string    `json:"to"`
+	ErrorCode  string    `json:"errorCode,omitempty" jsonschema:"set when status is failed, e.g. INSUFFICIENT_FUNDS or GRANT_LIMIT_EXCEEDED"`
+	Code       uint32    `json:"code,omitempty"`
+	Message    string    `json:"message,omitempty"`
 }
 
 func validateSend(in sendAethInput) (math.Int, error) {
@@ -236,11 +237,15 @@ func toolSendAeth(_ context.Context, _ *mcp.CallToolRequest, in sendAethInput) (
 		return replaySend(st, c, rec, in)
 	}
 
+	refused := func(err error) (*mcp.CallToolResult, sendAethOutput, error) {
+		notify("payment_refused", map[string]any{"to": in.To, "amount": newAmountDTO(amount), "memo": in.Memo, "reason": classify(err).Code})
+		return nil, sendAethOutput{}, err
+	}
 	if amount.Int64() > perTxLimit {
-		return nil, sendAethOutput{}, newError(codePerTxLimit, fmt.Sprintf("%s AETH exceeds the per-transaction limit of %s AETH", formatAeth(amount), formatAeth(math.NewInt(perTxLimit))))
+		return refused(newError(codePerTxLimit, fmt.Sprintf("%s AETH exceeds the per-transaction limit of %s AETH", formatAeth(amount), formatAeth(math.NewInt(perTxLimit)))))
 	}
 	if spent := st.spentInWindow(time.Now()); spent+amount.Int64() > dailyLimit {
-		return nil, sendAethOutput{}, dailyLimitError(st, time.Now(), amount.Int64())
+		return refused(dailyLimitError(st, time.Now(), amount.Int64()))
 	}
 
 	w, err := newWallet()
@@ -251,9 +256,15 @@ func toolSendAeth(_ context.Context, _ *mcp.CallToolRequest, in sendAethInput) (
 	if err != nil {
 		return nil, sendAethOutput{}, err
 	}
+	if proceed, pending, err := approvalGate(st, from.Address, in, amount); !proceed {
+		if err != nil {
+			return refused(err)
+		}
+		return nil, pending, nil
+	}
 	if granter != "" {
 		if err := checkGrant(c, from.Address, in.To, amount, time.Now()); err != nil {
-			return nil, sendAethOutput{}, err
+			return refused(err)
 		}
 	}
 	accountNumber, chainSeq, err := c.accountInfo(from.Address)
@@ -289,6 +300,7 @@ func toolSendAeth(_ context.Context, _ *mcp.CallToolRequest, in sendAethInput) (
 	}
 	st.Sends[in.IdempotencyKey] = rec
 	st.Events = append(st.Events, spendEvent{Time: now, Amount: amount.Int64(), TxHash: rec.TxHash})
+	consumeApproval(st, in.IdempotencyKey)
 	if err := st.save(); err != nil {
 		return nil, sendAethOutput{}, fmt.Errorf("failed to record payment before sending (nothing was sent): %w", err)
 	}
@@ -314,6 +326,7 @@ func toolSendAeth(_ context.Context, _ *mcp.CallToolRequest, in sendAethInput) (
 	if err := st.save(); err != nil {
 		return nil, sendAethOutput{}, err
 	}
+	notify("payment_sent", map[string]any{"from": out.From, "to": in.To, "amount": out.Amount, "memo": in.Memo, "txHash": rec.TxHash})
 	out.Status = statusPending
 	out.Message = "accepted by the node; call wait_for_transaction to confirm it made it into a block"
 	return nil, out, nil

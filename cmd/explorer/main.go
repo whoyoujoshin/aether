@@ -442,6 +442,13 @@ type notFoundInterceptor struct {
 func (w *notFoundInterceptor) WriteHeader(status int) {
 	if status == http.StatusNotFound {
 		w.notFound = true
+		// http.Error set these for its plain-text 404 before calling
+		// WriteHeader; left in place they'd label the index.html served
+		// instead as text/plain, and browsers would show raw HTML on
+		// any direct link or refresh of a client-side route.
+		h := w.ResponseWriter.Header()
+		h.Del("Content-Type")
+		h.Del("X-Content-Type-Options")
 		return
 	}
 	w.ResponseWriter.WriteHeader(status)
@@ -476,6 +483,8 @@ func main() {
 	flag.StringVar(&rpcEndpoint, "rpc", "http://localhost:26657", "node CometBFT RPC endpoint")
 	port := flag.String("port", "8081", "HTTP port to serve the API on")
 	staticDir := flag.String("static", "", "optional path to explorer-web's built static assets to serve alongside the API")
+	flag.StringVar(&chainID, "chain-id", "aether-testnet-1", "chain ID listed services must be on")
+	flag.BoolVar(&directoryAllowPrivate, "directory-allow-private", false, "fetch service manifests from private/loopback addresses (local devnets only)")
 	flag.Parse()
 
 	// Deliberately use our own dedicated mux, never the shared global
@@ -498,6 +507,7 @@ func main() {
 	mux.HandleFunc("/api/address", withCORS(handleAddress))
 	mux.HandleFunc("/api/tx", withCORS(handleTx))
 	mux.HandleFunc("/api/search", withCORS(handleSearch))
+	mux.HandleFunc("/api/services", withCORS(handleServices))
 
 	// Optional: serve explorer-web's built static assets from the same
 	// process/port, so production deploys are a single binary + one

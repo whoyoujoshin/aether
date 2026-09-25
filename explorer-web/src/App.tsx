@@ -7,6 +7,7 @@ import Address from "./pages/Address";
 import Transaction from "./pages/Transaction";
 import Blocks from "./pages/Blocks";
 import Block from "./pages/Block";
+import Services from "./pages/Services";
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/blocks/:height" element={<Block />} />
         <Route path="/validators" element={<Validators />} />
         <Route path="/governance" element={<Governance />} />
+        <Route path="/services" element={<Services />} />
         <Route path="/address/:address" element={<Address />} />
         <Route path="/tx/:hash" element={<Transaction />} />
       </Routes>

@@ -53,6 +53,8 @@ type agentState struct {
 	// Prepaid holds a deposit per seller (payTo) not yet known to be
 	// credited.
 	Prepaid map[string]*prepaidDeposit `json:"prepaid,omitempty"`
+	// Approvals are payments waiting for the owner, by idempotency key.
+	Approvals map[string]*approvalRequest `json:"approvals,omitempty"`
 }
 
 // stateMu serializes every read-modify-write of the state file, and
@@ -61,7 +63,7 @@ type agentState struct {
 var stateMu sync.Mutex
 
 func loadState() (*agentState, error) {
-	st := &agentState{Sends: map[string]*sendRecord{}, Fetches: map[string]*fetchRecord{}, Prepaid: map[string]*prepaidDeposit{}}
+	st := &agentState{Sends: map[string]*sendRecord{}, Fetches: map[string]*fetchRecord{}, Prepaid: map[string]*prepaidDeposit{}, Approvals: map[string]*approvalRequest{}}
 	bz, err := os.ReadFile(stateFile)
 	if os.IsNotExist(err) {
 		return st, nil
@@ -80,6 +82,9 @@ func loadState() (*agentState, error) {
 	}
 	if st.Prepaid == nil {
 		st.Prepaid = map[string]*prepaidDeposit{}
+	}
+	if st.Approvals == nil {
+		st.Approvals = map[string]*approvalRequest{}
 	}
 	return st, nil
 }
@@ -115,6 +120,11 @@ func (st *agentState) prune(now time.Time) {
 	for key, rec := range st.Sends {
 		if rec.CreatedAt.Before(now.Add(-idempotencyRetention)) {
 			delete(st.Sends, key)
+		}
+	}
+	for key, req := range st.Approvals {
+		if req.CreatedAt.Before(now.Add(-idempotencyRetention)) {
+			delete(st.Approvals, key)
 		}
 	}
 	for key, rec := range st.Fetches {
