@@ -91,9 +91,11 @@ func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req pay
 			if bal, err := wallet.ParseUaeth(s.Balance); err == nil {
 				b := newAmountDTO(bal)
 				out.Payment.Balance = &b
+				notePrepaidBalance(req.PayTo, serviceBase(u), bal)
 			} else if s.Balance == "0" {
 				b := newAmountDTO(math.ZeroInt())
 				out.Payment.Balance = &b
+				notePrepaidBalance(req.PayTo, serviceBase(u), math.ZeroInt())
 			}
 		}
 		return out

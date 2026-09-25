@@ -106,6 +106,8 @@ type Extra struct {
 	DepositMemo string `json:"depositMemo,omitempty"` // with the account to credit in place of <address>
 	MinDeposit  string `json:"minDeposit,omitempty"`  // uaeth
 	Balance     string `json:"balance,omitempty"`     // uaeth, when the request named an account
+	// WithdrawPath, if set, is where unspent balance can be withdrawn.
+	WithdrawPath string `json:"withdrawPath,omitempty"`
 
 	Instructions string `json:"instructions"`
 }

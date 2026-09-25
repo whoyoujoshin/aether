@@ -8,7 +8,9 @@
 //
 // With --prepaid-ledger it also offers the aether-prepaid scheme: an
 // agent deposits once and pays per request by signature, with no block
-// wait. That file holds customers' balances: back it up.
+// wait. That file holds customers' balances: back it up. Add
+// --payout-key to let agents withdraw what they haven't spent: that
+// keyring account pays withdrawals, so keep only a float in it.
 //
 // The upstream must not be reachable except through this proxy, or
 // clients can skip paying. Paid requests reach it with X-PAYMENT
@@ -24,7 +26,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cosmos/cosmos-sdk/codec"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+
 	"github.com/whoyoujoshin/aether/app"
+	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	"github.com/whoyoujoshin/aether/directory"
 	"github.com/whoyoujoshin/aether/paywall"
 	"github.com/whoyoujoshin/aether/wallet"
@@ -46,6 +52,9 @@ func main() {
 	ttl := flag.Duration("invoice-ttl", 24*time.Hour, "how long a payer has to pay an invoice and present the payment")
 	prepaidLedger := flag.String("prepaid-ledger", "", "file holding prepaid balances; setting it also offers the aether-prepaid scheme (deposit once, then pay per request instantly -- for agents)")
 	minDeposit := flag.String("min-deposit", "", `smallest prepaid deposit accepted, e.g. "1 AETH" (default: the price)`)
+	payoutKey := flag.String("payout-key", "", "keyring account that pays back unspent prepaid balances on request (needs --prepaid-ledger); keep only a small float in it")
+	keyringDir := flag.String("keyring-dir", "", "keyring directory holding --payout-key")
+	keyringBackend := flag.String("keyring-backend", "test", "keyring backend holding --payout-key")
 	flag.Parse()
 
 	if *upstream == "" || *payTo == "" || *price == "" {
@@ -81,6 +90,26 @@ func main() {
 			}
 		}
 	}
+	if *payoutKey != "" {
+		if cfg.Prepaid == nil {
+			log.Fatal("--payout-key pays back prepaid balances: it needs --prepaid-ledger")
+		}
+		if *keyringDir == "" {
+			log.Fatal("--payout-key needs --keyring-dir")
+		}
+		registry := codectypes.NewInterfaceRegistry()
+		mldsa.RegisterInterfaces(registry)
+		w, err := wallet.NewWallet("aetherd", *keyringBackend, *keyringDir, codec.NewProtoCodec(registry))
+		if err != nil {
+			log.Fatalf("opening the keyring: %v", err)
+		}
+		acc, err := w.GetAccount(*payoutKey)
+		if err != nil {
+			log.Fatalf("--payout-key %q: %v", *payoutKey, err)
+		}
+		cfg.Prepaid.Payout = &paywall.ChainPayout{Wallet: w, KeyName: *payoutKey, Address: acc.Address, Chain: client, ChainID: *chainID}
+		log.Printf("paywall: withdrawals of unspent prepaid balances are paid from %s (%s)", *payoutKey, acc.Address)
+	}
 	pw, err := paywall.New(cfg)
 	if err != nil {
 		log.Fatal(err)
@@ -95,7 +124,7 @@ func main() {
 		}
 	}
 
-	handler := newHandler(proxy, paid, freePrefixes, pw.ManifestHandler(*name, *description))
+	handler := newHandler(proxy, paid, freePrefixes, pw.ManifestHandler(*name, *description), pw.WithdrawHandler())
 
 	log.Printf("paywall: %s AETH per request to %s, proxying %s on %s", wallet.FormatAeth(amount), *payTo, target, *listen)
 	if *publicURL != "" {
@@ -139,13 +168,17 @@ func newProxy(target *url.URL) *httputil.ReverseProxy {
 	return proxy
 }
 
-func newHandler(upstream, paid http.Handler, freePrefixes []string, manifest http.Handler) http.Handler {
+func newHandler(upstream, paid http.Handler, freePrefixes []string, manifest, withdraw http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Only the paywall may say who paid.
 		r.Header.Del(headerPayer)
 		r.Header.Del(headerPaymentTx)
-		if r.URL.Path == paywall.ManifestPath {
+		switch r.URL.Path {
+		case paywall.ManifestPath:
 			manifest.ServeHTTP(w, r)
+			return
+		case paywall.WithdrawPath:
+			withdraw.ServeHTTP(w, r)
 			return
 		}
 		for _, p := range freePrefixes {

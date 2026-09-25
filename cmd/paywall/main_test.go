@@ -47,7 +47,7 @@ func TestProxy_UpstreamSeesPayerOnlyWhenPaid(t *testing.T) {
 	})
 	require.NoError(t, err)
 	proxy := newProxy(target)
-	srv := httptest.NewServer(newHandler(proxy, pw.Middleware(withPayerHeaders(proxy)), []string{"/health"}, pw.ManifestHandler("Test", "d")))
+	srv := httptest.NewServer(newHandler(proxy, pw.Middleware(withPayerHeaders(proxy)), []string{"/health"}, pw.ManifestHandler("Test", "d"), pw.WithdrawHandler()))
 	defer srv.Close()
 
 	do := func(path string, h map[string]string) *http.Response {

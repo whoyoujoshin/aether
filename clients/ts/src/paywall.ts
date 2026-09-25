@@ -25,7 +25,7 @@ export interface PaymentRequirements {
   resource: string;
   description: string;
   maxTimeoutSeconds: number;
-  extra: { invoice?: string; amountAeth: string; expiresAt?: string; depositMemo?: string; minDeposit?: string; balance?: string };
+  extra: { invoice?: string; amountAeth: string; expiresAt?: string; depositMemo?: string; minDeposit?: string; balance?: string; withdrawPath?: string };
 }
 
 export interface PaymentRequired {

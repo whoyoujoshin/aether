@@ -9,3 +9,9 @@ export { fetchPaid, presentPayment, signingMessage, memoPaymentHeader, prepaidPa
 export type { FetchPaidOptions, FetchPaidResult, PaymentRequired, PaymentRequirements, RequestFields } from "./paywall.js";
 export { findServices, fetchManifest, normalizeURL, DIRECTORY_ADDRESS, ANNOUNCE_PREFIX, DELIST_PREFIX, MANIFEST_PATH } from "./directory.js";
 export type { Manifest, Service } from "./directory.js";
+export { withdrawPrepaid } from "./withdraw.js";
+export type { WithdrawOptions, WithdrawResult } from "./withdraw.js";
+export { Paywall, KeyPayout, WITHDRAW_PATH } from "./seller.js";
+export type { PaywallConfig, Payment, SellerRequest, Decision, Respond } from "./seller.js";
+export { FileLedger, LedgerError } from "./ledger.js";
+export type { Ledger, Withdrawal } from "./ledger.js";

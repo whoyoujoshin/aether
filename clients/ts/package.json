@@ -1,7 +1,7 @@
 {
   "name": "@aether-chain/client",
   "version": "0.1.0",
-  "description": "TypeScript client for the Aether chain: ML-DSA-44 keys, payments, paid APIs (x402 aether-memo / aether-prepaid) and the service directory.",
+  "description": "TypeScript client for the Aether chain: ML-DSA-44 keys, payments, buying and selling paid APIs (x402 aether-memo / aether-prepaid) and the service directory.",
   "license": "MIT",
   "type": "module",
   "main": "dist/src/index.js",

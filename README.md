@@ -176,7 +176,7 @@ Built for how agents actually fail:
 - **No double payments on retry.** `send_aeth` requires an `idempotencyKey`; a retry with the same key re-sends the identical signed transaction (its sequence number is signed in, so the chain can include it at most once) and returns its status.
 - **Knows when a payment is final.** `send_aeth` returns `pending` once the node accepts it; `wait_for_transaction` waits until it's `confirmed` or `failed` in a block.
 - **Can get paid.** `create_invoice` returns a unique memo and the current height; `wait_for_payment(memo, minAmount, sinceHeight)` waits for a confirmed incoming payment that matches. It reads every incoming payment since that height, page by page, so a busy agent can't miss one. Memos are sender-controlled, so tools label them as untrusted data.
-- **Can buy from paid APIs.** `fetch_paid(url, maxAmount, idempotencyKey)` requests a URL; if the server answers HTTP 402 (see [Paid APIs](#paid-apis-x402)), it pays at most `maxAmount`, waits for the payment to confirm and returns the response. Retrying with the same key resumes the same payment, never a second one. For many requests to one service, add `prepay` (e.g. `"1 AETH"`): the agent deposits that once and then pays each request instantly by signature — milliseconds instead of a block.
+- **Can buy from paid APIs.** `fetch_paid(url, maxAmount, idempotencyKey)` requests a URL; if the server answers HTTP 402 (see [Paid APIs](#paid-apis-x402)), it pays at most `maxAmount`, waits for the payment to confirm and returns the response. Retrying with the same key resumes the same payment, never a second one. For many requests to one service, add `prepay` (e.g. `"1 AETH"`): the agent deposits that once and then pays each request instantly by signature — milliseconds instead of a block. `list_prepaid_balances` shows what's left where, and `withdraw_prepaid(service)` takes it back, from services that offer withdrawals.
 - **Can find services.** `find_services(query, maxPrice)` lists paid APIs from the on-chain [service directory](#service-directory); `announce_service` lists one the agent runs.
 - **Answers to its owner.** With `--approval-threshold "0.5 AETH" --approver <owner-address>`, bigger payments wait (nothing signed or sent) until the owner runs `agentmcp approve <id>`, which signs the decision with the **owner's** key — so the agent can't approve itself even if it can write files on the machine. `agentmcp approvals` lists what's waiting. With `--notify-webhook <url>` (and `--notify-secret` to HMAC-sign each alert), every payment, approval request and refusal is POSTed there.
 - **Wakes on new blocks.** Waiting tools subscribe to the node's new-block events over `--rpc` instead of polling, falling back to polling if the feed is down.
@@ -197,7 +197,7 @@ For agents and services that aren't MCP clients, `clients/ts` (`@aether-chain/cl
 - ML-DSA-44 keys from a recovery phrase (the same phrase gives the same address as `aetherd keys add` and `agentmcp`), addresses, signing.
 - Sending AETH (signed locally, broadcast over the node's CometBFT RPC), with sequence tracking for several sends per block and a safe `rebroadcast` for retries — the same signed bytes are included at most once.
 - `waitForTransaction`, `incomingPayments` / `waitForPayment` for getting paid by memo.
-- `fetchPaid` for [paid APIs](#paid-apis-x402), both `aether-memo` and `aether-prepaid` (pass `prepay`), with the same max-price guard and once-only request IDs as `agentmcp`.
+- `fetchPaid` for [paid APIs](#paid-apis-x402), both `aether-memo` and `aether-prepaid` (pass `prepay`), with the same max-price guard and once-only request IDs as `agentmcp`; `withdrawPrepaid` takes back what's left.
 - `findServices` over the [service directory](#service-directory), refusing private and internal addresses by default.
 
 ```ts
@@ -213,6 +213,21 @@ from aether_client import AetherClient, Key, fetch_paid
 client = AetherClient("http://localhost:26657", "aether-testnet-1")
 key = Key.from_mnemonic(os.environ["AETHER_MNEMONIC"])
 res = fetch_paid(client, key, "https://api.example.com/forecast", max_amount="0.05 AETH", prepay="1 AETH")
+```
+
+**Selling, too.** Both include a seller kit: charge per request from a Node or Python service without running `cmd/paywall` — both schemes, the manifest for the [service directory](#service-directory), and withdrawals. It talks to the same buyers (`agentmcp`, either client, a person paying an invoice by hand), and its ledger file is the Go paywall's format.
+
+```ts
+import { AetherClient, Key, Paywall } from "@aether-chain/client";
+const pw = new Paywall({ client, payTo: "aether1...", price: "0.01 AETH", name: "Weather",
+  prepaid: { ledger: "ledger.json", minDeposit: "0.1 AETH", payoutKey: Key.fromMnemonic(process.env.PAYOUT_MNEMONIC!) } });
+app.use(pw.middleware({ free: ["/health"] }));   // Express/Connect, before body parsers; who paid: req.aether
+```
+
+```python
+from aether_client import AetherClient, Paywall
+pw = Paywall(client, "aether1...", "0.01 AETH", name="Weather", prepaid_ledger="ledger.json", min_deposit="0.1 AETH")
+app = pw.asgi(app, free=["/health"])             # FastAPI/Starlette; pw.wsgi(...) for Flask/Django. Who paid: scope["aether"]
 ```
 
 They need only the node's RPC port (26657). Both are tested against `clients/testdata/vectors.json`, which the Go code generates (`go test ./clients/vectors -update-vectors`), so their keys, addresses, signatures and transaction bytes stay identical to the chain's.
@@ -231,6 +246,8 @@ An unpaid request gets `402 Payment Required` in the [x402](https://www.x402.org
 With ~60s blocks a paid request waits about one block; a payment is served whenever it lands within the invoice's 24h lifetime, so slow confirmation never forfeits it.
 
 **Prepaid, for agents.** With `--prepaid-ledger <file>` the proxy also offers `aether-prepaid`: an agent deposits once (memo `prepaid:<its address>` — anyone can fund it, e.g. a person funding their bot), then signs each request with its ML-DSA key and the price is deducted instantly. Each request ID is charged once, so a retry is never charged twice. The seller holds unspent balances in that file (back it up); agents should deposit only what they'd trust that service with. People paying occasionally just use the per-request scheme.
+
+**Withdrawals.** Add `--payout-key <name> --keyring-dir <dir>` and agents can take back what they haven't spent: they POST a request signed like a paid one to `/.well-known/x402/withdraw` (`{"amount":"all"}` or an amount in uaeth), and the proxy pays it from that keyring account — always to the signing account itself, so a leaked or replayed signature can only return the agent's own money. Each withdrawal ID pays out once: the amount leaves the balance and the signed payout is saved in the ledger before it's broadcast, so a retry, or a restart mid-payout, re-sends the same transaction instead of paying again; the balance comes back only if the payout can never land. Partial withdrawals must be at least `--min-deposit`. Keep only a small float in the payout account (it can be `--pay-to`'s own key). The manifest and 402 responses advertise `withdrawPath` when it's on.
 
 The upstream must be reachable only through the proxy.
 
@@ -309,7 +326,7 @@ aetherd query governance proposal <proposal-id>
 | `cmd/agentmcp` | MCP server exposing the wallet as tool calls, for AI agents |
 | `paywall/`, `cmd/paywall` | Charge AETH per HTTP request (x402 format): middleware and reverse proxy |
 | `directory/` | On-chain service directory: announcements, manifest verification, safe fetching |
-| `clients/ts`, `clients/python` | TypeScript and Python clients: keys, payments, paid APIs, directory |
+| `clients/ts`, `clients/python` | TypeScript and Python clients: keys, payments, paid APIs (buying and selling), withdrawals, directory |
 | `clients/vectors` | Generates the shared test vectors both clients are checked against |
 | `cmd/powminer` | Native PoW nonce search against live state |
 | `cmd/auxpowtest` | Valid test AuxPoW construction |

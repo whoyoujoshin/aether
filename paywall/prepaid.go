@@ -40,7 +40,8 @@ import (
 // it can't be reused for anything else.
 //
 // The unspent balance is held by the seller: deposit only what you'd
-// trust this service with.
+// trust this service with. A seller with a Payout configured pays it
+// back on request (withdraw.go).
 
 const (
 	// signedRequestWindow bounds how old or future-dated a signed request
@@ -60,7 +61,10 @@ const (
 // PrepaidConfig enables the aether-prepaid scheme.
 type PrepaidConfig struct {
 	Ledger     Ledger
-	MinDeposit math.Int // uaeth; at least the price
+	MinDeposit math.Int // uaeth; at least the price; also the smallest partial withdrawal
+	// Payout, if set, lets agents withdraw unspent balances (see
+	// WithdrawHandler).
+	Payout Payout
 }
 
 // PrepaidPayment is an aether-prepaid X-PAYMENT payload.
@@ -129,59 +133,78 @@ type Ledger interface {
 	// Refund reverses a Charge, forgetting the request ID.
 	Refund(account, requestID string, amount math.Int) error
 	Balance(account string) (math.Int, error)
+
+	// ReserveWithdrawal deducts a withdrawal from account's balance and
+	// records it under id, once: if id is already recorded it returns
+	// that record with fresh false and changes nothing. amount nil
+	// means the whole balance. It fails with ErrLedgerInsufficient if
+	// the balance is short (or empty), and ErrLedgerBelowMinimum if
+	// amount is under min without being the whole balance.
+	ReserveWithdrawal(account, id string, amount *math.Int, min math.Int, at time.Time) (w Withdrawal, balance math.Int, fresh bool, err error)
+	// SaveWithdrawal updates a reserved withdrawal's record.
+	SaveWithdrawal(w Withdrawal) error
+	// CancelWithdrawal returns a reserved withdrawal's amount to the
+	// balance and forgets it. Only for a payout that can never land.
+	CancelWithdrawal(account, id string) error
 }
 
-func (p *Paywall) servePrepaid(w http.ResponseWriter, r *http.Request, raw json.RawMessage, next http.Handler) {
-	refuse := func(code, msg, account string) { p.paymentRequiredFor(w, r, code, msg, "", account) }
+// signedRequest is an aether-prepaid request whose signature checked
+// out: the account is who it claims.
+type signedRequest struct {
+	pay      PrepaidPayment
+	maxPrice math.Int
+	body     []byte
+}
 
+// refusal is why a signed request was turned down.
+type refusal struct {
+	code, message string
+	status        int // HTTP status if not 402
+}
+
+// verifySigned checks an aether-prepaid payload against r, reading
+// (and replacing) r.Body.
+func (p *Paywall) verifySigned(r *http.Request, raw json.RawMessage) (*signedRequest, *refusal) {
 	var pay PrepaidPayment
 	if err := json.Unmarshal(raw, &pay); err != nil {
-		refuse(ErrInvalidPayment, "payload must be a signed prepaid request", "")
-		return
+		return nil, &refusal{code: ErrInvalidPayment, message: "payload must be a signed prepaid request"}
 	}
 	accAddr, err := sdk.AccAddressFromBech32(pay.Account)
 	if err != nil {
-		refuse(ErrInvalidSignature, "invalid account address", "")
-		return
+		return nil, &refusal{code: ErrInvalidSignature, message: "invalid account address"}
 	}
 	pubBytes, err := base64.StdEncoding.DecodeString(pay.PubKey)
 	if err != nil || len(pubBytes) != mldsa.PubKeySize {
-		refuse(ErrInvalidSignature, "pubKey must be a base64 ML-DSA-44 public key", "")
-		return
+		return nil, &refusal{code: ErrInvalidSignature, message: "pubKey must be a base64 ML-DSA-44 public key"}
 	}
 	pub := &mldsa.PubKey{Key: pubBytes}
 	if !bytes.Equal(pub.Address(), accAddr) {
-		refuse(ErrInvalidSignature, "pubKey does not belong to account", "")
-		return
+		return nil, &refusal{code: ErrInvalidSignature, message: "pubKey does not belong to account"}
 	}
 	sig, err := base64.StdEncoding.DecodeString(pay.Signature)
 	if err != nil {
-		refuse(ErrInvalidSignature, "signature must be base64", "")
-		return
+		return nil, &refusal{code: ErrInvalidSignature, message: "signature must be base64"}
 	}
 	now := p.cfg.Now()
 	signedAt := time.Unix(pay.Timestamp, 0)
 	if signedAt.Before(now.Add(-signedRequestWindow)) || signedAt.After(now.Add(signedRequestWindow)) {
-		refuse(ErrStaleRequest, fmt.Sprintf("sign each request fresh: timestamp must be within %s of the server's clock", signedRequestWindow), "")
-		return
+		return nil, &refusal{code: ErrStaleRequest, message: fmt.Sprintf("sign each request fresh: timestamp must be within %s of the server's clock", signedRequestWindow)}
 	}
 	if pay.RequestID == "" || len(pay.RequestID) > 128 {
-		refuse(ErrInvalidPayment, "requestId is required (1-128 characters)", "")
-		return
+		return nil, &refusal{code: ErrInvalidPayment, message: "requestId is required (1-128 characters)"}
 	}
-	maxPrice, err := wallet.ParseUaeth(pay.MaxPrice)
-	if err != nil {
-		refuse(ErrInvalidPayment, "maxPrice: "+err.Error(), "")
-		return
+	maxPrice := math.ZeroInt() // "0": a withdrawal, which pays nothing
+	if pay.MaxPrice != "0" {
+		if maxPrice, err = wallet.ParseUaeth(pay.MaxPrice); err != nil {
+			return nil, &refusal{code: ErrInvalidPayment, message: "maxPrice: " + err.Error()}
+		}
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxSignedBody+1))
 	if err != nil {
-		http.Error(w, "failed to read request body", http.StatusBadRequest)
-		return
+		return nil, &refusal{message: "failed to read request body", status: http.StatusBadRequest}
 	}
 	if len(body) > maxSignedBody {
-		refuse(ErrRequestTooLarge, fmt.Sprintf("signed requests' bodies are limited to %d bytes", maxSignedBody), "")
-		return
+		return nil, &refusal{code: ErrRequestTooLarge, message: fmt.Sprintf("signed requests' bodies are limited to %d bytes", maxSignedBody)}
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 
@@ -190,9 +213,24 @@ func (p *Paywall) servePrepaid(w http.ResponseWriter, r *http.Request, raw json.
 		MaxPrice: maxPrice, Timestamp: pay.Timestamp, RequestID: pay.RequestID, DepositTx: pay.DepositTx,
 	})
 	if !pub.VerifySignature(msg, sig) {
-		refuse(ErrInvalidSignature, "signature does not match this request", "")
+		return nil, &refusal{code: ErrInvalidSignature, message: "signature does not match this request"}
+	}
+	return &signedRequest{pay: pay, maxPrice: maxPrice, body: body}, nil
+}
+
+func (p *Paywall) servePrepaid(w http.ResponseWriter, r *http.Request, raw json.RawMessage, next http.Handler) {
+	refuse := func(code, msg, account string) { p.paymentRequiredFor(w, r, code, msg, "", account) }
+
+	req, bad := p.verifySigned(r, raw)
+	if bad != nil {
+		if bad.status != 0 {
+			http.Error(w, bad.message, bad.status)
+		} else {
+			refuse(bad.code, bad.message, "")
+		}
 		return
 	}
+	pay, maxPrice, now := req.pay, req.maxPrice, p.cfg.Now()
 	// Signed and fresh: from here on the account is who it claims.
 	if maxPrice.LT(p.cfg.Price) {
 		refuse(ErrPriceAboveMax, fmt.Sprintf("the price is %s uaeth; the request allows at most %s", p.cfg.Price, maxPrice), pay.Account)
@@ -280,4 +318,4 @@ const prepaidInstructions = "For many requests: deposit at least minDeposit uaet
 	"(\"prepaid:\" + the address to credit). Then sign each request with that account's ML-DSA key and send X-PAYMENT: base64 of " +
 	`{"x402Version":1,"scheme":"aether-prepaid","network":"<network>","payload":{account,pubKey,timestamp,requestId,maxPrice,depositTx?,signature}}` +
 	" -- see package paywall's SigningMessage. The first request after a deposit names it in depositTx. " +
-	"Each requestId is charged once. Unspent balance stays with the seller."
+	"Each requestId is charged once. Unspent balance stays with the seller; if withdrawPath is set, POST a request signed the same way there (body {\"amount\":\"all\"}) to get it back."
