@@ -137,6 +137,7 @@ func (c *Client) GetTransactionHistory(address string, limit uint64) ([]Transact
 
 								for i, txResp := range resp.TxResponses {
 				amount := ""
+				firstTransfer := ""
 				direction := q.direction
 				for _, event := range txResp.Events {
 					if event.Type == "transfer" {
@@ -150,6 +151,9 @@ func (c *Client) GetTransactionHistory(address string, limit uint64) ([]Transact
 							case "amount":
 								eventAmount = attr.Value
 							}
+						}
+						if firstTransfer == "" {
+							firstTransfer = eventAmount
 						}
 						// A single transaction (like MsgSubmitPoW,
 						// which distributes a miner cut and a
@@ -176,6 +180,12 @@ func (c *Client) GetTransactionHistory(address string, limit uint64) ([]Transact
 							direction = "sent"
 						}
 					}
+				}
+				// Signed it, but no transfer touches this address:
+				// it moved someone else's funds -- e.g. an x/authz
+				// MsgExec spending a granter's balance.
+				if amount == "" && direction == "sent" {
+					amount = firstTransfer
 				}
 				all = append(all, Transaction{
 					Hash:      txResp.TxHash,
@@ -224,6 +234,7 @@ type TransactionDetail struct {
 	Hash      string
 	Height    int64
 	Code      uint32
+	Codespace string
 	RawLog    string
 	GasUsed   int64
 	GasWanted int64
@@ -277,6 +288,7 @@ func (c *Client) GetTransactionByHash(hash string) (*TransactionDetail, error) {
 		Hash:      resp.TxResponse.TxHash,
 		Height:    resp.TxResponse.Height,
 		Code:      resp.TxResponse.Code,
+		Codespace: resp.TxResponse.Codespace,
 		RawLog:    resp.TxResponse.RawLog,
 		GasUsed:   resp.TxResponse.GasUsed,
 		GasWanted: resp.TxResponse.GasWanted,

@@ -29,6 +29,9 @@ type TxParams struct {
 	// Memo is free text attached to the transaction -- typically a
 	// payment reference (e.g. an invoice ID) the recipient matches on.
 	Memo string
+	// FeeGranter, if set, pays this transaction's fees from its
+	// x/feegrant allowance to the signer instead of the signer paying.
+	FeeGranter sdk.AccAddress
 }
 
 // SignedTx holds a fully signed, broadcast-ready transaction. The raw
@@ -61,7 +64,8 @@ func (w *Wallet) BuildAndSignSendTx(fromName, fromAddr, toAddr string, amount sd
 		WithSequence(params.Sequence).
 		WithGas(params.GasLimit).
 		WithFees(params.Fees.String()).
-		WithMemo(params.Memo)
+		WithMemo(params.Memo).
+		WithFeeGranter(params.FeeGranter)
 
 	txBuilder, err := factory.BuildUnsignedTx(msg)
 	if err != nil {
@@ -89,9 +93,10 @@ func TxHash(signed SignedTx) string {
 // BroadcastResult is a simplified view of the real broadcast response
 // -- exposing just what a caller typically needs.
 type BroadcastResult struct {
-	TxHash string
-	Code   uint32
-	RawLog string
+	TxHash    string
+	Code      uint32
+	Codespace string // with Code, identifies the error (e.g. "sdk" 5 = insufficient funds)
+	RawLog    string
 }
 
 // BroadcastTx sends an already-signed transaction to the chain via
@@ -111,9 +116,10 @@ func (c *Client) BroadcastTx(signed SignedTx) (BroadcastResult, error) {
 	}
 
 	return BroadcastResult{
-		TxHash: resp.TxResponse.TxHash,
-		Code:   resp.TxResponse.Code,
-		RawLog: resp.TxResponse.RawLog,
+		TxHash:    resp.TxResponse.TxHash,
+		Code:      resp.TxResponse.Code,
+		Codespace: resp.TxResponse.Codespace,
+		RawLog:    resp.TxResponse.RawLog,
 	}, nil
 }
 
@@ -134,7 +140,8 @@ func (w *Wallet) BuildAndSignMsgTx(fromName string, msg sdk.Msg, params TxParams
 		WithSequence(params.Sequence).
 		WithGas(params.GasLimit).
 		WithFees(params.Fees.String()).
-		WithMemo(params.Memo)
+		WithMemo(params.Memo).
+		WithFeeGranter(params.FeeGranter)
 
 	txBuilder, err := factory.BuildUnsignedTx(msg)
 	if err != nil {
