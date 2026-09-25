@@ -1,0 +1,25 @@
+{
+  "name": "@aether-chain/client",
+  "version": "0.1.0",
+  "description": "TypeScript client for the Aether chain: ML-DSA-44 keys, payments, paid APIs (x402 aether-memo / aether-prepaid) and the service directory.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "files": ["dist/src"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "tsc -p . && node --test dist/test/*.test.js"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.0.1",
+    "@noble/post-quantum": "^0.7.1",
+    "@scure/base": "^2.0.0",
+    "@scure/bip39": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

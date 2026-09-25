@@ -152,7 +152,18 @@ Open `http://localhost:8081`.
 
 ## AI agent wallet (MCP)
 
-An MCP server exposing wallet operations as tool calls, so an AI agent can pay and get paid directly instead of only a human clicking through a UI:
+An MCP server exposing wallet operations as tool calls, so an AI agent can pay and get paid directly instead of only a human clicking through a UI.
+
+**Quick start (testnet):**
+
+```bash
+go install ./cmd/agentmcp
+agentmcp init
+```
+
+`init` creates the agent's account (showing its recovery phrase once), asks the testnet faucet for funds, waits until they arrive and prints the exact `claude mcp add ...` command and the JSON config block for Claude Desktop and other MCP clients. Run it again to reuse the same account. `--faucet <url>` points it at another faucet, `--no-faucet` skips funding; it takes the same `--grpc`, `--rpc`, `--chain-id` and `--keyring-dir` flags as the server. Once running, the agent can top itself up with the `request_testnet_funds` tool (testnet only; `FAUCET_RATE_LIMITED` means wait).
+
+To run the server by hand:
 
 ```bash
 go run ./cmd/agentmcp --grpc localhost:9090 --rpc http://localhost:26657 --chain-id aether-testnet-1 \
@@ -178,6 +189,33 @@ Two modes:
 - **Grant** (`--granter`): pays from your account under an x/authz grant you gave the agent (below), so **the chain** enforces the spend limit, expiry and allowed recipients, and you can revoke it at any time. The agent account needs no balance of its own. The server's caps still apply on top. Available from the activation height.
 
 Read `cmd/agentmcp/main.go`'s package doc comment before deploying either.
+
+### Client libraries (TypeScript, Python)
+
+For agents and services that aren't MCP clients, `clients/ts` (`@aether-chain/client`) and `clients/python` (`aether_client`) implement the same things natively — no Go, no `aetherd`:
+
+- ML-DSA-44 keys from a recovery phrase (the same phrase gives the same address as `aetherd keys add` and `agentmcp`), addresses, signing.
+- Sending AETH (signed locally, broadcast over the node's CometBFT RPC), with sequence tracking for several sends per block and a safe `rebroadcast` for retries — the same signed bytes are included at most once.
+- `waitForTransaction`, `incomingPayments` / `waitForPayment` for getting paid by memo.
+- `fetchPaid` for [paid APIs](#paid-apis-x402), both `aether-memo` and `aether-prepaid` (pass `prepay`), with the same max-price guard and once-only request IDs as `agentmcp`.
+- `findServices` over the [service directory](#service-directory), refusing private and internal addresses by default.
+
+```ts
+import { AetherClient, Key, fetchPaid } from "@aether-chain/client";
+const client = new AetherClient({ rpc: "http://localhost:26657", chainId: "aether-testnet-1" });
+const key = Key.fromMnemonic(process.env.AETHER_MNEMONIC!);
+const res = await fetchPaid(client, key, "https://api.example.com/forecast", { maxAmount: "0.05 AETH", prepay: "1 AETH" });
+```
+
+```python
+import os
+from aether_client import AetherClient, Key, fetch_paid
+client = AetherClient("http://localhost:26657", "aether-testnet-1")
+key = Key.from_mnemonic(os.environ["AETHER_MNEMONIC"])
+res = fetch_paid(client, key, "https://api.example.com/forecast", max_amount="0.05 AETH", prepay="1 AETH")
+```
+
+They need only the node's RPC port (26657). Both are tested against `clients/testdata/vectors.json`, which the Go code generates (`go test ./clients/vectors -update-vectors`), so their keys, addresses, signatures and transaction bytes stay identical to the chain's.
 
 ### Paid APIs (x402)
 
@@ -271,6 +309,8 @@ aetherd query governance proposal <proposal-id>
 | `cmd/agentmcp` | MCP server exposing the wallet as tool calls, for AI agents |
 | `paywall/`, `cmd/paywall` | Charge AETH per HTTP request (x402 format): middleware and reverse proxy |
 | `directory/` | On-chain service directory: announcements, manifest verification, safe fetching |
+| `clients/ts`, `clients/python` | TypeScript and Python clients: keys, payments, paid APIs, directory |
+| `clients/vectors` | Generates the shared test vectors both clients are checked against |
 | `cmd/powminer` | Native PoW nonce search against live state |
 | `cmd/auxpowtest` | Valid test AuxPoW construction |
 | `cmd/scryptbench` | Scrypt throughput benchmarks |

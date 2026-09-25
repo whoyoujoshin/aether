@@ -51,6 +51,8 @@ const (
 	// announce_service
 	codeServiceUnverifiable = "SERVICE_UNVERIFIABLE"
 	codeApprovalRejected    = "APPROVAL_REJECTED"
+	codeFaucetUnavailable   = "FAUCET_UNAVAILABLE"
+	codeFaucetRateLimited   = "FAUCET_RATE_LIMITED"
 	codeInternal            = "INTERNAL"
 )
 
