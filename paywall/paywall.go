@@ -60,6 +60,8 @@ type Paywall struct {
 	cfg    Config
 	secret []byte
 	store  RedeemedStore
+
+	withdrawMu sync.Mutex
 }
 
 func New(cfg Config) (*Paywall, error) {
@@ -270,6 +272,9 @@ func (p *Paywall) paymentRequiredFor(w http.ResponseWriter, r *http.Request, cod
 			DepositMemo:  DepositMemoPrefix + "<address>",
 			MinDeposit:   p.cfg.Prepaid.MinDeposit.String(),
 			Instructions: prepaidInstructions,
+		}
+		if p.cfg.Prepaid.Payout != nil {
+			prepaid.Extra.WithdrawPath = WithdrawPath
 		}
 		if account != "" {
 			if bal, err := p.cfg.Prepaid.Ledger.Balance(account); err == nil {

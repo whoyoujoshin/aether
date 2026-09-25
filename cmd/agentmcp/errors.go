@@ -53,7 +53,12 @@ const (
 	codeApprovalRejected    = "APPROVAL_REJECTED"
 	codeFaucetUnavailable   = "FAUCET_UNAVAILABLE"
 	codeFaucetRateLimited   = "FAUCET_RATE_LIMITED"
-	codeInternal            = "INTERNAL"
+	// withdraw_prepaid
+	codeWithdrawalsUnavailable = "WITHDRAWALS_UNAVAILABLE"
+	codeInsufficientPrepaid    = "INSUFFICIENT_PREPAID_BALANCE"
+	codeWithdrawalFailed       = "WITHDRAWAL_FAILED" // not paid out; the balance is intact
+	codeWithdrawalRejected     = "WITHDRAWAL_REJECTED"
+	codeInternal               = "INTERNAL"
 )
 
 var retryableCodes = map[string]bool{
@@ -61,6 +66,7 @@ var retryableCodes = map[string]bool{
 	codeBroadcastUncertain: true,
 	codeHTTPError:          true,
 	codePaymentPending:     true,
+	codeWithdrawalFailed:   true,
 }
 
 type agentError struct {

@@ -2,6 +2,7 @@ package paywall
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,7 +26,41 @@ type ledgerState struct {
 	Balances map[string]string         `json:"balances"` // account -> uaeth
 	Deposits map[string]depositRecord  `json:"deposits"` // tx hash -> credit
 	Requests map[string]chargedRequest `json:"requests"` // account/requestID -> charge
+	// account/withdrawalID -> withdrawal. Kept for good: they're the
+	// record of money paid back.
+	Withdrawals map[string]Withdrawal `json:"withdrawals,omitempty"`
 }
+
+// Withdrawal is a prepaid balance paid back to its account.
+type Withdrawal struct {
+	ID        string `json:"id"`
+	Account   string `json:"account"`
+	Requested string `json:"requested"` // "all" or uaeth, as asked
+	Amount    string `json:"amount"`    // uaeth
+	Status    string `json:"status"`    // reserved, pending or confirmed
+	// The signed payout, kept from before it's broadcast until it's in
+	// a block, so it is only ever re-sent, never paid a second time.
+	TxHash   string    `json:"txHash,omitempty"`
+	TxBytes  []byte    `json:"txBytes,omitempty"`
+	Sequence uint64    `json:"sequence,omitempty"`
+	At       time.Time `json:"at"`
+	// SequenceSpentAt is when the payout's sequence was first seen used
+	// while the payout itself wasn't on chain.
+	SequenceSpentAt time.Time `json:"sequenceSpentAt,omitempty"`
+}
+
+// Withdrawal statuses.
+const (
+	WithdrawalReserved  = "reserved"  // deducted, payout not yet signed
+	WithdrawalPending   = "pending"   // payout signed (maybe broadcast), not in a block
+	WithdrawalConfirmed = "confirmed" // payout in a block
+)
+
+var (
+	ErrLedgerInsufficient = errors.New("insufficient balance")
+	ErrLedgerBelowMinimum = errors.New("below the minimum withdrawal")
+	errWithdrawalNotFound = errors.New("withdrawal not found")
+)
 
 type depositRecord struct {
 	Account string    `json:"account"`
@@ -42,6 +77,7 @@ type chargedRequest struct {
 func NewFileLedger(path string) (*FileLedger, error) {
 	l := &FileLedger{path: path, state: ledgerState{
 		Balances: map[string]string{}, Deposits: map[string]depositRecord{}, Requests: map[string]chargedRequest{},
+		Withdrawals: map[string]Withdrawal{},
 	}}
 	if path == "" {
 		return l, nil
@@ -64,6 +100,9 @@ func NewFileLedger(path string) (*FileLedger, error) {
 	}
 	if l.state.Requests == nil {
 		l.state.Requests = map[string]chargedRequest{}
+	}
+	if l.state.Withdrawals == nil {
+		l.state.Withdrawals = map[string]Withdrawal{}
 	}
 	return l, nil
 }
@@ -136,6 +175,76 @@ func (l *FileLedger) Refund(account, requestID string, amount math.Int) error {
 	if err := l.save(); err != nil {
 		l.restoreBalance(account, prev)
 		l.state.Requests[key] = charge
+		return err
+	}
+	return nil
+}
+
+func (l *FileLedger) ReserveWithdrawal(account, id string, amount *math.Int, min math.Int, at time.Time) (Withdrawal, math.Int, bool, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	key := account + "/" + id
+	bal := l.balance(account)
+	if w, seen := l.state.Withdrawals[key]; seen {
+		return w, bal, false, nil
+	}
+	requested, take := "all", bal
+	if amount != nil {
+		requested, take = amount.String(), *amount
+	}
+	if !bal.IsPositive() || take.GT(bal) || !take.IsPositive() {
+		return Withdrawal{}, bal, false, ErrLedgerInsufficient
+	}
+	if take.LT(min) && !take.Equal(bal) {
+		return Withdrawal{}, bal, false, ErrLedgerBelowMinimum
+	}
+	prev := l.state.Balances[account]
+	next := bal.Sub(take)
+	w := Withdrawal{ID: id, Account: account, Requested: requested, Amount: take.String(), Status: WithdrawalReserved, At: at.UTC()}
+	l.state.Balances[account] = next.String()
+	l.state.Withdrawals[key] = w
+	if err := l.save(); err != nil {
+		l.restoreBalance(account, prev)
+		delete(l.state.Withdrawals, key)
+		return Withdrawal{}, math.Int{}, false, err
+	}
+	return w, next, true, nil
+}
+
+func (l *FileLedger) SaveWithdrawal(w Withdrawal) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	key := w.Account + "/" + w.ID
+	prev, ok := l.state.Withdrawals[key]
+	if !ok {
+		return errWithdrawalNotFound
+	}
+	l.state.Withdrawals[key] = w
+	if err := l.save(); err != nil {
+		l.state.Withdrawals[key] = prev
+		return err
+	}
+	return nil
+}
+
+func (l *FileLedger) CancelWithdrawal(account, id string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	key := account + "/" + id
+	w, ok := l.state.Withdrawals[key]
+	if !ok {
+		return errWithdrawalNotFound
+	}
+	amount, ok := math.NewIntFromString(w.Amount)
+	if !ok {
+		return fmt.Errorf("withdrawal %s has an unreadable amount %q", key, w.Amount)
+	}
+	prev := l.state.Balances[account]
+	l.state.Balances[account] = l.balance(account).Add(amount).String()
+	delete(l.state.Withdrawals, key)
+	if err := l.save(); err != nil {
+		l.restoreBalance(account, prev)
+		l.state.Withdrawals[key] = w
 		return err
 	}
 	return nil

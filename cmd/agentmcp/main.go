@@ -481,6 +481,18 @@ func main() {
 	}, coded(toolAnnounceService))
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name: "withdraw_prepaid",
+		Description: "Take back unspent AETH deposited with a service for prepaid requests (fetch_paid's prepay): the service pays it back to this agent on chain. " +
+			"Amount is \"all\" (default) or WITH its unit. Requires an idempotencyKey: asking again with the same key never withdraws twice. " +
+			"Only services whose manifest offers withdrawals support it.",
+	}, coded(toolWithdrawPrepaid))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "list_prepaid_balances",
+		Description: "Where this agent has prepaid AETH left, as each service last reported it (after each prepaid request or withdrawal). Take it back with withdraw_prepaid.",
+	}, coded(toolListPrepaidBalances))
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "request_testnet_funds",
 		Description: "Testnet only: ask the faucet to send this agent starter AETH (rate-limited per address).",
 	}, coded(toolRequestTestnetFunds))

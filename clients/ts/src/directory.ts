@@ -29,6 +29,7 @@ export interface Manifest {
   priceAeth: string;
   schemes: string[];
   minDeposit?: string;
+  withdrawPath?: string; // set if unspent prepaid balance can be withdrawn
 }
 
 export interface Service {

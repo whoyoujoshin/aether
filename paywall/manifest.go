@@ -22,6 +22,8 @@ type Manifest struct {
 	PriceAeth   string   `json:"priceAeth"`
 	Schemes     []string `json:"schemes"`
 	MinDeposit  string   `json:"minDeposit,omitempty"` // uaeth, aether-prepaid
+	// WithdrawPath is set if unspent prepaid balances can be withdrawn.
+	WithdrawPath string `json:"withdrawPath,omitempty"`
 }
 
 // Manifest describes this paywall.
@@ -32,6 +34,9 @@ func (p *Paywall) Manifest(name, description string) Manifest {
 	}
 	if p.cfg.Prepaid != nil {
 		m.MinDeposit = p.cfg.Prepaid.MinDeposit.String()
+		if p.cfg.Prepaid.Payout != nil {
+			m.WithdrawPath = WithdrawPath
+		}
 	}
 	return m
 }
