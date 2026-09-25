@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -141,6 +142,17 @@ type sendRequest struct {
 	Amount string `json:"amount"` // uaeth, as a plain integer string
 }
 
+// parseUaeth reads a positive whole number of uaeth, strictly in base
+// 10. math.NewIntFromString guesses the base from the prefix, so
+// "010" would be octal 8 and "0x10" hex 16.
+func parseUaeth(s string) (math.Int, error) {
+	v, ok := new(big.Int).SetString(s, 10)
+	if !ok || v.Sign() <= 0 || v.BitLen() > 255 {
+		return math.Int{}, fmt.Errorf("invalid amount %q: must be a positive whole number of uaeth", s)
+	}
+	return math.NewIntFromBigInt(v), nil
+}
+
 // POST /api/send
 func handleSend(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -165,12 +177,17 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	amountInt, ok := math.NewIntFromString(req.Amount)
-	if !ok {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid amount %q", req.Amount))
+	amountInt, err := parseUaeth(req.Amount)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	amount := sdk.NewCoins(sdk.NewCoin("uaeth", amountInt))
+	// BuildAndSignSendTx panics on a malformed address.
+	if _, err := sdk.AccAddressFromBech32(req.To); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid recipient address %q: %w", req.To, err))
+		return
+	}
 
 	client, err := wallet.NewClient(grpcEndpoint)
 	if err != nil {
