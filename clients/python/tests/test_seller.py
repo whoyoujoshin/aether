@@ -13,8 +13,9 @@ import urllib.error
 import urllib.request
 from wsgiref.simple_server import WSGIRequestHandler, make_server
 
-from aether_client import (WITHDRAW_PATH, AetherClient, FileLedger, Key, Paywall, PaymentError, build_send, fetch_paid,
-                           memo_payment_header, prepaid_payment_header, withdraw_prepaid)
+from aether_client import (WITHDRAW_PATH, AetherClient, FileLedger, Key, Paywall, PaymentError, build_send,
+                           create_receipt_delegation, delegation_signing_message, fetch_paid, memo_payment_header,
+                           prepaid_payment_header, receipt_signing_message, verify_receipt, withdraw_prepaid)
 from aether_client.rpc import RpcError
 
 CHAIN = "aether-testnet-1"
@@ -69,14 +70,14 @@ class _Quiet(WSGIRequestHandler):
 
 
 class Seller:
-    def __init__(self, payout=False, ledger="", fail_with=None):
+    def __init__(self, payout=False, ledger="", fail_with=None, receipts=False, response=None):
         self.chain = FakeChain()
         self.client = self.chain.client()
         self.seller = Key.random()
         self.t = time.time()
         self.pw = Paywall(self.client, self.seller.address, "0.01 AETH", name="Weather", description="forecasts",
                           prepaid_ledger=ledger, min_deposit="0.03 AETH", payout_key=Key.random() if payout else None,
-                          now=lambda: self.t)
+                          receipt_key=self.seller if receipts else None, now=lambda: self.t)
         self.served = []
 
         def app(environ, start_response):
@@ -85,6 +86,8 @@ class Seller:
                 self.served.append(p)
             body = environ["wsgi.input"].read(int(environ.get("CONTENT_LENGTH") or 0))
             start_response(f"{fail_with or 200} X", [("Content-Type", "application/json")])
+            if response is not None:
+                return response
             return [json.dumps({"path": environ["PATH_INFO"], "body": body.decode()}).encode()]
 
         self.httpd = make_server("127.0.0.1", 0, self.pw.wsgi(app, free=["/health"]), handler_class=_Quiet)
@@ -263,6 +266,59 @@ class SellerTest(unittest.TestCase):
             withdraw_prepaid(s.client, Key.random(), s.url)
         self.assertEqual(e.exception.code, "PAYMENT_UNSUPPORTED")
 
+    def _auto_include(self, s, buyer, amount):
+        def include(tx):
+            s.chain.include(tx, hashlib.sha256(tx).hexdigest().upper(), 0, [(buyer.address, s.seller.address, amount["n"])])
+            return {"code": 0}
+        s.chain.on_broadcast = include
+
+    def test_receipts(self):
+        s = self.s = Seller(receipts=True)
+        buyer, amount = Key.random(), {"n": 10_000}
+        self._auto_include(s, buyer, amount)
+        r = fetch_paid(s.client, buyer, s.url + "/forecast/s%C3%A3o?x=1", method="POST", body=b'{"d":1}', max_amount="0.01 AETH", confirm_timeout=5)
+        self.assertTrue(r.receipt.verified, r.receipt.problem)
+        self.assertEqual(r.receipt.receipt["path"], "/forecast/são")
+        self.assertEqual(json.loads(r.response.body)["body"], '{"d":1}', "the app still reads the body")
+        amount["n"] = 50_000
+        p = fetch_paid(s.client, buyer, s.url + "/forecast", max_amount="0.01 AETH", prepay="0.05 AETH", request_id="p1", confirm_timeout=5)
+        self.assertTrue(p.receipt.verified, p.receipt.problem)
+        self.assertEqual(p.receipt.receipt["payment"], "p1")
+
+    def test_receipt_for_big_response_has_no_response_hash(self):
+        big = [b"x" * (1 << 20) for _ in range(5)]
+        s = self.s = Seller(receipts=True, response=big)
+        buyer = Key.random()
+        self._auto_include(s, buyer, {"n": 10_000})
+        r = fetch_paid(s.client, buyer, s.url + "/big", max_amount="0.01 AETH", confirm_timeout=5)
+        self.assertEqual(len(r.response.body), 5 << 20)
+        self.assertTrue(r.receipt.verified, r.receipt.problem)
+        self.assertNotIn("responseHash", r.receipt.receipt)
+
+    def test_receipt_key_must_be_the_payees(self):
+        s = self.s = Seller()
+        other = Key.random()
+        with self.assertRaises(ValueError):
+            Paywall(s.client, s.seller.address, "0.01 AETH", receipt_key=other)
+        d = create_receipt_delegation(s.seller, other.address, int(time.time()) + 3600)
+        Paywall(s.client, s.seller.address, "0.01 AETH", receipt_key=other, receipt_delegation=d)
+
+
+class ReceiptVectors(unittest.TestCase):
+    def test_same_bytes_as_go(self):
+        v = json.loads((__import__("pathlib").Path(__file__).resolve().parents[2] / "testdata" / "vectors.json").read_text())["receipts"]
+        self.assertEqual(receipt_signing_message(v["direct"]).hex(), v["directMessage"])
+        self.assertEqual(receipt_signing_message(v["delegated"]).hex(), v["delegatedMessage"])
+        d = v["delegated"]["delegation"]
+        self.assertEqual(delegation_signing_message(d["payTo"], d["signer"], d["expires"]).hex(), v["delegationMessage"])
+        self.assertIsNone(verify_receipt(v["direct"]))
+        self.assertIsNone(verify_receipt(v["delegated"]))
+        self.assertIsNotNone(verify_receipt({**v["direct"], "amount": "1"}))
+        self.assertIn("line break", verify_receipt({**v["direct"], "path": v["direct"]["path"] + "\n" + v["direct"]["requestHash"]}))
+        self.assertIn("hex", verify_receipt({**v["direct"], "requestHash": v["direct"]["requestHash"].upper()}))
+        self.assertIsNotNone(verify_receipt({**v["delegated"], "at": d["expires"] + 1}))
+        self.assertIsNotNone(verify_receipt({k: x for k, x in v["delegated"].items() if k != "delegation"}))
+
 
 class AsgiTest(unittest.TestCase):
     def test_asgi_serves_prepaid_and_replays_the_body(self):
@@ -306,6 +362,40 @@ class AsgiTest(unittest.TestCase):
         again = asyncio.run(run(header))
         self.assertEqual(again[0]["status"], 402)
         self.assertEqual(json.loads(again[1]["body"])["error"], "invoice_already_redeemed")
+
+    def test_asgi_receipts(self):
+        chain = FakeChain()
+        client = chain.client()
+        seller, agent = Key.random(), Key.random()
+        pw = Paywall(client, seller.address, "0.01 AETH", prepaid_ledger="", receipt_key=seller)
+
+        async def app(scope, receive, send):
+            await receive()
+            await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/plain")]})
+            await send({"type": "http.response.body", "body": b"part1 ", "more_body": True})
+            await send({"type": "http.response.body", "body": b"part2"})
+        mw = pw.asgi(app)
+        dep = chain.pay(seller.address, 50_000, "prepaid:" + agent.address)
+        header = prepaid_payment_header(agent, network=CHAIN, pay_to=seller.address, host="svc.example", method="GET",
+                                        path="/f", body=b"", max_price=10_000, timestamp=int(time.time()), request_id="r1", deposit_tx=dep)
+        sent = []
+
+        async def run():
+            async def receive():
+                return {"type": "http.request", "body": b"", "more_body": False}
+
+            async def send(m):
+                sent.append(m)
+            await mw({"type": "http", "method": "GET", "path": "/f", "scheme": "http",
+                      "headers": [(b"host", b"svc.example"), (b"x-payment", header.encode())]}, receive, send)
+        asyncio.run(run())
+        hdrs = dict(sent[0]["headers"])
+        from aether_client import check_receipt, decode_receipt
+        r = decode_receipt(hdrs[b"x-payment-receipt"].decode())
+        self.assertIsNone(check_receipt(r, network=CHAIN, pay_to=seller.address, payer=agent.address, scheme="aether-prepaid",
+                                        payment="r1", amount=10_000, method="GET", host="svc.example", path="/f",
+                                        request_body=b"", status=200, response_body=b"part1 part2"))
+        self.assertEqual(b"".join(m.get("body", b"") for m in sent[1:]), b"part1 part2")
 
 
 if __name__ == "__main__":

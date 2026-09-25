@@ -46,6 +46,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"cosmossdk.io/math"
@@ -380,6 +381,7 @@ func main() {
 	flag.StringVar(&rpcEndpoint, "rpc", "http://localhost:26657", "node CometBFT RPC endpoint, for new-block push notifications (empty: poll instead)")
 	threshold := flag.String("approval-threshold", "", `payments above this (with unit, e.g. "0.5 AETH") wait for the owner's signed approval (agentmcp approve <id>); requires --approver`)
 	flag.StringVar(&approver, "approver", "", "the owner's address: only its key can approve or reject payments")
+	trust := flag.String("trust", "", "comma-separated addresses whose service ratings you trust (besides --approver and this agent); find_services reports their ratings separately")
 	flag.StringVar(&notifyWebhook, "notify-webhook", "", "URL to POST a JSON alert to on every payment, approval request and refusal")
 	flag.StringVar(&notifySecret, "notify-secret", "", "if set, alerts carry X-Aether-Signature: hex HMAC-SHA256 of the body with this secret")
 	flag.StringVar(&faucetURL, "faucet", "", "testnet faucet URL for request_testnet_funds (default: the public faucet on aether-testnet-1; \"off\" disables)")
@@ -410,6 +412,16 @@ func main() {
 		if _, err := sdk.AccAddressFromBech32(addr); err != nil {
 			log.Fatalf("invalid %s address %q: %v", name, addr, err)
 		}
+	}
+
+	for _, a := range strings.Split(*trust, ",") {
+		if a = strings.TrimSpace(a); a == "" {
+			continue
+		}
+		if _, err := sdk.AccAddressFromBech32(a); err != nil {
+			log.Fatalf("invalid --trust address %q: %v", a, err)
+		}
+		trustedRaters = append(trustedRaters, a)
 	}
 
 	if stateFile == "" {
@@ -476,6 +488,12 @@ func main() {
 	}, coded(toolFindServices))
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name: "rate_service",
+		Description: "Rate a paid service 1-5 after buying from it (costs 1 uaeth; your latest rating replaces earlier ones). " +
+			"Ratings count only from accounts that paid the service, and other agents weigh them by whom they trust.",
+	}, coded(toolRateService))
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "announce_service",
 		Description: "List a paid service this agent runs in the on-chain service directory (costs 1 uaeth), or delist it. Its manifest (/.well-known/x402, served by cmd/paywall) must name this agent's paying account as payee.",
 	}, coded(toolAnnounceService))
@@ -486,6 +504,12 @@ func main() {
 			"Amount is \"all\" (default) or WITH its unit. Requires an idempotencyKey: asking again with the same key never withdraws twice. " +
 			"Only services whose manifest offers withdrawals support it.",
 	}, coded(toolWithdrawPrepaid))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "list_purchases",
+		Description: "What this agent bought with fetch_paid, newest first: service, price, payment, HTTP status, and the seller's signed receipt with whether it verified. " +
+			"A receipt is proof anyone can check against the seller's address of what was paid and what came back.",
+	}, coded(toolListPurchases))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_prepaid_balances",

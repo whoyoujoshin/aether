@@ -3,7 +3,7 @@
 TypeScript client for the [Aether](https://github.com/whoyoujoshin/aether) chain: ML-DSA-44 keys, sending and receiving AETH, buying from and selling paid APIs (x402 `aether-memo` and `aether-prepaid`) and the on-chain service directory. It talks to a node's CometBFT RPC (port 26657) only.
 
 ```ts
-import { AetherClient, Key, fetchPaid, findServices, withdrawPrepaid } from "@aether-chain/client";
+import { AetherClient, Key, fetchPaid, findServices, rateService, withdrawPrepaid } from "@aether-chain/client";
 
 const client = new AetherClient({ rpc: "http://localhost:26657", chainId: "aether-testnet-1" });
 const key = Key.fromMnemonic(process.env.AETHER_MNEMONIC!); // same address as `aetherd keys add` / `agentmcp`
@@ -13,7 +13,10 @@ const done = await client.waitForTransaction(sent.hash);         // confirmed | 
 // Retrying after an error: client.rebroadcast(sent.signed) -- never a second send().
 
 const res = await fetchPaid(client, key, "https://api.example.com/forecast", { maxAmount: "0.05 AETH", prepay: "1 AETH" });
-const services = await findServices(client, { query: "weather", maxPrice: "0.1 AETH" });
+const services = await findServices(client, { query: "weather", maxPrice: "0.1 AETH", trusted: [ownerAddress] });
+// services[i].reputation: payments, payers, ratings (can be faked), trustedRatings (can't)
+// res.receipt: the seller's signed receipt and whether it matches exactly what was sent and received
+await rateService(client, key, "https://api.example.com", 5); // only raters who paid a service count
 const back = await withdrawPrepaid(client, key, "https://api.example.com", { withdrawalId: "w1" }); // unspent prepaid balance
 ```
 
@@ -33,6 +36,7 @@ const pw = new Paywall({
     minDeposit: "0.1 AETH",
     payoutKey: Key.fromMnemonic(process.env.PAYOUT_MNEMONIC!), // pays withdrawals; keep a small float in it
   },
+  receipts: { key: payeeKey }, // sign a receipt for every paid response (or a delegated key + createReceiptDelegation)
 });
 const app = express();
 app.use(pw.middleware({ free: ["/health"] })); // before body parsers

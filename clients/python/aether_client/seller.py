@@ -37,6 +37,7 @@ from .directory import MANIFEST_PATH
 from .keys import Key, address_of, is_address
 from .ledger import FileLedger, LedgerError, _parse_time
 from .paywall import DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, signing_message
+from .receipt import RECEIPT_HEADER, encode_receipt, malformed, sign_receipt, verify_receipt
 from .rpc import RpcError
 from .tx import build_send
 
@@ -47,6 +48,7 @@ _SIGNED_WINDOW = 300
 _REQUEST_ID_RETENTION = 24 * 3600
 _MAX_SIGNED_BODY = 10 << 20
 _SEQUENCE_SPENT_GRACE = 120
+_MAX_RECEIPT_BODY = 4 << 20
 _HASH = re.compile(r"[0-9A-F]{64}")
 
 _MEMO_INSTRUCTIONS = (
@@ -95,6 +97,8 @@ class Serve:
     payment: Payment
     headers: Dict[str, str]
     finish: Callable[[int], None] = field(repr=False)  # call with the response status
+    # With receipts on: the X-PAYMENT-RECEIPT value for (status, response body or None if too big/streamed).
+    receipt: Optional[Callable[[int, Optional[bytes]], str]] = field(default=None, repr=False)
 
 
 def _json(status: int, v, headers: Optional[dict] = None) -> Respond:
@@ -175,11 +179,15 @@ class Paywall:
     def __init__(self, client: AetherClient, pay_to: str, price: str, *, name: str = "", description: str = "",
                  mime_type: str = "", invoice_ttl: int = 86400, secret: Optional[bytes] = None,
                  prepaid_ledger: Union[None, str, FileLedger] = None, min_deposit: Optional[str] = None,
-                 payout_key: Optional[Key] = None, now: Callable[[], float] = time.time):
+                 payout_key: Optional[Key] = None, receipt_key: Optional[Key] = None,
+                 receipt_delegation: Optional[dict] = None, now: Callable[[], float] = time.time):
         """price and min_deposit carry their unit ("0.01 AETH"). prepaid_ledger (a
         FileLedger or a path) offers aether-prepaid: it holds customers'
         balances, so back it up. payout_key pays back unspent balances on
-        request: keep only a small float in that account."""
+        request: keep only a small float in that account. receipt_key signs a
+        receipt for every paid response: pay_to's own key, or one pay_to
+        delegated receipts to (receipt_delegation, from
+        create_receipt_delegation or `paywall delegate-receipts`)."""
         if not is_address(pay_to):
             raise ValueError(f'invalid pay_to address "{pay_to}"')
         self.client, self.pay_to = client, pay_to
@@ -196,6 +204,31 @@ class Paywall:
         self._redeemed_lock = threading.Lock()
         self._last_prune = 0.0
         self._withdraw_lock = threading.Lock()
+        self.receipt_key, self.receipt_delegation = receipt_key, receipt_delegation
+        if receipt_key:
+            probe = sign_receipt(receipt_key, {"network": self.network, "payTo": pay_to, "payer": "", "scheme": "", "payment": "",
+                                               "amount": "", "method": "", "host": "", "path": "",
+                                               "requestHash": hashlib.sha256(b"").hexdigest(), "status": 0, "at": int(self.now())},
+                                 receipt_delegation)
+            bad = verify_receipt(probe)
+            if bad:
+                raise ValueError(f"receipts wouldn't verify: {bad}")
+
+    def _receipt_for(self, req: SellerRequest, body: bytes, scheme: str, payer: str, payment: str):
+        if not self.receipt_key:
+            return None
+
+        def make(status: int, response_body: Optional[bytes]) -> str:
+            fields = {
+                "network": self.network, "payTo": self.pay_to, "payer": payer, "scheme": scheme, "payment": payment,
+                "amount": str(self.price), "method": req.method, "host": req.host, "path": req.path,
+                "requestHash": hashlib.sha256(body).hexdigest(), "status": status,
+                "responseHash": hashlib.sha256(response_body).hexdigest() if response_body is not None else None,
+                "at": int(self.now())}
+            if malformed(fields):
+                return ""  # e.g. a path with a line break: no receipt rather than an ambiguous one
+            return encode_receipt(sign_receipt(self.receipt_key, fields, self.receipt_delegation))
+        return make
 
     def _schemes(self):
         return [SCHEME_MEMO, SCHEME_PREPAID] if self.ledger is not None else [SCHEME_MEMO]
@@ -213,6 +246,8 @@ class Paywall:
     def needs_body(self, req: SellerRequest) -> bool:
         """Whether handle/withdraw needs the request body (to check a signature)."""
         if req.path == WITHDRAW_PATH:
+            return True
+        if self.receipt_key and req.header("x-payment"):
             return True
         pay = _decode_header(req.header("x-payment") or "")
         return bool(pay) and pay.get("scheme") == SCHEME_PREPAID
@@ -273,7 +308,8 @@ class Paywall:
             if status >= 500:  # the server failed, not the buyer: the payment may be used again
                 with self._redeemed_lock:
                     self._redeemed.pop(invoice, None)
-        return Serve(Payment(payer, SCHEME_MEMO, tx_hash=tx_hash), {"X-PAYMENT-RESPONSE": settlement}, finish)
+        return Serve(Payment(payer, SCHEME_MEMO, tx_hash=tx_hash), {"X-PAYMENT-RESPONSE": settlement}, finish,
+                     self._receipt_for(req, body, SCHEME_MEMO, payer, tx_hash))
 
     def _received(self, transfers):
         paid, payer = 0, ""
@@ -420,7 +456,8 @@ class Paywall:
                     self.ledger.refund(account, pay["requestId"], self.price)
                 except Exception as e:
                     print(f"paywall: refunding {account} for a failed request: {e}")
-        return Serve(Payment(account, SCHEME_PREPAID, balance_uaeth=bal), {"X-PAYMENT-RESPONSE": settlement}, finish)
+        return Serve(Payment(account, SCHEME_PREPAID, balance_uaeth=bal), {"X-PAYMENT-RESPONSE": settlement}, finish,
+                     self._receipt_for(req, body, SCHEME_PREPAID, account, pay["requestId"]))
 
     def _credit_deposit(self, req, tx_hash: str, account: str) -> Optional[Respond]:
         def refuse(code, msg, headers=None):
@@ -617,6 +654,8 @@ class Paywall:
                 body = environ["wsgi.input"].read(min(n, _MAX_SIGNED_BODY + 1)) if n > 0 else b""
                 environ["wsgi.input"] = io.BytesIO(body)
                 environ["CONTENT_LENGTH"] = str(len(body))
+                if len(body) > _MAX_SIGNED_BODY and self.receipt_key:
+                    return reply(Respond(413, {"Content-Type": "text/plain"}, f"paid requests' bodies are limited to {_MAX_SIGNED_BODY} bytes\n".encode()))
             if route == "withdraw":
                 return reply(self.withdraw(req, body))
             d = self.handle(req, body)
@@ -624,11 +663,56 @@ class Paywall:
                 return reply(d)
             environ["aether.payment"] = d.payment
 
+            if d.receipt:
+                return self._wsgi_with_receipt(app, environ, start_response, d)
+
             def paid_start_response(status, response_headers, exc_info=None):
                 d.finish(int(status.split()[0]))
                 return start_response(status, list(response_headers) + list(d.headers.items()), exc_info)
             return app(environ, paid_start_response)
         return middleware
+
+    @staticmethod
+    def _wsgi_with_receipt(app, environ, start_response, d: Serve):
+        """Holds the app's response until it's complete, so its receipt (a header)
+        can cover the body; past _MAX_RECEIPT_BODY it streams, with a receipt
+        that has no response hash."""
+        held = {}
+
+        def hold(status, response_headers, exc_info=None):
+            held.update(status=status, headers=list(response_headers) + list(d.headers.items()))
+            return lambda data: chunks.append(data)  # the legacy write() callable
+        chunks = []
+        result = app(environ, hold)
+
+        def start(body: Optional[bytes]):
+            code = int(held["status"].split()[0])
+            d.finish(code)
+            receipt = d.receipt(code, body)
+            start_response(held["status"], held["headers"] + ([(RECEIPT_HEADER, receipt)] if receipt else []))
+
+        def gen():
+            try:
+                size, streaming = sum(len(c) for c in chunks), False
+                for chunk in result:
+                    if streaming:
+                        yield chunk
+                        continue
+                    chunks.append(chunk)
+                    size += len(chunk)
+                    if size > _MAX_RECEIPT_BODY:
+                        streaming = True
+                        start(None)
+                        yield b"".join(chunks)
+                        chunks.clear()
+                if not streaming:
+                    body = b"".join(chunks)
+                    start(body)
+                    yield body
+            finally:
+                if hasattr(result, "close"):
+                    result.close()
+        return gen()
 
     def asgi(self, app, free: Iterable[str] = ()):
         """ASGI middleware (FastAPI/Starlette: app = pw.asgi(app))."""
@@ -680,14 +764,49 @@ class Paywall:
                 return await reply(d)
             scope = {**scope, "aether": d.payment}
 
+            extra = [(k.lower().encode("latin-1"), v.encode("latin-1")) for k, v in d.headers.items()]
+            if d.receipt:
+                return await self._asgi_with_receipt(app, scope, downstream_receive, send, d, extra)
+
             async def paid_send(message):
                 if message["type"] == "http.response.start":
                     d.finish(message["status"])
-                    message = {**message, "headers": list(message.get("headers", [])) +
-                               [(k.lower().encode("latin-1"), v.encode("latin-1")) for k, v in d.headers.items()]}
+                    message = {**message, "headers": list(message.get("headers", [])) + extra}
                 await send(message)
             return await app(scope, downstream_receive, paid_send)
         return middleware
+
+    @staticmethod
+    async def _asgi_with_receipt(app, scope, receive, send, d: Serve, extra):
+        """Holds the response until its last body message, so its receipt can
+        cover the body; past _MAX_RECEIPT_BODY it streams without a response hash."""
+        start, chunks, state = {}, [], {"size": 0, "streaming": False}
+
+        async def begin(body: Optional[bytes]):
+            d.finish(start["status"])
+            receipt = d.receipt(start["status"], body)
+            receipt_header = [(RECEIPT_HEADER.lower().encode(), receipt.encode("latin-1"))] if receipt else []
+            await send({**start, "headers": list(start.get("headers", [])) + extra + receipt_header})
+
+        async def held_send(message):
+            if message["type"] == "http.response.start":
+                start.update(message)
+                return
+            if message["type"] != "http.response.body" or state["streaming"]:
+                return await send(message)
+            chunks.append(message.get("body", b""))
+            state["size"] += len(chunks[-1])
+            more = message.get("more_body", False)
+            if state["size"] > _MAX_RECEIPT_BODY:
+                state["streaming"] = True
+                await begin(None)
+                await send({"type": "http.response.body", "body": b"".join(chunks), "more_body": more})
+                chunks.clear()
+            elif not more:
+                body = b"".join(chunks)
+                await begin(body)
+                await send({"type": "http.response.body", "body": body})
+        await app(scope, receive, held_send)
 
 
 _REASONS = {200: "OK", 202: "Accepted", 400: "Bad Request", 402: "Payment Required", 403: "Forbidden", 405: "Method Not Allowed",

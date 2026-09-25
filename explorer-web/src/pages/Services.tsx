@@ -37,6 +37,9 @@ export default function Services() {
                 <th>Service</th>
                 <th>Price / request</th>
                 <th>Payment</th>
+                <th title="Payments to the payee and ratings from paying accounts, over the last week or so. A seller can pay itself from other accounts, so treat these as hints.">
+                  Recent use*
+                </th>
                 <th>Payee</th>
                 <th>Listed at</th>
               </tr>
@@ -58,6 +61,22 @@ export default function Services() {
                   <td className="mono">{s.priceAeth} AETH</td>
                   <td>{s.schemes.map((x) => schemeLabel[x] ?? x).join(", ")}</td>
                   <td>
+                    {s.activity ? (
+                      <>
+                        <div>
+                          {s.activity.payers} payer{s.activity.payers === 1 ? "" : "s"} · {s.activity.payments} paid · {s.activity.volumeAeth} AETH
+                        </div>
+                        <div className="panel-meta">
+                          {s.activity.ratings > 0
+                            ? `★ ${s.activity.averageScore?.toFixed(1)} from ${s.activity.ratings} paying rater${s.activity.ratings === 1 ? "" : "s"}`
+                            : "no ratings yet"}
+                        </div>
+                      </>
+                    ) : (
+                      <span className="panel-meta">—</span>
+                    )}
+                  </td>
+                  <td>
                     <AddressLink address={s.payTo} />
                   </td>
                   <td className="mono">{s.listedAtHeight}</td>
@@ -76,11 +95,17 @@ export default function Services() {
             <div className="panel-title">List a service</div>
           </div>
           <div style={{ padding: 16 }}>
-            Run your API behind <span className="mono">cmd/paywall</span> (it serves the manifest), then send 1 uaeth
+            Run your API behind <span className="mono">cmd/paywall</span> or the Node/Python seller kits (they serve the manifest), then send 1 uaeth
             from the payee account to <span className="mono">{dir.data.directoryAddress}</span> with memo{" "}
             <span className="mono">x402-service:&lt;your URL&gt;</span>. Memo{" "}
             <span className="mono">x402-delist:&lt;your URL&gt;</span> removes it. Names and descriptions are set by
             each service, not verified.
+            <p className="panel-meta">
+              * Buyers rate a service with 1 uaeth to the same address, memo{" "}
+              <span className="mono">x402-rate:&lt;1-5&gt;:&lt;URL&gt;</span>; a rating counts only from an account
+              that paid the service first. Fees are zero, so a seller could pay itself from accounts it controls:
+              agents give weight to ratings from accounts they trust, and to their own experience.
+            </p>
           </div>
         </div>
       )}

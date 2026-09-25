@@ -56,6 +56,10 @@ type agentState struct {
 	// PrepaidBalances is each seller's (payTo) last report of what this
 	// agent has left with it.
 	PrepaidBalances map[string]*prepaidBalance `json:"prepaidBalances,omitempty"`
+	// Purchases logs paid responses and their receipts, oldest first.
+	Purchases []purchaseRecord `json:"purchases,omitempty"`
+	// Ratings is this agent's latest rating of each service (by URL).
+	Ratings map[string]int `json:"ratings,omitempty"`
 	// Approvals are payments waiting for the owner, by idempotency key.
 	Approvals map[string]*approvalRequest `json:"approvals,omitempty"`
 }
@@ -67,7 +71,7 @@ var stateMu sync.Mutex
 
 func loadState() (*agentState, error) {
 	st := &agentState{Sends: map[string]*sendRecord{}, Fetches: map[string]*fetchRecord{}, Prepaid: map[string]*prepaidDeposit{}, Approvals: map[string]*approvalRequest{},
-		PrepaidBalances: map[string]*prepaidBalance{}}
+		PrepaidBalances: map[string]*prepaidBalance{}, Ratings: map[string]int{}}
 	bz, err := os.ReadFile(stateFile)
 	if os.IsNotExist(err) {
 		return st, nil
@@ -92,6 +96,9 @@ func loadState() (*agentState, error) {
 	}
 	if st.PrepaidBalances == nil {
 		st.PrepaidBalances = map[string]*prepaidBalance{}
+	}
+	if st.Ratings == nil {
+		st.Ratings = map[string]int{}
 	}
 	return st, nil
 }

@@ -155,6 +155,14 @@ export interface ServiceListing {
   payTo: string;
   listedAtHeight: number;
   txHash: string;
+  activity?: {
+    windowBlocks: number;
+    payments: number;
+    payers: number;
+    volumeAeth: string;
+    ratings: number;
+    averageScore?: number;
+  };
 }
 
 export interface ServiceDirectory {

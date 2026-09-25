@@ -7,6 +7,8 @@
 package vectors
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -76,6 +78,13 @@ type vectors struct {
 		BalanceRequest     string `json:"balanceRequest"`
 	} `json:"queries"`
 	DirectoryAddress string `json:"directoryAddress"`
+	Receipts         struct {
+		Direct            paywall.Receipt `json:"direct"` // signed by the payee's own key
+		DirectMessage     string          `json:"directMessage"`
+		Delegated         paywall.Receipt `json:"delegated"` // signed by a key the payee delegated to
+		DelegatedMessage  string          `json:"delegatedMessage"`
+		DelegationMessage string          `json:"delegationMessage"`
+	} `json:"receipts"`
 }
 
 func TestMain(m *testing.M) {
@@ -143,6 +152,37 @@ func build(t *testing.T) vectors {
 	require.NoError(t, err)
 	v.Queries.AccountInfoRequest, v.Queries.BalanceRequest = hex.EncodeToString(ai), hex.EncodeToString(bal)
 	v.DirectoryAddress = directory.Address()
+
+	// Receipts: signed by the vector key (the payee), and by a second key
+	// the payee delegated receipts to.
+	k2, err := w.ImportAccount("k2", "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about")
+	require.NoError(t, err)
+	signWith := func(name string) paywall.Signer {
+		return func(msg []byte) ([]byte, []byte, error) { return w.SignBytes(name, msg) }
+	}
+	sum := func(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
+	sign := func(r paywall.Receipt, name string) paywall.Receipt {
+		sig, pub, err := signWith(name)(paywall.ReceiptSigningMessage(r))
+		require.NoError(t, err)
+		r.Signer, r.Signature = base64.StdEncoding.EncodeToString(pub), base64.StdEncoding.EncodeToString(sig)
+		require.NoError(t, r.Verify())
+		return r
+	}
+	base := paywall.Receipt{
+		X402Version: 1, Network: "aether-testnet-1", PayTo: acc.Address, Payer: to, Scheme: "aether-memo",
+		Payment: "8A679ACE95C8D1F0E3B2A4C6D8E0F1A3B5C7D9E1F3A5B7C9D1E3F5A7B9C1D3E5", Amount: "20000", Method: "POST",
+		Host: "api.example:8402", Path: "/v1/translate", RequestHash: sum(`{"text":"hello"}`), Status: 200,
+		ResponseHash: sum(`{"text":"hallo"}`), At: 1_790_000_100,
+	}
+	v.Receipts.Direct = sign(base, "k")
+	v.Receipts.DirectMessage = hex.EncodeToString(paywall.ReceiptSigningMessage(base))
+	d, err := paywall.NewReceiptDelegation(acc.Address, k2.Address, 1_800_000_000, signWith("k"))
+	require.NoError(t, err)
+	v.Receipts.DelegationMessage = hex.EncodeToString(paywall.DelegationSigningMessage(d.PayTo, d.Signer, d.Expires))
+	delegated := base
+	delegated.Scheme, delegated.Payment, delegated.ResponseHash, delegated.Delegation = "aether-prepaid", "req-1", "", d
+	v.Receipts.Delegated = sign(delegated, "k2")
+	v.Receipts.DelegatedMessage = hex.EncodeToString(paywall.ReceiptSigningMessage(delegated))
 	return v
 }
 

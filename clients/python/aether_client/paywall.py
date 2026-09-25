@@ -20,6 +20,7 @@ from typing import Optional
 from .amount import parse_amount, parse_uaeth
 from .client import AetherClient
 from .keys import Key
+from .receipt import RECEIPT_HEADER, ReceiptCheck, check_receipt, decode_receipt
 
 SCHEME_MEMO = "aether-memo"
 SCHEME_PREPAID = "aether-prepaid"
@@ -62,6 +63,7 @@ class HttpResponse:
     status: int
     headers: dict
     body: bytes
+    truncated: bool = False
 
 
 @dataclass
@@ -73,6 +75,7 @@ class FetchPaidResult:
     invoice: Optional[str] = None
     amount_uaeth: Optional[int] = None
     balance_uaeth: Optional[int] = None  # prepaid: left with the seller
+    receipt: Optional[ReceiptCheck] = None  # the seller's signed receipt, if it gives them, and whether it matches
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -83,13 +86,40 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _opener = urllib.request.build_opener(_NoRedirect)
 
 
+_MAX_RESPONSE = 10 << 20
+
+
 def _http(method: str, url: str, body: bytes, headers: dict, timeout: float = 30) -> HttpResponse:
     req = urllib.request.Request(url, data=body or None, method=method, headers=headers)
     try:
         with _opener.open(req, timeout=timeout) as r:
-            return HttpResponse(r.status, dict(r.headers), r.read(64 * 1024 + 1))
+            status, hdrs, data = r.status, dict(r.headers), r.read(_MAX_RESPONSE + 1)
     except urllib.error.HTTPError as e:
-        return HttpResponse(e.code, dict(e.headers), e.read(64 * 1024 + 1))
+        status, hdrs, data = e.code, dict(e.headers), e.read(_MAX_RESPONSE + 1)
+    truncated = len(data) > _MAX_RESPONSE
+    return HttpResponse(status, hdrs, data[:_MAX_RESPONSE], truncated)
+
+
+def _get_header(headers: dict, name: str) -> Optional[str]:
+    for k, v in headers.items():
+        if k.lower() == name.lower():
+            return v
+    return None
+
+
+def _with_receipt(r: "FetchPaidResult", **want) -> "FetchPaidResult":
+    """Checks a paid response's receipt against the purchase."""
+    header = r.response and _get_header(r.response.headers, RECEIPT_HEADER)
+    if not header:
+        return r
+    receipt = decode_receipt(header)
+    if receipt is None:
+        r.receipt = ReceiptCheck(None, False, "the receipt is unreadable")
+        return r
+    body = None if r.response.truncated else r.response.body
+    problem = check_receipt(receipt, status=r.response.status, response_body=body, **want)
+    r.receipt = ReceiptCheck(receipt, problem is None, problem)
+    return r
 
 
 def _signing_host(url: str) -> str:
@@ -147,7 +177,10 @@ def fetch_paid(client: AetherClient, key: Key, url: str, *, max_amount: str, pre
     if conf.status == "pending":
         return FetchPaidResult("payment_pending", **base)
     r = present_payment(client, url, invoice, sent.hash, send=send)
-    return FetchPaidResult(r.status, r.response, **base)
+    parts = urllib.parse.urlsplit(url)
+    return _with_receipt(FetchPaidResult(r.status, r.response, **base), network=client.chain_id, pay_to=memo["payTo"],
+                         payer=key.address, scheme=SCHEME_MEMO, payment=sent.hash, amount=price, method=method,
+                         host=_signing_host(url), path=urllib.parse.unquote(parts.path or "/"), request_body=body)
 
 
 def present_payment(client: AetherClient, url: str, invoice: str, tx_hash: str, send=None) -> FetchPaidResult:
@@ -187,7 +220,10 @@ def _fetch_prepaid(client, key, url, method, body, req, maximum, prepay, send, r
         s = resp.headers.get("X-Payment-Response") or resp.headers.get("X-PAYMENT-RESPONSE")
         if s:
             balance = int(json.loads(base64.b64decode(s)).get("balance") or 0)
-        return FetchPaidResult("paid", resp, SCHEME_PREPAID, deposit_tx, None, price, balance)
+        return _with_receipt(FetchPaidResult("paid", resp, SCHEME_PREPAID, deposit_tx, None, price, balance),
+                             network=client.chain_id, pay_to=req["payTo"], payer=key.address, scheme=SCHEME_PREPAID,
+                             payment=request_id, amount=price, method=method, host=_signing_host(url),
+                             path=urllib.parse.unquote(parts.path or "/"), request_body=body)
 
     resp = attempt()
     if resp.status != 402:

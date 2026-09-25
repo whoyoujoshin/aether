@@ -11,6 +11,7 @@ import { formatAeth, parseAmount, parseUaeth } from "./amount.js";
 import { MANIFEST_PATH, type Manifest } from "./directory.js";
 import { DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, signingMessage, type PaymentRequired, type PaymentRequirements } from "./paywall.js";
 import { FileLedger, LedgerError, type Ledger, type Withdrawal } from "./ledger.js";
+import { RECEIPT_HEADER, receiptFieldsOK, sha256Hex, signReceipt, verifyReceipt, type ReceiptDelegation } from "./receipt.js";
 
 // Selling: charge AETH per HTTP request from a Node service, compatible
 // with the Go paywall (package paywall) and every Aether buyer --
@@ -32,6 +33,7 @@ const SIGNED_WINDOW_S = 300;
 const REQUEST_ID_RETENTION_MS = 24 * 3600_000;
 const MAX_SIGNED_BODY = 10 << 20;
 const SEQUENCE_SPENT_GRACE_MS = 120_000;
+const MAX_RECEIPT_BODY = 4 << 20;
 const HASH = /^[0-9A-F]{64}$/;
 
 const MEMO_INSTRUCTIONS =
@@ -69,6 +71,13 @@ export interface PaywallConfig {
     /** Pays back unspent balances on request. Keep only a small float in this account. */
     payoutKey?: Key;
   };
+  /**
+   * Sign a receipt for every paid response, covering the request, the
+   * payment and the response. key is payTo's own key, or one payTo
+   * delegated receipts to (createReceiptDelegation / `paywall
+   * delegate-receipts`) so payTo's key can stay offline.
+   */
+  receipts?: { key: Key; delegation?: ReceiptDelegation };
   /** Milliseconds; for tests. */
   now?: () => number;
 }
@@ -92,7 +101,11 @@ export interface SellerRequest {
 
 export type Decision =
   | { kind: "respond"; status: number; headers: Record<string, string>; body: string }
-  | { kind: "serve"; payment: Payment; headers: Record<string, string>; finish(status: number): void };
+  | {
+    kind: "serve"; payment: Payment; headers: Record<string, string>; finish(status: number): void;
+    /** With receipts on: the X-PAYMENT-RECEIPT value for the response (omit the body if it was too big or streamed). */
+    receipt?: (status: number, responseBody?: Uint8Array) => string;
+  };
 
 interface PrepaidPayload {
   account: string;
@@ -153,6 +166,28 @@ export class Paywall {
       this.minDeposit = min < this.price ? this.price : min;
       if (cfg.prepaid.payoutKey) this.payout = new KeyPayout(cfg.client, cfg.prepaid.payoutKey);
     }
+    if (cfg.receipts) {
+      const probe = signReceipt(cfg.receipts.key, {
+        network: this.network, payTo: cfg.payTo, payer: "", scheme: "", payment: "", amount: "", method: "", host: "", path: "",
+        requestHash: sha256Hex(new Uint8Array()), status: 0, at: Math.floor(this.now() / 1000),
+      }, cfg.receipts.delegation);
+      const bad = verifyReceipt(probe);
+      if (bad) throw new Error(`receipts wouldn't verify: ${bad}`);
+    }
+  }
+
+  private receiptFor(req: SellerRequest, body: Uint8Array, scheme: string, payer: string, payment: string) {
+    const r = this.cfg.receipts;
+    if (!r) return undefined;
+    return (status: number, responseBody?: Uint8Array) => {
+      const fields = {
+        network: this.network, payTo: this.cfg.payTo, payer, scheme, payment, amount: this.price.toString(), method: req.method,
+        host: req.host, path: req.path, requestHash: sha256Hex(body), status,
+        responseHash: responseBody ? sha256Hex(responseBody) : undefined, at: Math.floor(this.now() / 1000),
+      };
+      // e.g. a path with a line break: no receipt rather than an ambiguous one
+      return receiptFieldsOK(fields) ? encodeHeader(signReceipt(r.key, fields, r.delegation)) : "";
+    };
   }
 
   private now() {
@@ -173,9 +208,10 @@ export class Paywall {
     };
   }
 
-  /** Whether handle/withdraw needs the request body (to check a signature). */
+  /** Whether handle/withdraw needs the request body (to check a signature, or for a receipt). */
   needsBody(req: SellerRequest): boolean {
     if (req.path === WITHDRAW_PATH) return true;
+    if (this.cfg.receipts && req.header("x-payment")) return true;
     const pay = decodeHeader<{ scheme?: string }>(req.header("x-payment") ?? "");
     return pay?.scheme === SCHEME_PREPAID;
   }
@@ -221,6 +257,7 @@ export class Paywall {
     const settlement = encodeHeader({ success: true, transaction: txHash, network: this.network, payer });
     return {
       kind: "serve", payment: { payer, scheme: SCHEME_MEMO, txHash }, headers: { "X-PAYMENT-RESPONSE": settlement },
+      receipt: this.receiptFor(req, body, SCHEME_MEMO, payer, txHash),
       // The server failed, not the buyer: the same payment may be used again.
       finish: (status) => { if (status >= 500) this.redeemed.delete(invoice); },
     };
@@ -370,6 +407,7 @@ export class Paywall {
     const settlement = encodeHeader({ success: true, network: this.network, payer: pay.account, balance: c.balance.toString() });
     return {
       kind: "serve", payment: { payer: pay.account, scheme: SCHEME_PREPAID, balanceUaeth: c.balance }, headers: { "X-PAYMENT-RESPONSE": settlement },
+      receipt: this.receiptFor(req, body, SCHEME_PREPAID, pay.account, pay.requestId),
       finish: (status) => {
         if (status < 500) return;
         try {
@@ -567,6 +605,9 @@ export class Paywall {
     if (this.needsBody(sreq)) {
       const got = await readBody(req, MAX_SIGNED_BODY + 1);
       if (!got) return write(res, { kind: "respond", status: 500, headers: { "Content-Type": "text/plain" }, body: "the request body was consumed before the paywall: mount it before body parsers, or keep the raw body in req.rawBody\n" });
+      if (got.length > MAX_SIGNED_BODY && this.cfg.receipts) {
+        return write(res, { kind: "respond", status: 413, headers: { "Content-Type": "text/plain" }, body: `paid requests' bodies are limited to ${MAX_SIGNED_BODY} bytes\n` });
+      }
       body = got;
       keepBody(req, got);
     }
@@ -576,8 +617,78 @@ export class Paywall {
     for (const [k, v] of Object.entries(d.headers)) res.setHeader(k, v);
     req.aether = d.payment;
     res.on("finish", () => d.finish(res.statusCode));
+    if (d.receipt) holdForReceipt(res, d.receipt);
     next();
   }
+}
+
+/**
+ * Holds a paid response until it ends, so its receipt (a header) can cover
+ * the body. A response bigger than MAX_RECEIPT_BODY, or one whose headers
+ * are flushed early, streams instead, with a receipt that has no response hash.
+ */
+function holdForReceipt(res: ServerResponse, receipt: (status: number, body?: Uint8Array) => string) {
+  const writeHead = res.writeHead.bind(res) as (code: number) => ServerResponse;
+  const write = res.write.bind(res) as (chunk: Uint8Array) => boolean;
+  const end = res.end.bind(res) as (chunk?: Uint8Array, cb?: () => void) => ServerResponse;
+  const flushHeaders = res.flushHeaders.bind(res);
+  let chunks: Buffer[] = [];
+  let size = 0;
+  let streaming = false;
+  const setReceipt = (h: string) => {
+    if (h) res.setHeader(RECEIPT_HEADER, h);
+  };
+  const toBuf = (chunk: unknown, enc?: unknown): Buffer | undefined =>
+    chunk == null || typeof chunk === "function" ? undefined : typeof chunk === "string" ? Buffer.from(chunk, typeof enc === "string" ? (enc as BufferEncoding) : "utf8") : Buffer.from(chunk as Uint8Array);
+  const cbOf = (...args: unknown[]) => args.find((a) => typeof a === "function") as (() => void) | undefined;
+  const stream = () => {
+    if (streaming) return;
+    streaming = true;
+    if (!res.headersSent) {
+      setReceipt(receipt(res.statusCode));
+      writeHead(res.statusCode);
+    }
+    for (const c of chunks) write(c);
+    chunks = [];
+  };
+  res.writeHead = ((code: number, ...rest: unknown[]) => {
+    res.statusCode = code;
+    for (const r of rest) {
+      if (typeof r === "string") res.statusMessage = r;
+      else if (Array.isArray(r)) for (let i = 0; i + 1 < r.length; i += 2) res.setHeader(String(r[i]), r[i + 1] as string);
+      else if (r && typeof r === "object") for (const [k, v] of Object.entries(r)) if (v !== undefined) res.setHeader(k, v as string);
+    }
+    return res;
+  }) as typeof res.writeHead;
+  res.flushHeaders = () => {
+    stream();
+    flushHeaders();
+  };
+  res.write = ((chunk: unknown, enc?: unknown, cb?: unknown) => {
+    const b = toBuf(chunk, enc);
+    if (streaming) return (write as unknown as (...a: unknown[]) => boolean)(chunk, enc, cb);
+    if (b) {
+      chunks.push(b);
+      size += b.length;
+    }
+    if (size > MAX_RECEIPT_BODY) stream();
+    const done = cbOf(enc, cb);
+    if (done) process.nextTick(done);
+    return true;
+  }) as typeof res.write;
+  res.end = ((chunk?: unknown, enc?: unknown, cb?: unknown) => {
+    const b = toBuf(chunk, enc);
+    const done = cbOf(chunk, enc, cb);
+    if (!streaming && b && size + b.length > MAX_RECEIPT_BODY) stream();
+    if (streaming) return (end as unknown as (...a: unknown[]) => ServerResponse)(chunk, enc, cb);
+    if (b) chunks.push(b);
+    const body = Buffer.concat(chunks);
+    if (!res.headersSent) {
+      setReceipt(receipt(res.statusCode, new Uint8Array(body)));
+      writeHead(res.statusCode);
+    }
+    return end(body, done);
+  }) as typeof res.end;
 }
 
 type NodeRequest = IncomingMessage & { originalUrl?: string; rawBody?: Uint8Array; body?: unknown; _body?: boolean; aether?: Payment };
