@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"fmt"
@@ -15,6 +16,8 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/whoyoujoshin/aether/x/pow"
 )
@@ -103,6 +106,7 @@ type Transaction struct {
 	Direction string // "sent" or "received"
 	Amount    string
 	Timestamp string
+	Memo      string // set by the sender; untrusted
 }
 
 // GetTransactionHistory returns real, on-chain transactions involving
@@ -131,7 +135,7 @@ func (c *Client) GetTransactionHistory(address string, limit uint64) ([]Transact
 			return nil, fmt.Errorf("failed to query %s transactions: %w", q.direction, err)
 		}
 
-								for _, txResp := range resp.TxResponses {
+								for i, txResp := range resp.TxResponses {
 				amount := ""
 				direction := q.direction
 				for _, event := range txResp.Events {
@@ -180,6 +184,7 @@ func (c *Client) GetTransactionHistory(address string, limit uint64) ([]Transact
 					Direction: direction,
 					Amount:    amount,
 					Timestamp: txResp.Timestamp,
+					Memo:      memoAt(resp.Txs, i),
 				})
 			}
 	}
@@ -228,6 +233,19 @@ type TransactionDetail struct {
 	Timestamp string
 	Transfers []Transfer
 	AuxPow    *AuxPowInfo
+	Memo      string // set by the sender; untrusted
+}
+
+// ErrTransactionNotFound means the node has no record of the hash:
+// not yet in a block (or dropped from the mempool), as opposed to a
+// failed lookup.
+var ErrTransactionNotFound = errors.New("transaction not found")
+
+func memoAt(txs []*txtypes.Tx, i int) string {
+	if i < len(txs) && txs[i] != nil && txs[i].Body != nil {
+		return txs[i].Body.Memo
+	}
+	return ""
 }
 
 // Transfer is one real bank transfer within a transaction. A single
@@ -248,6 +266,9 @@ func (c *Client) GetTransactionByHash(hash string) (*TransactionDetail, error) {
 	txClient := txtypes.NewServiceClient(c.conn)
 
 	resp, err := txClient.GetTx(context.Background(), &txtypes.GetTxRequest{Hash: hash})
+	if status.Code(err) == codes.NotFound {
+		return nil, fmt.Errorf("%w: %s", ErrTransactionNotFound, hash)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -291,6 +312,7 @@ func (c *Client) GetTransactionByHash(hash string) (*TransactionDetail, error) {
 	}
 
 	if resp.Tx != nil && resp.Tx.Body != nil {
+		detail.Memo = resp.Tx.Body.Memo
 		for _, anyMsg := range resp.Tx.Body.Messages {
 			if anyMsg.TypeUrl != "/aether.pow.v1.MsgSubmitPoW" {
 				continue

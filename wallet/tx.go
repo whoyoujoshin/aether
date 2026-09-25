@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 
 	"github.com/cosmos/cosmos-sdk/client"
@@ -25,6 +26,9 @@ type TxParams struct {
 	Sequence      uint64
 	GasLimit      uint64
 	Fees          sdk.Coins
+	// Memo is free text attached to the transaction -- typically a
+	// payment reference (e.g. an invoice ID) the recipient matches on.
+	Memo string
 }
 
 // SignedTx holds a fully signed, broadcast-ready transaction. The raw
@@ -56,7 +60,8 @@ func (w *Wallet) BuildAndSignSendTx(fromName, fromAddr, toAddr string, amount sd
 		WithAccountNumber(params.AccountNumber).
 		WithSequence(params.Sequence).
 		WithGas(params.GasLimit).
-		WithFees(params.Fees.String())
+		WithFees(params.Fees.String()).
+		WithMemo(params.Memo)
 
 	txBuilder, err := factory.BuildUnsignedTx(msg)
 	if err != nil {
@@ -73,6 +78,12 @@ func (w *Wallet) BuildAndSignSendTx(fromName, fromAddr, toAddr string, amount sd
 	}
 
 	return SignedTx{Bytes: bz}, nil
+}
+
+// TxHash is the hash the chain will index these exact signed bytes
+// under (uppercase hex SHA-256), computable before broadcasting.
+func TxHash(signed SignedTx) string {
+	return fmt.Sprintf("%X", sha256.Sum256(signed.Bytes))
 }
 
 // BroadcastResult is a simplified view of the real broadcast response
@@ -122,7 +133,8 @@ func (w *Wallet) BuildAndSignMsgTx(fromName string, msg sdk.Msg, params TxParams
 		WithAccountNumber(params.AccountNumber).
 		WithSequence(params.Sequence).
 		WithGas(params.GasLimit).
-		WithFees(params.Fees.String())
+		WithFees(params.Fees.String()).
+		WithMemo(params.Memo)
 
 	txBuilder, err := factory.BuildUnsignedTx(msg)
 	if err != nil {
