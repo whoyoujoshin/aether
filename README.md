@@ -150,6 +150,17 @@ go run ./cmd/explorer --grpc localhost:9090 --rpc http://localhost:26657 --port 
 
 Open `http://localhost:8081`.
 
+## AI agent wallet (MCP)
+
+An MCP server exposing wallet operations (balance, send, tx status/history) as tool calls, so an AI agent can transact directly instead of only a human clicking through a UI:
+
+```bash
+go run ./cmd/agentmcp --grpc localhost:9090 --chain-id aether-testnet-1 \
+    --per-tx-limit 1000000 --daily-limit 5000000
+```
+
+Speaks MCP over stdio. Manages one dedicated agent account (created on first use) with a per-transaction cap and a rolling 24h spend cap enforced by the server itself — **not yet enforced on-chain**. Read `cmd/agentmcp/main.go`'s package doc comment before pointing this at anything but a small, disposable balance.
+
 ## Registering as a validator
 
 ```bash
@@ -203,6 +214,7 @@ aetherd query governance proposal <proposal-id>
 | `cmd/wallet` | CLI over `wallet/` |
 | `cmd/faucet` | Rate-limited faucet |
 | `cmd/explorer` | Minimal live explorer |
+| `cmd/agentmcp` | MCP server exposing the wallet as tool calls, for AI agents |
 | `cmd/powminer` | Native PoW nonce search against live state |
 | `cmd/auxpowtest` | Valid test AuxPoW construction |
 | `cmd/scryptbench` | Scrypt throughput benchmarks |
