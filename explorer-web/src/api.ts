@@ -124,6 +124,26 @@ export interface SearchResult {
   value: string;
 }
 
+export interface BlockSummary {
+  height: number;
+  hash: string;
+  time: string;
+  numTxs: number;
+  proposerAddress: string;
+}
+
+export interface BlockDetail {
+  height: number;
+  hash: string;
+  time: string;
+  proposerAddress: string;
+  appHash: string;
+  lastCommitHash: string;
+  dataHash: string;
+  numTxs: number;
+  txHashes: string[];
+}
+
 export const api = {
   stats: () => getJSON<Stats>("/api/stats"),
   validators: () => getJSON<ValidatorInfo[]>("/api/validators"),
@@ -136,4 +156,6 @@ export const api = {
   address: (addr: string) => getJSON<AddressPage>(`/api/address?addr=${encodeURIComponent(addr)}`),
   tx: (hash: string) => getJSON<TransactionDetail>(`/api/tx?hash=${encodeURIComponent(hash)}`),
   search: (q: string) => getJSON<SearchResult>(`/api/search?q=${encodeURIComponent(q)}`),
+  blocks: () => getJSON<BlockSummary[]>("/api/blocks"),
+  block: (height: number) => getJSON<BlockDetail>(`/api/block?height=${height}`),
 };

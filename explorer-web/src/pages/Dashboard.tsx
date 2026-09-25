@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useApi } from "../hooks";
 import { TxHash } from "../components/Hash";
@@ -25,10 +26,10 @@ export default function Dashboard() {
       {stats.error && <div className="error-banner">Failed to load chain stats: {stats.error}</div>}
 
       <div className="stat-grid">
-        <div className="stat-card">
+        <Link to="/blocks" className="stat-card" style={{ display: "block", textDecoration: "none" }}>
           <div className="stat-label">Latest Height</div>
           <div className="stat-value">{stats.data?.latestHeight ?? "—"}</div>
-        </div>
+        </Link>
         <div className="stat-card">
           <div className="stat-label">Current Epoch</div>
           <div className="stat-value">{stats.data?.currentEpoch ?? "—"}</div>

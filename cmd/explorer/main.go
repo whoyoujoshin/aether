@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 
+	cometrpchttp "github.com/cometbft/cometbft/rpc/client/http"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"google.golang.org/grpc"
@@ -140,6 +141,63 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// --- GET /api/blocks ---
+//
+// Returns the most recent blocks (newest first). CometBFT's own
+// BlockchainInfo RPC caps this at 20 regardless of the range requested,
+// so there's no separate limit param to plumb through.
+
+func handleBlocks(w http.ResponseWriter, r *http.Request) {
+	rpcClient, err := cometrpchttp.New(rpcEndpoint, "/websocket")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to create RPC client: %w", err))
+		return
+	}
+
+	ctx := context.Background()
+	status, err := rpcClient.Status(ctx)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to fetch chain status: %w", err))
+		return
+	}
+	latest := status.SyncInfo.LatestBlockHeight
+
+	info, err := rpcClient.BlockchainInfo(ctx, 1, latest)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to fetch recent blocks: %w", err))
+		return
+	}
+	writeJSON(w, http.StatusOK, toBlockSummaryDTOs(info.BlockMetas))
+}
+
+// --- GET /api/block?height= ---
+
+func handleBlock(w http.ResponseWriter, r *http.Request) {
+	heightStr := r.URL.Query().Get("height")
+	height, err := strconv.ParseInt(heightStr, 10, 64)
+	if err != nil || height < 1 {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid height %q", heightStr))
+		return
+	}
+
+	rpcClient, err := cometrpchttp.New(rpcEndpoint, "/websocket")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to create RPC client: %w", err))
+		return
+	}
+
+	result, err := rpcClient.Block(context.Background(), &height)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to fetch block %d: %w", height, err))
+		return
+	}
+	if result.Block == nil {
+		writeError(w, http.StatusNotFound, fmt.Errorf("block %d not found", height))
+		return
+	}
+	writeJSON(w, http.StatusOK, toBlockDetailDTO(result))
 }
 
 // --- GET /api/validators ---
@@ -430,6 +488,8 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/stats", withCORS(handleStats))
+	mux.HandleFunc("/api/blocks", withCORS(handleBlocks))
+	mux.HandleFunc("/api/block", withCORS(handleBlock))
 	mux.HandleFunc("/api/validators", withCORS(handleValidators))
 	mux.HandleFunc("/api/leaderboard", withCORS(handleLeaderboard))
 	mux.HandleFunc("/api/proposals", withCORS(handleProposals))

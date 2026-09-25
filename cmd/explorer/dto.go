@@ -17,6 +17,11 @@
 package main
 
 import (
+	"encoding/hex"
+	"time"
+
+	ctypes "github.com/cometbft/cometbft/rpc/core/types"
+	"github.com/cometbft/cometbft/types"
 	"github.com/whoyoujoshin/aether/wallet"
 	"github.com/whoyoujoshin/aether/x/governance"
 	"github.com/whoyoujoshin/aether/x/pow"
@@ -217,5 +222,57 @@ func toTransactionDetailDTO(d *wallet.TransactionDetail) transactionDetailDTO {
 		Timestamp: d.Timestamp,
 		Transfers: transfers,
 		AuxPow:    auxPow,
+	}
+}
+
+type blockSummaryDTO struct {
+	Height          int64  `json:"height"`
+	Hash            string `json:"hash"`
+	Time            string `json:"time"`
+	NumTxs          int    `json:"numTxs"`
+	ProposerAddress string `json:"proposerAddress"`
+}
+
+func toBlockSummaryDTOs(metas []*types.BlockMeta) []blockSummaryDTO {
+	out := make([]blockSummaryDTO, 0, len(metas))
+	for _, m := range metas {
+		out = append(out, blockSummaryDTO{
+			Height:          m.Header.Height,
+			Hash:            m.BlockID.Hash.String(),
+			Time:            m.Header.Time.Format(time.RFC3339),
+			NumTxs:          m.NumTxs,
+			ProposerAddress: hex.EncodeToString(m.Header.ProposerAddress),
+		})
+	}
+	return out
+}
+
+type blockDetailDTO struct {
+	Height          int64    `json:"height"`
+	Hash            string   `json:"hash"`
+	Time            string   `json:"time"`
+	ProposerAddress string   `json:"proposerAddress"`
+	AppHash         string   `json:"appHash"`
+	LastCommitHash  string   `json:"lastCommitHash"`
+	DataHash        string   `json:"dataHash"`
+	NumTxs          int      `json:"numTxs"`
+	TxHashes        []string `json:"txHashes"`
+}
+
+func toBlockDetailDTO(r *ctypes.ResultBlock) blockDetailDTO {
+	txHashes := make([]string, 0, len(r.Block.Data.Txs))
+	for _, tx := range r.Block.Data.Txs {
+		txHashes = append(txHashes, hex.EncodeToString(tx.Hash()))
+	}
+	return blockDetailDTO{
+		Height:          r.Block.Header.Height,
+		Hash:            r.BlockID.Hash.String(),
+		Time:            r.Block.Header.Time.Format(time.RFC3339),
+		ProposerAddress: hex.EncodeToString(r.Block.Header.ProposerAddress),
+		AppHash:         r.Block.Header.AppHash.String(),
+		LastCommitHash:  r.Block.Header.LastCommitHash.String(),
+		DataHash:        r.Block.Header.DataHash.String(),
+		NumTxs:          len(r.Block.Data.Txs),
+		TxHashes:        txHashes,
 	}
 }

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-function truncate(value: string, head = 10, tail = 6): string {
+export function truncate(value: string, head = 10, tail = 6): string {
   if (value.length <= head + tail + 3) return value;
   return `${value.slice(0, head)}…${value.slice(-tail)}`;
 }
@@ -49,5 +49,14 @@ export function AddressLink({ address, full = false }: { address: string; full?:
       <Link to={`/address/${address}`}>{full ? address : truncate(address)}</Link>
       <CopyButton value={address} />
     </span>
+  );
+}
+
+/** A block height linking to its detail page. */
+export function BlockLink({ height }: { height: number }) {
+  return (
+    <Link className="mono" to={`/blocks/${height}`}>
+      {height}
+    </Link>
   );
 }

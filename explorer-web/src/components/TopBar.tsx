@@ -39,6 +39,9 @@ export function TopBar() {
         <NavLink to="/" end className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
           Overview
         </NavLink>
+        <NavLink to="/blocks" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+          Blocks
+        </NavLink>
         <NavLink to="/validators" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
           Validators
         </NavLink>
