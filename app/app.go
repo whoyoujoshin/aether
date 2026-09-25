@@ -16,6 +16,7 @@ import (
 	storetypes "cosmossdk.io/store/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
+	"github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	"github.com/cosmos/cosmos-sdk/codec"
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/server/api"
@@ -475,6 +476,11 @@ func (app *App) RegisterGRPCServerWithSkipCheckHeader(grpcSrv grpc.Server, skip 
 func (app *App) RegisterTxService(clientCtx client.Context) {
 	authtx.RegisterTxService(app.BaseApp.GRPCQueryRouter(), clientCtx, app.BaseApp.Simulate, app.interfaceRegistry)
 }
-func (app *App) RegisterTendermintService(clientCtx client.Context) {}
+// RegisterTendermintService serves cosmos.base.tendermint.v1beta1
+// (latest block, node info) over gRPC. Query-only: no state or
+// AppHash effect.
+func (app *App) RegisterTendermintService(clientCtx client.Context) {
+	cmtservice.RegisterTendermintService(clientCtx, app.BaseApp.GRPCQueryRouter(), app.interfaceRegistry, app.Query)
+}
 func (app *App) RegisterNodeService(clientCtx client.Context, cfg config.Config) {}
 func (app *App) GetModuleManager() *module.Manager { return app.sm }

@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
 	"time"
 
 	"cosmossdk.io/math"
+	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
@@ -23,10 +26,12 @@ import (
 const (
 	maxMemoLength           = 256 // x/auth default MaxMemoCharacters
 	maxIdempotencyKeyLength = 128
-	pollInterval            = 3 * time.Second
 	defaultWaitSeconds      = 90
 	maxWaitSeconds          = 300
-	paymentScanLimit        = 100
+	paymentScanLimit        = 5000 // incoming transactions per wait_for_payment scan
+	// reindexMargin re-scans the last few blocks each round, in case the
+	// node's tx indexer lagged its latest block.
+	reindexMargin = 3
 
 	// CheckTx codes (SDK root codespace) that mean "this exact
 	// transaction is already in flight or done", not "rejected".
@@ -50,6 +55,10 @@ type chain interface {
 	// isn't in a block.
 	lookup(hash string) (*wallet.TransactionDetail, error)
 	history(address string, limit uint64) ([]wallet.Transaction, error)
+	// incoming lists payments to address from sinceHeight on, oldest
+	// first; wallet.ErrTooMuchHistory past max.
+	incoming(address string, sinceHeight int64, max int) ([]wallet.IncomingPayment, error)
+	latestHeight() (int64, error)
 	// sendGrant returns wallet.ErrAuthzNotActive or
 	// wallet.ErrGrantNotFound when there's nothing to spend under.
 	sendGrant(granter, grantee string) (*wallet.SendGrant, error)
@@ -68,6 +77,25 @@ func (g grpcChain) lookup(h string) (*wallet.TransactionDetail, error) {
 }
 func (g grpcChain) history(a string, l uint64) ([]wallet.Transaction, error) {
 	return g.c.GetTransactionHistory(a, l)
+}
+func (g grpcChain) incoming(a string, since int64, max int) ([]wallet.IncomingPayment, error) {
+	return g.c.GetIncomingPayments(a, since, max)
+}
+
+// latestHeight asks CometBFT's RPC /status, which every node serves;
+// the gRPC block service is only on nodes built after it was wired
+// into app.go.
+func (g grpcChain) latestHeight() (int64, error) {
+	if rpcEndpoint != "" {
+		if c, err := rpchttp.New(rpcEndpoint, "/websocket"); err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if st, err := c.Status(ctx); err == nil {
+				return st.SyncInfo.LatestBlockHeight, nil
+			}
+		}
+	}
+	return g.c.GetLatestHeight()
 }
 func (g grpcChain) sendGrant(granter, grantee string) (*wallet.SendGrant, error) {
 	return g.c.GetSendGrant(granter, grantee)
@@ -472,27 +500,29 @@ func toolWaitForTransaction(ctx context.Context, _ *mcp.CallToolRequest, in wait
 		return nil, transactionStatusOutput{}, err
 	}
 	defer c.close()
+	out, err := awaitTransaction(ctx, c, in.Hash, time.Now().Add(clampWait(in.TimeoutSeconds)))
+	return nil, out, err
+}
 
-	deadline := time.Now().Add(clampWait(in.TimeoutSeconds))
+// awaitTransaction re-checks hash at each new block until it is
+// confirmed or failed, or deadline passes (then: pending).
+func awaitTransaction(ctx context.Context, c chain, hash string, deadline time.Time) (transactionStatusOutput, error) {
 	for {
-		out, err := statusOf(c, in.Hash)
-		if err != nil || out.Status != statusPending || !time.Now().Before(deadline) {
-			return nil, out, err
+		out, err := statusOf(c, hash)
+		if err != nil || out.Status != statusPending || !time.Now().Before(deadline) || ctx.Err() != nil {
+			return out, err
 		}
-		select {
-		case <-ctx.Done():
-			return nil, out, nil
-		case <-time.After(pollInterval):
-		}
+		blocks.wait(ctx, deadline)
 	}
 }
 
 // --- wait_for_payment ---
 
 type waitForPaymentInput struct {
-	Memo           string `json:"memo" jsonschema:"the exact memo the payer was asked to attach, e.g. an invoice ID. Use a unique memo per request so one payment can't satisfy two"`
+	Memo           string `json:"memo" jsonschema:"the exact memo the payer was asked to attach, e.g. an invoice from create_invoice. Use a unique memo per request so one payment can't satisfy two"`
 	MinAmount      string `json:"minAmount" jsonschema:"minimum amount that counts as paid, WITH its unit, e.g. \"0.5 AETH\" or \"500000uaeth\""`
-	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"how long to wait (default 90, max 300)"`
+	SinceHeight    int64  `json:"sinceHeight,omitempty" jsonschema:"only look at blocks from this height on: pass create_invoice's sinceHeight (or a previous call's resumeFromHeight). Omitted, the agent's whole history is scanned"`
+	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"how long to wait (default 90, max 300); blocks are ~60s apart"`
 }
 
 type waitForPaymentOutput struct {
@@ -501,30 +531,30 @@ type waitForPaymentOutput struct {
 	From   string     `json:"from,omitempty"`
 	Amount *amountDTO `json:"amount,omitempty" jsonschema:"what this agent received in the matching transaction"`
 	Height int64      `json:"height,omitempty"`
+	// ResumeFromHeight lets a follow-up call skip what was checked.
+	ResumeFromHeight int64 `json:"resumeFromHeight,omitempty" jsonschema:"when not paid yet: pass as sinceHeight to keep waiting without re-scanning"`
 }
 
-// findPayment returns the most recent confirmed incoming transaction
-// to address whose memo matches exactly and which moved at least
-// minAmount uaeth to it.
-func findPayment(c chain, address, memo string, minAmount math.Int) (*waitForPaymentOutput, error) {
-	txs, err := c.history(address, paymentScanLimit)
-	if err != nil {
+// findPayment returns the first confirmed payment to address at or
+// above sinceHeight whose memo matches exactly and which moved at
+// least minAmount uaeth to it. It reads every indexed payment in that
+// range, not just the latest few.
+func findPayment(c chain, address, memo string, minAmount math.Int, sinceHeight int64) (*waitForPaymentOutput, error) {
+	payments, err := c.incoming(address, sinceHeight, paymentScanLimit)
+	tooMuch := errors.Is(err, wallet.ErrTooMuchHistory)
+	if err != nil && !tooMuch {
 		return nil, err
 	}
-	for _, t := range txs {
-		if t.Code != 0 || t.Memo != memo || t.Direction != "received" {
+	for _, p := range payments {
+		got := p.Amount.AmountOf(baseDenom)
+		if p.Code != 0 || p.Memo != memo || got.LT(minAmount) {
 			continue
 		}
-		coins, err := sdk.ParseCoinsNormalized(t.Amount)
-		if err != nil || coins.AmountOf(baseDenom).LT(minAmount) {
-			continue
-		}
-		amt := newAmountDTO(coins.AmountOf(baseDenom))
-		out := &waitForPaymentOutput{Paid: true, TxHash: t.Hash, Amount: &amt, Height: t.Height}
-		if d, err := c.lookup(t.Hash); err == nil {
-			out.From = d.From
-		}
-		return out, nil
+		amt := newAmountDTO(got)
+		return &waitForPaymentOutput{Paid: true, TxHash: p.Hash, From: p.From, Amount: &amt, Height: p.Height}, nil
+	}
+	if tooMuch {
+		return nil, newError(codeScanLimit, fmt.Sprintf("more than %d incoming transactions since height %d; pass a later sinceHeight (create_invoice returns one)", paymentScanLimit, sinceHeight))
 	}
 	return nil, nil
 }
@@ -551,22 +581,74 @@ func toolWaitForPayment(ctx context.Context, _ *mcp.CallToolRequest, in waitForP
 	}
 	defer c.close()
 
+	since := max(in.SinceHeight, 1)
 	deadline := time.Now().Add(clampWait(in.TimeoutSeconds))
 	for {
-		found, err := findPayment(c, acc.Address, in.Memo, minAmount)
+		tip, err := c.latestHeight()
+		if err != nil {
+			return nil, waitForPaymentOutput{}, err
+		}
+		found, err := findPayment(c, acc.Address, in.Memo, minAmount, since)
 		if err != nil {
 			return nil, waitForPaymentOutput{}, err
 		}
 		if found != nil {
 			return nil, *found, nil
 		}
-		if !time.Now().Before(deadline) {
-			return nil, waitForPaymentOutput{Paid: false}, nil
+		// Everything below tip-margin has been checked; keep the margin
+		// in case the indexer was a moment behind the tip.
+		since = max(since, tip-reindexMargin)
+		if !time.Now().Before(deadline) || ctx.Err() != nil {
+			return nil, waitForPaymentOutput{Paid: false, ResumeFromHeight: since}, nil
 		}
-		select {
-		case <-ctx.Done():
-			return nil, waitForPaymentOutput{Paid: false}, nil
-		case <-time.After(pollInterval):
-		}
+		blocks.wait(ctx, deadline)
 	}
+}
+
+// --- create_invoice ---
+
+type createInvoiceInput struct {
+	Amount string `json:"amount" jsonschema:"what the payer should pay, WITH its unit, e.g. \"0.5 AETH\""`
+}
+
+type createInvoiceOutput struct {
+	Invoice      string    `json:"invoice" jsonschema:"a fresh, unique memo for the payer to attach"`
+	PayTo        string    `json:"payTo" jsonschema:"this agent's address"`
+	Amount       amountDTO `json:"amount"`
+	SinceHeight  int64     `json:"sinceHeight" jsonschema:"pass to wait_for_payment: the payment can't be in an earlier block"`
+	Instructions string    `json:"instructions" jsonschema:"what to tell the payer"`
+}
+
+func toolCreateInvoice(_ context.Context, _ *mcp.CallToolRequest, in createInvoiceInput) (*mcp.CallToolResult, createInvoiceOutput, error) {
+	amount, err := parseAmount(in.Amount)
+	if err != nil {
+		return nil, createInvoiceOutput{}, err
+	}
+	w, err := newWallet()
+	if err != nil {
+		return nil, createInvoiceOutput{}, err
+	}
+	acc, err := getOrCreateAgentAccount(w)
+	if err != nil {
+		return nil, createInvoiceOutput{}, err
+	}
+	c, err := dialChain()
+	if err != nil {
+		return nil, createInvoiceOutput{}, err
+	}
+	defer c.close()
+	tip, err := c.latestHeight()
+	if err != nil {
+		return nil, createInvoiceOutput{}, err
+	}
+	nonce := make([]byte, 12)
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, createInvoiceOutput{}, err
+	}
+	invoice := "inv-" + hex.EncodeToString(nonce)
+	return nil, createInvoiceOutput{
+		Invoice: invoice, PayTo: acc.Address, Amount: newAmountDTO(amount), SinceHeight: tip,
+		Instructions: fmt.Sprintf("Send %s AETH (%s uaeth) to %s with the memo %s exactly. Then call wait_for_payment with this memo, minAmount %q and sinceHeight %d.",
+			formatAeth(amount), amount, acc.Address, invoice, formatAeth(amount)+" AETH", tip),
+	}, nil
 }

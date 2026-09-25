@@ -40,12 +40,22 @@ const (
 	codeBroadcastUncertain  = "BROADCAST_UNCERTAIN"
 	codeTxRejected          = "TX_REJECTED" // refused before entering a block
 	codeTxFailed            = "TX_FAILED"   // in a block, but failed
-	codeInternal            = "INTERNAL"
+	codeScanLimit           = "SCAN_LIMIT"
+	// fetch_paid
+	codeHTTPError              = "HTTP_ERROR" // couldn't reach the server
+	codePaymentUnsupported     = "PAYMENT_UNSUPPORTED"
+	codePriceExceedsMax        = "PRICE_EXCEEDS_MAX"
+	codePaymentPending         = "PAYMENT_PENDING"
+	codePaymentRejected        = "PAYMENT_REJECTED"
+	codePaymentAlreadyRedeemed = "PAYMENT_ALREADY_REDEEMED"
+	codeInternal               = "INTERNAL"
 )
 
 var retryableCodes = map[string]bool{
 	codeNodeUnreachable:    true,
 	codeBroadcastUncertain: true,
+	codeHTTPError:          true,
+	codePaymentPending:     true,
 }
 
 type agentError struct {
