@@ -47,8 +47,9 @@ type sendRecord struct {
 }
 
 type agentState struct {
-	Events []spendEvent           `json:"events"`
-	Sends  map[string]*sendRecord `json:"sends,omitempty"`
+	Events  []spendEvent            `json:"events"`
+	Sends   map[string]*sendRecord  `json:"sends,omitempty"`
+	Fetches map[string]*fetchRecord `json:"fetches,omitempty"` // fetch_paid's quoted invoices
 }
 
 // stateMu serializes every read-modify-write of the state file, and
@@ -57,7 +58,7 @@ type agentState struct {
 var stateMu sync.Mutex
 
 func loadState() (*agentState, error) {
-	st := &agentState{Sends: map[string]*sendRecord{}}
+	st := &agentState{Sends: map[string]*sendRecord{}, Fetches: map[string]*fetchRecord{}}
 	bz, err := os.ReadFile(stateFile)
 	if os.IsNotExist(err) {
 		return st, nil
@@ -70,6 +71,9 @@ func loadState() (*agentState, error) {
 	}
 	if st.Sends == nil {
 		st.Sends = map[string]*sendRecord{}
+	}
+	if st.Fetches == nil {
+		st.Fetches = map[string]*fetchRecord{}
 	}
 	return st, nil
 }
@@ -105,6 +109,11 @@ func (st *agentState) prune(now time.Time) {
 	for key, rec := range st.Sends {
 		if rec.CreatedAt.Before(now.Add(-idempotencyRetention)) {
 			delete(st.Sends, key)
+		}
+	}
+	for key, rec := range st.Fetches {
+		if rec.CreatedAt.Before(now.Add(-idempotencyRetention)) {
+			delete(st.Fetches, key)
 		}
 	}
 }

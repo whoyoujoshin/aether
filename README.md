@@ -155,7 +155,7 @@ Open `http://localhost:8081`.
 An MCP server exposing wallet operations as tool calls, so an AI agent can pay and get paid directly instead of only a human clicking through a UI:
 
 ```bash
-go run ./cmd/agentmcp --grpc localhost:9090 --chain-id aether-testnet-1 \
+go run ./cmd/agentmcp --grpc localhost:9090 --rpc http://localhost:26657 --chain-id aether-testnet-1 \
     --per-tx-limit 1000000 --daily-limit 5000000 \
     [--granter <your-address> [--fee-granter <your-address>]]
 ```
@@ -164,7 +164,9 @@ Built for how agents actually fail:
 
 - **No double payments on retry.** `send_aeth` requires an `idempotencyKey`; a retry with the same key re-sends the identical signed transaction (its sequence number is signed in, so the chain can include it at most once) and returns its status.
 - **Knows when a payment is final.** `send_aeth` returns `pending` once the node accepts it; `wait_for_transaction` waits until it's `confirmed` or `failed` in a block.
-- **Can get paid.** Payments carry an optional memo (e.g. an invoice ID); `wait_for_payment(memo, minAmount)` waits for a confirmed incoming payment that matches. Memos are sender-controlled, so tools label them as untrusted data.
+- **Can get paid.** `create_invoice` returns a unique memo and the current height; `wait_for_payment(memo, minAmount, sinceHeight)` waits for a confirmed incoming payment that matches. It reads every incoming payment since that height, page by page, so a busy agent can't miss one. Memos are sender-controlled, so tools label them as untrusted data.
+- **Can buy from paid APIs.** `fetch_paid(url, maxAmount, idempotencyKey)` requests a URL; if the server answers HTTP 402 (see [Paid APIs](#paid-apis-x402)), it pays at most `maxAmount`, waits for the payment to confirm and returns the response. Retrying with the same key resumes the same payment, never a second one.
+- **Wakes on new blocks.** Waiting tools subscribe to the node's new-block events over `--rpc` instead of polling, falling back to polling if the feed is down.
 - **No unit mistakes.** Amounts must carry a unit (`"1.5 AETH"` or `"1500000uaeth"`); a bare number is refused rather than guessed at, and every result states amounts in both units.
 - **Errors a bot can act on.** Every failure is `{"error":{"code","retryable","message"}}` with a stable code (`DAILY_LIMIT_EXCEEDED` with `retryAfterSeconds`, `INSUFFICIENT_FUNDS`, `GRANT_LIMIT_EXCEEDED`, `NODE_UNREACHABLE`, ...); a failed transaction carries an `errorCode` too.
 
@@ -174,6 +176,19 @@ Two modes:
 - **Grant** (`--granter`): pays from your account under an x/authz grant you gave the agent (below), so **the chain** enforces the spend limit, expiry and allowed recipients, and you can revoke it at any time. The agent account needs no balance of its own. The server's caps still apply on top. Available from the activation height.
 
 Read `cmd/agentmcp/main.go`'s package doc comment before deploying either.
+
+### Paid APIs (x402)
+
+`cmd/paywall` puts any HTTP API behind per-request AETH payments, with no changes to the API:
+
+```bash
+go run ./cmd/paywall --upstream http://localhost:8000 --pay-to <your-address> \
+    --price "0.01 AETH" --grpc localhost:9090 --chain-id aether-testnet-1 --free /health
+```
+
+An unpaid request gets `402 Payment Required` in the [x402](https://www.x402.org) wire format with scheme `aether-memo`: a price, an address and a one-time invoice. The client pays that amount with the invoice as the memo (from any wallet — humans can pay too), then repeats the request with an `X-PAYMENT` header naming the invoice and transaction hash. The proxy checks the transaction on chain, serves the request exactly once, and tells the upstream who paid (`X-Aether-Payer`). Invoices are HMAC-signed, so issuing them stores nothing. Go services can use the `paywall` package's middleware directly.
+
+With ~60s blocks a paid request waits about one block. The upstream must be reachable only through the proxy.
 
 ### On-chain agent permissions (x/authz, x/feegrant)
 
@@ -244,6 +259,7 @@ aetherd query governance proposal <proposal-id>
 | `cmd/faucet` | Rate-limited faucet |
 | `cmd/explorer` | Minimal live explorer |
 | `cmd/agentmcp` | MCP server exposing the wallet as tool calls, for AI agents |
+| `paywall/`, `cmd/paywall` | Charge AETH per HTTP request (x402 format): middleware and reverse proxy |
 | `cmd/powminer` | Native PoW nonce search against live state |
 | `cmd/auxpowtest` | Valid test AuxPoW construction |
 | `cmd/scryptbench` | Scrypt throughput benchmarks |

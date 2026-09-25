@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/whoyoujoshin/aether/app"
@@ -25,7 +27,11 @@ type fakeChain struct {
 	broadcasts [][]byte
 	mempool    map[string]bool
 	blocks     map[string]*wallet.TransactionDetail
-	incoming   []wallet.Transaction
+	payments   []wallet.IncomingPayment
+	signed     map[string][]byte
+	height     int64
+	// autoInclude puts every accepted transaction straight into a block.
+	autoInclude bool
 
 	checkTxCode uint32 // non-zero: reject the next new broadcast
 	loseReply   bool   // next broadcast reaches the mempool but errors
@@ -37,7 +43,7 @@ type fakeChain struct {
 }
 
 func newFakeChain() *fakeChain {
-	return &fakeChain{mempool: map[string]bool{}, blocks: map[string]*wallet.TransactionDetail{}}
+	return &fakeChain{mempool: map[string]bool{}, blocks: map[string]*wallet.TransactionDetail{}, signed: map[string][]byte{}, height: 100}
 }
 
 func (f *fakeChain) accountInfo(string) (uint64, uint64, error) {
@@ -80,6 +86,10 @@ func (f *fakeChain) broadcast(s wallet.SignedTx) (wallet.BroadcastResult, error)
 		return wallet.BroadcastResult{TxHash: hash, Code: code, Codespace: "sdk", RawLog: "rejected"}, nil
 	}
 	f.mempool[hash] = true
+	f.signed[hash] = s.Bytes
+	if f.autoInclude {
+		f.includeLocked(hash, 0)
+	}
 	if f.loseReply {
 		f.loseReply = false
 		return wallet.BroadcastResult{}, errors.New("context deadline exceeded")
@@ -97,9 +107,25 @@ func (f *fakeChain) lookup(hash string) (*wallet.TransactionDetail, error) {
 }
 
 func (f *fakeChain) history(string, uint64) ([]wallet.Transaction, error) {
+	return nil, nil
+}
+
+func (f *fakeChain) incoming(_ string, since int64, _ int) ([]wallet.IncomingPayment, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.incoming, nil
+	var out []wallet.IncomingPayment
+	for _, p := range f.payments {
+		if p.Height >= since {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeChain) latestHeight() (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.height, nil
 }
 
 func (f *fakeChain) close() error { return nil }
@@ -107,8 +133,29 @@ func (f *fakeChain) close() error { return nil }
 func (f *fakeChain) include(hash string, code uint32) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.includeLocked(hash, code)
+}
+
+// includeLocked records what the signed transaction actually does, so
+// a seller verifying it sees the real memo and transfers.
+func (f *fakeChain) includeLocked(hash string, code uint32) {
 	delete(f.mempool, hash)
-	f.blocks[hash] = &wallet.TransactionDetail{Hash: hash, Height: 42, Code: code}
+	f.height++
+	d := &wallet.TransactionDetail{Hash: hash, Height: f.height, Code: code, Timestamp: time.Now().UTC().Format(time.RFC3339)}
+	if bz := f.signed[hash]; bz != nil {
+		tx, err := app.MakeEncodingConfig().TxConfig.TxDecoder()(bz)
+		if err == nil {
+			d.Memo = tx.(sdk.TxWithMemo).GetMemo()
+			if code == 0 {
+				for _, m := range tx.GetMsgs() {
+					if send, ok := m.(*banktypes.MsgSend); ok {
+						d.Transfers = append(d.Transfers, wallet.Transfer{From: send.FromAddress, To: send.ToAddress, Amount: sdk.Coins(send.Amount).String()})
+					}
+				}
+			}
+		}
+	}
+	f.blocks[hash] = d
 	f.seq++
 }
 
@@ -316,22 +363,24 @@ func TestTransactionStatus_ConfirmedAndFailed(t *testing.T) {
 
 func TestWaitForPayment_MatchesOnlyConfirmedExactMemoAndEnoughAmount(t *testing.T) {
 	f := setupAgent(t)
-	f.incoming = []wallet.Transaction{
-		{Hash: "WRONGMEMO", Direction: "received", Memo: "invoice-9", Amount: "500000uaeth"},
-		{Hash: "TOOSMALL", Direction: "received", Memo: "invoice-7", Amount: "99999uaeth"},
-		{Hash: "FAILED", Direction: "received", Memo: "invoice-7", Amount: "500000uaeth", Code: 5},
-		{Hash: "OUTGOING", Direction: "sent", Memo: "invoice-7", Amount: "500000uaeth"},
+	coins := func(s string) sdk.Coins { c, _ := sdk.ParseCoinsNormalized(s); return c }
+	f.payments = []wallet.IncomingPayment{
+		{Hash: "OLD", Height: 50, Memo: "invoice-7", Amount: coins("500000uaeth")}, // before sinceHeight
+		{Hash: "WRONGMEMO", Height: 101, Memo: "invoice-9", Amount: coins("500000uaeth")},
+		{Hash: "TOOSMALL", Height: 102, Memo: "invoice-7", Amount: coins("99999uaeth")},
+		{Hash: "FAILED", Height: 103, Memo: "invoice-7", Amount: coins("500000uaeth"), Code: 5},
 	}
 	min := math.NewInt(100_000)
-	found, err := findPayment(f, "addr", "invoice-7", min)
+	found, err := findPayment(f, "addr", "invoice-7", min, 100)
 	require.NoError(t, err)
 	require.Nil(t, found)
 
-	f.incoming = append(f.incoming, wallet.Transaction{Hash: "PAID", Direction: "received", Memo: "invoice-7", Amount: "150000uaeth", Height: 9})
-	_, out, err := toolWaitForPayment(context.Background(), nil, waitForPaymentInput{Memo: "invoice-7", MinAmount: "0.1 AETH", TimeoutSeconds: 1})
+	f.payments = append(f.payments, wallet.IncomingPayment{Hash: "PAID", Height: 104, Memo: "invoice-7", Amount: coins("150000uaeth"), From: "payer"})
+	_, out, err := toolWaitForPayment(context.Background(), nil, waitForPaymentInput{Memo: "invoice-7", MinAmount: "0.1 AETH", SinceHeight: 100, TimeoutSeconds: 1})
 	require.NoError(t, err)
 	require.True(t, out.Paid)
 	require.Equal(t, "PAID", out.TxHash)
+	require.Equal(t, "payer", out.From)
 	require.Equal(t, amountDTO{Uaeth: "150000", Aeth: "0.15"}, *out.Amount)
 
 	_, _, err = toolWaitForPayment(context.Background(), nil, waitForPaymentInput{Memo: "invoice-7", MinAmount: "100000", TimeoutSeconds: 1})

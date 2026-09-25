@@ -15,7 +15,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -145,13 +144,7 @@ type sendRequest struct {
 // parseUaeth reads a positive whole number of uaeth, strictly in base
 // 10. math.NewIntFromString guesses the base from the prefix, so
 // "010" would be octal 8 and "0x10" hex 16.
-func parseUaeth(s string) (math.Int, error) {
-	v, ok := new(big.Int).SetString(s, 10)
-	if !ok || v.Sign() <= 0 || v.BitLen() > 255 {
-		return math.Int{}, fmt.Errorf("invalid amount %q: must be a positive whole number of uaeth", s)
-	}
-	return math.NewIntFromBigInt(v), nil
-}
+func parseUaeth(s string) (math.Int, error) { return wallet.ParseUaeth(s) }
 
 // POST /api/send
 func handleSend(w http.ResponseWriter, r *http.Request) {
