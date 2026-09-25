@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -33,7 +34,8 @@ type spendEvent struct {
 // signed in, so the chain can include it at most once however many
 // times it is broadcast.
 type sendRecord struct {
-	From      string    `json:"from"`
+	From      string    `json:"from"`              // the signer: this agent
+	Granter   string    `json:"granter,omitempty"` // whose funds, in grant mode
 	To        string    `json:"to"`
 	Amount    string    `json:"amountUaeth"`
 	Memo      string    `json:"memo,omitempty"`
@@ -115,6 +117,32 @@ func (st *agentState) spentInWindow(now time.Time) int64 {
 		}
 	}
 	return total
+}
+
+// retryAfter is how long until enough of the window's spending ages
+// out for amount to fit under limit; ok is false if it never will.
+func (st *agentState) retryAfter(now time.Time, amount, limit int64) (time.Duration, bool) {
+	if amount > limit {
+		return 0, false
+	}
+	var live []spendEvent
+	for _, e := range st.Events {
+		if e.Time.After(now.Add(-spendWindow)) {
+			live = append(live, e)
+		}
+	}
+	sort.Slice(live, func(i, j int) bool { return live[i].Time.Before(live[j].Time) })
+	excess := st.spentInWindow(now) + amount - limit
+	for _, e := range live {
+		if excess <= 0 {
+			break
+		}
+		excess -= e.Amount
+		if excess <= 0 {
+			return e.Time.Add(spendWindow).Sub(now), true
+		}
+	}
+	return 0, excess <= 0
 }
 
 // releaseSpend drops the budget reservation for a transaction that

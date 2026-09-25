@@ -156,7 +156,8 @@ An MCP server exposing wallet operations as tool calls, so an AI agent can pay a
 
 ```bash
 go run ./cmd/agentmcp --grpc localhost:9090 --chain-id aether-testnet-1 \
-    --per-tx-limit 1000000 --daily-limit 5000000
+    --per-tx-limit 1000000 --daily-limit 5000000 \
+    [--granter <your-address> [--fee-granter <your-address>]]
 ```
 
 Built for how agents actually fail:
@@ -164,8 +165,15 @@ Built for how agents actually fail:
 - **No double payments on retry.** `send_aeth` requires an `idempotencyKey`; a retry with the same key re-sends the identical signed transaction (its sequence number is signed in, so the chain can include it at most once) and returns its status.
 - **Knows when a payment is final.** `send_aeth` returns `pending` once the node accepts it; `wait_for_transaction` waits until it's `confirmed` or `failed` in a block.
 - **Can get paid.** Payments carry an optional memo (e.g. an invoice ID); `wait_for_payment(memo, minAmount)` waits for a confirmed incoming payment that matches. Memos are sender-controlled, so tools label them as untrusted data.
+- **No unit mistakes.** Amounts must carry a unit (`"1.5 AETH"` or `"1500000uaeth"`); a bare number is refused rather than guessed at, and every result states amounts in both units.
+- **Errors a bot can act on.** Every failure is `{"error":{"code","retryable","message"}}` with a stable code (`DAILY_LIMIT_EXCEEDED` with `retryAfterSeconds`, `INSUFFICIENT_FUNDS`, `GRANT_LIMIT_EXCEEDED`, `NODE_UNREACHABLE`, ...); a failed transaction carries an `errorCode` too.
 
-Speaks MCP over stdio. Manages one dedicated agent account (created on first use) with a per-transaction cap and a rolling 24h spend cap enforced by the server itself — **not yet enforced on-chain**. Read `cmd/agentmcp/main.go`'s package doc comment before pointing this at anything but a small, disposable balance.
+Two modes:
+
+- **Hot wallet** (default): pays from a dedicated agent account (created on first use), capped per transaction and per rolling 24h by the server itself — **not by the chain**. Fund it with only a small, disposable balance.
+- **Grant** (`--granter`): pays from your account under an x/authz grant you gave the agent (below), so **the chain** enforces the spend limit, expiry and allowed recipients, and you can revoke it at any time. The agent account needs no balance of its own. The server's caps still apply on top. Available from the activation height.
+
+Read `cmd/agentmcp/main.go`'s package doc comment before deploying either.
 
 ### On-chain agent permissions (x/authz, x/feegrant)
 
@@ -176,6 +184,8 @@ aetherd tx authz grant <agent-address> send --spend-limit 1000000uaeth --expirat
 aetherd tx feegrant grant <you> <agent-address> --spend-limit 100000uaeth --from <you>
 aetherd tx authz revoke <agent-address> /cosmos.bank.v1beta1.MsgSend --from <you>
 ```
+
+Run `agentmcp` with `--granter <you>` (and `--fee-granter <you>`) to have an agent spend under such a grant.
 
 Nodes running this binary halt once at the activation height (`CONSENSUS FAILURE`, block not committed) and must be restarted (`systemctl restart aetherd`) to add the two new stores; see `app/authz_feegrant.go` for why.
 
