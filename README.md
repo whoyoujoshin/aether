@@ -161,6 +161,18 @@ go run ./cmd/agentmcp --grpc localhost:9090 --chain-id aether-testnet-1 \
 
 Speaks MCP over stdio. Manages one dedicated agent account (created on first use) with a per-transaction cap and a rolling 24h spend cap enforced by the server itself — **not yet enforced on-chain**. Read `cmd/agentmcp/main.go`'s package doc comment before pointing this at anything but a small, disposable balance.
 
+### On-chain agent permissions (x/authz, x/feegrant)
+
+From `app.AuthzFeegrantActivationHeight`, an account can grant another account (an agent) a scoped, expiring, chain-enforced permission — e.g. "send up to 1 AETH from my account until Friday" — and optionally pay its fees:
+
+```bash
+aetherd tx authz grant <agent-address> send --spend-limit 1000000uaeth --expiration <unix-ts> --from <you>
+aetherd tx feegrant grant <you> <agent-address> --spend-limit 100000uaeth --from <you>
+aetherd tx authz revoke <agent-address> /cosmos.bank.v1beta1.MsgSend --from <you>
+```
+
+Nodes running this binary halt once at the activation height (`CONSENSUS FAILURE`, block not committed) and must be restarted (`systemctl restart aetherd`) to add the two new stores; see `app/authz_feegrant.go` for why.
+
 ## Registering as a validator
 
 ```bash
@@ -210,6 +222,7 @@ aetherd query governance proposal <proposal-id>
 | `x/treasury` | Community funds; governance-authorized spends |
 | `crypto/mldsa` | ML-DSA-44, ADR-028 addresses, keyring / ante |
 | `wallet/` | Account management, queries, tx construction |
+| `app/` | App wiring; `authz_feegrant.go` gates x/authz + x/feegrant activation |
 | `cmd/aetherd` | Node binary |
 | `cmd/wallet` | CLI over `wallet/` |
 | `cmd/faucet` | Rate-limited faucet |

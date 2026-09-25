@@ -29,6 +29,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	bankcli "github.com/cosmos/cosmos-sdk/x/bank/client/cli"
+	authzcli "github.com/cosmos/cosmos-sdk/x/authz/client/cli"
+	feegrantcli "cosmossdk.io/x/feegrant/client/cli"
 	addresscodec "github.com/cosmos/cosmos-sdk/codec/address"
 	
 )
@@ -100,6 +102,8 @@ txCmd := &cobra.Command{
 	powcli.NewTxCmd(),
 	governancecli.NewTxCmd(),
 	bankcli.NewTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
+	authzcli.GetTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
+	feegrantcli.GetTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
 )
 	rootCmd.AddCommand(txCmd)
 	
