@@ -45,6 +45,12 @@ import (
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
+	"cosmossdk.io/store/rootmulti"
+	"cosmossdk.io/x/feegrant"
+	feegrantkeeper "cosmossdk.io/x/feegrant/keeper"
+	feegrantmodule "cosmossdk.io/x/feegrant/module"
+	authzkeeper "github.com/cosmos/cosmos-sdk/x/authz/keeper"
+	authzmodule "github.com/cosmos/cosmos-sdk/x/authz/module"
 
 )
 
@@ -89,6 +95,11 @@ var ModuleBasics = module.NewBasicManager(
 	pow.AppModuleBasic{},
 	treasury.AppModuleBasic{},
 	governance.AppModuleBasic{},
+	// Client-side encoding and default genesis only -- the node's own
+	// registry comes from the module manager in New(), which includes
+	// these two only once AuthzFeegrantActivationHeight is reached.
+	authzmodule.AppModuleBasic{},
+	feegrantmodule.AppModuleBasic{},
 )
 
 type EncodingConfig struct {
@@ -181,6 +192,12 @@ type App struct {
 	TreasuryKeeper        treasury.Keeper
 	GovernanceKeeper      governance.Keeper
 	ConsensusParamsKeeper consensuskeeper.Keeper
+	// Zero-valued (unusable) until authzFeegrantWired -- see
+	// AuthzFeegrantActivationHeight.
+	AuthzKeeper    authzkeeper.Keeper
+	FeeGrantKeeper feegrantkeeper.Keeper
+
+	authzFeegrantWired bool
 
 	sm *module.Manager
 	BasicModuleManager   module.BasicManager
@@ -229,7 +246,15 @@ if err != nil {
 		},
 	}
 	app.SetInterfaceRegistry(app.interfaceRegistry)
-	
+
+	authzFeegrant := planAuthzFeegrant(rootmulti.GetLatestVersion(db), authzFeegrantActivationHeight)
+	app.authzFeegrantWired = authzFeegrant.wire
+	if authzFeegrant.wire {
+		for _, name := range authzFeegrantStoreKeys {
+			app.keys[name] = storetypes.NewKVStoreKey(name)
+		}
+	}
+
 	app.MountKVStores(app.keys)
 
 	maccPerms := map[string][]string{
@@ -282,20 +307,49 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 	})
 
 	app.GovernanceKeeper = governance.NewKeeper(appCodec, app.keys[governance.StoreKey], app.BankKeeper, app.PowKeeper, app.TreasuryKeeper, bApp.MsgServiceRouter())
+
+	// SetBankKeeper is the SDK's own (self-described "ugly") v0.50
+	// compatibility hook; both keepers need it for SendAuthorization
+	// and allowance checks.
+	var feegrantKeeper authante.FeegrantKeeper
+	if authzFeegrant.wire {
+		app.AuthzKeeper = authzkeeper.NewKeeper(
+			runtime.NewKVStoreService(app.keys[authzkeeper.StoreKey]),
+			appCodec,
+			bApp.MsgServiceRouter(),
+			app.AccountKeeper,
+		).SetBankKeeper(app.BankKeeper)
+		app.FeeGrantKeeper = feegrantkeeper.NewKeeper(
+			appCodec,
+			runtime.NewKVStoreService(app.keys[feegrant.StoreKey]),
+			app.AccountKeeper,
+		).SetBankKeeper(app.BankKeeper)
+		feegrantKeeper = app.FeeGrantKeeper
+	}
+
 	// Module manager
 	powModule := pow.NewAppModule(appCodec, app.PowKeeper)
 
 governanceModule := governance.NewAppModule(appCodec, app.GovernanceKeeper)
 consensusModule := consensus.NewAppModule(appCodec, app.ConsensusParamsKeeper)
 
-	app.sm = module.NewManager(
-	auth.NewAppModule(appCodec, app.AccountKeeper, nil, nil),
-	bank.NewAppModule(appCodec, app.BankKeeper, app.AccountKeeper, nil),
-	consensusModule,
-	powModule,
-	treasury.NewAppModule(appCodec, app.TreasuryKeeper),
-	governanceModule,
-)
+	modules := []module.AppModule{
+		auth.NewAppModule(appCodec, app.AccountKeeper, nil, nil),
+		bank.NewAppModule(appCodec, app.BankKeeper, app.AccountKeeper, nil),
+		consensusModule,
+		powModule,
+		treasury.NewAppModule(appCodec, app.TreasuryKeeper),
+		governanceModule,
+	}
+	// Appended last so the existing modules' genesis and begin/end-block
+	// order is unchanged.
+	if authzFeegrant.wire {
+		modules = append(modules,
+			authzmodule.NewAppModule(appCodec, app.AuthzKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
+			feegrantmodule.NewAppModule(appCodec, app.AccountKeeper, app.BankKeeper, app.FeeGrantKeeper, app.interfaceRegistry),
+		)
+	}
+	app.sm = module.NewManager(modules...)
 
 	app.BasicModuleManager = module.NewBasicManagerFromManager(app.sm, nil)
 	app.BasicModuleManager.RegisterInterfaces(app.interfaceRegistry)
@@ -320,7 +374,7 @@ if err != nil {
 		AccountKeeper:   app.AccountKeeper,
 		BankKeeper:      app.BankKeeper,
 		SignModeHandler: txConfig.SignModeHandler(),
-		FeegrantKeeper:  nil,
+		FeegrantKeeper:  feegrantKeeper,
 	SigGasConsumer: func(meter storetypes.GasMeter, sig txsigning.SignatureV2, params authtypes.Params) error {
 	switch sig.PubKey.(type) {
 	case *mldsa.PubKey:
@@ -350,6 +404,9 @@ if err != nil {
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
 	app.SetEndBlocker(app.EndBlocker)
+	if authzFeegrant.addStores {
+		app.SetStoreLoader(authzFeegrantStoreLoader)
+	}
 	if loadLatest {
 		if err := app.LoadLatestVersion(); err != nil {
 			panic(fmt.Errorf("error loading last version: %w", err))
@@ -397,6 +454,9 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 	}, nil
 }
 func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
+	if err := app.checkAuthzFeegrantActivation(ctx); err != nil {
+		return sdk.BeginBlock{}, err
+	}
 	if err := app.MigrateConsensusParamsToNewStore(ctx); err != nil {
 		return sdk.BeginBlock{}, err
 	}

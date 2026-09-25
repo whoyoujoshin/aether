@@ -24,10 +24,10 @@
 // revocable spending limit via Cosmos SDK's x/authz (a human account
 // grants this agent account a scoped SendAuthorization with its own
 // SpendLimit and expiration, optionally paired with x/feegrant so the
-// agent never needs its own gas) -- requires wiring x/authz (and
-// optionally x/feegrant) into app.go, which neither module currently
-// is. That's real, valuable follow-up work: it moves enforcement from
-// "this process promises to behave" to "the chain itself rejects
+// agent never needs its own gas) -- is wired into app.go, live from
+// app.AuthzFeegrantActivationHeight. Switching this server to act via
+// MsgExec under such a grant is the follow-up: it moves enforcement
+// from "this process promises to behave" to "the chain itself rejects
 // anything over the grant," the same shape every serious agentic
 // wallet (Coinbase Agentic Wallets, Turnkey, etc.) converges on as of
 // 2026. Until then, treat this account as a hot wallet: fund it with

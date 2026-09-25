@@ -8,6 +8,7 @@ require (
 	cosmossdk.io/log v1.4.1
 	cosmossdk.io/math v1.4.0
 	cosmossdk.io/store v1.1.1
+	cosmossdk.io/x/feegrant v0.1.1
 	cosmossdk.io/x/tx v0.13.7
 	github.com/cloudflare/circl v1.6.4
 	github.com/cometbft/cometbft v0.38.26
