@@ -152,12 +152,18 @@ Open `http://localhost:8081`.
 
 ## AI agent wallet (MCP)
 
-An MCP server exposing wallet operations (balance, send, tx status/history) as tool calls, so an AI agent can transact directly instead of only a human clicking through a UI:
+An MCP server exposing wallet operations as tool calls, so an AI agent can pay and get paid directly instead of only a human clicking through a UI:
 
 ```bash
 go run ./cmd/agentmcp --grpc localhost:9090 --chain-id aether-testnet-1 \
     --per-tx-limit 1000000 --daily-limit 5000000
 ```
+
+Built for how agents actually fail:
+
+- **No double payments on retry.** `send_aeth` requires an `idempotencyKey`; a retry with the same key re-sends the identical signed transaction (its sequence number is signed in, so the chain can include it at most once) and returns its status.
+- **Knows when a payment is final.** `send_aeth` returns `pending` once the node accepts it; `wait_for_transaction` waits until it's `confirmed` or `failed` in a block.
+- **Can get paid.** Payments carry an optional memo (e.g. an invoice ID); `wait_for_payment(memo, minAmount)` waits for a confirmed incoming payment that matches. Memos are sender-controlled, so tools label them as untrusted data.
 
 Speaks MCP over stdio. Manages one dedicated agent account (created on first use) with a per-transaction cap and a rolling 24h spend cap enforced by the server itself — **not yet enforced on-chain**. Read `cmd/agentmcp/main.go`'s package doc comment before pointing this at anything but a small, disposable balance.
 
