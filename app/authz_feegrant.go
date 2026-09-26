@@ -41,10 +41,14 @@ import (
 // height, and each node halts there once ("CONSENSUS FAILURE", block
 // not committed) until restarted -- `systemctl restart aetherd`.
 //
-// Placeholder, set to match QuorumActiveValidatorCountActivationHeight
-// so both ride the same coordinated cutover. Confirm against the live
-// tip before that cutover, as with every other gate here.
-const AuthzFeegrantActivationHeight int64 = 100_000
+// Matches QuorumActiveValidatorCountActivationHeight so both ride the
+// same coordinated cutover: set from the live tip of 100,328 on
+// 2026-09-26, when the 100,000 placeholder had already been passed.
+// A node that starts this binary past activation-1 without having
+// added the stores can't load them -- so every node must be on it, and
+// restart at the halt, before this height. Re-check the tip before the
+// swap and raise both together if it's close.
+const AuthzFeegrantActivationHeight int64 = 109_000
 
 // authzFeegrantActivationHeight is what New() actually reads, so tests
 // can exercise the store-upgrade path at a small height instead of
