@@ -24,14 +24,14 @@ Versions are `vMAJOR.MINOR.PATCH-testnet`; Go orders them, so `go install .../ag
 
 Check the run in the Actions tab and that the release has all six files.
 
-## 3. MCP Registry
+## 3. MCP Registry (automatic)
 
-Publishing needs the `whoyoujoshin` GitHub account, because the name `io.github.whoyoujoshin/aether-wallet` is verified by signing in as it. Install [`mcp-publisher`](https://github.com/modelcontextprotocol/registry/releases), then from an empty folder:
+After the release is published, the workflow's `registry` job checks that the released `aether-wallet.mcpb` matches `server.json`'s SHA-256, then publishes `io.github.whoyoujoshin/aether-wallet`. It signs in as the repository's GitHub Actions run (`mcp-publisher login github-oidc`), so there's no token to store: the registry lets this repository's workflows publish `io.github.whoyoujoshin/*` names. The listing updates at https://registry.modelcontextprotocol.io within minutes; catalogs that mirror the registry pick it up on their own schedules.
+
+If that job fails, publish by hand from an empty folder with the `whoyoujoshin` GitHub account ([`mcp-publisher`](https://github.com/modelcontextprotocol/registry/releases)):
 
 ```bash
 curl -LO https://github.com/whoyoujoshin/aether/releases/download/v0.2.1-testnet/server.json
-mcp-publisher login github     # opens a device-code sign-in
+mcp-publisher login github     # device code: approve it while signed in as whoyoujoshin
 mcp-publisher publish
 ```
-
-The listing appears at https://registry.modelcontextprotocol.io within minutes; catalogs that mirror the registry pick it up on their own schedules. Publish once per release; a new version replaces the listed one.

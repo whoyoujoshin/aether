@@ -112,3 +112,39 @@ jobs:
             AI agents: see [AI agents: start here](https://github.com/whoyoujoshin/aether#ai-agents-start-here). With Go 1.25+, `go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest` also works.
           draft: false
           prerelease: true
+
+  registry:
+    name: Publish to MCP Registry
+    needs: [mcpb, release]
+    runs-on: ubuntu-latest
+    # Signs in to the registry as this repository's GitHub Actions run, which
+    # may publish io.github.whoyoujoshin/* names; no stored token.
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: aether-wallet-mcpb
+          path: mcpb
+
+      - name: Install mcp-publisher 1.8.1
+        run: |
+          curl -fsSL -o mcp-publisher.tar.gz https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz
+          echo "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+
+      - name: Check the released bundle matches server.json
+        run: |
+          url=$(jq -r '.packages[0].identifier' mcpb/server.json)
+          want=$(jq -r '.packages[0].fileSha256' mcpb/server.json)
+          got=$(curl -fsSL "$url" | sha256sum | cut -d' ' -f1)
+          echo "$url: $got"
+          test "$got" = "$want"
+
+      - name: Publish
+        working-directory: mcpb
+        run: |
+          ../mcp-publisher validate server.json
+          ../mcp-publisher login github-oidc
+          ../mcp-publisher publish
