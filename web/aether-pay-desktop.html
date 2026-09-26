@@ -15,9 +15,11 @@
 <body>
   <div id="root"></div>
 
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <!-- Shipped with the app (see vendor/README.md), not fetched from a CDN:
+       this page drives a wallet, so it runs no code from third parties. -->
+  <script src="vendor/react-18.2.0.production.min.js"></script>
+  <script src="vendor/react-dom-18.2.0.production.min.js"></script>
+  <script src="vendor/babel-standalone-7.23.5.min.js"></script>
 
   <script type="text/babel" data-presets="react">
     const { useState, useEffect, useCallback } = React;

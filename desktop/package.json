@@ -31,6 +31,10 @@
       {
         "from": "../web/aether-pay-desktop.html",
         "to": "web/aether-pay-desktop.html"
+      },
+      {
+        "from": "../web/vendor",
+        "to": "web/vendor"
       }
     ],
     "win": {
