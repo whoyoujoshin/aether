@@ -513,6 +513,7 @@ func main() {
 	mux.HandleFunc("/api/tx", withCORS(handleTx))
 	mux.HandleFunc("/api/search", withCORS(handleSearch))
 	mux.HandleFunc("/api/services", withCORS(handleServices))
+	mux.HandleFunc("/api/grants", withCORS(handleGrants))
 
 	// Optional: serve explorer-web's built static assets from the same
 	// process/port, so production deploys are a single binary + one

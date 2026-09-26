@@ -3,10 +3,12 @@ import { api } from "../api";
 import { useApi } from "../hooks";
 import { TxHash, AddressLink } from "../components/Hash";
 import { TxStatusBadge } from "../components/StatusBadge";
+import { GrantsPanel } from "../components/Grants";
 
 export default function Address() {
   const { address = "" } = useParams();
   const page = useApi(() => api.address(address), [address]);
+  const grants = useApi(() => api.grants(address), [address]);
 
   return (
     <div className="page">
@@ -37,6 +39,8 @@ export default function Address() {
               </tbody>
             </table>
           </div>
+
+          {grants.data && <GrantsPanel grants={grants.data} />}
 
           <div className="panel">
             <div className="panel-header">

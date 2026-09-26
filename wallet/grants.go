@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"cosmossdk.io/x/feegrant"
@@ -272,5 +273,81 @@ func addrs(in []string) []sdk.AccAddress {
 	for i, a := range in {
 		out[i] = sdk.MustAccAddressFromBech32(a)
 	}
+	return out
+}
+
+// Permission is everything one account lets another do: its send
+// grant, other authz grants and fee allowance, merged.
+type Permission struct {
+	Account string        `json:"account"` // the other side
+	Send    *Grant        `json:"send,omitempty"`
+	Other   []Grant       `json:"other,omitempty"` // non-send authz grants
+	Fees    *FeeAllowance `json:"fees,omitempty"`
+}
+
+// Permissions returns what address has let other accounts do (given)
+// and what others have let it do (received), one entry per account.
+func (c *Client) Permissions(address string) (given, received []Permission, err error) {
+	return LoadPermissions(c, address)
+}
+
+// PermissionSource is what LoadPermissions needs from a node.
+type PermissionSource interface {
+	GrantsGiven(address string) ([]Grant, error)
+	GrantsReceived(address string) ([]Grant, error)
+	FeeAllowancesGiven(address string) ([]FeeAllowance, error)
+	FeeAllowancesReceived(address string) ([]FeeAllowance, error)
+}
+
+func LoadPermissions(c PermissionSource, address string) (given, received []Permission, err error) {
+	g, err := c.GrantsGiven(address)
+	if err != nil {
+		return nil, nil, err
+	}
+	r, err := c.GrantsReceived(address)
+	if err != nil {
+		return nil, nil, err
+	}
+	fg, err := c.FeeAllowancesGiven(address)
+	if err != nil {
+		return nil, nil, err
+	}
+	fr, err := c.FeeAllowancesReceived(address)
+	if err != nil {
+		return nil, nil, err
+	}
+	given = MergePermissions(g, fg, func(x Grant) string { return x.Grantee }, func(x FeeAllowance) string { return x.Grantee })
+	received = MergePermissions(r, fr, func(x Grant) string { return x.Granter }, func(x FeeAllowance) string { return x.Granter })
+	return given, received, nil
+}
+
+// MergePermissions groups grants and fee allowances by the account on
+// their other side, sorted by address.
+func MergePermissions(grants []Grant, fees []FeeAllowance, grantOther func(Grant) string, feeOther func(FeeAllowance) string) []Permission {
+	by := map[string]*Permission{}
+	get := func(acc string) *Permission {
+		if by[acc] == nil {
+			by[acc] = &Permission{Account: acc}
+		}
+		return by[acc]
+	}
+	for _, g := range grants {
+		p := get(grantOther(g))
+		if g.Kind == "send" {
+			g := g
+			p.Send = &g
+		} else {
+			p.Other = append(p.Other, g)
+		}
+	}
+	for _, f := range fees {
+		f := f
+		get(feeOther(f)).Fees = &f
+	}
+	out := make([]Permission, 0, len(by))
+	for _, p := range by {
+		out = append(out, *p)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Account < out[j].Account })
 	return out
 }

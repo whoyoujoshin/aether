@@ -76,7 +76,7 @@ var (
 
 func TestMergePermissions(t *testing.T) {
 	a, b := "aether1a", "aether1b"
-	out := merge(
+	out := wallet.MergePermissions(
 		[]wallet.Grant{{Grantee: b, Kind: "send"}, {Grantee: a, Kind: "/cosmos.gov.v1.MsgVote"}},
 		[]wallet.FeeAllowance{{Grantee: b, Kind: "basic"}, {Grantee: a, Kind: "basic"}},
 		func(g wallet.Grant) string { return g.Grantee }, func(f wallet.FeeAllowance) string { return f.Grantee })

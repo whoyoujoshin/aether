@@ -170,6 +170,33 @@ export interface ServiceDirectory {
   services: ServiceListing[];
 }
 
+export interface SendPermission {
+  unlimited: boolean;
+  spendLimit: string; // uaeth left; "" if unlimited
+  allowList: string[];
+  expiration: string; // RFC 3339; "" if none
+}
+
+export interface FeePermission {
+  kind: string;
+  spendLimit: string;
+  expiration: string;
+}
+
+export interface Permission {
+  account: string;
+  send: SendPermission | null;
+  fees: FeePermission | null;
+  other: string[];
+}
+
+export interface Grants {
+  address: string;
+  active: boolean;
+  given: Permission[];
+  received: Permission[];
+}
+
 export const api = {
   stats: () => getJSON<Stats>("/api/stats"),
   validators: () => getJSON<ValidatorInfo[]>("/api/validators"),
@@ -180,6 +207,7 @@ export const api = {
   recentTransactions: (limit = 20) =>
     getJSON<RecentTransaction[]>(`/api/recent-transactions?limit=${limit}`),
   address: (addr: string) => getJSON<AddressPage>(`/api/address?addr=${encodeURIComponent(addr)}`),
+  grants: (addr: string) => getJSON<Grants>(`/api/grants?addr=${encodeURIComponent(addr)}`),
   tx: (hash: string) => getJSON<TransactionDetail>(`/api/tx?hash=${encodeURIComponent(hash)}`),
   search: (q: string) => getJSON<SearchResult>(`/api/search?q=${encodeURIComponent(q)}`),
   blocks: () => getJSON<BlockSummary[]>("/api/blocks"),

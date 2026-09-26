@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"time"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -18,79 +17,15 @@ import (
 // that account's transaction fees (x/feegrant). The chain enforces
 // both; the owner can revoke them at any time.
 
-// permission is everything one account lets another do, merged from
-// its authz grant and fee allowance.
-type permission struct {
-	Account string               `json:"account"` // the other side
-	Send    *wallet.Grant        `json:"send,omitempty"`
-	Other   []wallet.Grant       `json:"other,omitempty"` // non-send authz grants
-	Fees    *wallet.FeeAllowance `json:"fees,omitempty"`
-}
-
 type grantsResponse struct {
-	Address  string       `json:"address"`
-	Given    []permission `json:"given"`
-	Received []permission `json:"received"`
+	Address  string              `json:"address"`
+	Given    []wallet.Permission `json:"given"`
+	Received []wallet.Permission `json:"received"`
 }
 
-// grantChain is what the grant handlers need from a node.
-type grantChain interface {
-	GrantsGiven(address string) ([]wallet.Grant, error)
-	GrantsReceived(address string) ([]wallet.Grant, error)
-	FeeAllowancesGiven(address string) ([]wallet.FeeAllowance, error)
-	FeeAllowancesReceived(address string) ([]wallet.FeeAllowance, error)
-}
-
-func loadPermissions(c grantChain, address string) (grantsResponse, error) {
-	out := grantsResponse{Address: address}
-	given, err := c.GrantsGiven(address)
-	if err != nil {
-		return out, err
-	}
-	received, err := c.GrantsReceived(address)
-	if err != nil {
-		return out, err
-	}
-	feesGiven, err := c.FeeAllowancesGiven(address)
-	if err != nil {
-		return out, err
-	}
-	feesReceived, err := c.FeeAllowancesReceived(address)
-	if err != nil {
-		return out, err
-	}
-	out.Given = merge(given, feesGiven, func(g wallet.Grant) string { return g.Grantee }, func(f wallet.FeeAllowance) string { return f.Grantee })
-	out.Received = merge(received, feesReceived, func(g wallet.Grant) string { return g.Granter }, func(f wallet.FeeAllowance) string { return f.Granter })
-	return out, nil
-}
-
-func merge(grants []wallet.Grant, fees []wallet.FeeAllowance, grantOther func(wallet.Grant) string, feeOther func(wallet.FeeAllowance) string) []permission {
-	by := map[string]*permission{}
-	get := func(acc string) *permission {
-		if by[acc] == nil {
-			by[acc] = &permission{Account: acc}
-		}
-		return by[acc]
-	}
-	for _, g := range grants {
-		p := get(grantOther(g))
-		if g.Kind == "send" {
-			g := g
-			p.Send = &g
-		} else {
-			p.Other = append(p.Other, g)
-		}
-	}
-	for _, f := range fees {
-		f := f
-		get(feeOther(f)).Fees = &f
-	}
-	out := make([]permission, 0, len(by))
-	for _, p := range by {
-		out = append(out, *p)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Account < out[j].Account })
-	return out
+func loadPermissions(c wallet.PermissionSource, address string) (grantsResponse, error) {
+	given, received, err := wallet.LoadPermissions(c, address)
+	return grantsResponse{Address: address, Given: given, Received: received}, err
 }
 
 // GET /api/grants?name=mywallet -- what the account has given and received.
