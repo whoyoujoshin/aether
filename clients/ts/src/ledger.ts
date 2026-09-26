@@ -124,16 +124,26 @@ export class FileLedger implements Ledger, PullLedger {
   // --- aether-pull ---
 
   pullAccount(account: string): PullAccount {
-    const r = this.state.pull![account];
+    const r = this.get(account);
     return { accrued: num(r?.accrued), inFlight: num(r?.open?.amount), unpaid: num(r?.unpaid) };
   }
 
+  // Accounts come from requests: only ever read or create own entries, so no
+  // key (e.g. "__proto__") can reach Object.prototype.
+  private get(account: string) {
+    const pull = this.state.pull!;
+    return Object.hasOwn(pull, account) ? pull[account] : undefined;
+  }
+
   private rec(account: string) {
-    return (this.state.pull![account] ??= {});
+    if (account === "__proto__") throw new Error("invalid account");
+    const pull = this.state.pull!;
+    if (!Object.hasOwn(pull, account)) pull[account] = {};
+    return pull[account];
   }
 
   private dropIfEmpty(account: string) {
-    const r = this.state.pull![account];
+    const r = this.get(account);
     if (r && !r.accrued && !r.unpaid && !r.open) delete this.state.pull![account];
   }
 
@@ -168,7 +178,7 @@ export class FileLedger implements Ledger, PullLedger {
   }
 
   openCollection(account: string, id: string, atMs: number): Collection | undefined {
-    const r = this.state.pull![account];
+    const r = this.get(account);
     if (!r) return undefined;
     if (r.open) return { ...r.open };
     if (!r.accrued) return undefined;
@@ -181,7 +191,7 @@ export class FileLedger implements Ledger, PullLedger {
   }
 
   saveCollection(c: Collection) {
-    const r = this.state.pull![c.account];
+    const r = this.get(c.account);
     if (!r?.open || r.open.id !== c.id) throw new Error(`collection ${c.id} is not open`);
     this.mutate(() => {
       r.open = { ...c };
@@ -189,7 +199,7 @@ export class FileLedger implements Ledger, PullLedger {
   }
 
   closeCollection(account: string, collected: boolean, log?: string) {
-    const r = this.state.pull![account];
+    const r = this.get(account);
     if (!r?.open) throw new Error(`${account} has no open collection`);
     this.mutate(() => {
       const c: Collection = { ...r.open!, txBytes: undefined, status: collected ? "confirmed" : "failed", ...(log ? { log } : {}) };
@@ -201,7 +211,7 @@ export class FileLedger implements Ledger, PullLedger {
   }
 
   reinstate(account: string) {
-    const r = this.state.pull![account];
+    const r = this.get(account);
     if (!r?.unpaid) return;
     this.mutate(() => {
       r.accrued = (num(r.accrued) + num(r.unpaid)).toString();
