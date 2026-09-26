@@ -52,6 +52,9 @@ export function TopBar() {
         <NavLink to="/services" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
           Services
         </NavLink>
+        <NavLink to="/agents" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+          For agents
+        </NavLink>
       </nav>
       <form className="search-form" onSubmit={handleSearch}>
         <input

@@ -356,3 +356,76 @@ tbody tr:last-child td {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+.panel-body {
+  padding: 16px 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.panel-body p {
+  margin: 12px 0;
+}
+.panel-body > :first-child {
+  margin-top: 0;
+}
+.panel-body > :last-child {
+  margin-bottom: 0;
+}
+
+.warning-banner {
+  border: 1px solid var(--warning);
+  color: var(--warning);
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 20px;
+  font-size: 13px;
+}
+
+.code-block {
+  position: relative;
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.code-block pre {
+  margin: 0;
+  padding: 12px 40px 12px 14px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+.code-block .copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+/* Phones: the nav gets its own scrollable row, so nothing widens the page. */
+@media (max-width: 900px) {
+  .topbar {
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 12px 16px;
+  }
+  .search-form {
+    flex: 1 1 180px;
+    min-width: 0;
+    max-width: none;
+  }
+  .search-input {
+    min-width: 0;
+  }
+  .nav-links {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+  }
+  .nav-link {
+    white-space: nowrap;
+  }
+  .page {
+    padding: 20px 16px 48px;
+  }
+}

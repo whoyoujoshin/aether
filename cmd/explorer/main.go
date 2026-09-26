@@ -490,7 +490,12 @@ func main() {
 	staticDir := flag.String("static", "", "optional path to explorer-web's built static assets to serve alongside the API")
 	flag.StringVar(&chainID, "chain-id", "aether-testnet-1", "chain ID listed services must be on")
 	flag.BoolVar(&directoryAllowPrivate, "directory-allow-private", false, "fetch service manifests from private/loopback addresses (local devnets only)")
+	flag.StringVar(&publicRPC, "public-rpc", "", "RPC endpoint to advertise to agents at /api/agents (default: the public testnet's on aether-testnet-1)")
+	flag.StringVar(&publicGRPC, "public-grpc", "", "gRPC endpoint to advertise to agents (default: the public testnet's on aether-testnet-1)")
+	flag.StringVar(&publicFaucet, "public-faucet", "", "faucet URL to advertise to agents (default: the public testnet's on aether-testnet-1)")
+	flag.StringVar(&publicSeed, "public-seed", "", "seed node (id@host:port) to advertise (default: the public testnet's on aether-testnet-1)")
 	flag.Parse()
+	resolvePublicEndpoints()
 
 	// Deliberately use our own dedicated mux, never the shared global
 	// http.DefaultServeMux -- the same real issue found live in the
@@ -514,6 +519,7 @@ func main() {
 	mux.HandleFunc("/api/search", withCORS(handleSearch))
 	mux.HandleFunc("/api/services", withCORS(handleServices))
 	mux.HandleFunc("/api/grants", withCORS(handleGrants))
+	mux.HandleFunc("/api/agents", withCORS(handleAgents))
 
 	// Optional: serve explorer-web's built static assets from the same
 	// process/port, so production deploys are a single binary + one

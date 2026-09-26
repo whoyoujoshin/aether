@@ -8,6 +8,7 @@ import Transaction from "./pages/Transaction";
 import Blocks from "./pages/Blocks";
 import Block from "./pages/Block";
 import Services from "./pages/Services";
+import Agents from "./pages/Agents";
 
 function NotFound() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/validators" element={<Validators />} />
         <Route path="/governance" element={<Governance />} />
         <Route path="/services" element={<Services />} />
+        <Route path="/agents" element={<Agents />} />
         <Route path="/address/:address" element={<Address />} />
         <Route path="/tx/:hash" element={<Transaction />} />
         <Route path="*" element={<NotFound />} />
