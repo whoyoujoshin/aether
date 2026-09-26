@@ -133,11 +133,9 @@ const ParamChangeGovernanceActivationHeight int64 = 90000
 // binary and a node with the new one would resolve the same pending
 // proposal differently at the same height.
 //
-// Set for the coordinated cutover: the live tip was 100,328 on
-// 2026-09-26 (~9,000 blocks/day), after the 100,000 placeholder had
-// already been passed -- the third gate burned that way, after 77000
-// and 80000 (see ParamChangeGovernanceActivationHeight). 109,000 is
-// about a day out. Every node must run this binary before then;
-// re-check the live tip right before the swap, and raise this again
-// (with AuthzFeegrantActivationHeight) if it's close.
+// Set for the coordinated cutover agreed on 2026-09-26 with the live
+// tip at 107,176 -- the 100,000 placeholder had already been passed,
+// the third gate burned that way after 77000 and 80000 (see
+// ParamChangeGovernanceActivationHeight). Every node must run this
+// binary before 109,000, together with AuthzFeegrantActivationHeight.
 const QuorumActiveValidatorCountActivationHeight int64 = 109_000
