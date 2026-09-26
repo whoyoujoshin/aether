@@ -245,7 +245,7 @@ func handleLeaderboard(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, toLeaderboardDTO(resp))
 }
 
 // --- GET /api/proposals ---
@@ -388,6 +388,11 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	if strings.HasPrefix(q, "aether1") {
 		writeJSON(w, http.StatusOK, map[string]string{"kind": "address", "value": q})
+		return
+	}
+
+	if h, err := strconv.ParseInt(q, 10, 64); err == nil && h > 0 && len(q) < 32 {
+		writeJSON(w, http.StatusOK, map[string]string{"kind": "block", "value": strconv.FormatInt(h, 10)})
 		return
 	}
 

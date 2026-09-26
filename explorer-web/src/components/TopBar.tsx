@@ -23,7 +23,8 @@ export function TopBar() {
       // bypass) -- encoding closes that regardless of the library's
       // own patch status.
       const encoded = encodeURIComponent(result.value);
-      navigate(result.kind === "tx" ? `/tx/${encoded}` : `/address/${encoded}`);
+      const section = result.kind === "tx" ? "tx" : result.kind === "block" ? "blocks" : "address";
+      navigate(`/${section}/${encoded}`);
       setQuery("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "search failed");
