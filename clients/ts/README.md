@@ -1,6 +1,6 @@
 # @aether-chain/client
 
-TypeScript client for the [Aether](https://github.com/whoyoujoshin/aether) chain: ML-DSA-44 keys, sending and receiving AETH, buying from and selling paid APIs (x402 `aether-memo` and `aether-prepaid`) and the on-chain service directory. It talks to a node's CometBFT RPC (port 26657) only.
+TypeScript client for the [Aether](https://github.com/whoyoujoshin/aether) chain: ML-DSA-44 keys, sending and receiving AETH, buying from and selling paid APIs (x402 `aether-memo`, `aether-prepaid` and `aether-pull`) and the on-chain service directory. It talks to a node's CometBFT RPC (port 26657) only.
 
 ```ts
 import { AetherClient, Key, fetchPaid, findServices, rateService, withdrawPrepaid } from "@aether-chain/client";
@@ -13,6 +13,8 @@ const done = await client.waitForTransaction(sent.hash);         // confirmed | 
 // Retrying after an error: client.rebroadcast(sent.signed) -- never a second send().
 
 const res = await fetchPaid(client, key, "https://api.example.com/forecast", { maxAmount: "0.05 AETH", prepay: "1 AETH" });
+// Or, where offered, pay from your own account under a capped, 7-day allowance the seller collects from later:
+const res2 = await fetchPaid(client, key, "https://api.example.com/forecast", { maxAmount: "0.05 AETH", pullAllowance: "1 AETH" });
 const services = await findServices(client, { query: "weather", maxPrice: "0.1 AETH", trusted: [ownerAddress] });
 // services[i].reputation: payments, payers, ratings (can be faked), trustedRatings (can't)
 // res.receipt: the seller's signed receipt and whether it matches exactly what was sent and received
@@ -22,7 +24,7 @@ const back = await withdrawPrepaid(client, key, "https://api.example.com", { wit
 
 ## Selling
 
-Charge per request from a Node service -- both payment schemes, the `/.well-known/x402` manifest for the service directory, and withdrawals of unspent prepaid balances. Compatible with the Go paywall and every Aether buyer.
+Charge per request from a Node service -- all three payment schemes, the `/.well-known/x402` manifest for the service directory, and withdrawals of unspent prepaid balances. Compatible with the Go paywall and every Aether buyer.
 
 ```ts
 import express from "express";
@@ -37,7 +39,9 @@ const pw = new Paywall({
     payoutKey: Key.fromMnemonic(process.env.PAYOUT_MNEMONIC!), // pays withdrawals; keep a small float in it
   },
   receipts: { key: payeeKey }, // sign a receipt for every paid response (or a delegated key + createReceiptDelegation)
+  pull: { collectorKey: Key.fromMnemonic(process.env.COLLECTOR_MNEMONIC!), credit: "1 AETH" }, // aether-pull: needs no funds
 });
+pw.startCollecting(); // collects what aether-pull buyers owe, in batches
 const app = express();
 app.use(pw.middleware({ free: ["/health"] })); // before body parsers
 app.post("/forecast", express.json(), (req, res) => res.json({ city: req.body.city, paidBy: (req as any).aether.payer }));

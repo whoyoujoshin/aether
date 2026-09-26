@@ -76,10 +76,10 @@ const (
 	ErrRequestTooLarge     = "request_too_large"
 
 	// aether-pull
-	ErrNoGrant      = "no_grant"           // no usable allowance for this seller: grant one
-	ErrGrantTooLow  = "grant_too_low"      // the allowance doesn't cover what's owed plus this request
-	ErrPullUnpaid   = "pull_unpaid"        // collecting an earlier balance failed: grant enough to cover it
-	ErrSettling     = "settlement_pending" // credit used up while it's being collected: retry shortly
+	ErrNoGrant     = "no_grant"           // no usable allowance for this seller: grant one
+	ErrGrantTooLow = "grant_too_low"      // the allowance doesn't cover what's owed plus this request
+	ErrPullUnpaid  = "pull_unpaid"        // collecting an earlier balance failed: grant enough to cover it
+	ErrSettling    = "settlement_pending" // credit used up while it's being collected: retry shortly
 )
 
 // PaymentRequired is the body of a 402 response.

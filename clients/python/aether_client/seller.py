@@ -11,7 +11,10 @@ aether-memo: an unpaid request gets 402 with a one-time invoice; the buyer
 pays it on chain (memo = invoice) and repeats the request with proof, which
 is checked on chain and served once. aether-prepaid (bots): deposit once,
 then sign each request; the price is deducted instantly. With payout_key,
-buyers can withdraw what they haven't spent.
+buyers can withdraw what they haven't spent. aether-pull (bots): the buyer
+grants pull_collector_key's account a capped, expiring allowance on chain,
+payable only to pay_to, and signs each request; call start_collecting() to
+collect what's owed in batches.
 
 Who paid is in environ["aether.payment"] (WSGI) or scope["aether"] (ASGI).
 """
@@ -36,10 +39,10 @@ from .client import AetherClient
 from .directory import MANIFEST_PATH
 from .keys import Key, address_of, is_address
 from .ledger import FileLedger, LedgerError, _parse_time
-from .paywall import DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, signing_message
+from .paywall import DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, pull_signing_message, signing_message
 from .receipt import RECEIPT_HEADER, encode_receipt, malformed, sign_receipt, verify_receipt
 from .rpc import RpcError
-from .tx import build_send
+from .tx import build_send, build_tx, exec_send_msg
 
 WITHDRAW_PATH = "/.well-known/x402/withdraw"
 
@@ -64,6 +67,17 @@ _PREPAID_INSTRUCTIONS = (
     'Each requestId is charged once. Unspent balance stays with the seller; if withdrawPath is set, POST a request signed the same way there (body {"amount":"all"}) to get it back.')
 
 
+_PULL_INSTRUCTIONS = (
+    "For many requests, paying only for what you use: grant grantee a send allowance on chain "
+    "(x/authz MsgGrant with a SendAuthorization: spend_limit, allow_list [payTo], and an expiration), then sign each request "
+    "with your account's ML-DSA key and send X-PAYMENT: base64 of "
+    '{"x402Version":1,"scheme":"aether-pull","network":"<network>","payload":{account,pubKey,timestamp,requestId,maxPrice,signature}}'
+    " -- see package paywall's PullSigningMessage. Each requestId is charged once, and what you owe is collected from your account "
+    "in batches under the allowance, up to credit at a time. Revoke the allowance to stop.")
+COLLECTION_MEMO_PREFIX = "x402-pull:"
+_GRANT_CACHE = 15
+
+
 @dataclass
 class Payment:
     """Who paid for a request."""
@@ -71,6 +85,7 @@ class Payment:
     scheme: str
     tx_hash: Optional[str] = None  # aether-memo
     balance_uaeth: Optional[int] = None  # aether-prepaid: left with this seller
+    owed_uaeth: Optional[int] = None  # aether-pull: owed, not yet collected
 
 
 @dataclass
@@ -147,6 +162,19 @@ class KeyPayout:
             self._next = seq + 1
             return s.tx_bytes, seq, s.hash
 
+    def sign_exec(self, frm: str, to: str, amount_uaeth: int, memo: str):
+        """Signs, as the grantee, a transfer of amount_uaeth from frm to `to` under frm's allowance."""
+        with self._lock:
+            info = self.client.account_info(self.key.address)
+            if info is None:
+                raise RuntimeError(f"collector account {self.key.address} doesn't exist on chain yet: the first allowance granted to it creates it")
+            account_number, seq = info
+            seq = max(seq, self._next)
+            s = build_tx(self.key, [exec_send_msg(self.key.address, frm, to, amount_uaeth)], chain_id=self.client.chain_id,
+                         account_number=account_number, sequence=seq, memo=memo)
+            self._next = seq + 1
+            return s.tx_bytes, seq, s.hash
+
     def submit(self, tx_bytes: bytes, sequence: int):
         """(status, log): pending | confirmed | failed (can never land) | sequence_spent."""
         h = hashlib.sha256(tx_bytes).hexdigest().upper()
@@ -180,14 +208,22 @@ class Paywall:
                  mime_type: str = "", invoice_ttl: int = 86400, secret: Optional[bytes] = None,
                  prepaid_ledger: Union[None, str, FileLedger] = None, min_deposit: Optional[str] = None,
                  payout_key: Optional[Key] = None, receipt_key: Optional[Key] = None,
-                 receipt_delegation: Optional[dict] = None, now: Callable[[], float] = time.time):
+                 receipt_delegation: Optional[dict] = None, pull_collector_key: Optional[Key] = None,
+                 pull_ledger: Union[None, str, FileLedger] = None, pull_credit: Optional[str] = None,
+                 pull_collect_every: float = 60, now: Callable[[], float] = time.time):
         """price and min_deposit carry their unit ("0.01 AETH"). prepaid_ledger (a
         FileLedger or a path) offers aether-prepaid: it holds customers'
         balances, so back it up. payout_key pays back unspent balances on
         request: keep only a small float in that account. receipt_key signs a
         receipt for every paid response: pay_to's own key, or one pay_to
         delegated receipts to (receipt_delegation, from
-        create_receipt_delegation or `paywall delegate-receipts`)."""
+        create_receipt_delegation or `paywall delegate-receipts`).
+        pull_collector_key offers aether-pull: buyers grant its account an
+        allowance, and start_collecting() collects what they owe (it needs no
+        funds: the first allowance granted to it creates its account).
+        pull_ledger (default: the prepaid ledger) records what's owed;
+        pull_credit ("1 AETH", default 100 requests) is the most a buyer may
+        owe before it's collected -- your loss if one revokes just before."""
         if not is_address(pay_to):
             raise ValueError(f'invalid pay_to address "{pay_to}"')
         self.client, self.pay_to = client, pay_to
@@ -204,6 +240,25 @@ class Paywall:
         self._redeemed_lock = threading.Lock()
         self._last_prune = 0.0
         self._withdraw_lock = threading.Lock()
+        self.pull_ledger = None
+        self.collector = None
+        if pull_collector_key:
+            ledger = pull_ledger if pull_ledger is not None else self.ledger
+            if ledger is None:
+                raise ValueError("pull needs a ledger (pull_ledger, or prepaid_ledger)")
+            if isinstance(ledger, str):
+                ledger = self.ledger if ledger == prepaid_ledger and self.ledger is not None else FileLedger(ledger)
+            self.pull_ledger = ledger
+            self.collector = KeyPayout(client, pull_collector_key)
+            self.credit = parse_amount(pull_credit) if pull_credit else self.price * 100
+            if self.credit < self.price:
+                raise ValueError("pull credit must be at least the price")
+            self.collect_every = pull_collect_every
+            self._grants: Dict[str, tuple] = {}
+            self._grants_lock = threading.Lock()
+            self._collect_lock = threading.Lock()
+            self._wake = threading.Event()
+            self._stop: Optional[threading.Event] = None
         self.receipt_key, self.receipt_delegation = receipt_key, receipt_delegation
         if receipt_key:
             probe = sign_receipt(receipt_key, {"network": self.network, "payTo": pay_to, "payer": "", "scheme": "", "payment": "",
@@ -231,7 +286,7 @@ class Paywall:
         return make
 
     def _schemes(self):
-        return [SCHEME_MEMO, SCHEME_PREPAID] if self.ledger is not None else [SCHEME_MEMO]
+        return [SCHEME_MEMO] + ([SCHEME_PREPAID] if self.ledger is not None else []) + ([SCHEME_PULL] if self.pull_ledger is not None else [])
 
     def manifest(self) -> dict:
         """The service's self-description, served (free) at MANIFEST_PATH."""
@@ -250,7 +305,7 @@ class Paywall:
         if self.receipt_key and req.header("x-payment"):
             return True
         pay = _decode_header(req.header("x-payment") or "")
-        return bool(pay) and pay.get("scheme") == SCHEME_PREPAID
+        return bool(pay) and pay.get("scheme") in (SCHEME_PREPAID, SCHEME_PULL)
 
     # --- aether-memo ---
 
@@ -265,6 +320,8 @@ class Paywall:
             return self.payment_required(req, "invalid_payment", "X-PAYMENT must be base64-encoded JSON")
         if pay.get("network") == self.network and pay.get("scheme") == SCHEME_PREPAID and self.ledger is not None:
             return self._serve_prepaid(req, pay.get("payload"), body)
+        if pay.get("network") == self.network and pay.get("scheme") == SCHEME_PULL and self.pull_ledger is not None:
+            return self._serve_pull(req, pay.get("payload"), body)
         if pay.get("scheme") != SCHEME_MEMO or pay.get("network") != self.network:
             return self.payment_required(req, "unsupported_scheme",
                                          f'this server accepts {" or ".join(self._schemes())} on network "{self.network}"')
@@ -382,11 +439,17 @@ class Paywall:
             if self.payout:
                 extra["withdrawPath"] = WITHDRAW_PATH
             body["accepts"].append({**memo, "scheme": SCHEME_PREPAID, "extra": extra})
+        if self.pull_ledger is not None:
+            extra = {"amountAeth": format_aeth(self.price), "grantee": self.collector.key.address, "credit": str(self.credit),
+                     "instructions": _PULL_INSTRUCTIONS}
+            if account:
+                extra["owed"] = str(self.pull_ledger.pull_account(account).owed)
+            body["accepts"].append({**memo, "scheme": SCHEME_PULL, "extra": extra})
         return _json(402, body, headers)
 
     # --- aether-prepaid ---
 
-    def _verify(self, req: SellerRequest, pay, body: bytes):
+    def _verify(self, req: SellerRequest, pay, body: bytes, pull: bool = False):
         """(payload, max_price) or (code, message)."""
         if not isinstance(pay, dict) or not all(isinstance(pay.get(k), str) for k in ("account", "pubKey", "signature", "requestId", "maxPrice")) \
                 or not isinstance(pay.get("timestamp"), int) or isinstance(pay.get("timestamp"), bool):
@@ -420,9 +483,9 @@ class Paywall:
         deposit = pay.get("depositTx") or ""
         if not isinstance(deposit, str):
             return None, ("invalid_payment", "depositTx must be a string")
-        msg = signing_message(network=self.network, pay_to=self.pay_to, host=req.host, method=req.method, path=req.path,
-                              body=body, max_price=max_price, timestamp=pay["timestamp"], request_id=pay["requestId"],
-                              deposit_tx=deposit)
+        msg = (pull_signing_message if pull else signing_message)(
+            network=self.network, pay_to=self.pay_to, host=req.host, method=req.method, path=req.path,
+            body=body, max_price=max_price, timestamp=pay["timestamp"], request_id=pay["requestId"], deposit_tx=deposit)
         if not Key.verify(pub, msg, sig):
             return None, ("invalid_signature", "signature does not match this request")
         return (pay, max_price), None
@@ -458,6 +521,149 @@ class Paywall:
                     print(f"paywall: refunding {account} for a failed request: {e}")
         return Serve(Payment(account, SCHEME_PREPAID, balance_uaeth=bal), {"X-PAYMENT-RESPONSE": settlement}, finish,
                      self._receipt_for(req, body, SCHEME_PREPAID, account, pay["requestId"]))
+
+    # --- aether-pull ---
+
+    def _grant(self, buyer: str, fresh: bool):
+        """(grant or None, cached). Only allowances found are cached: a buyer who
+        just granted one must not be told it has none."""
+        with self._grants_lock:
+            c = self._grants.get(buyer)
+        if not fresh and c and self.now() - c[1] < _GRANT_CACHE:
+            return c[0], True
+        g = self.client.send_grant(buyer, self.collector.key.address)
+        with self._grants_lock:
+            if g:
+                self._grants[buyer] = (g, self.now())
+            else:
+                self._grants.pop(buyer, None)
+        return g, False
+
+    def _serve_pull(self, req: SellerRequest, raw, body: bytes):
+        ok, bad = self._verify(req, raw, body, pull=True)
+        if bad:
+            return self.payment_required(req, *bad)
+        pay, max_price = ok
+        buyer = pay["account"]
+        ledger, grantee = self.pull_ledger, self.collector.key.address
+
+        def refuse(code, msg, headers=None):
+            return self.payment_required(req, code, msg, account=buyer, headers=headers)
+        if pay.get("depositTx"):
+            return self.payment_required(req, "invalid_payment", "aether-pull requests carry no deposit")
+        if max_price < self.price:
+            return refuse("price_above_signed_max", f"the price is {self.price} uaeth; the request allows at most {max_price}")
+        acct = ledger.pull_account(buyer)
+
+        def check(g):
+            if g.expiration is not None and g.expiration < self.now() + 2 * self.collect_every:
+                return ("no_grant", f"your allowance for {grantee} expires too soon to collect under; grant one lasting at least {int(2 * self.collect_every)}s")
+            if g.allow_list and self.pay_to not in g.allow_list:
+                return ("no_grant", "your allowance doesn't allow paying " + self.pay_to)
+            need = acct.owed + self.price
+            if not g.unlimited and g.spend_limit_uaeth < need:
+                if acct.unpaid:
+                    return ("pull_unpaid", f"collecting {acct.unpaid} uaeth you owe failed; grant an allowance covering it plus this request ({need} uaeth) to continue")
+                return ("grant_too_low", f"your allowance has {g.spend_limit_uaeth} uaeth left and you owe {acct.owed} uaeth not yet collected; this request needs {self.price} more")
+            return None
+        fresh = False
+        while True:
+            try:
+                g, cached = self._grant(buyer, fresh)
+            except Exception as e:
+                print(f"paywall: looking up {buyer}'s allowance: {e}")
+                return Respond(503, {"Retry-After": "10", "Content-Type": "text/plain"}, b"could not reach the chain to check your allowance; retry\n")
+            if g is None:
+                return refuse("no_grant", f"grant {grantee} a send allowance limited to {self.pay_to} first (x/authz SendAuthorization)")
+            why = check(g)
+            if not why:
+                break
+            if not cached:
+                return refuse(*why)
+            fresh = True  # it may have been raised since: look again before refusing
+        if acct.unpaid:
+            ledger.reinstate(buyer)  # the allowance covers the failed collection too: collect it with the next batch
+            acct.accrued, acct.unpaid = acct.accrued + acct.unpaid, 0
+        # What's being collected counts against the credit until it lands.
+        accrued, charged, new = ledger.accrue(buyer, pay["requestId"], self.price, self.credit - acct.in_flight, self.now() + _REQUEST_ID_RETENTION)
+        if not new:
+            return refuse("invoice_already_redeemed", "this requestId was already charged and served")
+        if not charged:
+            self._wake.set()
+            return refuse("settlement_pending", f"you owe {accrued + acct.in_flight} uaeth, this service's limit before collecting; it's being collected -- retry shortly",
+                          {"Retry-After": "10"})
+        owed = accrued + acct.in_flight
+        if accrued * 2 >= self.credit:
+            self._wake.set()
+        settle = {"success": True, "network": self.network, "payer": buyer, "owed": str(owed)}
+        if not g.unlimited:
+            settle["allowance"] = str(g.spend_limit_uaeth - owed)
+
+        def finish(status: int):
+            if status >= 500:
+                try:
+                    ledger.unaccrue(buyer, pay["requestId"], self.price)
+                except Exception as e:
+                    print(f"paywall: uncharging {buyer} for a failed request: {e}")
+        return Serve(Payment(buyer, SCHEME_PULL, owed_uaeth=owed), {"X-PAYMENT-RESPONSE": _encode_header(settle)}, finish,
+                     self._receipt_for(req, body, SCHEME_PULL, buyer, pay["requestId"]))
+
+    def start_collecting(self) -> Callable[[], None]:
+        """Collects what aether-pull buyers owe every pull_collect_every seconds, in a
+        daemon thread; returns a stop function."""
+        if self.pull_ledger is None:
+            raise ValueError("this paywall doesn't offer aether-pull")
+        stop = self._stop = threading.Event()
+
+        def loop():
+            while not stop.is_set():
+                self.collect_all()
+                self._wake.wait(self.collect_every)
+                self._wake.clear()
+        threading.Thread(target=loop, daemon=True, name="aether-pull-collector").start()
+        return stop.set
+
+    def collect_all(self):
+        """One pass over every buyer with something to collect."""
+        with self._collect_lock:
+            for account in self.pull_ledger.collectable():
+                try:
+                    self._collect(account)
+                except Exception as e:
+                    print(f"paywall: collecting from {account}: {e}")
+
+    def _collect(self, account: str):
+        """One step towards collecting what account owes: open, sign, save (before broadcast) and send, or follow up."""
+        ledger = self.pull_ledger
+        c = ledger.open_collection(account, os.urandom(8).hex(), self.now())
+        if not c:
+            return
+        for _ in range(2):
+            if c["status"] == "reserved":
+                tx, seq, h = self.collector.sign_exec(account, self.pay_to, int(c["amount"]), COLLECTION_MEMO_PREFIX + c["id"])
+                c = {**c, "status": "pending", "txBytes": base64.b64encode(tx).decode(), "sequence": seq, "txHash": h, "sequenceSpentAt": None}
+                ledger.save_collection(c)  # saved before it's broadcast: from here it's only re-sent
+            status, log = self.collector.submit(base64.b64decode(c["txBytes"]), int(c.get("sequence") or 0))
+            if status == "confirmed":
+                with self._grants_lock:
+                    self._grants.pop(account, None)
+                return ledger.close_collection(account, True)
+            if status == "pending":
+                return  # checked again next pass
+            if status == "failed":
+                # Revoked, expired or exhausted allowance, or an empty account: the buyer owes it, and is refused until an allowance covers it.
+                print(f"paywall: collecting {c['amount']} uaeth from {account} failed; refusing it until it grants enough: {log}")
+                with self._grants_lock:
+                    self._grants.pop(account, None)
+                return ledger.close_collection(account, False, log)
+            # sequence_spent
+            now = self.now()
+            if not _parse_time(c.get("sequenceSpentAt") or ""):
+                c = {**c, "sequenceSpentAt": datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")}
+                ledger.save_collection(c)
+            if now - _parse_time(c["sequenceSpentAt"]) < _SEQUENCE_SPENT_GRACE:
+                return
+            c = {**c, "status": "reserved"}  # can never land: sign afresh
 
     def _credit_deposit(self, req, tx_hash: str, account: str) -> Optional[Respond]:
         def refuse(code, msg, headers=None):

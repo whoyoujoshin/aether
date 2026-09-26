@@ -5,8 +5,9 @@ import json
 import pathlib
 import unittest
 
-from aether_client import (DIRECTORY_ADDRESS, Key, build_send, format_aeth, is_address, memo_of, parse_amount,
-                           signing_message, transfers)
+from aether_client import (DIRECTORY_ADDRESS, MSG_EXEC_TYPE_URL, Key, SendGrant, build_send, build_tx, decode_send_grant, exec_send_msg,
+                           format_aeth, grant_send_msg, is_address, memo_of, parse_amount, pull_signing_message, signing_message,
+                           transfers)
 from aether_client.proto import Writer
 
 V = json.loads((pathlib.Path(__file__).resolve().parents[2] / "testdata" / "vectors.json").read_text())
@@ -48,6 +49,32 @@ class Vectors(unittest.TestCase):
                               body=p["body"].encode(), max_price=int(p["maxPrice"]), timestamp=p["timestamp"],
                               request_id=p["RequestID"], deposit_tx=p["DepositTx"])
         self.assertEqual(msg.hex(), p["message"])
+
+    def test_pull(self):
+        p = V["prepaid"]
+        f = dict(network=p["Network"], pay_to=p["PayTo"], host=p["Host"], method=p["Method"], path=p["Path"], body=p["body"].encode(),
+                 max_price=int(p["maxPrice"]), timestamp=p["timestamp"], request_id=p["RequestID"], deposit_tx=p["DepositTx"])
+        self.assertEqual(pull_signing_message(**f).hex(), V["pull"]["message"], "the deposit is ignored")
+        self.assertNotEqual(pull_signing_message(**f), signing_message(**{**f, "deposit_tx": ""}), "domain-separated from prepaid")
+
+        g = V["pull"]["grant"]
+        grant = build_tx(self.key, [grant_send_msg(self.key.address, g["grantee"], int(g["limitUaeth"]), g["allowList"], g["expiration"])],
+                         chain_id="aether-testnet-1", account_number=g["accountNumber"], sequence=g["sequence"], deterministic=True)
+        self.assertEqual(grant.body_bytes.hex(), g["bodyBytes"])
+        self.assertEqual(grant.tx_bytes.hex(), g["txBytes"])
+        self.assertEqual(grant.hash, g["txHash"])
+
+        e = V["pull"]["exec"]
+        ex = build_tx(self.key, [exec_send_msg(self.key.address, e["granter"], e["to"], int(e["amountUaeth"]))], chain_id="aether-testnet-1",
+                      account_number=e["accountNumber"], sequence=e["sequence"], memo=e["memo"], deterministic=True)
+        self.assertEqual(ex.body_bytes.hex(), e["bodyBytes"])
+        self.assertEqual(ex.tx_bytes.hex(), e["txBytes"])
+        self.assertEqual(ex.hash, e["txHash"])
+
+        req = Writer().string(1, self.key.address).string(2, g["grantee"]).string(3, "/cosmos.bank.v1beta1.MsgSend").finish()
+        self.assertEqual(req.hex(), V["pull"]["grantsRequest"])
+        self.assertEqual(decode_send_grant(bytes.fromhex(V["pull"]["grantsResponse"])), SendGrant(False, 750_000, g["allowList"], g["expiration"]))
+        self.assertIsNone(decode_send_grant(b""))
 
     def test_queries_and_directory_address(self):
         self.assertEqual(Writer().string(1, V["key"]["address"]).finish().hex(), V["queries"]["accountInfoRequest"])
