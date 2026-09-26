@@ -1,0 +1,36 @@
+# TLS for the Aether seed, via Caddy's automatic HTTPS (Let's Encrypt).
+#
+# Uses sslip.io "magic DNS" instead of a purchased domain: any hostname that
+# embeds this server's IP resolves to it with no DNS setup, e.g.
+# rpc.157-245-252-221.sslip.io -> 157.245.252.221. That's a real, public
+# hostname, so Let's Encrypt's HTTP-01 challenge (which Caddy runs on port 80
+# automatically) works exactly as it would for a purchased domain.
+#
+# Install: see scripts/tls/install.sh. Update: `caddy fmt` then
+# `systemctl reload caddy` after editing this file (config reloads without
+# dropping connections; no cert re-issue needed unless the hostnames change).
+
+rpc.157-245-252-221.sslip.io {
+	# CometBFT RPC: JSON-RPC and the /websocket subscription endpoint.
+	# Caddy forwards WebSocket upgrades by default.
+	reverse_proxy 127.0.0.1:26657
+}
+
+grpc.157-245-252-221.sslip.io {
+	# gRPC (aetherd serves plaintext HTTP/2, i.e. h2c -- there's no TLS to
+	# terminate here, Caddy adds it). Clients connect with TLS, e.g.
+	# grpc.NewClient("grpc.157-245-252-221.sslip.io:443", grpc.WithTransportCredentials(credentials.NewTLS(nil)))
+	reverse_proxy 127.0.0.1:9090 {
+		transport http {
+			versions h2c
+		}
+	}
+}
+
+faucet.157-245-252-221.sslip.io {
+	reverse_proxy 127.0.0.1:8080
+}
+
+explorer.157-245-252-221.sslip.io {
+	reverse_proxy 127.0.0.1:8081
+}

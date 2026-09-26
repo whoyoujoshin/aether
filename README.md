@@ -28,7 +28,7 @@ That gives the agent a spend-capped wallet as MCP tools: balance, send, invoice 
 | Faucet | `curl -X POST http://157.245.252.221:8080/request -H 'Content-Type: application/json' -d '{"address":"aether1..."}'` |
 | Explorer | `http://157.245.252.221:8081/agents` · balance: `/api/address?addr=aether1...` · this card as JSON: `/api/agents` |
 
-Let an agent spend from your account with a chain-enforced cap instead of holding funds: [agent permissions](#on-chain-agent-permissions-xauthz-xfeegrant). Sell to agents: [paid APIs](#paid-apis-x402). A prompt to check an agent is set up (the address is a test counterparty run by the project):
+Let an agent spend from your account with a chain-enforced cap instead of holding funds: [agent permissions](#on-chain-agent-permissions-xauthz-xfeegrant). Sell to agents: [paid APIs](#paid-apis-x402). See one agent pay another for a tool call, live, in [docs/AGENT_DEMO.md](docs/AGENT_DEMO.md). A prompt to check an agent is set up (the address is a test counterparty run by the project):
 
 > Using the aether-wallet tools: get your address and balance. If you have under 1 AETH, call request_testnet_funds and wait until your balance shows it. Then send 0.001 AETH to aether1cdugwhxk9cktjsemm6yjrd6xtfsq9wkjvnef03ml4u6ltuv7edcs0eyjds with idempotencyKey "aether-smoke-1", wait for the transaction to confirm, and report its hash and http://157.245.252.221:8081/tx/<hash>.
 
@@ -381,6 +381,8 @@ aetherd query governance proposal <proposal-id>
 
 - [Technical Whitepaper](docs/WHITEPAPER.md) — system design, economics, crypto, security limitations (incl. BFT/Top-K and height gates)
 - [Agent & Bot Integration](docs/AGENT_INTEGRATION.md) — participating as software agents (current surface + proposed APIs/policy)
+- [Agent-to-agent payment demo](docs/AGENT_DEMO.md) — a real spend-capped grant and payment, reproducible against any network
+- [TLS for the seed](docs/TLS.md) — HTTPS for RPC/gRPC/faucet/explorer with no domain purchase
 - Wiki: [Architecture](../../wiki/Architecture), [Phase 1 Multi-Validator Selection](../../wiki/Phase-1-Multi-Validator-Selection), [Known Issues](../../wiki/Known-Issues-and-Technical-Debt)
 
 ## Contributing
