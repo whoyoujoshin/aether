@@ -34,7 +34,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: go.mod
 
       - name: Build binaries
         env:
@@ -46,6 +46,9 @@ jobs:
           go build -o dist/wallet${{ matrix.ext }} ./cmd/wallet
           go build -o dist/faucet${{ matrix.ext }} ./cmd/faucet
           go build -o dist/explorer${{ matrix.ext }} ./cmd/explorer
+          go build -o dist/agentmcp${{ matrix.ext }} ./cmd/agentmcp
+          go build -o dist/paywall${{ matrix.ext }} ./cmd/paywall
+          go build -o dist/powminer${{ matrix.ext }} ./cmd/powminer
 
       - name: Package archive
         run: |
@@ -79,6 +82,8 @@ jobs:
 
             Download the archive matching your platform, extract it, and run `aetherd` (or `aetherd.exe` on Windows). See the [README](https://github.com/whoyoujoshin/aether#public-testnet) for setup instructions and public testnet connection details.
 
-            Includes: `aetherd` (the node), `wallet` (CLI wallet), `faucet` (testnet faucet service), `explorer` (block explorer dashboard).
+            Includes: `aetherd` (the node), `wallet` (CLI wallet), `faucet` (testnet faucet service), `explorer` (block explorer dashboard), `agentmcp` (MCP wallet for AI agents: run `agentmcp init`), `paywall` (charge per request for an HTTP API) and `powminer` (native PoW miner).
+
+            AI agents: see [AI agents: start here](https://github.com/whoyoujoshin/aether#ai-agents-start-here). With Go 1.25+, `go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest` also works.
           draft: false
           prerelease: true
