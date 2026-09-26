@@ -61,9 +61,29 @@ jobs:
           name: aether-${{ matrix.suffix }}
           path: aether-${{ matrix.suffix }}.tar.gz
 
+  mcpb:
+    name: Build agentmcp MCPB bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Package bundle and registry server.json
+        run: bash scripts/package-mcpb.sh "${{ github.ref_name }}" "${{ runner.temp }}/mcpb"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aether-wallet-mcpb
+          path: |
+            ${{ runner.temp }}/mcpb/aether-wallet.mcpb
+            ${{ runner.temp }}/mcpb/server.json
+
   release:
     name: Publish release
-    needs: build
+    needs: [build, mcpb]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -74,7 +94,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.tar.gz
+          files: |
+            artifacts/*.tar.gz
+            artifacts/aether-wallet.mcpb
+            artifacts/server.json
           body: |
             Pre-built Aether binaries for this release.
 
@@ -83,6 +106,8 @@ jobs:
             Download the archive matching your platform, extract it, and run `aetherd` (or `aetherd.exe` on Windows). See the [README](https://github.com/whoyoujoshin/aether#public-testnet) for setup instructions and public testnet connection details.
 
             Includes: `aetherd` (the node), `wallet` (CLI wallet), `faucet` (testnet faucet service), `explorer` (block explorer dashboard), `agentmcp` (MCP wallet for AI agents: run `agentmcp init`), `paywall` (charge per request for an HTTP API) and `powminer` (native PoW miner).
+
+            `aether-wallet.mcpb` is agentmcp as an MCP bundle for Windows, macOS and Linux: open it in Claude Desktop (or any client that installs MCPB bundles) to add the wallet. `server.json` is its MCP Registry entry.
 
             AI agents: see [AI agents: start here](https://github.com/whoyoujoshin/aether#ai-agents-start-here). With Go 1.25+, `go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest` also works.
           draft: false

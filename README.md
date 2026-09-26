@@ -189,6 +189,8 @@ agentmcp init
 
 `init` creates the agent's account (showing its recovery phrase once), asks the testnet faucet for funds, waits until they arrive and prints the exact `claude mcp add ...` command and the JSON config block for Claude Desktop and other MCP clients. Run it again to reuse the same account. `--faucet <url>` points it at another faucet, `--no-faucet` skips funding; it takes the same `--grpc`, `--rpc`, `--chain-id` and `--keyring-dir` flags as the server (on `aether-testnet-1`, `--grpc` and `--rpc` default to the public node). Once running, the agent can top itself up with the `request_testnet_funds` tool (testnet only; `FAUCET_RATE_LIMITED` means wait).
 
+**Claude Desktop without Go:** download `aether-wallet.mcpb` from the [latest release](../../releases) and open it. Claude Desktop asks for the spending limits and a keyring folder; the agent creates its account on first use and funds it with `request_testnet_funds`. The same bundle runs on Windows, macOS (Intel and Apple Silicon) and Linux. Its MCP Registry name is `io.github.whoyoujoshin/aether-wallet`.
+
 To run the server by hand:
 
 ```bash
