@@ -133,11 +133,9 @@ const ParamChangeGovernanceActivationHeight int64 = 90000
 // binary and a node with the new one would resolve the same pending
 // proposal differently at the same height.
 //
-// Placeholder height -- Gitty's report that put this fix in motion
-// had the live tip at ~91395, which is already past the 90000 gate
-// used above, so this number is NOT safe to deploy as-is. Confirm the
-// seed's actual live tip immediately before the coordinated
-// fleet-wide binary swap and raise this if the tip is already close,
-// exactly as instructed on ParamChangeGovernanceActivationHeight after
-// 77000 and 80000 were both burned the same way.
-const QuorumActiveValidatorCountActivationHeight int64 = 100_000
+// Set for the coordinated cutover agreed on 2026-09-26 with the live
+// tip at 107,176 -- the 100,000 placeholder had already been passed,
+// the third gate burned that way after 77000 and 80000 (see
+// ParamChangeGovernanceActivationHeight). Every node must run this
+// binary before 109,000, together with AuthzFeegrantActivationHeight.
+const QuorumActiveValidatorCountActivationHeight int64 = 109_000

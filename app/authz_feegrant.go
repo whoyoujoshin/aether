@@ -41,10 +41,13 @@ import (
 // height, and each node halts there once ("CONSENSUS FAILURE", block
 // not committed) until restarted -- `systemctl restart aetherd`.
 //
-// Placeholder, set to match QuorumActiveValidatorCountActivationHeight
-// so both ride the same coordinated cutover. Confirm against the live
-// tip before that cutover, as with every other gate here.
-const AuthzFeegrantActivationHeight int64 = 100_000
+// Matches QuorumActiveValidatorCountActivationHeight: both ride the
+// coordinated cutover agreed on 2026-09-26 with the live tip at 107,176
+// (the 100,000 placeholder had already been passed). A node that first
+// starts this binary after activation-1 is committed can't load the
+// stores it never added -- so every node must be running it before
+// this height, and restart once at the halt.
+const AuthzFeegrantActivationHeight int64 = 109_000
 
 // authzFeegrantActivationHeight is what New() actually reads, so tests
 // can exercise the store-upgrade path at a small height instead of
@@ -75,12 +78,30 @@ func authzFeegrantStoreLoader(ms storetypes.CommitMultiStore) error {
 	return ms.LoadLatestVersionAndUpgrade(&storetypes.StoreUpgrades{Added: authzFeegrantStoreKeys})
 }
 
+// authzFeegrantMarkerKey is written into both new stores by the
+// activation block. The IAVL version here can't load an empty tree at a
+// later version: an added store that stays empty makes every restart
+// fail ("failed to load store: version does not exist") and every query
+// at the latest height fail the same way. Keys prefixed 0xff are used by
+// neither module (authz: 0x01/0x02, feegrant: 0x00/0x01), so no
+// iteration or genesis export ever sees it.
+var authzFeegrantMarkerKey = []byte("\xffaether/activated")
+
 // checkAuthzFeegrantActivation halts a node that reaches the activation
 // height without the stores mounted. The block is not committed; on
 // restart, planAuthzFeegrant sees activation-1 as the last committed
-// height and adds the stores.
+// height and adds the stores. The activation block itself then writes
+// the marker that keeps them non-empty.
 func (app *App) checkAuthzFeegrantActivation(ctx sdk.Context) error {
-	if app.authzFeegrantWired || ctx.BlockHeight() < authzFeegrantActivationHeight {
+	if app.authzFeegrantWired {
+		if ctx.BlockHeight() == authzFeegrantActivationHeight {
+			for _, name := range authzFeegrantStoreKeys {
+				ctx.KVStore(app.keys[name]).Set(authzFeegrantMarkerKey, []byte{1})
+			}
+		}
+		return nil
+	}
+	if ctx.BlockHeight() < authzFeegrantActivationHeight {
 		return nil
 	}
 	return fmt.Errorf(
