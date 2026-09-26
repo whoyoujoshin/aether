@@ -124,6 +124,7 @@ txCmd := &cobra.Command{
 	queryCmd.AddCommand(powcli.GetQueryCmd())
 	queryCmd.AddCommand(governancecli.GetQueryCmd())
 	queryCmd.AddCommand(treasurycli.GetQueryCmd())
+	queryCmd.AddCommand(bankQueryCmd(), authzQueryCmd(), feegrantQueryCmd())
 
 	app.ModuleBasics.AddQueryCommands(queryCmd)
 	rootCmd.AddCommand(queryCmd)

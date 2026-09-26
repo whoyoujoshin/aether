@@ -150,6 +150,8 @@ go run ./cmd/explorer --grpc localhost:9090 --rpc http://localhost:26657 --port 
 
 Open `http://localhost:8081`.
 
+To redeploy the live explorer from `main`, run `bash scripts/deploy-explorer.sh` as root on the server that hosts it. It builds while the old version keeps serving, keeps backups, restarts `aether-explorer` and rolls back if the new one doesn't answer.
+
 ## AI agent wallet (MCP)
 
 An MCP server exposing wallet operations as tool calls, so an AI agent can pay and get paid directly instead of only a human clicking through a UI.
@@ -263,12 +265,16 @@ Paid services list themselves on chain, so agents can find them without a centra
 
 ### On-chain agent permissions (x/authz, x/feegrant)
 
-From `app.AuthzFeegrantActivationHeight`, an account can grant another account (an agent) a scoped, expiring, chain-enforced permission — e.g. "send up to 1 AETH from my account until Friday" — and optionally pay its fees:
+From `app.AuthzFeegrantActivationHeight` (block 109,000, live on the testnet), an account can grant another account (an agent) a scoped, expiring, chain-enforced permission — e.g. "send up to 1 AETH from my account until Friday" — and optionally pay its fees:
 
 ```bash
 aetherd tx authz grant <agent-address> send --spend-limit 1000000uaeth --expiration <unix-ts> --from <you>
 aetherd tx feegrant grant <you> <agent-address> --spend-limit 100000uaeth --from <you>
 aetherd tx authz revoke <agent-address> /cosmos.bank.v1beta1.MsgSend --from <you>
+
+aetherd query authz grants <you> <agent-address>       # or grants-by-granter / grants-by-grantee
+aetherd query feegrant grant <you> <agent-address>     # or grants-by-granter / grants-by-grantee
+aetherd query bank balances <address>
 ```
 
 Run `agentmcp` with `--granter <you>` (and `--fee-granter <you>`) to have an agent spend under such a grant.
