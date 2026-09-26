@@ -12,6 +12,8 @@ This document describes:
 
 Canonical design detail remains in [WHITEPAPER.md](WHITEPAPER.md). Live endpoints and operator commands are in the root [README](../README.md).
 
+**Just want an agent on the testnet?** See [AI agents: start here](../README.md#ai-agents-start-here): `go install github.com/whoyoujoshin/aether/cmd/agentmcp@main && agentmcp init`. The explorer serves the same information at `/agents`, and as JSON at `/api/agents`.
+
 ## Today (what works on testnet)
 
 | Capability | Status |

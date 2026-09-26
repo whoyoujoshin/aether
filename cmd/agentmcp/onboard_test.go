@@ -98,4 +98,10 @@ func TestInit_CreatesFundsAndPrintsClientConfig(t *testing.T) {
 	require.NoError(t, runInit([]string{"--keyring-dir", keys, "--no-faucet"}))
 	require.Contains(t, buf.String(), "Using the existing agent account "+addr)
 	require.NotContains(t, buf.String(), "recovery phrase")
+	require.Contains(t, buf.String(), "--grpc "+testnetGRPC+" --rpc "+testnetRPC, "on the testnet, connect to the public node by default")
+
+	// Another chain gets no public defaults.
+	buf.Reset()
+	require.NoError(t, runInit([]string{"--keyring-dir", keys, "--no-faucet", "--chain-id", "aether-devnet"}))
+	require.Contains(t, buf.String(), "--grpc localhost:9090 --rpc http://localhost:26657")
 }

@@ -22,7 +22,12 @@ import (
 // request_testnet_funds lets an agent top itself up from the testnet
 // faucet.
 
-const testnetFaucet = "http://157.245.252.221:8080/request"
+// The public testnet's endpoints: what `agentmcp init` connects to by default.
+const (
+	testnetFaucet = "http://157.245.252.221:8080/request"
+	testnetGRPC   = "157.245.252.221:9090"
+	testnetRPC    = "http://157.245.252.221:26657"
+)
 
 var (
 	faucetURL string    // "" disables request_testnet_funds
@@ -111,8 +116,8 @@ func runInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	fs.StringVar(&keyringDir, "keyring-dir", defaultKeyringDir(), "directory for the agent's dedicated keyring")
 	fs.StringVar(&accountName, "account-name", "agent", "name of the agent's key")
-	fs.StringVar(&grpcEndpoint, "grpc", "localhost:9090", "node gRPC endpoint")
-	fs.StringVar(&rpcEndpoint, "rpc", "http://localhost:26657", "node CometBFT RPC endpoint")
+	fs.StringVar(&grpcEndpoint, "grpc", "", "node gRPC endpoint (default: the public testnet node on aether-testnet-1, else localhost:9090)")
+	fs.StringVar(&rpcEndpoint, "rpc", "", "node CometBFT RPC endpoint (default: the public testnet node on aether-testnet-1, else http://localhost:26657)")
 	fs.StringVar(&chainID, "chain-id", "aether-testnet-1", "chain ID")
 	faucet := fs.String("faucet", "", "faucet URL (default: the public testnet faucet on aether-testnet-1)")
 	noFaucet := fs.Bool("no-faucet", false, "don't request starter funds")
@@ -120,6 +125,18 @@ func runInit(args []string) error {
 		return err
 	}
 	keyringBackend = "test"
+	if grpcEndpoint == "" {
+		grpcEndpoint = "localhost:9090"
+		if chainID == "aether-testnet-1" {
+			grpcEndpoint = testnetGRPC
+		}
+	}
+	if rpcEndpoint == "" {
+		rpcEndpoint = "http://localhost:26657"
+		if chainID == "aether-testnet-1" {
+			rpcEndpoint = testnetRPC
+		}
+	}
 	if *faucet == "" && !*noFaucet {
 		*faucet = defaultFaucet(chainID)
 	}
@@ -204,7 +221,7 @@ func selfCommand() (command, installHint string) {
 	}
 	// go run builds into a temporary go-build directory that's gone afterwards.
 	if err != nil || strings.Contains(exe, "go-build") {
-		return "agentmcp", "go install ./cmd/agentmcp, so `agentmcp` is on your PATH"
+		return "agentmcp", "go install github.com/whoyoujoshin/aether/cmd/agentmcp@main, so `agentmcp` is on your PATH"
 	}
 	return exe, ""
 }

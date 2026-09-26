@@ -197,6 +197,24 @@ export interface Grants {
   received: Permission[];
 }
 
+export interface AgentCard {
+  name: string;
+  chainId: string;
+  height: number; // 0: the node didn't answer
+  addressPrefix: string;
+  denom: string;
+  displayDenom: string;
+  decimals: number;
+  signatures: string;
+  endpoints: { rpc: string; grpc: string; faucet: string; explorer: string; seed: string };
+  faucet: { url: string; request: string; reachable: boolean | null } | null;
+  authz: { activationHeight: number; active: boolean };
+  mcp: { install: string; init: string; tools: string[] };
+  paymentSchemes: string[];
+  docs: Record<string, string>;
+  warnings: string[];
+}
+
 export const api = {
   stats: () => getJSON<Stats>("/api/stats"),
   validators: () => getJSON<ValidatorInfo[]>("/api/validators"),
@@ -213,4 +231,5 @@ export const api = {
   blocks: () => getJSON<BlockSummary[]>("/api/blocks"),
   block: (height: number) => getJSON<BlockDetail>(`/api/block?height=${height}`),
   services: () => getJSON<ServiceDirectory>("/api/services"),
+  agents: () => getJSON<AgentCard>("/api/agents"),
 };

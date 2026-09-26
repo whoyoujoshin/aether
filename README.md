@@ -8,6 +8,28 @@ Aether is a sovereign, staking-free proof-of-work blockchain built on Cosmos SDK
 
 Design history, live-verification notes, and locked architectural decisions are tracked in the [project wiki](../../wiki).
 
+## AI agents: start here
+
+Agents use the same accounts and transactions as people: there is no AI-only lane. **Testnet only: use disposable keys, never anything of value.** Endpoints are plain HTTP (no TLS).
+
+```bash
+go install github.com/whoyoujoshin/aether/cmd/agentmcp@main   # Go 1.25+
+agentmcp init   # new key, testnet funds, and the MCP config for Claude / Cursor / any MCP client
+```
+
+That gives the agent a spend-capped wallet as MCP tools: balance, send, invoice and wait-for-payment, paying for HTTP 402 APIs, and the service directory (full list and guarantees in [AI agent wallet](#ai-agent-wallet-mcp)).
+
+| | |
+|--|--|
+| Chain ID | `aether-testnet-1` · denom `uaeth` (1 AETH = 10⁶ uaeth) · addresses `aether1...` |
+| RPC / gRPC | `http://157.245.252.221:26657` / `157.245.252.221:9090` |
+| Faucet | `curl -X POST http://157.245.252.221:8080/request -H 'Content-Type: application/json' -d '{"address":"aether1..."}'` |
+| Explorer | `http://157.245.252.221:8081/agents` · balance: `/api/address?addr=aether1...` · this card as JSON: `/api/agents` |
+
+Let an agent spend from your account with a chain-enforced cap instead of holding funds: [agent permissions](#on-chain-agent-permissions-xauthz-xfeegrant). Sell to agents: [paid APIs](#paid-apis-x402). A prompt to check an agent is set up (the address is a test counterparty run by the project):
+
+> Using the aether-wallet tools: get your address and balance. If you have under 1 AETH, call request_testnet_funds and wait until your balance shows it. Then send 0.001 AETH to aether1cdugwhxk9cktjsemm6yjrd6xtfsq9wkjvnef03ml4u6ltuv7edcs0eyjds with idempotencyKey "aether-smoke-1", wait for the transaction to confirm, and report its hash and http://157.245.252.221:8081/tx/<hash>.
+
 ## Current status
 
 | Area | Status |
@@ -159,11 +181,11 @@ An MCP server exposing wallet operations as tool calls, so an AI agent can pay a
 **Quick start (testnet):**
 
 ```bash
-go install ./cmd/agentmcp
+go install github.com/whoyoujoshin/aether/cmd/agentmcp@main   # or, in a clone: go install ./cmd/agentmcp
 agentmcp init
 ```
 
-`init` creates the agent's account (showing its recovery phrase once), asks the testnet faucet for funds, waits until they arrive and prints the exact `claude mcp add ...` command and the JSON config block for Claude Desktop and other MCP clients. Run it again to reuse the same account. `--faucet <url>` points it at another faucet, `--no-faucet` skips funding; it takes the same `--grpc`, `--rpc`, `--chain-id` and `--keyring-dir` flags as the server. Once running, the agent can top itself up with the `request_testnet_funds` tool (testnet only; `FAUCET_RATE_LIMITED` means wait).
+`init` creates the agent's account (showing its recovery phrase once), asks the testnet faucet for funds, waits until they arrive and prints the exact `claude mcp add ...` command and the JSON config block for Claude Desktop and other MCP clients. Run it again to reuse the same account. `--faucet <url>` points it at another faucet, `--no-faucet` skips funding; it takes the same `--grpc`, `--rpc`, `--chain-id` and `--keyring-dir` flags as the server (on `aether-testnet-1`, `--grpc` and `--rpc` default to the public node). Once running, the agent can top itself up with the `request_testnet_funds` tool (testnet only; `FAUCET_RATE_LIMITED` means wait).
 
 To run the server by hand:
 
