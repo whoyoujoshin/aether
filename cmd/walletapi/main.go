@@ -11,6 +11,9 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -68,17 +71,41 @@ func writeError(w http.ResponseWriter, status int, err error) {
 	writeJSON(w, status, map[string]string{"error": err.Error()})
 }
 
+// TokenHeader carries the per-launch secret every request must present.
+const TokenHeader = "X-Wallet-Token"
+
+// apiToken is that secret. This server signs with the keys on this
+// machine, and any web page the user visits can send requests to
+// localhost: without the token -- which only the wallet window is
+// given -- such a page could spend from, or grant away, the account.
+var apiToken string
+
+// withCORS lets the wallet page (a file: URL, so a cross-origin caller)
+// call the API, and refuses any request without the token or addressed
+// to another host name (DNS rebinding).
 func withCORS(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, "+TokenHeader)
+		if !localHost(r.Host) {
+			writeError(w, http.StatusForbidden, fmt.Errorf("this API only answers requests to localhost:%s", port))
+			return
+		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get(TokenHeader)), []byte(apiToken)) != 1 {
+			writeError(w, http.StatusUnauthorized, fmt.Errorf("missing or wrong %s: open the wallet page with the ?token= this server printed at startup", TokenHeader))
+			return
+		}
 		h(w, r)
 	}
+}
+
+func localHost(host string) bool {
+	return host == "localhost:"+port || host == "127.0.0.1:"+port || host == "[::1]:"+port
 }
 
 // GET /api/account?name=mywallet
@@ -261,10 +288,24 @@ func main() {
 	flag.StringVar(&port, "port", "8090", "local HTTP port to listen on")
 	flag.Parse()
 
+	// The desktop app passes a fresh token in the environment (not the
+	// command line, which other local users can read).
+	apiToken = os.Getenv("AETHER_WALLET_TOKEN")
+	if apiToken == "" {
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			log.Fatal(err)
+		}
+		apiToken = hex.EncodeToString(b)
+		log.Printf("open web/aether-pay-desktop.html?token=%s in a browser to use this wallet", apiToken)
+	}
+
 	http.HandleFunc("/api/account", withCORS(handleAccount))
 	http.HandleFunc("/api/accounts", withCORS(handleAccounts))
 	http.HandleFunc("/api/send", withCORS(handleSend))
 	http.HandleFunc("/api/history", withCORS(handleHistory))
+	http.HandleFunc("/api/grants", withCORS(handleGrants))
+	http.HandleFunc("/api/grants/revoke", withCORS(handleRevokeGrant))
 
 	addr := "localhost:" + port
 	log.Printf("Aether wallet API listening on %s (chain %s via gRPC %s)", addr, chainID, grpcEndpoint)

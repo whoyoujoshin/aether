@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
@@ -59,19 +60,25 @@ func (c *Client) GetSendGrant(granter, grantee string) (*SendGrant, error) {
 	if len(resp.Grants) == 0 || resp.Grants[0].Authorization == nil {
 		return nil, fmt.Errorf("%w from %s to %s", ErrGrantNotFound, granter, grantee)
 	}
-	g := resp.Grants[0]
-	out := &SendGrant{Expiration: g.Expiration}
-	switch g.Authorization.TypeUrl {
+	return decodeSendGrant(resp.Grants[0].Authorization, resp.Grants[0].Expiration)
+}
+
+// decodeSendGrant reads a SendAuthorization, or a GenericAuthorization
+// (for MsgSend: that's the only way one comes back from a MsgSend
+// query), into a SendGrant.
+func decodeSendGrant(auth *codectypes.Any, expiration *time.Time) (*SendGrant, error) {
+	out := &SendGrant{Expiration: expiration}
+	switch auth.TypeUrl {
 	case "/" + proto.MessageName(&banktypes.SendAuthorization{}):
 		var a banktypes.SendAuthorization
-		if err := proto.Unmarshal(g.Authorization.Value, &a); err != nil {
+		if err := proto.Unmarshal(auth.Value, &a); err != nil {
 			return nil, fmt.Errorf("failed to decode send authorization: %w", err)
 		}
 		out.SpendLimit, out.AllowList = a.SpendLimit, a.AllowList
 	case "/" + proto.MessageName(&authz.GenericAuthorization{}):
 		out.Unlimited = true
 	default:
-		return nil, fmt.Errorf("unsupported authorization type %s", g.Authorization.TypeUrl)
+		return nil, fmt.Errorf("unsupported authorization type %s", auth.TypeUrl)
 	}
 	return out, nil
 }
