@@ -34,6 +34,9 @@ type spendEvent struct {
 // signed in, so the chain can include it at most once however many
 // times it is broadcast.
 type sendRecord struct {
+	// Kind is "" for a payment, or sendKindPullGrant for an aether-pull
+	// allowance (not a payment: nothing moves until the seller collects).
+	Kind      string    `json:"kind,omitempty"`
 	From      string    `json:"from"`              // the signer: this agent
 	Granter   string    `json:"granter,omitempty"` // whose funds, in grant mode
 	To        string    `json:"to"`

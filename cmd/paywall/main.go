@@ -12,6 +12,13 @@
 // --payout-key to let agents withdraw what they haven't spent: that
 // keyring account pays withdrawals, so keep only a float in it.
 //
+// With --pull-key it also offers the aether-pull scheme: an agent grants
+// that keyring account a capped, expiring allowance on chain (payable
+// only to --pay-to) and pays per request by signature; what it owes is
+// collected in batches under the allowance, so nothing sits with the
+// seller. --pull-key needs no funds. What buyers owe is kept in
+// --pull-ledger (default: the --prepaid-ledger file).
+//
 // With --receipt-key every paid response carries a signed receipt. The
 // key must be --pay-to's, or one --pay-to delegated receipts to:
 //
@@ -25,6 +32,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -63,6 +71,10 @@ func main() {
 	prepaidLedger := flag.String("prepaid-ledger", "", "file holding prepaid balances; setting it also offers the aether-prepaid scheme (deposit once, then pay per request instantly -- for agents)")
 	minDeposit := flag.String("min-deposit", "", `smallest prepaid deposit accepted, e.g. "1 AETH" (default: the price)`)
 	payoutKey := flag.String("payout-key", "", "keyring account that pays back unspent prepaid balances on request (needs --prepaid-ledger); keep only a small float in it")
+	pullKey := flag.String("pull-key", "", "keyring account agents grant allowances to; setting it also offers the aether-pull scheme (pay per request from a capped on-chain allowance, collected in batches -- for agents). It needs no funds")
+	pullLedgerPath := flag.String("pull-ledger", "", "file recording what aether-pull buyers owe (default: the --prepaid-ledger file)")
+	pullCredit := flag.String("pull-credit", "", `most a buyer may owe before it's collected, e.g. "1 AETH" -- also what you lose if one revokes just before a collection (default: 100 requests)`)
+	pullEvery := flag.Duration("pull-collect-every", time.Minute, "how often what aether-pull buyers owe is collected")
 	receiptKey := flag.String("receipt-key", "", "keyring account that signs a receipt for every paid response: --pay-to's own key, or one it delegated receipts to (--receipt-delegation)")
 	receiptDelegation := flag.String("receipt-delegation", "", "file from `paywall delegate-receipts`, letting --receipt-key sign for --pay-to so its key can stay offline")
 	keyringDir := flag.String("keyring-dir", "", "keyring directory holding --payout-key and --receipt-key")
@@ -94,11 +106,13 @@ func main() {
 		PayTo: *payTo, Price: amount, Network: *chainID, Description: *description,
 		InvoiceTTL: *ttl, Lookup: client.GetTransactionByHash,
 	}
+	var prepaidFile *paywall.FileLedger
 	if *prepaidLedger != "" {
 		ledger, err := paywall.NewFileLedger(*prepaidLedger)
 		if err != nil {
 			log.Fatal(err)
 		}
+		prepaidFile = ledger
 		cfg.Prepaid = &paywall.PrepaidConfig{Ledger: ledger}
 		if *minDeposit != "" {
 			if cfg.Prepaid.MinDeposit, err = wallet.ParseAmount(*minDeposit); err != nil {
@@ -117,6 +131,30 @@ func main() {
 		}
 		cfg.Prepaid.Payout = &paywall.ChainPayout{Wallet: w, KeyName: *payoutKey, Address: acc.Address, Chain: client, ChainID: *chainID}
 		log.Printf("paywall: withdrawals of unspent prepaid balances are paid from %s (%s)", *payoutKey, acc.Address)
+	}
+	if *pullKey != "" {
+		ledger := prepaidFile
+		if *pullLedgerPath != "" && *pullLedgerPath != *prepaidLedger {
+			if ledger, err = paywall.NewFileLedger(*pullLedgerPath); err != nil {
+				log.Fatal(err)
+			}
+		}
+		if ledger == nil {
+			log.Fatal("--pull-key needs --pull-ledger (or --prepaid-ledger) to record what buyers owe")
+		}
+		w := openKeyring(*keyringDir, *keyringBackend, "--pull-key")
+		acc, err := w.GetAccount(*pullKey)
+		if err != nil {
+			log.Fatalf("--pull-key %q: %v", *pullKey, err)
+		}
+		collector := &paywall.ChainCollector{ChainPayout: paywall.ChainPayout{Wallet: w, KeyName: *pullKey, Address: acc.Address, Chain: client, ChainID: *chainID}, PayTo: *payTo}
+		cfg.Pull = &paywall.PullConfig{Ledger: ledger, Collector: collector, Grantee: acc.Address, CollectEvery: *pullEvery, Grants: client.GetSendGrant}
+		if *pullCredit != "" {
+			if cfg.Pull.Credit, err = wallet.ParseAmount(*pullCredit); err != nil {
+				log.Fatalf("invalid --pull-credit: %v", err)
+			}
+		}
+		log.Printf("paywall: aether-pull allowances are granted to %s (%s) and collected every %s", *pullKey, acc.Address, *pullEvery)
 	}
 	if *receiptKey != "" {
 		w := openKeyring(*keyringDir, *keyringBackend, "--receipt-key")
@@ -163,6 +201,9 @@ func main() {
 		}
 		log.Printf("paywall: to list this service in the directory, send %d uaeth from %s:\n  aetherd tx bank send <%s key> %s %duaeth --note %q --chain-id %s",
 			directory.AnnounceAmount, *payTo, *payTo, directory.Address(), directory.AnnounceAmount, directory.AnnouncePrefix+u, *chainID)
+	}
+	if cfg.Pull != nil {
+		go pw.RunCollector(context.Background())
 	}
 	srv := &http.Server{Addr: *listen, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	log.Fatal(srv.ListenAndServe())

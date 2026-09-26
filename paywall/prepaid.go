@@ -89,10 +89,18 @@ type RequestFields struct {
 
 // SigningMessage is the exact byte string an aether-prepaid request's
 // account signs.
-func SigningMessage(f RequestFields) []byte {
+func SigningMessage(f RequestFields) []byte { return signingMessage(signingDomain, f) }
+
+// PullSigningMessage is the exact byte string an aether-pull request's
+// account signs: the same fields under its own domain, so neither
+// scheme's signature can be presented as the other's. DepositTx is
+// always empty.
+func PullSigningMessage(f RequestFields) []byte { return signingMessage(pullSigningDomain, f) }
+
+func signingMessage(domain string, f RequestFields) []byte {
 	body := sha256.Sum256(f.Body)
 	var b strings.Builder
-	b.WriteString(signingDomain)
+	b.WriteString(domain)
 	for _, s := range []string{
 		f.Network, f.PayTo, f.Host, f.Method, f.Path, hex.EncodeToString(body[:]),
 		f.MaxPrice.String(), strconv.FormatInt(f.Timestamp, 10), f.RequestID, f.DepositTx,
@@ -165,6 +173,11 @@ type refusal struct {
 // verifySigned checks an aether-prepaid payload against r, reading
 // (and replacing) r.Body.
 func (p *Paywall) verifySigned(r *http.Request, raw json.RawMessage) (*signedRequest, *refusal) {
+	return p.verifySignedIn(signingDomain, r, raw)
+}
+
+// verifySignedIn checks a signed request made under domain.
+func (p *Paywall) verifySignedIn(domain string, r *http.Request, raw json.RawMessage) (*signedRequest, *refusal) {
 	var pay PrepaidPayment
 	if err := json.Unmarshal(raw, &pay); err != nil {
 		return nil, &refusal{code: ErrInvalidPayment, message: "payload must be a signed prepaid request"}
@@ -208,7 +221,7 @@ func (p *Paywall) verifySigned(r *http.Request, raw json.RawMessage) (*signedReq
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 
-	msg := SigningMessage(RequestFields{
+	msg := signingMessage(domain, RequestFields{
 		Network: p.cfg.Network, PayTo: p.cfg.PayTo, Host: r.Host, Method: r.Method, Path: r.URL.Path, Body: body,
 		MaxPrice: maxPrice, Timestamp: pay.Timestamp, RequestID: pay.RequestID, DepositTx: pay.DepositTx,
 	})
