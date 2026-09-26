@@ -1,11 +1,11 @@
 export { Key, addressOf, addressBytes, isAddress, PREFIX, PUBKEY_TYPE_URL } from "./keys.js";
 export { parseAmount, parseUaeth, formatAeth, DENOM } from "./amount.js";
-export { buildSend, memoOf, DEFAULT_GAS_LIMIT, MSG_SEND_TYPE_URL } from "./tx.js";
-export type { SendParams, SignedTx } from "./tx.js";
+export { buildSend, buildTx, grantSendMsg, execSendMsg, memoOf, DEFAULT_GAS_LIMIT, MSG_SEND_TYPE_URL, MSG_GRANT_TYPE_URL, MSG_EXEC_TYPE_URL } from "./tx.js";
+export type { SendParams, SignedTx, TxParams, AnyMsg } from "./tx.js";
 export { Rpc, RpcError } from "./rpc.js";
-export { AetherClient, transfers } from "./client.js";
-export type { TransactionInfo, IncomingPayment, SendResult, TxStatus, Transfer } from "./client.js";
-export { fetchPaid, presentPayment, signingMessage, memoPaymentHeader, prepaidPaymentHeader, PaymentError, SCHEME_MEMO, SCHEME_PREPAID, DEPOSIT_MEMO_PREFIX } from "./paywall.js";
+export { AetherClient, transfers, decodeSendGrant } from "./client.js";
+export type { TransactionInfo, IncomingPayment, SendResult, TxStatus, Transfer, SendGrant } from "./client.js";
+export { fetchPaid, presentPayment, signingMessage, memoPaymentHeader, prepaidPaymentHeader, pullSigningMessage, pullPaymentHeader, PaymentError, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, DEPOSIT_MEMO_PREFIX, PULL_GRANT_SECONDS } from "./paywall.js";
 export type { FetchPaidOptions, FetchPaidResult, PaymentRequired, PaymentRequirements, RequestFields } from "./paywall.js";
 export { findServices, fetchManifest, normalizeURL, rateService, ratingMemo, DIRECTORY_ADDRESS, ANNOUNCE_PREFIX, DELIST_PREFIX, MANIFEST_PATH, RATE_PREFIX, DEFAULT_WINDOW } from "./directory.js";
 export type { Manifest, Service, Rating, RatingSummary, Reputation, FindServicesOptions } from "./directory.js";

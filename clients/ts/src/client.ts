@@ -1,7 +1,7 @@
 import { Writer, readFields, first, text } from "./proto.js";
 import { Rpc, RpcError, TxEvent, TxResult } from "./rpc.js";
 import { Key, isAddress } from "./keys.js";
-import { buildSend, memoOf, SignedTx } from "./tx.js";
+import { buildSend, buildTx, memoOf, MSG_SEND_TYPE_URL, SEND_AUTHORIZATION_TYPE_URL, type AnyMsg, SignedTx } from "./tx.js";
 import { DENOM, parseAmount } from "./amount.js";
 
 export type TxStatus = "pending" | "confirmed" | "failed";
@@ -43,6 +43,42 @@ export interface SendResult {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** An x/authz permission to send from one account, as the chain stores it. */
+export interface SendGrant {
+  /** true for unlimited sending (a GenericAuthorization); otherwise spendLimitUaeth is what's left. */
+  unlimited: boolean;
+  spendLimitUaeth: bigint;
+  /** If non-empty, the only recipients allowed. */
+  allowList: string[];
+  /** Unix seconds; undefined if it never expires. */
+  expiration?: number;
+}
+
+const GENERIC_AUTHORIZATION_TYPE_URL = "/cosmos.authz.v1beta1.GenericAuthorization";
+
+/** Decodes a Query/Grants response for MsgSend; undefined if it holds none. */
+export function decodeSendGrant(resp: Uint8Array): SendGrant | undefined {
+  const grant = first(readFields(resp), 1)?.bytes;
+  if (!grant) return undefined;
+  const gf = readFields(grant);
+  const auth = first(gf, 1)?.bytes;
+  if (!auth) return undefined;
+  const af = readFields(auth);
+  const typeUrl = text(first(af, 1)?.bytes);
+  const value = first(af, 2)?.bytes ?? new Uint8Array();
+  const ts = first(gf, 2)?.bytes;
+  const expiration = ts ? Number(first(readFields(ts), 1)?.varint ?? 0n) : undefined;
+  if (typeUrl === GENERIC_AUTHORIZATION_TYPE_URL) return { unlimited: true, spendLimitUaeth: 0n, allowList: [], expiration };
+  if (typeUrl !== SEND_AUTHORIZATION_TYPE_URL) throw new Error(`unsupported authorization type ${typeUrl}`);
+  const sf = readFields(value);
+  let limit = 0n;
+  for (const c of sf.filter((f) => f.field === 1)) {
+    const cf = readFields(c.bytes!);
+    if (text(first(cf, 1)?.bytes) === DENOM) limit += BigInt(text(first(cf, 2)?.bytes) || "0");
+  }
+  return { unlimited: false, spendLimitUaeth: limit, allowList: sf.filter((f) => f.field === 2).map((f) => text(f.bytes)), expiration };
+}
 
 export class AetherClient {
   readonly rpc: Rpc;
@@ -98,6 +134,34 @@ export class AetherClient {
     const known = this.nextSeq.get(key.address) ?? 0n;
     const sequence = info.sequence > known ? info.sequence : known;
     const signed = buildSend(key, { chainId: this.chainId, accountNumber: info.accountNumber, sequence, to, amountUaeth, memo: opts.memo, gasLimit: opts.gasLimit });
+    const r = await this.rebroadcast(signed);
+    if (r.status !== "failed") this.nextSeq.set(key.address, sequence + 1n);
+    return r;
+  }
+
+  /**
+   * The permission granter gave grantee to send from its account (x/authz),
+   * or undefined if there's none (never granted, revoked, used up or expired).
+   */
+  async sendGrant(granter: string, grantee: string): Promise<SendGrant | undefined> {
+    const req = new Writer().string(1, granter).string(2, grantee).string(3, MSG_SEND_TYPE_URL).finish();
+    let resp: Uint8Array;
+    try {
+      resp = await this.rpc.abciQuery("/cosmos.authz.v1beta1.Query/Grants", req);
+    } catch (e) {
+      if (e instanceof RpcError && /authorization not found|not found/i.test(e.message)) return undefined;
+      throw e;
+    }
+    return decodeSendGrant(resp);
+  }
+
+  /** Signs and broadcasts a transaction carrying msgs from key's account. Like send, but for any messages. */
+  async signAndBroadcast(key: Key, msgs: AnyMsg[], opts: { memo?: string; gasLimit?: bigint | number } = {}): Promise<SendResult> {
+    const info = await this.accountInfo(key.address);
+    if (!info) throw new Error(`account ${key.address} doesn't exist on chain yet: fund it first`);
+    const known = this.nextSeq.get(key.address) ?? 0n;
+    const sequence = info.sequence > known ? info.sequence : known;
+    const signed = buildTx(key, msgs, { chainId: this.chainId, accountNumber: info.accountNumber, sequence, memo: opts.memo, gasLimit: opts.gasLimit });
     const r = await this.rebroadcast(signed);
     if (r.status !== "failed") this.nextSeq.set(key.address, sequence + 1n);
     return r;
