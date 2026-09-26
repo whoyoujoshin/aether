@@ -141,6 +141,7 @@ func TestFetchPaid_PullGrantsOnceThenPaysInstantly(t *testing.T) {
 	require.Equal(t, "0.08", out.Payment.Allowance.Aeth)
 
 	require.Len(t, f.broadcasts, 1, "one transaction: the allowance")
+	require.NotEmpty(t, out.Payment.GrantTxHash, "the paid output names the allowance it granted")
 	mg := grantIn(t, f.broadcasts[0])
 	w, _ := newWallet()
 	agent, _ := getOrCreateAgentAccount(w)

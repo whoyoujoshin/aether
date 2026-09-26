@@ -68,6 +68,7 @@ func fetchPull(ctx context.Context, in fetchPaidInput, method string, req paywal
 		path = "/"
 	}
 	requestID := requestIDFor(in.IdempotencyKey)
+	var grantTx string // an allowance granted by this call
 	spendTag := "pull:" + req.PayTo + "/" + requestID
 
 	attempt := func() (*httpResult, error) {
@@ -109,7 +110,7 @@ func fetchPull(ctx context.Context, in fetchPaidInput, method string, req paywal
 			}
 		}
 		out := res.output("paid")
-		out.Payment = &fetchPaymentDTO{Scheme: paywall.SchemePull, Amount: newAmountDTO(price), PayTo: req.PayTo}
+		out.Payment = &fetchPaymentDTO{Scheme: paywall.SchemePull, Amount: newAmountDTO(price), PayTo: req.PayTo, GrantTxHash: grantTx}
 		var s paywall.SettlementResponse
 		if paywall.DecodeHeader(res.header.Get(paywall.HeaderPaymentResponse), &s) == nil {
 			if owed, ok := math.NewIntFromString(s.Owed); ok {
@@ -150,17 +151,23 @@ func fetchPull(ctx context.Context, in fetchPaidInput, method string, req paywal
 				return fetchPaidOutput{}, newError(codeInvalidArgument, fmt.Sprintf("you owe this service %s AETH not yet collected; pullAllowance must be at least %s AETH", formatAeth(owed), formatAeth(owed.Add(price))))
 			}
 		}
-		out, done, err := ensurePullGrant(ctx, w, agent.Address, req, allowance, in.TimeoutSeconds)
+		out, hash, done, err := ensurePullGrant(ctx, w, agent.Address, req, allowance, in.TimeoutSeconds)
 		if err != nil || done {
 			return out, err
 		}
+		grantTx = hash
 	}
 }
 
 // ensurePullGrant makes sure an allowance of `allowance` to the seller's
 // grantee is on chain, granting one if needed. done is true when the
 // caller should return out as is (approval or confirmation pending).
-func ensurePullGrant(ctx context.Context, w *wallet.Wallet, agent string, req paywall.PaymentRequirements, allowance math.Int, timeoutSeconds int) (out fetchPaidOutput, done bool, err error) {
+func ensurePullGrant(ctx context.Context, w *wallet.Wallet, agent string, req paywall.PaymentRequirements, allowance math.Int, timeoutSeconds int) (out fetchPaidOutput, hash string, done bool, err error) {
+	out, done, err = ensurePullGrantTx(ctx, w, agent, req, allowance, timeoutSeconds, &hash)
+	return out, hash, done, err
+}
+
+func ensurePullGrantTx(ctx context.Context, w *wallet.Wallet, agent string, req paywall.PaymentRequirements, allowance math.Int, timeoutSeconds int, hash *string) (out fetchPaidOutput, done bool, err error) {
 	grantee, key := req.Extra.Grantee, pullGrantKey(req.Extra.Grantee)
 	pending := func(hash, msg string) (fetchPaidOutput, bool, error) {
 		return fetchPaidOutput{Status: "payment_pending", Message: msg,
@@ -194,6 +201,7 @@ func ensurePullGrant(ctx context.Context, w *wallet.Wallet, agent string, req pa
 				_ = st.save()
 			}
 			stateMu.Unlock()
+			*hash = rec.TxHash
 			return awaitPullGrant(ctx, c, rec.TxHash, timeoutSeconds, pending)
 		}
 		// Settled (confirmed, then used up or replaced; or failed):
@@ -265,6 +273,7 @@ func ensurePullGrant(ctx context.Context, w *wallet.Wallet, agent string, req pa
 		return out, false, e
 	}
 	notify("pull_allowance_granted", map[string]any{"grantee": grantee, "payTo": req.PayTo, "allowance": newAmountDTO(allowance), "txHash": rec.TxHash})
+	*hash = rec.TxHash
 	return awaitPullGrant(ctx, c, rec.TxHash, timeoutSeconds, pending)
 }
 

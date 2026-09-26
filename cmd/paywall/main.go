@@ -16,7 +16,8 @@
 // that keyring account a capped, expiring allowance on chain (payable
 // only to --pay-to) and pays per request by signature; what it owes is
 // collected in batches under the allowance, so nothing sits with the
-// seller. --pull-key needs no funds. What buyers owe is kept in
+// seller. --pull-key needs no funds: the first allowance granted to it
+// creates its account on chain. What buyers owe is kept in
 // --pull-ledger (default: the --prepaid-ledger file).
 //
 // With --receipt-key every paid response carries a signed receipt. The
