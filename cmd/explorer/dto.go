@@ -33,6 +33,27 @@ type validatorInfoDTO struct {
 	EnteredAtUnix int64  `json:"enteredAtUnix"`
 }
 
+// The raw pow response omits empty fields, so an epoch with no work
+// yet came back without "entries" at all and crashed the Validators
+// page; this always sends the list, and each entry's work.
+type leaderboardDTO struct {
+	Epoch   int64                 `json:"epoch"`
+	Entries []leaderboardEntryDTO `json:"entries"`
+}
+
+type leaderboardEntryDTO struct {
+	Address string `json:"address"`
+	Work    uint64 `json:"work"`
+}
+
+func toLeaderboardDTO(r *pow.QueryMinerLeaderboardResponse) leaderboardDTO {
+	out := leaderboardDTO{Epoch: r.Epoch, Entries: make([]leaderboardEntryDTO, 0, len(r.Entries))}
+	for _, e := range r.Entries {
+		out.Entries = append(out.Entries, leaderboardEntryDTO{Address: e.Address, Work: e.Work})
+	}
+	return out
+}
+
 func toValidatorInfoDTOs(vs []*pow.ValidatorInfo) []validatorInfoDTO {
 	out := make([]validatorInfoDTO, 0, len(vs))
 	for _, v := range vs {

@@ -120,7 +120,7 @@ export interface TransactionDetail {
 }
 
 export interface SearchResult {
-  kind: "address" | "tx";
+  kind: "address" | "tx" | "block";
   value: string;
 }
 

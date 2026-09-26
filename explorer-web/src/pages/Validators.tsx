@@ -17,7 +17,10 @@ export default function Validators() {
   const validators = useApi(api.validators, [], 10000);
   const leaderboard = useApi(() => api.leaderboard(), [], 10000);
 
-  const maxWork = Math.max(1, ...(leaderboard.data?.entries.map((e) => e.work) ?? [0]));
+  // ?? []: an explorer API from before the leaderboard DTO leaves
+  // "entries" out entirely when nobody has mined this epoch yet.
+  const entries = leaderboard.data?.entries ?? [];
+  const maxWork = Math.max(1, ...entries.map((e) => e.work));
 
   return (
     <div className="page">
@@ -67,7 +70,7 @@ export default function Validators() {
         {leaderboard.error && <div className="error-banner" style={{ margin: 16 }}>{leaderboard.error}</div>}
         {leaderboard.loading && !leaderboard.data ? (
           <div className="loading">Loading…</div>
-        ) : leaderboard.data && leaderboard.data.entries.length > 0 ? (
+        ) : entries.length > 0 ? (
           <table>
             <thead>
               <tr>
@@ -78,7 +81,7 @@ export default function Validators() {
               </tr>
             </thead>
             <tbody>
-              {leaderboard.data.entries.map((e, i) => (
+              {entries.map((e, i) => (
                 <tr key={e.address}>
                   <td className="mono">{i + 1}</td>
                   <td>
