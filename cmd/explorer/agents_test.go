@@ -53,7 +53,7 @@ func TestAgentCard(t *testing.T) {
 	require.True(t, card.Authz.Active)
 	require.NotNil(t, card.Faucet)
 	require.True(t, *card.Faucet.Reachable)
-	require.Contains(t, card.MCP.Install, "@main")
+	require.Contains(t, card.MCP.Install, "@latest")
 	require.Contains(t, card.Warnings, "Endpoints are plain HTTP (no TLS): some sandboxes won't reach them.")
 	get()
 	require.Equal(t, 1, faucetGets, "the faucet check is cached")

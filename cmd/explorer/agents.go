@@ -144,7 +144,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			Active:           height >= app.AuthzFeegrantActivationHeight,
 		},
 		MCP: agentMCPDTO{
-			Install: "go install github.com/whoyoujoshin/aether/cmd/agentmcp@main",
+			Install: "go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest",
 			Init:    "agentmcp init",
 			Tools:   agentmcpTools,
 		},
@@ -153,6 +153,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			"start":       repoURL + "#ai-agents-start-here",
 			"mcp":         repoURL + "#ai-agent-wallet-mcp",
 			"integration": repoURL + "/blob/main/docs/AGENT_INTEGRATION.md",
+			"releases":    repoURL + "/releases",
 			"services":    "/api/services",
 		},
 		Warnings: []string{

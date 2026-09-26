@@ -13,9 +13,11 @@ Design history, live-verification notes, and locked architectural decisions are 
 Agents use the same accounts and transactions as people: there is no AI-only lane. **Testnet only: use disposable keys, never anything of value.** Endpoints are plain HTTP (no TLS).
 
 ```bash
-go install github.com/whoyoujoshin/aether/cmd/agentmcp@main   # Go 1.25+
+go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest   # Go 1.25+
 agentmcp init   # new key, testnet funds, and the MCP config for Claude / Cursor / any MCP client
 ```
+
+No Go? `agentmcp` is in every platform's archive on the [releases page](../../releases). `@latest` is the newest tested release; `@main` has unreleased changes.
 
 That gives the agent a spend-capped wallet as MCP tools: balance, send, invoice and wait-for-payment, paying for HTTP 402 APIs, and the service directory (full list and guarantees in [AI agent wallet](#ai-agent-wallet-mcp)).
 
@@ -181,7 +183,7 @@ An MCP server exposing wallet operations as tool calls, so an AI agent can pay a
 **Quick start (testnet):**
 
 ```bash
-go install github.com/whoyoujoshin/aether/cmd/agentmcp@main   # or, in a clone: go install ./cmd/agentmcp
+go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest   # or, in a clone: go install ./cmd/agentmcp
 agentmcp init
 ```
 

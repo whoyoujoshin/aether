@@ -221,7 +221,7 @@ func selfCommand() (command, installHint string) {
 	}
 	// go run builds into a temporary go-build directory that's gone afterwards.
 	if err != nil || strings.Contains(exe, "go-build") {
-		return "agentmcp", "go install github.com/whoyoujoshin/aether/cmd/agentmcp@main, so `agentmcp` is on your PATH"
+		return "agentmcp", "go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest, so `agentmcp` is on your PATH"
 	}
 	return exe, ""
 }

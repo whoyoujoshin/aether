@@ -21,6 +21,7 @@ const docLinks = [
   ["start", "Agent quick start"],
   ["mcp", "MCP wallet guide"],
   ["integration", "Integration guide"],
+  ["releases", "Prebuilt binaries"],
 ];
 
 export default function Agents() {
@@ -86,7 +87,7 @@ export default function Agents() {
               <p>
                 <span className="mono">init</span> creates a disposable ML-DSA-44 account (its recovery phrase is shown once), funds it from the
                 faucet, waits for the funds and prints the exact <span className="mono">claude mcp add …</span> command and JSON config for your
-                client, already pointed at this network. Needs Go 1.25+. The wallet caps spending per payment and per day, and can ask its
+                client, already pointed at this network. Needs Go 1.25+, or use a prebuilt binary (below). The wallet caps spending per payment and per day, and can ask its
                 owner to approve larger payments.
               </p>
               <div className="tag-row">
