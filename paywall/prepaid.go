@@ -261,9 +261,7 @@ func (p *Paywall) servePrepaid(w http.ResponseWriter, r *http.Request, raw json.
 
 	settlement, _ := EncodeHeader(SettlementResponse{Success: true, Network: p.cfg.Network, Payer: pay.Account, Balance: balance.String()})
 	w.Header().Set(HeaderPaymentResponse, settlement)
-	rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-	next.ServeHTTP(rec, r)
-	if rec.status >= 500 {
+	if status := p.serveReceipted(w, r, next, paidRequest{scheme: SchemePrepaid, payer: pay.Account, payment: pay.RequestID, body: req.body}); status >= 500 {
 		if err := ledger.Refund(pay.Account, pay.RequestID, p.cfg.Price); err != nil {
 			log.Printf("paywall: refunding %s for a failed request: %v", pay.Account, err)
 		}

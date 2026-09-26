@@ -80,6 +80,7 @@ type fetchPaidOutput struct {
 	BodyBase64    bool             `json:"bodyBase64,omitempty" jsonschema:"body is base64 (it wasn't text)"`
 	BodyTruncated bool             `json:"bodyTruncated,omitempty"`
 	Payment       *fetchPaymentDTO `json:"payment,omitempty"`
+	Receipt       *receiptDTO      `json:"receipt,omitempty" jsonschema:"the seller's signed receipt for this purchase, if it gives them, and whether it checks out"`
 	Message       string           `json:"message,omitempty"`
 }
 
@@ -344,6 +345,8 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 
 	out := res.output("paid")
 	out.Payment = payment
+	out.Receipt = recordPurchase(purchase{u: u, method: method, payTo: rec.PayTo, scheme: paywall.Scheme, payer: sent.From,
+		payment: sent.TxHash, amount: price, reqBody: []byte(in.Body), res: res})
 	return nil, out, nil
 }
 

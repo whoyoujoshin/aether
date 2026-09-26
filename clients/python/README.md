@@ -4,7 +4,7 @@ Python client for the [Aether](https://github.com/whoyoujoshin/aether) chain: ML
 
 ```python
 import os
-from aether_client import AetherClient, Key, fetch_paid, find_services, withdraw_prepaid
+from aether_client import AetherClient, Key, fetch_paid, find_services, rate_service, withdraw_prepaid
 
 client = AetherClient("http://localhost:26657", "aether-testnet-1")
 key = Key.from_mnemonic(os.environ["AETHER_MNEMONIC"])  # same address as `aetherd keys add` / `agentmcp`
@@ -14,7 +14,10 @@ done = client.wait_for_transaction(sent.hash)            # confirmed | failed | 
 # Retrying after an error: client.rebroadcast(sent.signed) -- never a second send().
 
 res = fetch_paid(client, key, "https://api.example.com/forecast", max_amount="0.05 AETH", prepay="1 AETH")
-services = find_services(client, query="weather", max_price="0.1 AETH")
+services = find_services(client, query="weather", max_price="0.1 AETH", trusted=[owner_address])
+# services[i].reputation: payments, payers, ratings (can be faked), trusted_ratings (can't)
+# res.receipt: the seller's signed receipt and whether it matches exactly what was sent and received
+rate_service(client, key, "https://api.example.com", 5)  # only raters who paid a service count
 back = withdraw_prepaid(client, key, "https://api.example.com", withdrawal_id="w1")  # unspent prepaid balance
 ```
 
@@ -31,7 +34,8 @@ client = AetherClient("http://localhost:26657", "aether-testnet-1")
 pw = Paywall(client, "aether1...", "0.01 AETH", name="Weather", description="Forecasts by city",
              prepaid_ledger="ledger.json",           # customers' balances: back it up
              min_deposit="0.1 AETH",
-             payout_key=Key.from_mnemonic(os.environ["PAYOUT_MNEMONIC"]))  # pays withdrawals; keep a small float in it
+             payout_key=Key.from_mnemonic(os.environ["PAYOUT_MNEMONIC"]),  # pays withdrawals; keep a small float in it
+             receipt_key=payee_key)  # sign a receipt for every paid response (or a delegated key + receipt_delegation)
 api = FastAPI()
 
 @api.get("/forecast")

@@ -86,6 +86,8 @@ func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req pay
 	paid := func(res *httpResult, depositTx string) fetchPaidOutput {
 		out := res.output("paid")
 		out.Payment = &fetchPaymentDTO{Scheme: paywall.SchemePrepaid, Amount: newAmountDTO(price), PayTo: req.PayTo, DepositTxHash: depositTx}
+		out.Receipt = recordPurchase(purchase{u: u, method: method, payTo: req.PayTo, scheme: paywall.SchemePrepaid, payer: agent.Address,
+			payment: requestIDFor(in.IdempotencyKey), amount: price, reqBody: []byte(in.Body), res: res})
 		var s paywall.SettlementResponse
 		if paywall.DecodeHeader(res.header.Get(paywall.HeaderPaymentResponse), &s) == nil {
 			if bal, err := wallet.ParseUaeth(s.Balance); err == nil {

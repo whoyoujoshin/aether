@@ -3,6 +3,7 @@ import { isIP } from "node:net";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bech32 } from "@scure/base";
 import { AetherClient } from "./client.js";
+import { Key } from "./keys.js";
 import { PREFIX } from "./keys.js";
 import { parseAmount, parseUaeth } from "./amount.js";
 import { trimEnd } from "./util.js";
@@ -37,6 +38,60 @@ export interface Service {
   announcer: string;
   height: number;
   manifest: Manifest;
+  reputation?: Reputation;
+}
+
+export const RATE_PREFIX = "x402-rate:";
+/** How far back reputation looks, in blocks (about a week of ~60s blocks). */
+export const DEFAULT_WINDOW = 10_080;
+
+export interface Rating {
+  rater: string;
+  url: string;
+  score: number; // 1-5
+  height: number;
+  txHash: string;
+}
+
+export interface RatingSummary {
+  count: number;
+  average?: number;
+}
+
+/**
+ * What the chain says about a service. Fees are zero, so a seller can pay
+ * itself from accounts it controls for free: payments, payers and ratings
+ * from unknown accounts can be manufactured. trustedRatings -- from
+ * accounts you pass as trusted (your own, your owner's) -- can't.
+ */
+export interface Reputation {
+  windowBlocks: number;
+  payments: number;
+  payers: number;
+  volumeUaeth: bigint;
+  /** Ratings from accounts that paid the service before rating it. */
+  ratings: RatingSummary;
+  trustedRatings: RatingSummary;
+  raters: Rating[];
+}
+
+/** The memo that rates url 1-5. */
+export function ratingMemo(url: string, score: number): string {
+  if (!Number.isInteger(score) || score < 1 || score > 5) throw new Error("a rating's score is 1 to 5");
+  return `${RATE_PREFIX}${score}:${normalizeURL(url)}`;
+}
+
+/**
+ * Rates a service you've paid (only raters who paid it count). Costs 1 uaeth;
+ * your latest rating of a service replaces earlier ones.
+ */
+export async function rateService(client: AetherClient, key: Key, url: string, score: number) {
+  return client.send(key, DIRECTORY_ADDRESS, "1uaeth", { memo: ratingMemo(url, score) });
+}
+
+function summarize(ratings: Rating[], include?: (rater: string) => boolean): RatingSummary {
+  const picked = ratings.filter((r) => !include || include(r.rater));
+  return picked.length ? { count: picked.length, average: picked.reduce((a, r) => a + r.score, 0) / picked.length } : { count: 0 };
 }
 
 export function normalizeURL(raw: string): string {
@@ -79,10 +134,22 @@ export async function fetchManifest(baseURL: string, opts: { allowPrivate?: bool
   return JSON.parse(text) as Manifest;
 }
 
+export interface FindServicesOptions {
+  query?: string;
+  maxPrice?: string;
+  allowPrivate?: boolean;
+  /** Add each service's reputation (one more scan per service). Default true. */
+  reputation?: boolean;
+  /** Accounts whose ratings you trust (yours, your owner's...). */
+  trusted?: string[];
+  windowBlocks?: number;
+}
+
 /** Verified paid services from the on-chain directory, newest first. */
-export async function findServices(client: AetherClient, opts: { query?: string; maxPrice?: string; allowPrivate?: boolean } = {}): Promise<Service[]> {
+export async function findServices(client: AetherClient, opts: FindServicesOptions = {}): Promise<Service[]> {
   const current = new Map<string, { url: string; announcer: string; height: number }>();
-  for (const p of await client.incomingPayments(DIRECTORY_ADDRESS)) {
+  const directoryPayments = await client.incomingPayments(DIRECTORY_ADDRESS);
+  for (const p of directoryPayments) {
     if (p.code !== 0 || p.amountUaeth < 1n) continue;
     const delist = p.memo.startsWith(DELIST_PREFIX);
     if (!delist && !p.memo.startsWith(ANNOUNCE_PREFIX)) continue;
@@ -113,5 +180,46 @@ export async function findServices(client: AetherClient, opts: { query?: string;
       }
     }),
   );
-  return results.filter((s): s is Service => !!s).sort((x, y) => y.height - x.height);
+  const services = results.filter((s): s is Service => !!s).sort((x, y) => y.height - x.height);
+  if (opts.reputation === false || !services.length) return services;
+
+  const window = opts.windowBlocks ?? DEFAULT_WINDOW;
+  const since = Math.max(1, (await client.latestHeight()) - window);
+  const latest = new Map<string, Rating>();
+  for (const p of directoryPayments) {
+    if (p.code !== 0 || p.amountUaeth < 1n || p.height < since || !p.memo.startsWith(RATE_PREFIX)) continue;
+    const rest = p.memo.slice(RATE_PREFIX.length);
+    if (!/^[1-5]:/.test(rest)) continue;
+    try {
+      const url = normalizeURL(rest.slice(2));
+      latest.set(`${p.from}|${url}`, { rater: p.from, url, score: Number(rest[0]), height: p.height, txHash: p.hash });
+    } catch {
+      continue;
+    }
+  }
+  const trusted = new Set(opts.trusted ?? []);
+  await Promise.all(services.map(async (s) => {
+    let paid;
+    try {
+      paid = await client.incomingPayments(s.manifest.payTo, since);
+    } catch {
+      return;
+    }
+    const firstPaid = new Map<string, number>();
+    let payments = 0;
+    let volume = 0n;
+    for (const p of paid) {
+      if (p.code !== 0 || !p.from || p.from === s.manifest.payTo || p.height < since) continue;
+      payments++;
+      volume += p.amountUaeth;
+      const h = firstPaid.get(p.from);
+      if (h === undefined || p.height < h) firstPaid.set(p.from, p.height);
+    }
+    const raters = [...latest.values()].filter((r) => r.url === s.url && r.rater !== s.manifest.payTo && (firstPaid.get(r.rater) ?? Infinity) <= r.height);
+    s.reputation = {
+      windowBlocks: window, payments, payers: firstPaid.size, volumeUaeth: volume,
+      ratings: summarize(raters), trustedRatings: summarize(raters, (r) => trusted.has(r)), raters,
+    };
+  }));
+  return services;
 }

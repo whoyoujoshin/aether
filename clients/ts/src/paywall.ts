@@ -4,6 +4,7 @@ import { base64 } from "@scure/base";
 import { AetherClient } from "./client.js";
 import { Key } from "./keys.js";
 import { parseAmount, parseUaeth } from "./amount.js";
+import { RECEIPT_HEADER, checkReceipt, decodeReceipt, type Receipt, type ReceiptExpectation } from "./receipt.js";
 
 // Buying from paid APIs (package paywall, x402 wire format):
 //  - aether-memo: pay the quoted invoice (memo = invoice), wait for the
@@ -98,6 +99,19 @@ export interface FetchPaidResult {
   invoice?: string;
   amountUaeth?: bigint;
   balanceUaeth?: bigint; // prepaid: left with the seller
+  /** The seller's signed receipt, if it gives them, and whether it matches exactly what was sent and received. */
+  receipt?: { receipt?: Receipt; verified: boolean; problem?: string };
+}
+
+/** Checks a paid response's receipt against the purchase (reads a clone of the body). */
+async function withReceipt(r: FetchPaidResult, want: Omit<ReceiptExpectation, "status" | "responseBody">): Promise<FetchPaidResult> {
+  const header = r.response?.headers.get(RECEIPT_HEADER);
+  if (!r.response || !header) return r;
+  const receipt = decodeReceipt(header);
+  if (!receipt) return { ...r, receipt: { verified: false, problem: "the receipt is unreadable" } };
+  const responseBody = new Uint8Array(await r.response.clone().arrayBuffer());
+  const problem = checkReceipt(receipt, { ...want, status: r.response.status, responseBody });
+  return { ...r, receipt: { receipt, verified: !problem, problem } };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -137,7 +151,11 @@ export async function fetchPaid(client: AetherClient, key: Key, url: string, opt
   if (conf.status === "failed") throw new PaymentError("TX_FAILED", `the payment failed on chain: ${conf.log}`, sent.hash);
   const base = { scheme: SCHEME_MEMO, txHash: sent.hash, invoice: memo.extra.invoice, amountUaeth: price };
   if (conf.status === "pending") return { status: "payment_pending", ...base };
-  return { ...(await presentPayment(client, url, memo.extra.invoice, sent.hash, send)), ...base };
+  const u = new URL(url);
+  return withReceipt({ ...(await presentPayment(client, url, memo.extra.invoice, sent.hash, send)), ...base }, {
+    network: client.chainId, payTo: memo.payTo, payer: key.address, scheme: SCHEME_MEMO, payment: sent.hash, amount: price,
+    method, host: u.host, path: decodeURIComponent(u.pathname || "/"), requestBody: body,
+  });
 }
 
 /** Repeats a request with proof of an aether-memo payment (e.g. after payment_pending). */
@@ -170,11 +188,14 @@ async function fetchPrepaid(
       network: client.chainId, payTo: req.payTo, host: u.host, method, path: decodeURIComponent(u.pathname || "/"),
       body, maxPrice: price, timestamp: Math.floor(Date.now() / 1000), requestId, depositTx,
     }));
-  const done = (resp: Response, depositTx?: string): FetchPaidResult => {
+  const done = (resp: Response, depositTx?: string): Promise<FetchPaidResult> => {
     const s = resp.headers.get("X-PAYMENT-RESPONSE");
     let balance: bigint | undefined;
     if (s) balance = BigInt((JSON.parse(new TextDecoder().decode(base64.decode(s))) as { balance?: string }).balance ?? "0");
-    return { status: "paid", response: resp, scheme: SCHEME_PREPAID, amountUaeth: price, balanceUaeth: balance, txHash: depositTx };
+    return withReceipt({ status: "paid", response: resp, scheme: SCHEME_PREPAID, amountUaeth: price, balanceUaeth: balance, txHash: depositTx }, {
+      network: client.chainId, payTo: req.payTo, payer: key.address, scheme: SCHEME_PREPAID, payment: requestId, amount: price,
+      method, host: u.host, path: decodeURIComponent(u.pathname || "/"), requestBody: body,
+    });
   };
 
   let resp = await attempt();

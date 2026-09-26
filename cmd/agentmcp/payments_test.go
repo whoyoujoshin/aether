@@ -28,6 +28,8 @@ type fakeChain struct {
 	mempool    map[string]bool
 	blocks     map[string]*wallet.TransactionDetail
 	payments   []wallet.IncomingPayment
+	// paymentsTo, if it has the address, answers scans of it instead of payments.
+	paymentsTo map[string][]wallet.IncomingPayment
 	signed     map[string][]byte
 	height     int64
 	// autoInclude puts every accepted transaction straight into a block.
@@ -110,11 +112,15 @@ func (f *fakeChain) history(string, uint64) ([]wallet.Transaction, error) {
 	return nil, nil
 }
 
-func (f *fakeChain) incoming(_ string, since int64, _ int) ([]wallet.IncomingPayment, error) {
+func (f *fakeChain) incoming(address string, since int64, _ int) ([]wallet.IncomingPayment, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var out []wallet.IncomingPayment
-	for _, p := range f.payments {
+	payments := f.payments
+	if to, ok := f.paymentsTo[address]; ok {
+		payments = to
+	}
+	for _, p := range payments {
 		if p.Height >= since {
 			out = append(out, p)
 		}

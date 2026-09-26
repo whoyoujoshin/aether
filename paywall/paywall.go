@@ -44,6 +44,8 @@ type Config struct {
 
 	// Prepaid, if set, also offers the aether-prepaid scheme.
 	Prepaid *PrepaidConfig
+	// Receipts, if set, signs a receipt for every paid response.
+	Receipts *ReceiptConfig
 }
 
 // RedeemedStore remembers which invoices have been used.
@@ -87,6 +89,14 @@ func New(cfg Config) (*Paywall, error) {
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
+	}
+	if cfg.Receipts != nil {
+		if cfg.Receipts.Sign == nil {
+			return nil, errors.New("receipts need a signer")
+		}
+		if err := checkReceiptConfig(cfg.Receipts, cfg.PayTo, cfg.Now().Unix()); err != nil {
+			return nil, fmt.Errorf("receipts wouldn't verify: %w", err)
+		}
 	}
 	p := &Paywall{cfg: cfg, secret: cfg.Secret, store: cfg.Store}
 	if p.secret == nil {
@@ -176,9 +186,11 @@ func (p *Paywall) Middleware(next http.Handler) http.Handler {
 
 		settlement, _ := EncodeHeader(SettlementResponse{Success: true, Transaction: txHash, Network: p.cfg.Network, Payer: payer})
 		w.Header().Set(HeaderPaymentResponse, settlement)
-		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-		next.ServeHTTP(rec, r)
-		if rec.status >= 500 {
+		bought := paidRequest{scheme: Scheme, payer: payer, payment: txHash}
+		if p.cfg.Receipts != nil {
+			bought.body = readForReceipt(r)
+		}
+		if status := p.serveReceipted(w, r, next, bought); status >= 500 {
 			// The server failed, not the client: let the same payment
 			// be used again.
 			p.store.Release(invoiceID)

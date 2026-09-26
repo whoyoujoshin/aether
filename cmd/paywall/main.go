@@ -12,17 +12,27 @@
 // --payout-key to let agents withdraw what they haven't spent: that
 // keyring account pays withdrawals, so keep only a float in it.
 //
+// With --receipt-key every paid response carries a signed receipt. The
+// key must be --pay-to's, or one --pay-to delegated receipts to:
+//
+//	paywall delegate-receipts --payee-key <name> --signer <address> --keyring-dir <dir>
+//
+// run where the payee key is, then pass the file as --receipt-delegation.
+//
 // The upstream must not be reachable except through this proxy, or
 // clients can skip paying. Paid requests reach it with X-PAYMENT
 // removed and X-Aether-Payer / X-Aether-Payment-Tx added.
 package main
 
 import (
+	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -53,8 +63,14 @@ func main() {
 	prepaidLedger := flag.String("prepaid-ledger", "", "file holding prepaid balances; setting it also offers the aether-prepaid scheme (deposit once, then pay per request instantly -- for agents)")
 	minDeposit := flag.String("min-deposit", "", `smallest prepaid deposit accepted, e.g. "1 AETH" (default: the price)`)
 	payoutKey := flag.String("payout-key", "", "keyring account that pays back unspent prepaid balances on request (needs --prepaid-ledger); keep only a small float in it")
-	keyringDir := flag.String("keyring-dir", "", "keyring directory holding --payout-key")
-	keyringBackend := flag.String("keyring-backend", "test", "keyring backend holding --payout-key")
+	receiptKey := flag.String("receipt-key", "", "keyring account that signs a receipt for every paid response: --pay-to's own key, or one it delegated receipts to (--receipt-delegation)")
+	receiptDelegation := flag.String("receipt-delegation", "", "file from `paywall delegate-receipts`, letting --receipt-key sign for --pay-to so its key can stay offline")
+	keyringDir := flag.String("keyring-dir", "", "keyring directory holding --payout-key and --receipt-key")
+	keyringBackend := flag.String("keyring-backend", "test", "keyring backend holding --payout-key and --receipt-key")
+	if len(os.Args) > 1 && os.Args[1] == "delegate-receipts" {
+		delegateReceipts(os.Args[2:])
+		return
+	}
 	flag.Parse()
 
 	if *upstream == "" || *payTo == "" || *price == "" {
@@ -94,21 +110,34 @@ func main() {
 		if cfg.Prepaid == nil {
 			log.Fatal("--payout-key pays back prepaid balances: it needs --prepaid-ledger")
 		}
-		if *keyringDir == "" {
-			log.Fatal("--payout-key needs --keyring-dir")
-		}
-		registry := codectypes.NewInterfaceRegistry()
-		mldsa.RegisterInterfaces(registry)
-		w, err := wallet.NewWallet("aetherd", *keyringBackend, *keyringDir, codec.NewProtoCodec(registry))
-		if err != nil {
-			log.Fatalf("opening the keyring: %v", err)
-		}
+		w := openKeyring(*keyringDir, *keyringBackend, "--payout-key")
 		acc, err := w.GetAccount(*payoutKey)
 		if err != nil {
 			log.Fatalf("--payout-key %q: %v", *payoutKey, err)
 		}
 		cfg.Prepaid.Payout = &paywall.ChainPayout{Wallet: w, KeyName: *payoutKey, Address: acc.Address, Chain: client, ChainID: *chainID}
 		log.Printf("paywall: withdrawals of unspent prepaid balances are paid from %s (%s)", *payoutKey, acc.Address)
+	}
+	if *receiptKey != "" {
+		w := openKeyring(*keyringDir, *keyringBackend, "--receipt-key")
+		acc, err := w.GetAccount(*receiptKey)
+		if err != nil {
+			log.Fatalf("--receipt-key %q: %v", *receiptKey, err)
+		}
+		cfg.Receipts = &paywall.ReceiptConfig{Sign: func(msg []byte) ([]byte, []byte, error) { return w.SignBytes(*receiptKey, msg) }}
+		if *receiptDelegation != "" {
+			bz, err := os.ReadFile(*receiptDelegation)
+			if err != nil {
+				log.Fatal(err)
+			}
+			cfg.Receipts.Delegation = &paywall.ReceiptDelegation{}
+			if err := json.Unmarshal(bz, cfg.Receipts.Delegation); err != nil {
+				log.Fatalf("--receipt-delegation: %v", err)
+			}
+		} else if acc.Address != *payTo {
+			log.Fatalf("--receipt-key %s isn't --pay-to: create a delegation with `paywall delegate-receipts` and pass --receipt-delegation", acc.Address)
+		}
+		log.Printf("paywall: paid responses carry receipts signed by %s (%s)", *receiptKey, acc.Address)
 	}
 	pw, err := paywall.New(cfg)
 	if err != nil {
@@ -137,6 +166,52 @@ func main() {
 	}
 	srv := &http.Server{Addr: *listen, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	log.Fatal(srv.ListenAndServe())
+}
+
+func openKeyring(dir, backend, flagName string) *wallet.Wallet {
+	if dir == "" {
+		log.Fatalf("%s needs --keyring-dir", flagName)
+	}
+	registry := codectypes.NewInterfaceRegistry()
+	mldsa.RegisterInterfaces(registry)
+	w, err := wallet.NewWallet("aetherd", backend, dir, codec.NewProtoCodec(registry))
+	if err != nil {
+		log.Fatalf("opening the keyring: %v", err)
+	}
+	return w
+}
+
+// delegateReceipts signs, with the payee's key, a delegation letting
+// another key sign receipts for it -- so the payee's key can stay off the
+// server. Run it where the payee's key is; copy the output to the server.
+func delegateReceipts(args []string) {
+	fs := flag.NewFlagSet("delegate-receipts", flag.ExitOnError)
+	payeeKey := fs.String("payee-key", "", "keyring account payments go to (--pay-to's key)")
+	signer := fs.String("signer", "", "address of the key that will sign receipts on the server (--receipt-key)")
+	valid := fs.Duration("valid-for", 365*24*time.Hour, "how long the delegation lasts")
+	keyringDir := fs.String("keyring-dir", "", "keyring directory holding --payee-key")
+	keyringBackend := fs.String("keyring-backend", "test", "keyring backend holding --payee-key")
+	out := fs.String("out", "receipt-delegation.json", "file to write")
+	_ = fs.Parse(args)
+	if *payeeKey == "" || *signer == "" {
+		log.Fatal("--payee-key and --signer are required")
+	}
+	w := openKeyring(*keyringDir, *keyringBackend, "--payee-key")
+	acc, err := w.GetAccount(*payeeKey)
+	if err != nil {
+		log.Fatalf("--payee-key %q: %v", *payeeKey, err)
+	}
+	d, err := paywall.NewReceiptDelegation(acc.Address, *signer, time.Now().Add(*valid).Unix(),
+		func(msg []byte) ([]byte, []byte, error) { return w.SignBytes(*payeeKey, msg) })
+	if err != nil {
+		log.Fatal(err)
+	}
+	bz, _ := json.MarshalIndent(d, "", "  ")
+	if err := os.WriteFile(*out, append(bz, '\n'), 0o644); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%s may sign receipts for %s until %s. Wrote %s: pass it to the paywall as --receipt-delegation.\n",
+		*signer, acc.Address, time.Unix(d.Expires, 0).UTC().Format(time.RFC3339), *out)
 }
 
 const (

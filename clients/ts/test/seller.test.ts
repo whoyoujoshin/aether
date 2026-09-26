@@ -9,6 +9,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { Writer } from "../src/proto.js";
 import {
   AetherClient, FileLedger, Key, Paywall, WITHDRAW_PATH, buildSend, memoPaymentHeader, prepaidPaymentHeader, withdrawPrepaid, fetchPaid,
+  createReceiptDelegation,
   type Payment,
 } from "../src/index.js";
 
@@ -75,7 +76,7 @@ interface Setup {
   close(): void;
 }
 
-async function setup(opts: { payout?: boolean; ledgerPath?: string; failWith?: number } = {}): Promise<Setup> {
+async function setup(opts: { payout?: boolean; ledgerPath?: string; failWith?: number; receipts?: boolean; respond?: (res: import("node:http").ServerResponse, req: unknown) => void } = {}): Promise<Setup> {
   const chain = new FakeChain();
   const client = new AetherClient({ rpc: "http://node", chainId: CHAIN, fetch: chain.fetch });
   const seller = Key.random();
@@ -83,6 +84,7 @@ async function setup(opts: { payout?: boolean; ledgerPath?: string; failWith?: n
   const pw = new Paywall({
     client, payTo: seller.address, price: "0.01 AETH", name: "Weather", description: "forecasts",
     prepaid: { ledger: opts.ledgerPath ?? "", minDeposit: "0.03 AETH", payoutKey: opts.payout ? Key.random() : undefined },
+    receipts: opts.receipts ? { key: seller } : undefined,
     now: () => now.t,
   });
   const served: Payment[] = [];
@@ -95,6 +97,7 @@ async function setup(opts: { payout?: boolean; ledgerPath?: string; failWith?: n
       }
       const r = req as typeof req & { aether?: Payment; rawBody?: Uint8Array; body?: unknown };
       if (r.aether) served.push(r.aether);
+      if (opts.respond) return opts.respond(res, r);
       res.writeHead(opts.failWith ?? 200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ path: req.url, body: r.body ?? null }));
     }));
@@ -370,4 +373,84 @@ test("a manifest can't point the withdrawal at another host", async () => {
   } finally {
     server.close();
   }
+});
+
+function autoInclude(s: Setup, buyer: Key, amount: { n: bigint }) {
+  s.chain.broadcast = (tx) => {
+    s.chain.include(tx, Buffer.from(sha256(tx)).toString("hex").toUpperCase(), 0, [{ sender: buyer.address, recipient: s.seller.address, amount: `${amount.n}uaeth` }]);
+    return { code: 0 };
+  };
+}
+
+test("receipts: each paid response carries one that the buyer verifies", async () => {
+  const s = await setup({ receipts: true });
+  try {
+    const buyer = Key.random();
+    const amount = { n: 10_000n };
+    autoInclude(s, buyer, amount);
+    const m = await fetchPaid(s.client, buyer, s.url + "/forecast/s%C3%A3o?x=1", { method: "POST", body: '{"d":1}', maxAmount: "0.01 AETH", confirmTimeoutMs: 2000 });
+    assert.equal(m.receipt?.verified, true, m.receipt?.problem);
+    assert.equal(m.receipt?.receipt?.path, "/forecast/são");
+    assert.equal(m.receipt?.receipt?.payTo, s.seller.address);
+    assert.ok(m.receipt?.receipt?.responseHash);
+    assert.deepEqual(JSON.parse(await m.response!.text()).body, { d: 1 }, "the route still gets the body");
+    amount.n = 50_000n;
+    const p = await fetchPaid(s.client, buyer, s.url + "/forecast", { maxAmount: "0.01 AETH", prepay: "0.05 AETH", requestId: "p1", confirmTimeoutMs: 2000 });
+    assert.equal(p.receipt?.verified, true, p.receipt?.problem);
+    assert.equal(p.receipt?.receipt?.payment, "p1");
+    const odd = await fetchPaid(s.client, buyer, s.url + "/a%0Ab", { maxAmount: "0.01 AETH", prepay: "0.05 AETH", requestId: "p2" });
+    assert.equal(odd.response?.status, 200, "served");
+    assert.equal(odd.receipt, undefined, "without an ambiguous receipt");
+  } finally {
+    s.close();
+  }
+});
+
+test("receipts: big or streamed responses get one without a response hash", async () => {
+  const big = "x".repeat((4 << 20) + 10);
+  const s = await setup({
+    receipts: true,
+    respond: (res) => {
+      res.setHeader("Content-Type", "text/plain");
+      res.write(big.slice(0, 1000));
+      res.end(big.slice(1000));
+    },
+  });
+  try {
+    const buyer = Key.random();
+    autoInclude(s, buyer, { n: 10_000n });
+    const m = await fetchPaid(s.client, buyer, s.url + "/big", { maxAmount: "0.01 AETH", confirmTimeoutMs: 2000 });
+    assert.equal((await m.response!.text()).length, big.length);
+    assert.equal(m.receipt?.verified, true, m.receipt?.problem);
+    assert.equal(m.receipt?.receipt?.responseHash, undefined);
+  } finally {
+    s.close();
+  }
+});
+
+test("receipts: a response changed after signing is caught; a wrong key is refused at start", async () => {
+  const s = await setup({ receipts: true });
+  const proxy = createServer(async (req, res) => {
+    const r = await fetch(s.url + req.url, { method: req.method, headers: req.headers as Record<string, string> });
+    const headers: Record<string, string> = {};
+    r.headers.forEach((v, k) => { if (k !== "content-length" && k !== "transfer-encoding") headers[k] = v; });
+    res.writeHead(r.status, headers);
+    res.end(r.status === 200 ? "tampered" : Buffer.from(await r.arrayBuffer()));
+  });
+  await new Promise<void>((r) => proxy.listen(0, "127.0.0.1", r));
+  try {
+    const buyer = Key.random();
+    autoInclude(s, buyer, { n: 10_000n });
+    const url = `http://127.0.0.1:${(proxy.address() as { port: number }).port}/forecast`;
+    const m = await fetchPaid(s.client, buyer, url, { maxAmount: "0.01 AETH", confirmTimeoutMs: 2000 });
+    assert.equal(m.receipt?.verified, false);
+    assert.match(m.receipt?.problem ?? "", /host|responseHash/);
+  } finally {
+    proxy.close();
+    s.close();
+  }
+  const other = Key.random();
+  assert.throws(() => new Paywall({ client: s.client, payTo: s.seller.address, price: "0.01 AETH", receipts: { key: other } }), /receipts wouldn't verify/);
+  const d = createReceiptDelegation(s.seller, other.address, Math.floor(Date.now() / 1000) + 3600);
+  assert.doesNotThrow(() => new Paywall({ client: s.client, payTo: s.seller.address, price: "0.01 AETH", receipts: { key: other, delegation: d } }));
 });

@@ -118,6 +118,8 @@ func Announcements(payments []wallet.IncomingPayment) []Announcement {
 type Listing struct {
 	Announcement
 	Manifest paywall.Manifest
+	// Reputation is set when the Directory can scan payees (ScanPayee).
+	Reputation *Reputation
 }
 
 // Verify checks a manifest against its announcement.
@@ -146,6 +148,12 @@ type Directory struct {
 	Fetch   Fetcher
 	Network string
 	TTL     time.Duration // default 2m
+
+	// ScanPayee, with LatestHeight, adds each listing's Reputation: it
+	// returns payments to address at or above sinceHeight, oldest first.
+	ScanPayee    func(address string, sinceHeight int64) ([]wallet.IncomingPayment, error)
+	LatestHeight func() (int64, error)
+	Window       int64 // blocks reputation looks back; default DefaultWindow
 
 	mu      sync.Mutex
 	at      time.Time
@@ -183,10 +191,48 @@ func (d *Directory) Listings(ctx context.Context) ([]Listing, error) {
 		return nil, err
 	}
 	listings := Resolve(ctx, Announcements(payments), d.Network, d.Fetch)
+	if d.ScanPayee != nil && d.LatestHeight != nil {
+		d.assess(listings, payments)
+	}
 	d.mu.Lock()
 	d.cached, d.at = listings, time.Now()
 	d.mu.Unlock()
 	return listings, nil
+}
+
+// assess adds reputations to listings. A payee that can't be scanned
+// just gets none.
+func (d *Directory) assess(listings []Listing, directoryPayments []wallet.IncomingPayment) {
+	height, err := d.LatestHeight()
+	if err != nil {
+		return
+	}
+	window := d.Window
+	if window <= 0 {
+		window = DefaultWindow
+	}
+	since := height - window
+	if since < 1 {
+		since = 1
+	}
+	ratings := Ratings(directoryPayments, since)
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	for i := range listings {
+		wg.Add(1)
+		go func(l *Listing) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			paid, err := d.ScanPayee(l.Manifest.PayTo, since)
+			if err != nil && !errors.Is(err, wallet.ErrTooMuchHistory) {
+				return
+			}
+			rep := Assess(l.URL, l.Manifest.PayTo, paid, ratings, since)
+			l.Reputation = &rep
+		}(&listings[i])
+	}
+	wg.Wait()
 }
 
 // Resolve fetches and verifies each announcement's manifest, dropping
