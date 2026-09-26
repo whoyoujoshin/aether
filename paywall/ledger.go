@@ -29,6 +29,12 @@ type ledgerState struct {
 	// account/withdrawalID -> withdrawal. Kept for good: they're the
 	// record of money paid back.
 	Withdrawals map[string]Withdrawal `json:"withdrawals,omitempty"`
+
+	// aether-pull: what each buyer owes, the requests charged, and every
+	// collection closed (the record of money collected).
+	Pull         map[string]*pullRecord    `json:"pull,omitempty"`
+	PullRequests map[string]chargedRequest `json:"pullRequests,omitempty"`
+	Collections  map[string]Collection     `json:"collections,omitempty"`
 }
 
 // Withdrawal is a prepaid balance paid back to its account.
@@ -78,6 +84,7 @@ func NewFileLedger(path string) (*FileLedger, error) {
 	l := &FileLedger{path: path, state: ledgerState{
 		Balances: map[string]string{}, Deposits: map[string]depositRecord{}, Requests: map[string]chargedRequest{},
 		Withdrawals: map[string]Withdrawal{},
+		Pull:        map[string]*pullRecord{}, PullRequests: map[string]chargedRequest{}, Collections: map[string]Collection{},
 	}}
 	if path == "" {
 		return l, nil
@@ -103,6 +110,15 @@ func NewFileLedger(path string) (*FileLedger, error) {
 	}
 	if l.state.Withdrawals == nil {
 		l.state.Withdrawals = map[string]Withdrawal{}
+	}
+	if l.state.Pull == nil {
+		l.state.Pull = map[string]*pullRecord{}
+	}
+	if l.state.PullRequests == nil {
+		l.state.PullRequests = map[string]chargedRequest{}
+	}
+	if l.state.Collections == nil {
+		l.state.Collections = map[string]Collection{}
 	}
 	return l, nil
 }
@@ -260,9 +276,11 @@ func (l *FileLedger) restoreBalance(account, prev string) {
 
 func (l *FileLedger) save() error {
 	now := time.Now()
-	for k, r := range l.state.Requests {
-		if !r.ForgetAfter.IsZero() && now.After(r.ForgetAfter) {
-			delete(l.state.Requests, k)
+	for _, m := range []map[string]chargedRequest{l.state.Requests, l.state.PullRequests} {
+		for k, r := range m {
+			if !r.ForgetAfter.IsZero() && now.After(r.ForgetAfter) {
+				delete(m, k)
+			}
 		}
 	}
 	if l.path == "" {

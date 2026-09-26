@@ -304,6 +304,15 @@ const (
 )
 
 func (c *ChainPayout) Sign(to string, amount math.Int, memo string) ([]byte, uint64, error) {
+	return c.sign(func(accNum, seq, gas uint64) (wallet.SignedTx, error) {
+		return c.Wallet.BuildAndSignSendTx(c.KeyName, c.Address, to, sdk.NewCoins(sdk.NewCoin(Asset, amount)), wallet.TxParams{
+			ChainID: c.ChainID, AccountNumber: accNum, Sequence: seq, GasLimit: gas, Memo: memo,
+		})
+	})
+}
+
+// sign signs the transaction build makes at the account's next sequence.
+func (c *ChainPayout) sign(build func(accNum, seq, gas uint64) (wallet.SignedTx, error)) ([]byte, uint64, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	accNum, seq, err := c.Chain.GetAccountInfo(c.Address)
@@ -317,9 +326,7 @@ func (c *ChainPayout) Sign(to string, amount math.Int, memo string) ([]byte, uin
 	if gas == 0 {
 		gas = 400_000
 	}
-	signed, err := c.Wallet.BuildAndSignSendTx(c.KeyName, c.Address, to, sdk.NewCoins(sdk.NewCoin(Asset, amount)), wallet.TxParams{
-		ChainID: c.ChainID, AccountNumber: accNum, Sequence: seq, GasLimit: gas, Memo: memo,
-	})
+	signed, err := build(accNum, seq, gas)
 	if err != nil {
 		return nil, 0, err
 	}

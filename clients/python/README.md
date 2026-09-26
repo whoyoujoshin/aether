@@ -1,6 +1,6 @@
 # aether-client
 
-Python client for the [Aether](https://github.com/whoyoujoshin/aether) chain: ML-DSA-44 keys, sending and receiving AETH, buying from and selling paid APIs (x402 `aether-memo` and `aether-prepaid`) and the on-chain service directory. It talks to a node's CometBFT RPC (port 26657) only.
+Python client for the [Aether](https://github.com/whoyoujoshin/aether) chain: ML-DSA-44 keys, sending and receiving AETH, buying from and selling paid APIs (x402 `aether-memo`, `aether-prepaid` and `aether-pull`) and the on-chain service directory. It talks to a node's CometBFT RPC (port 26657) only.
 
 ```python
 import os
@@ -14,6 +14,8 @@ done = client.wait_for_transaction(sent.hash)            # confirmed | failed | 
 # Retrying after an error: client.rebroadcast(sent.signed) -- never a second send().
 
 res = fetch_paid(client, key, "https://api.example.com/forecast", max_amount="0.05 AETH", prepay="1 AETH")
+# Or, where offered, pay from your own account under a capped, 7-day allowance the seller collects from later:
+res2 = fetch_paid(client, key, "https://api.example.com/forecast", max_amount="0.05 AETH", pull_allowance="1 AETH")
 services = find_services(client, query="weather", max_price="0.1 AETH", trusted=[owner_address])
 # services[i].reputation: payments, payers, ratings (can be faked), trusted_ratings (can't)
 # res.receipt: the seller's signed receipt and whether it matches exactly what was sent and received
@@ -23,7 +25,7 @@ back = withdraw_prepaid(client, key, "https://api.example.com", withdrawal_id="w
 
 ## Selling
 
-Charge per request from a Python service -- both payment schemes, the `/.well-known/x402` manifest for the service directory, and withdrawals of unspent prepaid balances. Compatible with the Go paywall and every Aether buyer.
+Charge per request from a Python service -- all three payment schemes, the `/.well-known/x402` manifest for the service directory, and withdrawals of unspent prepaid balances. Compatible with the Go paywall and every Aether buyer.
 
 ```python
 import os
@@ -35,7 +37,9 @@ pw = Paywall(client, "aether1...", "0.01 AETH", name="Weather", description="For
              prepaid_ledger="ledger.json",           # customers' balances: back it up
              min_deposit="0.1 AETH",
              payout_key=Key.from_mnemonic(os.environ["PAYOUT_MNEMONIC"]),  # pays withdrawals; keep a small float in it
-             receipt_key=payee_key)  # sign a receipt for every paid response (or a delegated key + receipt_delegation)
+             receipt_key=payee_key,  # sign a receipt for every paid response (or a delegated key + receipt_delegation)
+             pull_collector_key=Key.from_mnemonic(os.environ["COLLECTOR_MNEMONIC"]), pull_credit="1 AETH")  # aether-pull: needs no funds
+pw.start_collecting()  # collects what aether-pull buyers owe, in batches
 api = FastAPI()
 
 @api.get("/forecast")

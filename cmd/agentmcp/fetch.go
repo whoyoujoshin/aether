@@ -58,10 +58,11 @@ type fetchPaidInput struct {
 	IdempotencyKey string `json:"idempotencyKey" jsonschema:"unique ID for this purchase. Retrying with the same key never pays twice: it resumes the same payment"`
 	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"how long to wait for the payment to confirm (default 150, max 300); blocks are ~60s apart"`
 	Prepay         string `json:"prepay,omitempty" jsonschema:"for making many requests to one service: if it offers prepaid, deposit this much (with unit, e.g. \"1 AETH\") whenever the balance there runs out, then pay each request instantly by signature instead of one transaction per request. The seller holds the unspent balance"`
+	PullAllowance  string `json:"pullAllowance,omitempty" jsonschema:"for making many requests to one service, preferred over prepay: if it offers aether-pull, grant it an on-chain allowance of this much (with unit, e.g. \"1 AETH\"; payable only to it, for 7 days, revocable) when it has none or it runs low, then pay each request instantly by signature. Nothing is deposited: the seller collects what you owe from your account in batches. Needs the agent's own funds (not grant mode); granting counts as a payment of the allowance for the owner's approval threshold"`
 }
 
 type fetchPaymentDTO struct {
-	Scheme        string     `json:"scheme" jsonschema:"aether-memo (one transaction per request) or aether-prepaid (drawn from a deposit)"`
+	Scheme        string     `json:"scheme" jsonschema:"aether-memo (one transaction per request), aether-prepaid (drawn from a deposit) or aether-pull (collected later under an allowance)"`
 	TxHash        string     `json:"txHash,omitempty"`
 	Amount        amountDTO  `json:"amount" jsonschema:"what this request cost (for a pending deposit: the deposit)"`
 	PayTo         string     `json:"payTo"`
@@ -69,6 +70,9 @@ type fetchPaymentDTO struct {
 	Replayed      bool       `json:"replayed,omitempty" jsonschema:"true if this key had already paid and no new payment was made"`
 	Balance       *amountDTO `json:"balance,omitempty" jsonschema:"aether-prepaid: what's left of the deposit with this seller"`
 	DepositTxHash string     `json:"depositTxHash,omitempty" jsonschema:"aether-prepaid: a deposit made by this call"`
+	Owed          *amountDTO `json:"owed,omitempty" jsonschema:"aether-pull: what you owe this seller, not yet collected"`
+	Allowance     *amountDTO `json:"allowance,omitempty" jsonschema:"aether-pull: what your allowance still covers beyond what's owed"`
+	GrantTxHash   string     `json:"grantTxHash,omitempty" jsonschema:"aether-pull: an allowance granted by this call"`
 }
 
 type fetchPaidOutput struct {
@@ -195,6 +199,12 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 	if err != nil {
 		return nil, fetchPaidOutput{}, err
 	}
+	var pullAllowance math.Int
+	if in.PullAllowance != "" {
+		if pullAllowance, err = parseAmount(in.PullAllowance); err != nil {
+			return nil, fetchPaidOutput{}, err
+		}
+	}
 	var prepay math.Int
 	if in.Prepay != "" {
 		if prepay, err = parseAmount(in.Prepay); err != nil {
@@ -228,6 +238,12 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 		}
 		if first.status != http.StatusPaymentRequired {
 			return nil, first.output("ok"), nil
+		}
+		if !pullAllowance.IsNil() && granter == "" {
+			if req, ok := quoteScheme(first, paywall.SchemePull); ok {
+				out, err := fetchPull(ctx, in, method, req, maxAmount, pullAllowance)
+				return nil, out, err
+			}
 		}
 		if !prepay.IsNil() {
 			if req, ok := quoteScheme(first, paywall.SchemePrepaid); ok {

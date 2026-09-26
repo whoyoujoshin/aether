@@ -130,6 +130,12 @@ var _ keyring.Keyring   // referenced only to confirm the import resolves; used 
 // arbitrary sdk.Msg -- a more general form of BuildAndSignSendTx, for
 // message types other than a bank send (e.g. MsgSubmitPoW).
 func (w *Wallet) BuildAndSignMsgTx(fromName string, msg sdk.Msg, params TxParams) (SignedTx, error) {
+	return w.BuildAndSignMsgsTx(fromName, []sdk.Msg{msg}, params)
+}
+
+// BuildAndSignMsgsTx signs one transaction carrying several messages,
+// which the chain executes all-or-nothing.
+func (w *Wallet) BuildAndSignMsgsTx(fromName string, msgs []sdk.Msg, params TxParams) (SignedTx, error) {
 	encodingConfig := app.MakeEncodingConfig()
 
 	factory := tx.Factory{}.
@@ -143,7 +149,7 @@ func (w *Wallet) BuildAndSignMsgTx(fromName string, msg sdk.Msg, params TxParams
 		WithMemo(params.Memo).
 		WithFeeGranter(params.FeeGranter)
 
-	txBuilder, err := factory.BuildUnsignedTx(msg)
+	txBuilder, err := factory.BuildUnsignedTx(msgs...)
 	if err != nil {
 		return SignedTx{}, fmt.Errorf("failed to build unsigned tx: %w", err)
 	}

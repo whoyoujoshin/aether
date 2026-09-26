@@ -27,12 +27,20 @@
     const ACC = "#2ad4c4";
     const GOLD = "#e3b25f";
     const API = "http://localhost:8090";
+    // walletapi refuses requests without the secret the desktop app (or
+    // walletapi itself, when run by hand) put in this page's URL.
+    const TOKEN = new URLSearchParams(location.search).get("token") || "";
+    function api(path, opts) {
+      opts = opts || {};
+      return fetch(API + path, Object.assign({}, opts, { headers: Object.assign({ "X-Wallet-Token": TOKEN }, opts.headers || {}) }));
+    }
 
     const NAV = [
       ["home", "Home", "◎"],
       ["send", "Send", "↗"],
       ["receive", "Receive", "▣"],
       ["activity", "Activity", "≡"],
+      ["agents", "Agents", "◇"],
       ["faucet", "Faucet", "◈"],
       ["buy", "Buy AETH", "$"],
       ["swap", "Swap", "⇄"],
@@ -71,9 +79,21 @@
 
       const [copied, setCopied] = useState(false);
 
+      // Agents: what this account lets other accounts (agents) do.
+      const [perms, setPerms] = useState(null);
+      const [permsError, setPermsError] = useState("");
+      const [agentAddr, setAgentAddr] = useState("");
+      const [agentLimit, setAgentLimit] = useState("");
+      const [agentDays, setAgentDays] = useState("7");
+      const [agentFees, setAgentFees] = useState(true);
+      const [agentFeeLimit, setAgentFeeLimit] = useState("1");
+      const [agentOnly, setAgentOnly] = useState("");
+      const [agentBusy, setAgentBusy] = useState("");
+      const [agentMsg, setAgentMsg] = useState(null);
+
       const loadAccounts = useCallback(async () => {
         try {
-          const res = await fetch(API + "/api/accounts");
+          const res = await api("/api/accounts");
           const data = await res.json();
           setAccounts(data || []);
           if (data && data.length > 0 && !accountName) {
@@ -89,7 +109,7 @@
         setLoading(true);
         setError("");
         try {
-          const res = await fetch(API + "/api/account?name=" + encodeURIComponent(name));
+          const res = await api("/api/account?name=" + encodeURIComponent(name));
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || "failed to load account");
           setAccount(data);
@@ -104,7 +124,7 @@
         if (!address) return;
         setActivityLoading(true);
         try {
-          const res = await fetch(API + "/api/history?address=" + encodeURIComponent(address));
+          const res = await api("/api/history?address=" + encodeURIComponent(address));
           const data = await res.json();
           setActivity(data || []);
         } catch (e) {
@@ -113,7 +133,22 @@
         setActivityLoading(false);
       }, []);
 
+      const loadPerms = useCallback(async (name) => {
+        if (!name) return;
+        setPermsError("");
+        try {
+          const res = await api("/api/grants?name=" + encodeURIComponent(name));
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "failed to load permissions");
+          setPerms(data);
+        } catch (e) {
+          setPerms(null);
+          setPermsError(e.message);
+        }
+      }, []);
+
       useEffect(() => { loadAccounts(); }, []);
+      useEffect(() => { if (accountName && screen === "agents") loadPerms(accountName); }, [accountName, screen]);
       useEffect(() => { if (accountName) loadAccount(accountName); }, [accountName]);
       useEffect(() => { if (account && account.address && (screen === "activity" || screen === "home")) loadActivity(account.address); }, [account, screen]);
 
@@ -126,7 +161,7 @@
         setSending(true);
         try {
           const uaeth = Math.round(amtNum * 1000000).toString();
-          const res = await fetch(API + "/api/send", {
+          const res = await api("/api/send", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ from: accountName, to: sendTo, amount: uaeth }),
@@ -141,6 +176,58 @@
           setSendResult({ success: false, message: e.message });
         }
         setSending(false);
+      }
+
+      const agentAddrOk = /^aether1[a-z0-9]{38,90}$/.test(agentAddr) && (!account || agentAddr !== account.address);
+      const agentOnlyList = agentOnly.split(/[\s,]+/).filter(Boolean);
+      const agentOnlyOk = agentOnlyList.every((a) => /^aether1[a-z0-9]{38,90}$/.test(a));
+      const agentLimitNum = parseFloat(agentLimit) || 0;
+      const agentFeeNum = parseFloat(agentFeeLimit) || 0;
+      const agentFormOk = agentAddrOk && agentLimitNum > 0 && agentOnlyOk && (!agentFees || agentFeeNum > 0);
+
+      // Waits for the change to reach a block, then reloads the list.
+      function afterTx(data, okText) {
+        if (!data.success) {
+          setAgentMsg({ ok: false, text: data.message || data.error || "the chain rejected it" });
+          return;
+        }
+        setAgentMsg({ ok: true, text: okText + " · tx " + data.tx_hash.slice(0, 16) + "…" });
+        setTimeout(() => loadPerms(accountName), 8000);
+      }
+
+      async function grantAgent() {
+        setAgentBusy("grant");
+        setAgentMsg(null);
+        try {
+          const body = {
+            from: accountName, grantee: agentAddr,
+            limit: Math.round(agentLimitNum * 1000000).toString(),
+            expiresAt: Math.floor(Date.now() / 1000) + Number(agentDays) * 86400,
+          };
+          if (agentOnlyList.length) body.allowList = agentOnlyList;
+          if (agentFees) body.feeLimit = Math.round(agentFeeNum * 1000000).toString();
+          const res = await api("/api/grants", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          const data = await res.json();
+          afterTx(res.ok ? data : { success: false, message: data.error }, "Granted. Updates here within a block");
+          if (data.success) { setAgentAddr(""); setAgentLimit(""); setAgentOnly(""); }
+        } catch (e) {
+          setAgentMsg({ ok: false, text: e.message });
+        }
+        setAgentBusy("");
+      }
+
+      async function revokeAgent(grantee) {
+        if (!window.confirm("Revoke everything you've allowed " + grantee + " to do? It takes effect in the next block.")) return;
+        setAgentBusy(grantee);
+        setAgentMsg(null);
+        try {
+          const res = await api("/api/grants/revoke", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from: accountName, grantee: grantee }) });
+          const data = await res.json();
+          afterTx(res.ok ? data : { success: false, message: data.error }, "Revoked. Updates here within a block");
+        } catch (e) {
+          setAgentMsg({ ok: false, text: e.message });
+        }
+        setAgentBusy("");
       }
 
       async function requestFaucet() {
@@ -186,6 +273,12 @@
       });
 
       const card = { background: "#0d1011", border: "1px solid rgba(255,255,255,.08)", borderRadius: 14, padding: 20 };
+      const field = Object.assign({ width: "100%", background: "#0a0c0d", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: 12, color: "#f2f4f3", marginTop: 6 }, mono, { fontSize: 12.5 });
+      const label = (text) => React.createElement("label", { style: Object.assign({}, mono, { fontSize: 10.5, color: "#8b9490" }) }, text);
+      const hint = (text, color) => React.createElement("div", { style: Object.assign({}, mono, { fontSize: 10.5, color: color, margin: "4px 0 14px" }) }, text);
+      const input = (value, onChange, placeholder, unit) => React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+        React.createElement("input", { value: value, onChange: (e) => onChange(e.target.value), placeholder: placeholder, style: Object.assign({}, field, { marginBottom: 4 }) }),
+        unit && React.createElement("span", { style: Object.assign({}, mono, { fontSize: 11, color: "#8b9490", marginTop: 6 }) }, unit));
 
       return React.createElement("div", { style: wrap },
         React.createElement("div", { style: { width: 220, borderRight: "1px solid rgba(255,255,255,.08)", padding: "20px 10px", display: "flex", flexDirection: "column", gap: 4 } },
@@ -281,6 +374,52 @@
             activity.map((t) => React.createElement(TxRow, { key: t.Hash, t: t, full: true }))
           ),
 
+          screen === "agents" && React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 20 } },
+            React.createElement("div", { style: card },
+              React.createElement("h2", { style: { marginTop: 0 } }, "Give an agent a spending allowance"),
+              React.createElement("p", { style: { color: "#8b9490", fontSize: 12.5, marginTop: 0 } },
+                "The agent can send up to the limit from this account until the date you pick. The chain enforces both, and you can revoke it at any time. Granting the same agent again replaces its limit."),
+              label("AGENT ADDRESS"),
+              input(agentAddr, (v) => setAgentAddr(v.trim()), "aether1..."),
+              hint(agentAddr === "" ? "-" : (agentAddrOk ? "✓ valid aether1 address" : (account && agentAddr === account.address ? "✕ that's this account" : "✕ doesn't match aether1 format")), agentAddr === "" ? "transparent" : (agentAddrOk ? ACC : "#ff7a6b")),
+              React.createElement("div", { style: { display: "flex", gap: 14 } },
+                React.createElement("div", { style: { flex: 1 } },
+                  label("SPEND LIMIT (AETH)"),
+                  input(agentLimit, (v) => setAgentLimit(v.replace(/[^0-9.]/g, "")), "5")
+                ),
+                React.createElement("div", { style: { flex: 1 } },
+                  label("EXPIRES IN"),
+                  React.createElement("select", { value: agentDays, onChange: (e) => setAgentDays(e.target.value), style: Object.assign({}, field, { marginBottom: 4 }) },
+                    [["1", "1 day"], ["7", "7 days"], ["30", "30 days"], ["90", "90 days"]].map(([v, t]) => React.createElement("option", { key: v, value: v }, t)))
+                )
+              ),
+              React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, margin: "14px 0 8px", color: "#c9d0cd" } },
+                React.createElement("input", { type: "checkbox", checked: agentFees, onChange: (e) => setAgentFees(e.target.checked) }),
+                "Also pay its transaction fees, up to"
+              ),
+              agentFees && input(agentFeeLimit, (v) => setAgentFeeLimit(v.replace(/[^0-9.]/g, "")), "1", "AETH"),
+              label("ONLY LET IT PAY THESE ADDRESSES (OPTIONAL)"),
+              React.createElement("textarea", {
+                value: agentOnly, onChange: (e) => setAgentOnly(e.target.value), placeholder: "aether1... (one per line; empty: anyone)", rows: 2,
+                style: Object.assign({}, field, { resize: "vertical" })
+              }),
+              hint(agentOnlyOk ? (agentOnlyList.length ? agentOnlyList.length + " address(es)" : "any recipient") : "✕ one of these isn't an aether1 address", agentOnlyOk ? "#6b7570" : "#ff7a6b"),
+              React.createElement("button", { style: primaryBtn(agentFormOk && !agentBusy), disabled: !agentFormOk || !!agentBusy, onClick: grantAgent },
+                agentBusy === "grant" ? "Signing with ML-DSA-44…" : "Sign & grant"),
+              agentMsg && React.createElement("div", { style: Object.assign({ marginTop: 12, fontSize: 11.5, color: agentMsg.ok ? ACC : "#ff7a6b", wordBreak: "break-all" }, mono) }, agentMsg.text)
+            ),
+            React.createElement("div", { style: card },
+              React.createElement("h2", { style: { marginTop: 0 } }, "Agents you've authorized"),
+              permsError && React.createElement("div", { style: { color: "#ff9b8f", fontSize: 12.5 } }, permsError),
+              !permsError && perms && perms.given.length === 0 && React.createElement("div", { style: { color: "#6b7570", fontSize: 12.5 } }, "None yet."),
+              perms && perms.given.map((p) => React.createElement(PermRow, { key: p.account, p: p, busy: agentBusy === p.account, onRevoke: () => revokeAgent(p.account) }))
+            ),
+            perms && perms.received.length > 0 && React.createElement("div", { style: card },
+              React.createElement("h2", { style: { marginTop: 0 } }, "Permissions this account has received"),
+              perms.received.map((p) => React.createElement(PermRow, { key: p.account, p: p, received: true }))
+            )
+          ),
+
           screen === "faucet" && React.createElement("div", { style: card },
             React.createElement("h2", { style: { marginTop: 0 } }, "Testnet Faucet"),
             React.createElement("p", { style: { color: "#8b9490", fontSize: 12.5 } }, "Requests real testnet AETH from the public faucet at 157.245.252.221. Rate-limited per address."),
@@ -329,6 +468,39 @@
         React.createElement("div", { style: { fontFamily: "'IBM Plex Mono',monospace", fontSize: 12.5, color: failed ? "#ff7a6b" : (isSent ? "#f2f4f3" : ACC) } },
           (isSent ? "−" : "+") + fmt(aeth) + " AETH"
         )
+      );
+    }
+
+    function coinsAeth(coins) {
+      const u = (coins || []).find((c) => c.denom === "uaeth");
+      return u ? fmt(uaethToAeth(u.amount)) + " AETH" : "0 AETH";
+    }
+
+    function when(ts) {
+      if (!ts) return "never";
+      const d = new Date(ts);
+      return (d < new Date() ? "expired " : "") + d.toLocaleString();
+    }
+
+    // One account's permissions: what it may send, and whose fees are paid.
+    function PermRow(props) {
+      const p = props.p;
+      const mono = { fontFamily: "'IBM Plex Mono',monospace" };
+      const line = (k, v) => React.createElement("div", { style: { display: "flex", gap: 10, fontSize: 12, margin: "3px 0" } },
+        React.createElement("span", { style: { color: "#6b7570", width: 110, flexShrink: 0 } }, k), React.createElement("span", { style: Object.assign({ wordBreak: "break-all" }, mono) }, v));
+      return React.createElement("div", { style: { padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,.06)" } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 } },
+          React.createElement("div", { style: Object.assign({ fontSize: 12.5, wordBreak: "break-all" }, mono) }, (props.received ? "from " : "") + p.account),
+          !props.received && React.createElement("button", {
+            onClick: props.onRevoke, disabled: props.busy,
+            style: { background: "none", border: "1px solid rgba(255,122,107,.4)", color: "#ff9b8f", borderRadius: 50, padding: "6px 14px", cursor: "pointer", font: "600 11.5px/1 'IBM Plex Sans',sans-serif", flexShrink: 0 }
+          }, props.busy ? "Revoking…" : "Revoke")
+        ),
+        p.send && line("May send", p.send.unlimited ? "anything (no limit)" : coinsAeth(p.send.spendLimit) + " more"),
+        p.send && line("To", p.send.allowList && p.send.allowList.length ? p.send.allowList.join(", ") : "anyone"),
+        p.send && line("Until", when(p.send.expiration)),
+        p.fees && line("Fees", "paid" + (p.fees.spendLimit && p.fees.spendLimit.length ? ", up to " + coinsAeth(p.fees.spendLimit) + " more" : ", no limit") + " · until " + when(p.fees.expiration)),
+        !p.send && !p.fees && line("Other", (p.other || []).map((g) => g.kind).join(", "))
       );
     }
 

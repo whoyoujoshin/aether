@@ -7,7 +7,7 @@ from .amount import DENOM, parse_amount
 from .keys import Key, is_address
 from .proto import Writer, first, read_fields
 from .rpc import Rpc, RpcError
-from .tx import SignedTx, build_send, memo_of
+from .tx import MSG_SEND_TYPE_URL, SEND_AUTHORIZATION_TYPE_URL, SignedTx, build_send, build_tx, memo_of
 
 
 @dataclass
@@ -61,6 +61,43 @@ def transfers(events) -> List[Transfer]:
     return out
 
 
+@dataclass
+class SendGrant:
+    """An x/authz permission to send from one account, as the chain stores it."""
+    unlimited: bool  # a GenericAuthorization; otherwise spend_limit_uaeth is what's left
+    spend_limit_uaeth: int
+    allow_list: List[str]  # if non-empty, the only recipients allowed
+    expiration: Optional[int] = None  # Unix seconds; None if it never expires
+
+
+_GENERIC_AUTHORIZATION_TYPE_URL = "/cosmos.authz.v1beta1.GenericAuthorization"
+
+
+def decode_send_grant(resp: bytes) -> Optional[SendGrant]:
+    """Decodes a Query/Grants response for MsgSend; None if it holds none."""
+    grant = first(resp, 1)
+    if not grant:
+        return None
+    auth = first(grant, 1)
+    if not auth:
+        return None
+    type_url = first(auth, 1, b"").decode()
+    value = first(auth, 2, b"")
+    ts = first(grant, 2)
+    expiration = first(ts, 1, 0) if ts is not None else None
+    if type_url == _GENERIC_AUTHORIZATION_TYPE_URL:
+        return SendGrant(True, 0, [], expiration)
+    if type_url != SEND_AUTHORIZATION_TYPE_URL:
+        raise ValueError(f"unsupported authorization type {type_url}")
+    limit, allow = 0, []
+    for f, _, v in read_fields(value):
+        if f == 1 and first(v, 1, b"").decode() == DENOM:
+            limit += int(first(v, 2, b"0").decode() or "0")
+        elif f == 2:
+            allow.append(v.decode())
+    return SendGrant(False, limit, allow, expiration)
+
+
 class AetherClient:
     def __init__(self, rpc: str, chain_id: str = "aether-testnet-1"):
         self.rpc = Rpc(rpc)
@@ -105,6 +142,32 @@ class AetherClient:
         sequence = max(chain_seq, self._next_seq.get(key.address, 0))
         signed = build_send(key, chain_id=self.chain_id, account_number=account_number, sequence=sequence, to=to,
                             amount_uaeth=amount_uaeth, memo=memo, **({"gas_limit": gas_limit} if gas_limit else {}))
+        r = self.rebroadcast(signed)
+        if r.status != "failed":
+            self._next_seq[key.address] = sequence + 1
+        return r
+
+    def send_grant(self, granter: str, grantee: str) -> Optional["SendGrant"]:
+        """The permission granter gave grantee to send from its account (x/authz), or None if
+        there's none (never granted, revoked, used up or expired)."""
+        req = Writer().string(1, granter).string(2, grantee).string(3, MSG_SEND_TYPE_URL).finish()
+        try:
+            resp = self.rpc.abci_query("/cosmos.authz.v1beta1.Query/Grants", req)
+        except RpcError as e:
+            if "not found" in str(e).lower():
+                return None
+            raise
+        return decode_send_grant(resp)
+
+    def sign_and_broadcast(self, key: Key, msgs, memo: str = "", gas_limit: Optional[int] = None) -> SendResult:
+        """Signs and broadcasts a transaction carrying msgs from key's account. Like send, for any messages."""
+        info = self.account_info(key.address)
+        if info is None:
+            raise ValueError(f"account {key.address} doesn't exist on chain yet: fund it first")
+        account_number, chain_seq = info
+        sequence = max(chain_seq, self._next_seq.get(key.address, 0))
+        signed = build_tx(key, msgs, chain_id=self.chain_id, account_number=account_number, sequence=sequence, memo=memo,
+                          **({"gas_limit": gas_limit} if gas_limit else {}))
         r = self.rebroadcast(signed)
         if r.status != "failed":
             self._next_seq[key.address] = sequence + 1

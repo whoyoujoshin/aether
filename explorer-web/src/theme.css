@@ -348,3 +348,11 @@ tbody tr:last-child td {
   font-size: 12px;
   border-top: 1px solid var(--border-subtle);
 }
+
+.panel-subtitle {
+  padding: 12px 18px 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

@@ -44,6 +44,9 @@ type Config struct {
 
 	// Prepaid, if set, also offers the aether-prepaid scheme.
 	Prepaid *PrepaidConfig
+	// Pull, if set, also offers the aether-pull scheme; run the
+	// Paywall's RunCollector alongside it.
+	Pull *PullConfig
 	// Receipts, if set, signs a receipt for every paid response.
 	Receipts *ReceiptConfig
 }
@@ -64,6 +67,7 @@ type Paywall struct {
 	store  RedeemedStore
 
 	withdrawMu sync.Mutex
+	pull       *pullState
 }
 
 func New(cfg Config) (*Paywall, error) {
@@ -87,6 +91,24 @@ func New(cfg Config) (*Paywall, error) {
 			cfg.Prepaid.MinDeposit = cfg.Price
 		}
 	}
+	if cfg.Pull != nil {
+		pc := cfg.Pull
+		if pc.Ledger == nil || pc.Collector == nil || pc.Grants == nil {
+			return nil, errors.New("pull needs a ledger, a collector and a grant lookup")
+		}
+		if _, err := sdk.AccAddressFromBech32(pc.Grantee); err != nil {
+			return nil, fmt.Errorf("invalid pull grantee %q: %w", pc.Grantee, err)
+		}
+		if pc.Credit.IsNil() {
+			pc.Credit = cfg.Price.MulRaw(defaultCreditRequests)
+		}
+		if pc.Credit.LT(cfg.Price) {
+			return nil, errors.New("pull credit must be at least the price")
+		}
+		if pc.CollectEvery <= 0 {
+			pc.CollectEvery = time.Minute
+		}
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
@@ -98,7 +120,7 @@ func New(cfg Config) (*Paywall, error) {
 			return nil, fmt.Errorf("receipts wouldn't verify: %w", err)
 		}
 	}
-	p := &Paywall{cfg: cfg, secret: cfg.Secret, store: cfg.Store}
+	p := &Paywall{cfg: cfg, secret: cfg.Secret, store: cfg.Store, pull: newPullState()}
 	if p.secret == nil {
 		p.secret = make([]byte, 32)
 		if _, err := rand.Read(p.secret); err != nil {
@@ -126,6 +148,10 @@ func (p *Paywall) Middleware(next http.Handler) http.Handler {
 		}
 		if pay.Network == p.cfg.Network && pay.Scheme == SchemePrepaid && p.cfg.Prepaid != nil {
 			p.servePrepaid(w, r, pay.Payload, next)
+			return
+		}
+		if pay.Network == p.cfg.Network && pay.Scheme == SchemePull && p.cfg.Pull != nil {
+			p.servePull(w, r, pay.Payload, next)
 			return
 		}
 		if pay.Scheme != Scheme || pay.Network != p.cfg.Network {
@@ -227,10 +253,14 @@ func (p *Paywall) received(d *wallet.TransactionDetail) (math.Int, string) {
 }
 
 func (p *Paywall) schemes() []string {
+	out := []string{Scheme}
 	if p.cfg.Prepaid != nil {
-		return []string{Scheme, SchemePrepaid}
+		out = append(out, SchemePrepaid)
 	}
-	return []string{Scheme}
+	if p.cfg.Pull != nil {
+		out = append(out, SchemePull)
+	}
+	return out
 }
 
 // paymentRequired writes a 402. It offers invoice if set (a payment
@@ -294,6 +324,22 @@ func (p *Paywall) paymentRequiredFor(w http.ResponseWriter, r *http.Request, cod
 			}
 		}
 		body.Accepts = append(body.Accepts, prepaid)
+	}
+	if p.cfg.Pull != nil {
+		pull := body.Accepts[0]
+		pull.Scheme = SchemePull
+		pull.Extra = Extra{
+			AmountAeth:   wallet.FormatAeth(p.cfg.Price),
+			Grantee:      p.cfg.Pull.Grantee,
+			Credit:       p.cfg.Pull.Credit.String(),
+			Instructions: pullInstructions,
+		}
+		if account != "" {
+			if a, err := p.cfg.Pull.Ledger.PullAccount(account); err == nil {
+				pull.Extra.Owed = a.Owed().String()
+			}
+		}
+		body.Accepts = append(body.Accepts, pull)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusPaymentRequired)

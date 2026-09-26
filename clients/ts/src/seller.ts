@@ -6,11 +6,12 @@ import { base64, base64urlnopad } from "@scure/base";
 import { AetherClient } from "./client.js";
 import { RpcError } from "./rpc.js";
 import { Key, addressOf, isAddress } from "./keys.js";
-import { buildSend } from "./tx.js";
+import { buildSend, buildTx, execSendMsg } from "./tx.js";
 import { formatAeth, parseAmount, parseUaeth } from "./amount.js";
 import { MANIFEST_PATH, type Manifest } from "./directory.js";
-import { DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, signingMessage, type PaymentRequired, type PaymentRequirements } from "./paywall.js";
-import { FileLedger, LedgerError, type Ledger, type Withdrawal } from "./ledger.js";
+import { DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, pullSigningMessage, signingMessage, type PaymentRequired, type PaymentRequirements } from "./paywall.js";
+import { FileLedger, LedgerError, owedOf, type Collection, type Ledger, type PullLedger, type Withdrawal } from "./ledger.js";
+import type { SendGrant } from "./client.js";
 import { RECEIPT_HEADER, receiptFieldsOK, sha256Hex, signReceipt, verifyReceipt, type ReceiptDelegation } from "./receipt.js";
 
 // Selling: charge AETH per HTTP request from a Node service, compatible
@@ -25,6 +26,9 @@ import { RECEIPT_HEADER, receiptFieldsOK, sha256Hex, signReceipt, verifyReceipt,
 // proof, which is checked on chain and served once. aether-prepaid (bots):
 // deposit once, then sign each request; the price is deducted instantly.
 // With prepaid.payoutKey, buyers can withdraw what they haven't spent.
+// aether-pull (bots): the buyer grants pull.collectorKey's account a capped,
+// expiring allowance on chain, payable only to payTo, and signs each
+// request; call startCollecting() to collect what's owed in batches.
 
 export const WITHDRAW_PATH = "/.well-known/x402/withdraw";
 
@@ -41,6 +45,15 @@ const MEMO_INSTRUCTIONS =
   "then repeat this request with header X-PAYMENT: base64 of the JSON " +
   '{"x402Version":1,"scheme":"aether-memo","network":"<network>","payload":{"invoice":"<invoice>","txHash":"<hash>"}}. ' +
   "Each invoice pays for one response, and must be presented by expiresAt.";
+const PULL_INSTRUCTIONS =
+  "For many requests, paying only for what you use: grant grantee a send allowance on chain " +
+  "(x/authz MsgGrant with a SendAuthorization: spend_limit, allow_list [payTo], and an expiration), then sign each request " +
+  "with your account's ML-DSA key and send X-PAYMENT: base64 of " +
+  '{"x402Version":1,"scheme":"aether-pull","network":"<network>","payload":{account,pubKey,timestamp,requestId,maxPrice,signature}}' +
+  " -- see package paywall's PullSigningMessage. Each requestId is charged once, and what you owe is collected from your account " +
+  "in batches under the allowance, up to credit at a time. Revoke the allowance to stop.";
+export const COLLECTION_MEMO_PREFIX = "x402-pull:";
+const GRANT_CACHE_MS = 15_000;
 const PREPAID_INSTRUCTIONS =
   "For many requests: deposit at least minDeposit uaeth to payTo with memo depositMemo " +
   '("prepaid:" + the address to credit). Then sign each request with that account\'s ML-DSA key and send X-PAYMENT: base64 of ' +
@@ -78,6 +91,20 @@ export interface PaywallConfig {
    * delegate-receipts`) so payTo's key can stay offline.
    */
   receipts?: { key: Key; delegation?: ReceiptDelegation };
+  /**
+   * Offer aether-pull (for bots): buyers grant collectorKey's account an
+   * allowance; call startCollecting() to collect what they owe. The key
+   * needs no funds: the first allowance granted to it creates its account.
+   */
+  pull?: {
+    collectorKey: Key;
+    /** Where what buyers owe is recorded: a PullLedger or a file path. Default: the prepaid ledger. */
+    ledger?: PullLedger | string;
+    /** Most a buyer may owe before it's collected, with unit ("1 AETH"): your loss if one revokes just before a collection. Default: 100 requests. */
+    credit?: string;
+    /** Default 60. */
+    collectEverySeconds?: number;
+  };
   /** Milliseconds; for tests. */
   now?: () => number;
 }
@@ -88,6 +115,7 @@ export interface Payment {
   scheme: string;
   txHash?: string; // aether-memo
   balanceUaeth?: bigint; // aether-prepaid: left with this seller
+  owedUaeth?: bigint; // aether-pull: owed, not yet collected
 }
 
 export interface SellerRequest {
@@ -153,6 +181,13 @@ export class Paywall {
   private readonly redeemed = new Map<string, number>();
   private lastPrune = 0;
   private withdrawQueue: Promise<unknown> = Promise.resolve();
+  private readonly pullLedger?: PullLedger;
+  private readonly collector?: KeyPayout;
+  private readonly credit: bigint = 0n;
+  private readonly collectEveryMs: number = 60_000;
+  private readonly grants = new Map<string, { g: SendGrant; at: number }>();
+  private collecting: Promise<unknown> = Promise.resolve();
+  private timer?: ReturnType<typeof setInterval>;
 
   constructor(private readonly cfg: PaywallConfig) {
     if (!isAddress(cfg.payTo)) throw new Error(`invalid payTo address "${cfg.payTo}"`);
@@ -165,6 +200,15 @@ export class Paywall {
       const min = cfg.prepaid.minDeposit ? parseAmount(cfg.prepaid.minDeposit) : this.price;
       this.minDeposit = min < this.price ? this.price : min;
       if (cfg.prepaid.payoutKey) this.payout = new KeyPayout(cfg.client, cfg.prepaid.payoutKey);
+    }
+    if (cfg.pull) {
+      const l = cfg.pull.ledger ?? (this.ledger instanceof FileLedger ? this.ledger : undefined);
+      if (l === undefined) throw new Error("pull needs a ledger (pull.ledger, or a prepaid FileLedger)");
+      this.pullLedger = typeof l === "string" ? (l === cfg.prepaid?.ledger && this.ledger instanceof FileLedger ? this.ledger : new FileLedger(l)) : l;
+      this.collector = new KeyPayout(cfg.client, cfg.pull.collectorKey);
+      this.credit = cfg.pull.credit ? parseAmount(cfg.pull.credit) : this.price * 100n;
+      if (this.credit < this.price) throw new Error("pull credit must be at least the price");
+      this.collectEveryMs = (cfg.pull.collectEverySeconds ?? 60) * 1000;
     }
     if (cfg.receipts) {
       const probe = signReceipt(cfg.receipts.key, {
@@ -195,7 +239,7 @@ export class Paywall {
   }
 
   private schemes() {
-    return this.ledger ? [SCHEME_MEMO, SCHEME_PREPAID] : [SCHEME_MEMO];
+    return [SCHEME_MEMO, ...(this.ledger ? [SCHEME_PREPAID] : []), ...(this.pullLedger ? [SCHEME_PULL] : [])];
   }
 
   /** The service's self-description, served (free) at MANIFEST_PATH. */
@@ -213,7 +257,7 @@ export class Paywall {
     if (req.path === WITHDRAW_PATH) return true;
     if (this.cfg.receipts && req.header("x-payment")) return true;
     const pay = decodeHeader<{ scheme?: string }>(req.header("x-payment") ?? "");
-    return pay?.scheme === SCHEME_PREPAID;
+    return pay?.scheme === SCHEME_PREPAID || pay?.scheme === SCHEME_PULL;
   }
 
   /** Decides a request to a paid route: serve it (then call finish with the response status) or answer it. */
@@ -223,6 +267,7 @@ export class Paywall {
     const pay = decodeHeader<{ scheme?: string; network?: string; payload?: unknown }>(header);
     if (!pay) return this.paymentRequired(req, "invalid_payment", "X-PAYMENT must be base64-encoded JSON");
     if (pay.network === this.network && pay.scheme === SCHEME_PREPAID && this.ledger) return this.servePrepaid(req, pay.payload, body);
+    if (pay.network === this.network && pay.scheme === SCHEME_PULL && this.pullLedger) return this.servePull(req, pay.payload, body);
     if (pay.scheme !== SCHEME_MEMO || pay.network !== this.network) {
       return this.paymentRequired(req, "unsupported_scheme", `this server accepts ${this.schemes().join(" or ")} on network "${this.network}"`);
     }
@@ -341,12 +386,19 @@ export class Paywall {
       if (this.payout) extra.withdrawPath = WITHDRAW_PATH;
       body.accepts.push({ ...memo, scheme: SCHEME_PREPAID, extra: extra as PaymentRequirements["extra"] });
     }
+    if (this.pullLedger) {
+      const extra: Record<string, string> = {
+        amountAeth: formatAeth(this.price), grantee: this.collector!.address, credit: this.credit.toString(), instructions: PULL_INSTRUCTIONS,
+      };
+      if (account) extra.owed = owedOf(this.pullLedger.pullAccount(account)).toString();
+      body.accepts.push({ ...memo, scheme: SCHEME_PULL, extra: extra as PaymentRequirements["extra"] });
+    }
     return json(402, body, headers);
   }
 
   // --- aether-prepaid ---
 
-  private verify(req: SellerRequest, raw: unknown, body: Uint8Array): Signed | { code: string; message: string } {
+  private verify(req: SellerRequest, raw: unknown, body: Uint8Array, pull = false): Signed | { code: string; message: string } {
     const pay = raw as PrepaidPayload;
     if (!pay || typeof pay !== "object" || typeof pay.account !== "string" || typeof pay.pubKey !== "string" || typeof pay.signature !== "string"
       || typeof pay.timestamp !== "number" || typeof pay.requestId !== "string" || typeof pay.maxPrice !== "string") {
@@ -379,10 +431,11 @@ export class Paywall {
       }
     }
     if (body.length > MAX_SIGNED_BODY) return { code: "request_too_large", message: `signed requests' bodies are limited to ${MAX_SIGNED_BODY} bytes` };
-    const msg = signingMessage({
+    const fields = {
       network: this.network, payTo: this.cfg.payTo, host: req.host, method: req.method, path: req.path, body,
       maxPrice, timestamp: pay.timestamp, requestId: pay.requestId, depositTx: pay.depositTx ?? "",
-    });
+    };
+    const msg = pull ? pullSigningMessage(fields) : signingMessage(fields);
     if (!Key.verify(pub, msg, sig)) return { code: "invalid_signature", message: "signature does not match this request" };
     return { pay, maxPrice };
   }
@@ -417,6 +470,156 @@ export class Paywall {
         }
       },
     };
+  }
+
+  // --- aether-pull ---
+
+  private async grant(buyer: string, fresh: boolean): Promise<{ g?: SendGrant; cached: boolean }> {
+    const c = this.grants.get(buyer);
+    if (!fresh && c && this.now() - c.at < GRANT_CACHE_MS) return { g: c.g, cached: true };
+    const g = await this.cfg.client.sendGrant(buyer, this.collector!.address);
+    // Only allowances found are cached: a buyer who just granted one must not be told it has none.
+    if (g) this.grants.set(buyer, { g, at: this.now() });
+    else this.grants.delete(buyer);
+    return { g, cached: false };
+  }
+
+  private async servePull(req: SellerRequest, raw: unknown, body: Uint8Array): Promise<Decision> {
+    const ledger = this.pullLedger!;
+    const v = this.verify(req, raw, body, true);
+    if ("code" in v) return this.paymentRequired(req, v.code, v.message);
+    const { pay, maxPrice } = v;
+    const buyer = pay.account;
+    const refuse = (code: string, msg: string, headers: Record<string, string> = {}) => this.paymentRequired(req, code, msg, "", buyer, headers);
+    if (pay.depositTx) return this.paymentRequired(req, "invalid_payment", "aether-pull requests carry no deposit");
+    if (maxPrice < this.price) return refuse("price_above_signed_max", `the price is ${this.price} uaeth; the request allows at most ${maxPrice}`);
+    const acct = ledger.pullAccount(buyer);
+    const grantee = this.collector!.address;
+    const check = (g: SendGrant): [string, string] | undefined => {
+      if (g.expiration !== undefined && g.expiration * 1000 < this.now() + 2 * this.collectEveryMs) {
+        return ["no_grant", `your allowance for ${grantee} expires too soon to collect under; grant one lasting at least ${(2 * this.collectEveryMs) / 1000}s`];
+      }
+      if (g.allowList.length && !g.allowList.includes(this.cfg.payTo)) return ["no_grant", "your allowance doesn't allow paying " + this.cfg.payTo];
+      const need = owedOf(acct) + this.price;
+      if (!g.unlimited && g.spendLimitUaeth < need) {
+        if (acct.unpaid > 0n) return ["pull_unpaid", `collecting ${acct.unpaid} uaeth you owe failed; grant an allowance covering it plus this request (${need} uaeth) to continue`];
+        return ["grant_too_low", `your allowance has ${g.spendLimitUaeth} uaeth left and you owe ${owedOf(acct)} uaeth not yet collected; this request needs ${this.price} more`];
+      }
+      return undefined;
+    };
+    let g: SendGrant | undefined;
+    for (let fresh = false; ; fresh = true) {
+      let got;
+      try {
+        got = await this.grant(buyer, fresh);
+      } catch (e) {
+        console.error(`paywall: looking up ${buyer}'s allowance: ${(e as Error).message}`);
+        return { kind: "respond", status: 503, headers: { "Retry-After": "10", "Content-Type": "text/plain" }, body: "could not reach the chain to check your allowance; retry\n" };
+      }
+      g = got.g;
+      if (!g) return refuse("no_grant", `grant ${grantee} a send allowance limited to ${this.cfg.payTo} first (x/authz SendAuthorization)`);
+      const bad = check(g);
+      if (!bad) break;
+      if (!got.cached) return refuse(bad[0], bad[1]);
+      // it may have been raised since: look again before refusing
+    }
+    if (acct.unpaid > 0n) {
+      ledger.reinstate(buyer); // the allowance covers the failed collection too: collect it with the next batch
+      acct.accrued += acct.unpaid;
+      acct.unpaid = 0n;
+    }
+    // What's being collected counts against the credit until it lands.
+    const a = ledger.accrue(buyer, pay.requestId, this.price, this.credit - acct.inFlight, this.now() + REQUEST_ID_RETENTION_MS);
+    if (!a.fresh) return refuse("invoice_already_redeemed", "this requestId was already charged and served");
+    if (!a.ok) {
+      this.wake();
+      return refuse("settlement_pending", `you owe ${a.accrued + acct.inFlight} uaeth, this service's limit before collecting; it's being collected -- retry shortly`, { "Retry-After": "10" });
+    }
+    const owed = a.accrued + acct.inFlight;
+    if (a.accrued * 2n >= this.credit) this.wake();
+    const settle: Record<string, unknown> = { success: true, network: this.network, payer: buyer, owed: owed.toString() };
+    if (!g!.unlimited) settle.allowance = (g!.spendLimitUaeth - owed).toString();
+    return {
+      kind: "serve", payment: { payer: buyer, scheme: SCHEME_PULL, owedUaeth: owed }, headers: { "X-PAYMENT-RESPONSE": encodeHeader(settle) },
+      receipt: this.receiptFor(req, body, SCHEME_PULL, buyer, pay.requestId),
+      finish: (status) => {
+        if (status < 500) return;
+        try {
+          ledger.unaccrue(buyer, pay.requestId, this.price);
+        } catch (e) {
+          console.error(`paywall: uncharging ${buyer} for a failed request: ${(e as Error).message}`);
+        }
+      },
+    };
+  }
+
+  private wake() {
+    if (this.timer) void this.collectAll();
+  }
+
+  /** Collects what aether-pull buyers owe every pull.collectEverySeconds; returns a stop function. */
+  startCollecting(): () => void {
+    if (!this.pullLedger) throw new Error("this paywall doesn't offer aether-pull");
+    if (!this.timer) {
+      this.timer = setInterval(() => void this.collectAll(), this.collectEveryMs);
+      this.timer.unref?.();
+      void this.collectAll();
+    }
+    return () => {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    };
+  }
+
+  /** One pass over every buyer with something to collect. */
+  collectAll(): Promise<void> {
+    const run = this.collecting.then(async () => {
+      for (const account of this.pullLedger!.collectable()) {
+        try {
+          await this.collect(account);
+        } catch (e) {
+          console.error(`paywall: collecting from ${account}: ${(e as Error).message}`);
+        }
+      }
+    });
+    this.collecting = run.catch(() => undefined);
+    return run;
+  }
+
+  /** One step towards collecting what account owes: open, sign, save (before broadcast) and send, or follow up. */
+  private async collect(account: string): Promise<void> {
+    const ledger = this.pullLedger!;
+    let c: Collection | undefined = ledger.openCollection(account, bytesToHex(randomBytes(8)), this.now());
+    if (!c) return;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (c.status === "reserved") {
+        const signed = await this.collector!.signExec(account, this.cfg.payTo, BigInt(c.amount), COLLECTION_MEMO_PREFIX + c.id);
+        c = { ...c, status: "pending", txBytes: base64.encode(signed.txBytes), sequence: Number(signed.sequence), txHash: signed.hash, sequenceSpentAt: undefined };
+        ledger.saveCollection(c); // saved before it's broadcast: from here it's only re-sent
+      }
+      const state = await this.collector!.submit(base64.decode(c.txBytes!), BigInt(c.sequence ?? 0));
+      switch (state.status) {
+        case "confirmed":
+          this.grants.delete(account);
+          return ledger.closeCollection(account, true);
+        case "pending":
+          return; // checked again next pass
+        case "failed":
+          // Revoked, expired or exhausted allowance, or an empty account: the buyer owes it, and is refused until an allowance covers it.
+          console.error(`paywall: collecting ${c.amount} uaeth from ${account} failed; refusing it until it grants enough: ${state.log ?? ""}`);
+          this.grants.delete(account);
+          return ledger.closeCollection(account, false, state.log);
+        case "sequence_spent": {
+          const now = this.now();
+          if (!c.sequenceSpentAt || c.sequenceSpentAt.startsWith("0001-")) {
+            c = { ...c, sequenceSpentAt: new Date(now).toISOString() };
+            ledger.saveCollection(c);
+          }
+          if (now - Date.parse(c.sequenceSpentAt!) < SEQUENCE_SPENT_GRACE_MS) return;
+          c = { ...c, status: "reserved" }; // can never land: sign afresh
+        }
+      }
+    }
   }
 
   /** Credits depositTx to the account its memo names; a Decision if it can't be used. */
@@ -751,6 +954,16 @@ export class KeyPayout {
     if (!info) throw new Error(`payout account ${this.key.address} doesn't exist on chain yet: fund it`);
     const sequence = info.sequence < this.next ? this.next : info.sequence; // an earlier payout may still be in the mempool
     const s = buildSend(this.key, { chainId: this.client.chainId, accountNumber: info.accountNumber, sequence, to, amountUaeth, memo });
+    this.next = sequence + 1n;
+    return { txBytes: s.txBytes, sequence, hash: s.hash };
+  }
+
+  /** Signs, as the grantee, a transfer of amountUaeth from `from` to `to` under from's allowance. */
+  async signExec(from: string, to: string, amountUaeth: bigint, memo: string): Promise<{ txBytes: Uint8Array; sequence: bigint; hash: string }> {
+    const info = await this.client.accountInfo(this.key.address);
+    if (!info) throw new Error(`collector account ${this.key.address} doesn't exist on chain yet: the first allowance granted to it creates it`);
+    const sequence = info.sequence < this.next ? this.next : info.sequence;
+    const s = buildTx(this.key, [execSendMsg(this.key.address, from, to, amountUaeth)], { chainId: this.client.chainId, accountNumber: info.accountNumber, sequence, memo });
     this.next = sequence + 1n;
     return { txBytes: s.txBytes, sequence, hash: s.hash };
   }

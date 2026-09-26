@@ -7,6 +7,17 @@ the real `walletapi` Go binary as a child process and opens the same
 HTML file a developer would otherwise run with `go run ./cmd/walletapi`
 and open by hand. Keys never leave the machine `walletapi` runs on.
 
+`walletapi` signs with those keys, so it only answers requests carrying
+a secret token: the desktop app makes a fresh one per launch and gives
+it only to the backend and the wallet window. Run by hand, `walletapi`
+prints the page URL to open, token included. Without the token, any web
+page open in a browser could ask the local API to spend.
+
+The **Agents** tab gives an agent (any account) a chain-enforced
+allowance: a spend limit, an expiry, optionally only certain recipients,
+and optionally its transaction fees paid. It lists what each agent may
+still spend, and revokes with one click.
+
 ## Run in dev mode
 
 From this directory:

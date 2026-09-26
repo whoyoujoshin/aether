@@ -9,9 +9,17 @@ const { app, BrowserWindow } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const http = require("http");
+const crypto = require("crypto");
 
 const PORT = 8090;
 const HEALTH_URL = `http://localhost:${PORT}/api/accounts`;
+
+// A fresh secret per launch, known only to walletapi and this window:
+// walletapi signs with this machine's keys, and without it any web page
+// open in a browser could ask it to spend (see cmd/walletapi withCORS).
+// Passed through the environment, not the command line, which other
+// local users can read.
+const API_TOKEN = crypto.randomBytes(32).toString("hex");
 
 let backendProcess = null;
 let mainWindow = null;
@@ -37,7 +45,10 @@ function backendBinaryPath() {
 
 function startBackend() {
   const binPath = backendBinaryPath();
-  backendProcess = spawn(binPath, [], { stdio: ["ignore", "pipe", "pipe"] });
+  backendProcess = spawn(binPath, [], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: Object.assign({}, process.env, { AETHER_WALLET_TOKEN: API_TOKEN }),
+  });
 
   backendProcess.stdout.on("data", (d) => process.stdout.write(`[walletapi] ${d}`));
   backendProcess.stderr.on("data", (d) => process.stderr.write(`[walletapi] ${d}`));
@@ -54,7 +65,7 @@ function waitForBackend(timeoutMs = 10000, intervalMs = 200) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve) => {
     const attempt = () => {
-      const req = http.get(HEALTH_URL, (res) => {
+      const req = http.get(HEALTH_URL, { headers: { "X-Wallet-Token": API_TOKEN } }, (res) => {
         res.resume();
         resolve(true);
       });
@@ -89,7 +100,7 @@ async function createWindow() {
   // The UI is the existing, already-shipped, already live-verified
   // file -- loaded as-is, no changes needed (it already talks to
   // http://localhost:8090 with CORS wide open on the Go side).
-  mainWindow.loadFile(path.join(__dirname, "..", "web", "aether-pay-desktop.html"));
+  mainWindow.loadFile(path.join(__dirname, "..", "web", "aether-pay-desktop.html"), { query: { token: API_TOKEN } });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });

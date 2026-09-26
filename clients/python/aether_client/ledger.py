@@ -36,6 +36,17 @@ def _parse_time(s: str) -> Optional[float]:
     return base.replace(tzinfo=tz).timestamp() + frac
 
 
+class PullAccount:
+    """Where one aether-pull buyer stands, in uaeth."""
+
+    def __init__(self, accrued=0, in_flight=0, unpaid=0):
+        self.accrued, self.in_flight, self.unpaid = accrued, in_flight, unpaid  # charged; being collected; from failed collections
+
+    @property
+    def owed(self) -> int:
+        return self.accrued + self.in_flight + self.unpaid
+
+
 class LedgerError(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -61,6 +72,122 @@ class FileLedger:
             for k in ("balances", "deposits", "requests", "withdrawals"):
                 if not isinstance(self.state.get(k), dict):
                     self.state[k] = {}
+        for k in ("pull", "pullRequests", "collections"):
+            if not isinstance(self.state.get(k), dict):
+                self.state[k] = {}
+
+    # --- aether-pull: what buyers owe (the Go paywall's PullLedger) ---
+
+    def pull_account(self, account: str) -> PullAccount:
+        with self._lock:
+            r = self.state["pull"].get(account) or {}
+            return PullAccount(_num(r.get("accrued")), _num((r.get("open") or {}).get("amount")), _num(r.get("unpaid")))
+
+    def _drop_if_empty(self, account: str):
+        r = self.state["pull"].get(account)
+        if r is not None and not r.get("accrued") and not r.get("unpaid") and not r.get("open"):
+            del self.state["pull"][account]
+
+    def accrue(self, account: str, request_id: str, amount: int, limit: int, forget_after: float):
+        """Charges amount for a request_id not charged before: (accrued, ok, fresh). ok is False
+        (nothing changes) if what's accrued would exceed limit."""
+        with self._lock:
+            key = f"{account}/{request_id}"
+            accrued = self.pull_account(account).accrued
+            if key in self.state["pullRequests"]:
+                return accrued, False, False
+            if accrued + amount > limit:
+                return accrued, False, True
+
+            def change():
+                self.state["pull"].setdefault(account, {})["accrued"] = str(accrued + amount)
+                self.state["pullRequests"][key] = {"amount": str(amount), "forgetAfter": _iso(forget_after)}
+                return accrued + amount, True, True
+            return self._mutate(change)
+
+    def unaccrue(self, account: str, request_id: str, amount: int):
+        """Reverses an accrue not yet taken into a collection."""
+        with self._lock:
+            key = f"{account}/{request_id}"
+            if key not in self.state["pullRequests"]:
+                raise KeyError(f"request {key} was not charged")
+            accrued = self.pull_account(account).accrued
+            if accrued < amount:
+                raise ValueError(f"request {key} is already being collected")
+
+            def change():
+                r = self.state["pull"].setdefault(account, {})
+                if accrued - amount:
+                    r["accrued"] = str(accrued - amount)
+                else:
+                    r.pop("accrued", None)
+                del self.state["pullRequests"][key]
+                self._drop_if_empty(account)
+            self._mutate(change)
+
+    def collectable(self):
+        """Accounts with something accrued or a collection open."""
+        with self._lock:
+            return sorted(a for a, r in self.state["pull"].items() if r.get("accrued") or r.get("open"))
+
+    def open_collection(self, account: str, cid: str, at: float) -> Optional[dict]:
+        """The account's open collection, or a new one for everything accrued (None: nothing to collect)."""
+        with self._lock:
+            r = self.state["pull"].get(account)
+            if not r:
+                return None
+            if r.get("open"):
+                return dict(r["open"])
+            if not r.get("accrued"):
+                return None
+
+            def change():
+                c = {"id": cid, "account": account, "amount": r["accrued"], "status": "reserved", "at": _iso(at)}
+                r["open"] = c
+                del r["accrued"]
+                return dict(c)
+            return self._mutate(change)
+
+    def save_collection(self, c: dict):
+        with self._lock:
+            r = self.state["pull"].get(c["account"])
+            if not r or not r.get("open") or r["open"]["id"] != c["id"]:
+                raise KeyError(f"collection {c['id']} is not open")
+
+            def change():
+                r["open"] = {k: v for k, v in c.items() if v is not None}
+            self._mutate(change)
+
+    def close_collection(self, account: str, collected: bool, log: str = ""):
+        """Ends the open collection: collected, or failed (its amount becomes unpaid)."""
+        with self._lock:
+            r = self.state["pull"].get(account)
+            if not r or not r.get("open"):
+                raise KeyError(f"{account} has no open collection")
+
+            def change():
+                c = {k: v for k, v in r["open"].items() if k != "txBytes"}
+                c["status"] = "confirmed" if collected else "failed"
+                if log:
+                    c["log"] = log
+                if not collected:
+                    r["unpaid"] = str(_num(r.get("unpaid")) + _num(c["amount"]))
+                self.state["collections"][c["id"]] = c
+                del r["open"]
+                self._drop_if_empty(account)
+            self._mutate(change)
+
+    def reinstate(self, account: str):
+        """Moves unpaid back to accrued, to collect again."""
+        with self._lock:
+            r = self.state["pull"].get(account)
+            if not r or not r.get("unpaid"):
+                return
+
+            def change():
+                r["accrued"] = str(_num(r.get("accrued")) + _num(r["unpaid"]))
+                del r["unpaid"]
+            self._mutate(change)
 
     def balance(self, account: str) -> int:
         with self._lock:
@@ -165,10 +292,11 @@ class FileLedger:
 
     def _save(self):
         now = _now()
-        for k, r in list(self.state["requests"].items()):
-            t = _parse_time(r.get("forgetAfter", ""))
-            if t is not None and t < now:
-                del self.state["requests"][k]
+        for m in (self.state["requests"], self.state["pullRequests"]):
+            for k, r in list(m.items()):
+                t = _parse_time(r.get("forgetAfter", ""))
+                if t is not None and t < now:
+                    del m[k]
         if not self.path:
             return
         d = os.path.dirname(os.path.abspath(self.path))
@@ -176,7 +304,9 @@ class FileLedger:
         tmp = self.path + ".tmp"
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "wb") as f:
-            f.write(json.dumps(self.state, indent=2).encode())
+            # Like the Go ledger: empty aether-pull maps are left out.
+            out = {k: v for k, v in self.state.items() if v or k not in ("pull", "pullRequests", "collections")}
+            f.write(json.dumps(out, indent=2).encode())
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, self.path)

@@ -20,7 +20,9 @@
 // For agents making many small requests, a server can also offer the
 // "aether-prepaid" scheme (see prepaid.go): deposit once on chain, then
 // pay per request instantly by signing each request with the account's
-// ML-DSA key.
+// ML-DSA key. Or "aether-pull" (pull.go): grant the seller a capped,
+// expiring allowance on chain and sign each request the same way; the
+// seller collects what's owed in batches, and nothing sits with it.
 //
 // Operational notes: issuing invoices stores nothing (they are
 // HMAC-signed), but each X-PAYMENT carrying a genuine invoice costs one
@@ -40,6 +42,8 @@ const (
 	Scheme = "aether-memo"
 	// SchemePrepaid draws requests from a deposited balance.
 	SchemePrepaid = "aether-prepaid"
+	// SchemePull charges requests to an allowance the buyer granted.
+	SchemePull = "aether-pull"
 	// DepositMemoPrefix + the account to credit is a deposit's memo.
 	DepositMemoPrefix = "prepaid:"
 	// Asset is the denom prices are stated in.
@@ -70,6 +74,12 @@ const (
 	ErrInsufficientBalance = "insufficient_balance"
 	ErrInvalidDeposit      = "invalid_deposit"
 	ErrRequestTooLarge     = "request_too_large"
+
+	// aether-pull
+	ErrNoGrant     = "no_grant"           // no usable allowance for this seller: grant one
+	ErrGrantTooLow = "grant_too_low"      // the allowance doesn't cover what's owed plus this request
+	ErrPullUnpaid  = "pull_unpaid"        // collecting an earlier balance failed: grant enough to cover it
+	ErrSettling    = "settlement_pending" // credit used up while it's being collected: retry shortly
 )
 
 // PaymentRequired is the body of a 402 response.
@@ -109,6 +119,14 @@ type Extra struct {
 	// WithdrawPath, if set, is where unspent balance can be withdrawn.
 	WithdrawPath string `json:"withdrawPath,omitempty"`
 
+	// aether-pull: grant Grantee a send allowance limited to payTo.
+	Grantee string `json:"grantee,omitempty"`
+	// Credit is the most (uaeth) a buyer may owe before it's collected.
+	Credit string `json:"credit,omitempty"`
+	// Owed is uaeth charged but not yet collected, when the request
+	// named an account.
+	Owed string `json:"owed,omitempty"`
+
 	Instructions string `json:"instructions"`
 }
 
@@ -134,6 +152,10 @@ type SettlementResponse struct {
 	Network     string `json:"network"`
 	Payer       string `json:"payer"`
 	Balance     string `json:"balance,omitempty"` // aether-prepaid: uaeth left
+	// aether-pull: uaeth charged but not yet collected, and what the
+	// allowance still covers beyond that ("" if unlimited).
+	Owed      string `json:"owed,omitempty"`
+	Allowance string `json:"allowance,omitempty"`
 }
 
 // EncodeMemoPayment builds an aether-memo X-PAYMENT header value.
