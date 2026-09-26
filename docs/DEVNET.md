@@ -96,9 +96,8 @@ go run ./cmd/powminer
 # excluded and why)
 go run ./cmd/aetherd query pow params
 
-# Check balances / supply after reward distribution
-# go run ./cmd/aetherd query bank balances <miner-address>
-# go run ./cmd/aetherd query bank total
+# Check balances after reward distribution
+go run ./cmd/aetherd query bank balances <miner-address>
 ```
 
 Expected: Miner receives ~85% of block reward (4.25 AETH), 15% routes to fee collector / treasury module account. Difficulty adjusts toward 60s target in BeginBlocker.
