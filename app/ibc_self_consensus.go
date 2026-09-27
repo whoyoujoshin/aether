@@ -23,6 +23,15 @@ import (
 // selfConsensusHistoryLength entries. A relayer only ever needs a
 // header from very close to the current tip (it creates a client from a
 // header it just queried), so this window is generous, not tight.
+//
+// NOTE (2026-09-27): ibc-go v8.8.0's connection handshake no longer
+// calls ValidateSelfClient or GetSelfConsensusState, so neither this
+// store nor selfConsensusStakingShim.UnbondingTime is consulted by
+// anything today; the shim exists because ibckeeper.NewKeeper requires
+// a staking keeper. The unbonding period of a client of Aether is
+// chosen by whoever creates it (see relayer.AetherUnbondingPeriod).
+// Removing the per-block header writes would change the AppHash, so
+// that needs its own height-gated cutover.
 const ibcSelfConsensusStoreKey = "ibcselfconsensus"
 
 // selfConsensusHistoryLength bounds the window, matching how

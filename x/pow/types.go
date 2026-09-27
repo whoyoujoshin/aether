@@ -167,11 +167,15 @@ var BlockRewardDecayFactor = math.LegacyMustNewDecFromStr("0.66")
 //
 // genesis.json / genesis.template.json configure
 // consensus.params.evidence as max_age_num_blocks=100000,
-// max_age_duration=172800000000000ns (48h). CometBFT evidence expires
-// once EITHER bound is hit, and at the 60s TargetBlockTime, 48h =
-// 2880 blocks -- far tighter than the 100,000-block ceiling, so the
-// time bound is what actually governs here, not the block-count one.
-// A BondCooldown shorter than that 48h window is a real, live
+// max_age_duration=172800000000000ns (48h). CORRECTION (2026-09-27):
+// CometBFT expires evidence only once BOTH bounds are exceeded
+// (evidence/pool.go isExpired: ageNumBlocks > MaxAgeNumBlocks &&
+// ageDuration > MaxAgeDuration), not either. So the real window is
+// the LONGER of the two -- 100,000 blocks here, ~69 days at the 60s
+// target and ~5.8 days at the ~5s the live chain actually runs --
+// and the 4320 below does not cover it. See docs/IBC.md's open issue
+// on the bond cooldown. The original reasoning follows unchanged.
+// A BondCooldown shorter than the evidence window is a real, live
 // economic-security gap: a validator can equivocate and fully
 // withdraw before evidence could even still be considered valid.
 //
