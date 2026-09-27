@@ -53,6 +53,17 @@ import (
 	authzkeeper "github.com/cosmos/cosmos-sdk/x/authz/keeper"
 	authzmodule "github.com/cosmos/cosmos-sdk/x/authz/module"
 
+	capability "github.com/cosmos/ibc-go/modules/capability"
+	capabilitykeeper "github.com/cosmos/ibc-go/modules/capability/keeper"
+	capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
+	transfer "github.com/cosmos/ibc-go/v8/modules/apps/transfer"
+	ibctransferkeeper "github.com/cosmos/ibc-go/v8/modules/apps/transfer/keeper"
+	ibctransfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
+	ibc "github.com/cosmos/ibc-go/v8/modules/core"
+	porttypes "github.com/cosmos/ibc-go/v8/modules/core/05-port/types"
+	ibcexported "github.com/cosmos/ibc-go/v8/modules/core/exported"
+	ibckeeper "github.com/cosmos/ibc-go/v8/modules/core/keeper"
+	ibctm "github.com/cosmos/ibc-go/v8/modules/light-clients/07-tendermint"
 )
 
 const Name = "aether"
@@ -101,6 +112,16 @@ var ModuleBasics = module.NewBasicManager(
 	// these two only once AuthzFeegrantActivationHeight is reached.
 	authzmodule.AppModuleBasic{},
 	feegrantmodule.AppModuleBasic{},
+	// Same story, gated on IBCActivationHeight instead: see app/ibc.go.
+	// ibctm registers the 07-tendermint light client's own ClientState /
+	// ConsensusState / Header Any types: core IBC's own RegisterInterfaces
+	// does NOT include these (see the light-client-as-a-module split in
+	// ibc-go v8), so any tx carrying one (e.g. MsgCreateClient) fails to
+	// decode ("tx parse error": unable to resolve type URL) without this.
+	capability.AppModuleBasic{},
+	ibc.AppModuleBasic{},
+	ibctm.AppModuleBasic{},
+	transfer.AppModuleBasic{},
 )
 
 type EncodingConfig struct {
@@ -186,6 +207,8 @@ type App struct {
 	cdc               codec.Codec
 	interfaceRegistry cdctypes.InterfaceRegistry
 	keys              map[string]*storetypes.KVStoreKey
+	memKeys           map[string]*storetypes.MemoryStoreKey
+	txConfig          client.TxConfig
 
 	AccountKeeper         authkeeper.AccountKeeper
 	BankKeeper            bankkeeper.BaseKeeper
@@ -199,6 +222,17 @@ type App struct {
 	FeeGrantKeeper feegrantkeeper.Keeper
 
 	authzFeegrantWired bool
+
+	// Zero-valued (unusable) until ibcWired -- see IBCActivationHeight.
+	// IBCKeeper must be a pointer, so its Router can be set after
+	// construction (see New()).
+	CapabilityKeeper     *capabilitykeeper.Keeper
+	IBCKeeper            *ibckeeper.Keeper
+	TransferKeeper       ibctransferkeeper.Keeper
+	ScopedIBCKeeper      capabilitykeeper.ScopedKeeper
+	ScopedTransferKeeper capabilitykeeper.ScopedKeeper
+
+	ibcWired bool
 
 	sm *module.Manager
 	BasicModuleManager   module.BasicManager
@@ -256,13 +290,36 @@ if err != nil {
 		}
 	}
 
+	ibcCutover := planIBC(rootmulti.GetLatestVersion(db), ibcActivationHeight)
+	app.ibcWired = ibcCutover.wire
+	if ibcCutover.wire {
+		for _, name := range ibcStoreKeys {
+			app.keys[name] = storetypes.NewKVStoreKey(name)
+		}
+	}
+
 	app.MountKVStores(app.keys)
+
+	// Memory stores are transient (never committed, no AppHash effect,
+	// rebuilt fresh every process start), so unlike ibcStoreKeys they
+	// don't need height-gating: always mount them. They simply go
+	// unused until IBC (capability) is wired.
+	app.memKeys = map[string]*storetypes.MemoryStoreKey{}
+	for _, name := range ibcMemoryStoreKeys {
+		app.memKeys[name] = storetypes.NewMemoryStoreKey(name)
+	}
+	app.MountMemoryStores(app.memKeys)
 
 	maccPerms := map[string][]string{
 	authtypes.FeeCollectorName: nil,
 	pow.ModuleName:             {authtypes.Minter},
 	treasury.ModuleName:        nil,
 	governance.ModuleName:      {authtypes.Burner},
+	// Registered unconditionally (harmless before IBC activates -- see
+	// IBCActivationHeight): AccountKeeper is constructed once, early,
+	// and ibctransferkeeper.NewKeeper panics if its module account isn't
+	// a recognized name here.
+	ibctransfertypes.ModuleName: {authtypes.Minter, authtypes.Burner},
 }
 
 app.AccountKeeper = authkeeper.NewAccountKeeper(
@@ -328,6 +385,51 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 		feegrantKeeper = app.FeeGrantKeeper
 	}
 
+	// Capability + core IBC + ICS-20 transfer, gated on
+	// IBCActivationHeight (see app/ibc.go for why: same reasoning as
+	// authz/feegrant above).
+	if ibcCutover.wire {
+		app.CapabilityKeeper = capabilitykeeper.NewKeeper(appCodec, app.keys[capabilitytypes.StoreKey], app.memKeys[capabilitytypes.MemStoreKey])
+		app.ScopedIBCKeeper = app.CapabilityKeeper.ScopeToModule(ibcexported.ModuleName)
+		app.ScopedTransferKeeper = app.CapabilityKeeper.ScopeToModule(ibctransfertypes.ModuleName)
+		// Every module that will ever call ScopeToModule against this
+		// keeper must do so before this line -- a later ScopeToModule
+		// panics. Interchain accounts (controller/host) add their own
+		// calls here when that milestone lands; until then this is every
+		// scope this chain has.
+		app.CapabilityKeeper.Seal()
+
+		app.IBCKeeper = ibckeeper.NewKeeper(
+			appCodec,
+			app.keys[ibcexported.StoreKey],
+			noLegacyParamSubspace{},
+			selfConsensusStakingShim{app: app},
+			newNoIBCSoftwareUpgrades(),
+			app.ScopedIBCKeeper,
+			authtypes.NewModuleAddress(governance.ModuleName).String(),
+		)
+
+		app.TransferKeeper = ibctransferkeeper.NewKeeper(
+			appCodec,
+			app.keys[ibctransfertypes.StoreKey],
+			noLegacyParamSubspace{},
+			app.IBCKeeper.ChannelKeeper, // ICS4Wrapper: no fee middleware, so this is the base channel keeper directly
+			app.IBCKeeper.ChannelKeeper,
+			app.IBCKeeper.PortKeeper,
+			app.AccountKeeper,
+			app.BankKeeper,
+			app.ScopedTransferKeeper,
+			authtypes.NewModuleAddress(governance.ModuleName).String(),
+		)
+
+		ibcRouter := porttypes.NewRouter()
+		ibcRouter.AddRoute(ibctransfertypes.ModuleName, transfer.NewIBCModule(app.TransferKeeper))
+		// Interchain accounts' controller/host routes are added here in a
+		// later milestone, before this SetRouter call: the router seals
+		// itself on SetRouter and refuses any AddRoute after that.
+		app.IBCKeeper.SetRouter(ibcRouter)
+	}
+
 	// Module manager
 	powModule := pow.NewAppModule(appCodec, app.PowKeeper)
 
@@ -350,6 +452,14 @@ consensusModule := consensus.NewAppModule(appCodec, app.ConsensusParamsKeeper)
 			feegrantmodule.NewAppModule(appCodec, app.AccountKeeper, app.BankKeeper, app.FeeGrantKeeper, app.interfaceRegistry),
 		)
 	}
+	if ibcCutover.wire {
+		modules = append(modules,
+			capability.NewAppModule(appCodec, *app.CapabilityKeeper, false),
+			ibc.NewAppModule(app.IBCKeeper),
+			ibctm.NewAppModule(),
+			transfer.NewAppModule(app.TransferKeeper),
+		)
+	}
 	app.sm = module.NewManager(modules...)
 
 	app.BasicModuleManager = module.NewBasicManagerFromManager(app.sm, nil)
@@ -369,6 +479,7 @@ if err != nil {
 	panic(err)
 }
 	bApp.SetTxDecoder(txConfig.TxDecoder())
+	app.txConfig = txConfig
 
 	// Standard ante handler
 	stdAnteHandler, err := authante.NewAnteHandler(authante.HandlerOptions{
@@ -405,8 +516,17 @@ if err != nil {
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
 	app.SetEndBlocker(app.EndBlocker)
-	if authzFeegrant.addStores {
-		app.SetStoreLoader(authzFeegrantStoreLoader)
+	if authzFeegrant.addStores || ibcCutover.addStores {
+		var added []string
+		if authzFeegrant.addStores {
+			added = append(added, authzFeegrantStoreKeys...)
+		}
+		if ibcCutover.addStores {
+			added = append(added, ibcStoreKeys...)
+		}
+		app.SetStoreLoader(func(ms storetypes.CommitMultiStore) error {
+			return ms.LoadLatestVersionAndUpgrade(&storetypes.StoreUpgrades{Added: added})
+		})
 	}
 	if loadLatest {
 		if err := app.LoadLatestVersion(); err != nil {
@@ -456,6 +576,9 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 }
 func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 	if err := app.checkAuthzFeegrantActivation(ctx); err != nil {
+		return sdk.BeginBlock{}, err
+	}
+	if err := app.checkIBCActivation(ctx); err != nil {
 		return sdk.BeginBlock{}, err
 	}
 	if err := app.MigrateConsensusParamsToNewStore(ctx); err != nil {
