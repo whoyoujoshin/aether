@@ -48,7 +48,7 @@ Let an agent spend from your account with a chain-enforced cap instead of holdin
 | Wallet library and CLI | Built, tested, live-verified |
 | Testnet faucet and block explorer | Built, live, deployed with seed node |
 | **Public testnet** | **Live** — see below |
-| Native IBC (core, ICS-20 transfer, ICS-27 interchain accounts) | Built, tested, live-verified — activated at block 122,000 |
+| Native IBC (core, ICS-20 transfer, ICS-27 interchain accounts) | Built, tested, live-verified — activated at block 122,000; full client/connection/channel/transfer round trip relayed against a separate chain with Aether's own ML-DSA relayer |
 | Account abstraction (session keys, guardian thresholds) | Built, tested, live-verified — activated at block 122,000 |
 | Independent professional security audit | Not yet performed |
 
@@ -384,7 +384,7 @@ aetherd query governance proposal <proposal-id>
 - [Agent & Bot Integration](docs/AGENT_INTEGRATION.md) — participating as software agents (current surface + proposed APIs/policy)
 - [Agent-to-agent payment demo](docs/AGENT_DEMO.md) — a real spend-capped grant and payment, reproducible against any network
 - [TLS for the seed](docs/TLS.md) — HTTPS for RPC/gRPC/faucet/explorer with no domain purchase
-- [IBC](docs/IBC.md) — core IBC, ICS-20 transfer, ICS-27 interchain accounts: built and tested, not yet activated on a live chain
+- [IBC](docs/IBC.md) — core IBC, ICS-20 transfer, ICS-27 interchain accounts: live since block 122,000, plus the ML-DSA relayer and counterparty chain used to test it end to end
 - [Account abstraction](docs/ACCOUNT_ABSTRACTION.md) — session keys and guardian thresholds (`x/accountauth`): built and tested, not yet activated on a live chain
 - Wiki: [Architecture](../../wiki/Architecture), [Phase 1 Multi-Validator Selection](../../wiki/Phase-1-Multi-Validator-Selection), [Known Issues](../../wiki/Known-Issues-and-Technical-Debt)
 
