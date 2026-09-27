@@ -58,7 +58,7 @@ stand-ins for both:
   swaps, so IBC's `MsgIBCSoftwareUpgrade` route is never wired in. The
   stand-in keeper returns clear errors rather than silently no-oping.
 
-## Testing this without a live relayer
+## In-process tests (ibctesting)
 
 `app/ibc_handshake_test.go` and `app/ibc_ica_test.go` build
 `ibctesting.TestChain` by hand instead of using ibc-go's own
@@ -72,10 +72,45 @@ since `PostQuantumDecorator` rejects anything else -- then hands it to
 `ibctesting`'s normal `Coordinator`/`Path` machinery, which works
 unmodified once the chain is built.
 
-## Activating this for real
+## Real relayer test: Aether <-> a separate chain over RPC
 
-The height-gated cutover (see above) is done and verified live. What's
-still outstanding: point a relayer (e.g. Hermes) at the chain and open
-a real client/connection/channel -- nothing here has been run against
-a live, independently-operated counterparty chain yet, only the
-in-process `ibctesting` harness.
+Off-the-shelf relayers can't drive Aether: both Hermes and
+`cosmos/relayer` hardcode secp256k1 signing with no extension point,
+and `PostQuantumDecorator` rejects every Aether tx that isn't ML-DSA-44
+signed. So the repo carries its own:
+
+- **`counterparty/` + `cmd/counterpartyd`** -- an ordinary Cosmos SDK
+  chain (real `x/staking`, secp256k1 keys, no post-quantum ante
+  decorator) whose only job is to be a genuinely separate IBC
+  counterparty process.
+- **`relayer/` + `cmd/relayer`** -- a minimal, purpose-built relayer, not
+  a general one. It talks to each chain over real RPC/gRPC, signs Aether
+  txs with ML-DSA-44 and counterparty txs with secp256k1, and uses
+  ibc-go's own client/connection/channel query and proof helpers.
+
+One run of `cmd/relayer` does the whole path: a 07-tendermint client on
+each side (trusting/unbonding periods read from each chain's live params
+-- `x/pow` bond cooldown for Aether, `x/staking` unbonding time for the
+counterparty), the connection handshake, an unordered `ics20-1` channel,
+then 12345 uaeth Aether -> counterparty and the voucher back, checking
+the escrow, the voucher (trace `transfer/channel-0/uaeth`), and that the
+escrow returns to exactly 0.
+
+**Verified 2026-09-27** against a local Aether devnet and a local
+counterparty devnet, each its own process. The Aether side went through
+the real height-gated activation halt and restart first, just with a
+small activation height. That run is the first real exercise of
+`app/ibc_self_consensus.go`: on `ConnOpenAck`, Aether checked the
+counterparty's client of Aether against its own recorded headers and
+bond-cooldown unbonding period, and accepted it.
+
+To reproduce locally: build `aetherd` with `ibcActivationHeight` in
+`app/ibc.go` set to a small value (local builds only, never commit it),
+start a single-validator devnet per `docs/DEVNET.md` with a funded
+`relayer` key, restart it when it halts at the activation height, start
+a `counterpartyd` devnet on non-default ports with a funded `relayer`
+key, then run `cmd/relayer` pointed at both (see its flags).
+
+Still not done: running this against the live testnet or against a
+counterparty operated by someone else. Both are an operational step
+now, not a code one.
