@@ -48,8 +48,8 @@ Let an agent spend from your account with a chain-enforced cap instead of holdin
 | Wallet library and CLI | Built, tested, live-verified |
 | Testnet faucet and block explorer | Built, live, deployed with seed node |
 | **Public testnet** | **Live** — see below |
-| Native IBC (core, ICS-20 transfer, ICS-27 interchain accounts) | Built, tested (real handshake + packet relay, real interchain-account register + execute) — height-gated activation not yet scheduled |
-| Account abstraction (session keys, guardian thresholds) | Built, tested (registration, session-key/guardian-threshold exec, CLI, walletapi, agentmcp) — height-gated activation not yet scheduled |
+| Native IBC (core, ICS-20 transfer, ICS-27 interchain accounts) | Built, tested (real handshake + packet relay, real interchain-account register + execute) — activates at block 122,000 |
+| Account abstraction (session keys, guardian thresholds) | Built, tested (registration, session-key/guardian-threshold exec, CLI, walletapi, agentmcp) — activates at block 122,000 |
 | Independent professional security audit | Not yet performed |
 
 See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and [Roadmap](../../wiki/Roadmap).
