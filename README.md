@@ -385,6 +385,13 @@ aetherd query governance proposal <proposal-id>
 - [TLS for the seed](docs/TLS.md) — HTTPS for RPC/gRPC/faucet/explorer with no domain purchase
 - Wiki: [Architecture](../../wiki/Architecture), [Phase 1 Multi-Validator Selection](../../wiki/Phase-1-Multi-Validator-Selection), [Known Issues](../../wiki/Known-Issues-and-Technical-Debt)
 
+## License and brand
+
+Software in this repository is under the [MIT License](LICENSE).
+
+The Aether name, Æ mark, and assets in [`docs/brand/`](docs/brand/) are **not**
+covered by that license. See [Brand usage and trademarks](docs/brand/README.md#brand-usage-and-trademarks).
+
 ## Contributing
 
 Major design decisions and subtle Cosmos SDK / CometBFT integration fixes are documented in the wiki. Read those before changing `app/`, `x/pow`, or `crypto/mldsa`.
