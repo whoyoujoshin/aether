@@ -41,6 +41,7 @@ const links: [string, string][] = [
   ["/validators", "Validators"],
   ["/governance", "Governance"],
   ["/services", "Services"],
+  ["/ibc", "IBC"],
   ["/agents", "For agents"],
 ];
 

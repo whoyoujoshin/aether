@@ -261,6 +261,36 @@ export interface ServiceDirectory {
   services: ServiceListing[];
 }
 
+export interface IBCCoin {
+  denom: string;
+  amount: string;
+}
+
+export interface IBCChannel {
+  portId: string;
+  channelId: string;
+  state: string; // e.g. "STATE_OPEN"
+  ordering: string;
+  version: string;
+  connectionId: string;
+  clientId: string;
+  counterpartyPortId: string;
+  counterpartyChannelId: string;
+  counterpartyChainId: string; // "" if the client state couldn't be read
+  trustingPeriodSecs: number;
+  unbondingPeriodSecs: number;
+  packetsSent: number;
+  pendingPackets: number;
+  escrowAddress: string;
+  escrowBalances: IBCCoin[];
+}
+
+export interface IBCSummary {
+  clients: number;
+  connections: number;
+  channels: IBCChannel[];
+}
+
 export interface SendPermission {
   unlimited: boolean;
   spendLimit: string; // uaeth left; "" if unlimited
@@ -324,5 +354,6 @@ export const api = {
   blocks: () => getJSON<BlockSummary[]>("/api/blocks"),
   block: (height: number) => getJSON<BlockDetail>(`/api/block?height=${height}`),
   services: () => getJSON<ServiceDirectory>("/api/services"),
+  ibc: () => getJSON<IBCSummary>("/api/ibc"),
   agents: () => getJSON<AgentCard>("/api/agents"),
 };
