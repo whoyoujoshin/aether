@@ -8,12 +8,15 @@ and covered by real unit and integration tests
 activation is height-gated: like `x/authz`/`x/feegrant` and IBC before
 it, adding a new store to an already-running chain needs a coordinated,
 height-gated cutover, not a plain code deploy.
-`AccountAuthActivationHeight` is **122,000**, coordinated with the
+`AccountAuthActivationHeight` was **122,000**, coordinated with the
 operator on 2026-09-27 with the live tip at 121,807 -- the same
 coordinated cutover as `IBCActivationHeight` (see `docs/IBC.md`), the
-same way `AuthzFeegrantActivationHeight` was finalized at 109,000. Every
-node must be running a binary that carries this height before it
-arrives, and restart once at `activation-1` to mount the new store.
+same way `AuthzFeegrantActivationHeight` was finalized at 109,000.
+**Live as of 2026-09-27**: all four testnet nodes restarted at 121,999
+and passed the gate cleanly, and `accountauth authenticators <addr>` on
+the live node returns an empty list instead of erroring, confirming the
+store mounted and the module is live, not just that consensus didn't
+halt.
 
 ## What this is
 
@@ -109,8 +112,4 @@ not one this server needs to also implement to be useful).
 
 ## Activating this for real
 
-`AccountAuthActivationHeight` is agreed at 122,000 (see above) -- every
-node must run a binary carrying this height before it arrives, and
-restart once at `activation-1` to mount the new store -- see
-`app/accountauth.go` and `app/authz_feegrant.go`'s own doc comments for
-the mechanics.
+Done -- see the coordinated cutover above.
