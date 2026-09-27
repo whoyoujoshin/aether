@@ -111,6 +111,37 @@ start a single-validator devnet per `docs/DEVNET.md` with a funded
 a `counterpartyd` devnet on non-default ports with a funded `relayer`
 key, then run `cmd/relayer` pointed at both (see its flags).
 
-Still not done: running this against the live testnet or against a
-counterparty operated by someone else. Both are an operational step
-now, not a code one.
+**Live-verified on `aether-testnet-1`, 2026-09-27.** Gitty ran the same
+`cmd/relayer` (built at `b87ecd1`) on sync3 against a throwaway
+`counterpartyd` on the same box, signing Aether's side with an ML-DSA
+relayer key funded on the live chain. It ended `round trip complete`:
+`07-tendermint-0`, `connection-0` and `transfer/channel-0` on Aether, all
+OPEN; 12345 uaeth out and back with the escrow at 0; the same voucher
+denom as the local run (`ibc/0406...3D27`); and packet 1's receipt
+recorded. The node's own queries confirmed each of these afterwards.
+Those three IDs stay on Aether, idle; the counterparty chain is gone.
+
+Still not done: a connection to a counterparty chain someone else
+operates. That's an operational step, not a code one.
+
+### The live chain's IBC unbonding period is 1h40m, not 72h
+
+The live run reported a bond cooldown of 1h40m. The testnet still has
+`x/pow`'s original 100-block placeholder `BondCooldown` (100 blocks x 60s
+target). `BondCooldownProduction` (4,320 blocks, 72h) is only the default
+for chains started from genesis after it landed; see `x/pow/types.go`
+and the whitepaper. Two consequences:
+
+- **Short-lived light clients.** A client of Aether on another chain
+  gets a trusting period of about 67 minutes (2/3 of 1h40m, the usual
+  relayer default). A standing connection would need a client update at
+  least that often, or the client expires and needs a governance
+  recovery on the other chain.
+- **The economic-security gap `types.go` describes.** 1h40m is far
+  shorter than the 48h evidence window, so a validator could equivocate
+  and withdraw before the evidence stops being valid.
+
+One governance proposal fixes both:
+`aetherd tx pow draft-update-params params.json --bond-cooldown 4320`,
+then submit and pass it. Do this before opening any IBC connection
+that's meant to stay up.
