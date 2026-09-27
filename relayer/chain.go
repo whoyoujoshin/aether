@@ -103,7 +103,10 @@ func NewChain(name, rpcAddr, grpcAddr, chainID, bech32Prefix string, cdc codec.C
 		WithTxConfig(txConfig).
 		WithKeybase(kr).
 		WithAccountRetriever(authtypes.AccountRetriever{}).
-		WithGas(600_000).
+		// Handshake txs batch a MsgUpdateClient (commit verification)
+		// with a message carrying three merkle proofs, and Aether's
+		// ML-DSA signature and pubkey alone are ~3.7KB of per-byte gas.
+		WithGas(2_000_000).
 		WithSimulateAndExecute(false)
 	if gasPrices != "" {
 		factory = factory.WithGasPrices(gasPrices)

@@ -102,4 +102,19 @@ func main() {
 		log.Fatalf("creating client for counterparty on aether: %v", err)
 	}
 	fmt.Printf("created client %s on aether, tracking counterparty\n", clientOnAether)
+
+	connAether, connCparty, err := relayer.OpenConnection(aether, cparty, clientOnAether, clientOnCparty)
+	if err != nil {
+		log.Fatalf("connection handshake: %v", err)
+	}
+	for _, side := range []struct {
+		chain *relayer.Chain
+		conn  string
+	}{{aether, connAether}, {cparty, connCparty}} {
+		state, err := relayer.ConnectionState(side.chain, side.conn)
+		if err != nil {
+			log.Fatalf("querying %s connection %s: %v", side.chain.Name, side.conn, err)
+		}
+		fmt.Printf("connection %s on %s: %s\n", side.conn, side.chain.Name, state)
+	}
 }
