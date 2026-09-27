@@ -1,0 +1,216 @@
+{
+  "server": {
+    "name": "aether-wallet",
+    "version": "v0.2.1-testnet.0.20260926231409-87d2d1d4d58d"
+  },
+  "steps": [
+    {
+      "step": "1. Agent checks its own address",
+      "tool": "get_agent_address",
+      "args": {},
+      "result": {
+        "address": "aether1lgg9hmyp3p5apmj2ljp9y6va3hu6h7u5023ntxaqmqt033tpxwhqcmvw4y",
+        "mode": "hot-wallet",
+        "spendsFrom": "aether1lgg9hmyp3p5apmj2ljp9y6va3hu6h7u5023ntxaqmqt033tpxwhqcmvw4y"
+      }
+    },
+    {
+      "step": "2. Agent asks the faucet to fund itself",
+      "tool": "request_testnet_funds",
+      "args": {},
+      "result": {
+        "address": "aether1lgg9hmyp3p5apmj2ljp9y6va3hu6h7u5023ntxaqmqt033tpxwhqcmvw4y",
+        "message": "sent",
+        "status": "sent",
+        "txHash": "2D5B4259D33C0FDACCD14965C851DFD58D397CDD9D6737F2C02A8E616F8BDF25"
+      }
+    },
+    {
+      "step": "3. Agent checks its balance",
+      "tool": "get_balance",
+      "args": {},
+      "result": {
+        "address": "aether1lgg9hmyp3p5apmj2ljp9y6va3hu6h7u5023ntxaqmqt033tpxwhqcmvw4y",
+        "balance": {
+          "aeth": "1",
+          "uaeth": "1000000"
+        }
+      }
+    },
+    {
+      "step": "4.1 Agent calls the paid API (fetch_paid)",
+      "tool": "fetch_paid",
+      "args": {
+        "url": "http://127.0.0.1:38402/fact",
+        "maxAmount": "0.002 AETH",
+        "pullAllowance": "0.01 AETH",
+        "idempotencyKey": "demo-1"
+      },
+      "result": {
+        "body": "{\"fact\": \"Honey never spoils.\"}",
+        "contentType": "application/json",
+        "httpStatus": 200,
+        "payment": {
+          "allowance": {
+            "aeth": "0.009",
+            "uaeth": "9000"
+          },
+          "amount": {
+            "aeth": "0.001",
+            "uaeth": "1000"
+          },
+          "grantTxHash": "1C3C2CD0DDADEB243E72E55953FD87568FFC250970CE6657B96A4B69379D5941",
+          "owed": {
+            "aeth": "0.001",
+            "uaeth": "1000"
+          },
+          "payTo": "aether156mr43s4qkjn8l9m6drnalkvkmehz5656a3twugpl6373xtr7q0qdet5y5",
+          "scheme": "aether-pull"
+        },
+        "status": "paid"
+      }
+    },
+    {
+      "step": "4.2 Agent calls the paid API (fetch_paid)",
+      "tool": "fetch_paid",
+      "args": {
+        "url": "http://127.0.0.1:38402/fact",
+        "maxAmount": "0.002 AETH",
+        "pullAllowance": "0.01 AETH",
+        "idempotencyKey": "demo-2"
+      },
+      "result": {
+        "body": "{\"fact\": \"A day on Venus is longer than its year.\"}",
+        "contentType": "application/json",
+        "httpStatus": 200,
+        "payment": {
+          "allowance": {
+            "aeth": "0.008",
+            "uaeth": "8000"
+          },
+          "amount": {
+            "aeth": "0.001",
+            "uaeth": "1000"
+          },
+          "owed": {
+            "aeth": "0.002",
+            "uaeth": "2000"
+          },
+          "payTo": "aether156mr43s4qkjn8l9m6drnalkvkmehz5656a3twugpl6373xtr7q0qdet5y5",
+          "scheme": "aether-pull"
+        },
+        "status": "paid"
+      }
+    },
+    {
+      "step": "4.3 Agent calls the paid API (fetch_paid)",
+      "tool": "fetch_paid",
+      "args": {
+        "url": "http://127.0.0.1:38402/fact",
+        "maxAmount": "0.002 AETH",
+        "pullAllowance": "0.01 AETH",
+        "idempotencyKey": "demo-3"
+      },
+      "result": {
+        "body": "{\"fact\": \"Sharks predate trees.\"}",
+        "contentType": "application/json",
+        "httpStatus": 200,
+        "payment": {
+          "allowance": {
+            "aeth": "0.007",
+            "uaeth": "7000"
+          },
+          "amount": {
+            "aeth": "0.001",
+            "uaeth": "1000"
+          },
+          "owed": {
+            "aeth": "0.003",
+            "uaeth": "3000"
+          },
+          "payTo": "aether156mr43s4qkjn8l9m6drnalkvkmehz5656a3twugpl6373xtr7q0qdet5y5",
+          "scheme": "aether-pull"
+        },
+        "status": "paid"
+      }
+    },
+    {
+      "step": "5. Agent's spending status",
+      "tool": "get_spending_status",
+      "args": {},
+      "result": {
+        "dailyLimit": {
+          "aeth": "5",
+          "uaeth": "5000000"
+        },
+        "mode": "hot-wallet",
+        "perTxLimit": {
+          "aeth": "1",
+          "uaeth": "1000000"
+        },
+        "remaining": {
+          "aeth": "4.997",
+          "uaeth": "4997000"
+        },
+        "spentLast24h": {
+          "aeth": "0.003",
+          "uaeth": "3000"
+        }
+      }
+    },
+    {
+      "step": "6. Agent's purchase history and receipts",
+      "tool": "list_purchases",
+      "args": {},
+      "result": {
+        "purchases": [
+          {
+            "amount": {
+              "aeth": "0.001",
+              "uaeth": "1000"
+            },
+            "at": "2026-09-27T00:27:20.405479414Z",
+            "httpStatus": 200,
+            "method": "GET",
+            "payTo": "aether156mr43s4qkjn8l9m6drnalkvkmehz5656a3twugpl6373xtr7q0qdet5y5",
+            "payment": "71c66806c3f3e6ab415418b3b6426e8e",
+            "receiptVerified": false,
+            "scheme": "aether-pull",
+            "service": "http://127.0.0.1:38402",
+            "url": "http://127.0.0.1:38402/fact"
+          },
+          {
+            "amount": {
+              "aeth": "0.001",
+              "uaeth": "1000"
+            },
+            "at": "2026-09-27T00:27:20.398249412Z",
+            "httpStatus": 200,
+            "method": "GET",
+            "payTo": "aether156mr43s4qkjn8l9m6drnalkvkmehz5656a3twugpl6373xtr7q0qdet5y5",
+            "payment": "39a63e77881dc0f324106d9448ef4fcf",
+            "receiptVerified": false,
+            "scheme": "aether-pull",
+            "service": "http://127.0.0.1:38402",
+            "url": "http://127.0.0.1:38402/fact"
+          },
+          {
+            "amount": {
+              "aeth": "0.001",
+              "uaeth": "1000"
+            },
+            "at": "2026-09-27T00:27:20.389721382Z",
+            "httpStatus": 200,
+            "method": "GET",
+            "payTo": "aether156mr43s4qkjn8l9m6drnalkvkmehz5656a3twugpl6373xtr7q0qdet5y5",
+            "payment": "8d9b83e23f60b4cd9090d5df4079ae69",
+            "receiptVerified": false,
+            "scheme": "aether-pull",
+            "service": "http://127.0.0.1:38402",
+            "url": "http://127.0.0.1:38402/fact"
+          }
+        ]
+      }
+    }
+  ]
+}
