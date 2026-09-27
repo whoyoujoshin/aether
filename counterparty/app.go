@@ -317,6 +317,18 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 	if err != nil {
 		return nil, err
 	}
+	// x/upgrade's own InitGenesis never writes anything (its genesis is
+	// just {}), so without this its IAVL store would go from mounted to
+	// forever un-rooted: a store that never receives a single write
+	// never gets a version-1 root committed, and rootmulti requires
+	// EVERY mounted store to load at a given version -- so one
+	// perpetually rootless store breaks every historical (and even
+	// latest-height) query for the WHOLE app, not just upgrade's own.
+	// Real cosmos-sdk apps always seed this map at genesis; this was the
+	// one line missing here.
+	if err := app.UpgradeKeeper.SetModuleVersionMap(ctx, app.mm.GetVersionMap()); err != nil {
+		return nil, err
+	}
 	resp.ConsensusParams = req.ConsensusParams
 	resp.AppHash = app.LastCommitID().Hash
 	return resp, nil
