@@ -7,12 +7,16 @@ See `app/ibc.go`'s `IBCActivationHeight` doc comment for why activation
 is height-gated: like `x/authz`/`x/feegrant` before it
 (`app/authz_feegrant.go`), adding new stores to an already-running chain
 needs a coordinated, height-gated cutover, not a plain code deploy.
-`IBCActivationHeight` is **122,000**, coordinated with the operator on
+`IBCActivationHeight` was **122,000**, coordinated with the operator on
 2026-09-27 with the live tip at 121,807 -- the same coordinated cutover
 as `AccountAuthActivationHeight` (see `docs/ACCOUNT_ABSTRACTION.md`),
 the same way `AuthzFeegrantActivationHeight` was finalized at 109,000.
-Every node must be running a binary that carries this height before it
-arrives, and restart once at `activation-1` to mount the new stores.
+**Live as of 2026-09-27**: all four testnet nodes (seed, sync3, sync4,
+peer-1) restarted at 121,999 and passed the gate cleanly, and
+`ibc client params` on the live node returns real params instead of
+the pre-genesis "not set in store" error, confirming
+`initIBCGenesisAtActivation` ran correctly, not just that consensus
+didn't halt.
 
 ## What's wired
 
@@ -70,12 +74,8 @@ unmodified once the chain is built.
 
 ## Activating this for real
 
-1. `IBCActivationHeight` is agreed at 122,000 (see above) -- every node
-   must run a binary carrying this height before it arrives, and
-   restart once at `activation-1` to mount the new stores -- see
-   `app/ibc.go` and `app/authz_feegrant.go`'s own doc comments for the
-   mechanics.
-2. Point a relayer (e.g. Hermes) at the chain and open a real client/
-   connection/channel -- nothing here has been run against a live,
-   independently-operated counterparty chain yet, only the in-process
-   `ibctesting` harness.
+The height-gated cutover (see above) is done and verified live. What's
+still outstanding: point a relayer (e.g. Hermes) at the chain and open
+a real client/connection/channel -- nothing here has been run against
+a live, independently-operated counterparty chain yet, only the
+in-process `ibctesting` harness.
