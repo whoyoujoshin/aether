@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	transfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
 
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/counterparty"
@@ -116,5 +117,20 @@ func main() {
 			log.Fatalf("querying %s connection %s: %v", side.chain.Name, side.conn, err)
 		}
 		fmt.Printf("connection %s on %s: %s\n", side.conn, side.chain.Name, state)
+	}
+
+	chanAether, chanCparty, err := relayer.OpenTransferChannel(aether, cparty, clientOnAether, clientOnCparty, connAether, connCparty)
+	if err != nil {
+		log.Fatalf("channel handshake: %v", err)
+	}
+	for _, side := range []struct {
+		chain *relayer.Chain
+		ch    string
+	}{{aether, chanAether}, {cparty, chanCparty}} {
+		state, err := relayer.ChannelState(side.chain, transfertypes.PortID, side.ch)
+		if err != nil {
+			log.Fatalf("querying %s channel %s: %v", side.chain.Name, side.ch, err)
+		}
+		fmt.Printf("channel %s/%s on %s: %s\n", transfertypes.PortID, side.ch, side.chain.Name, state)
 	}
 }

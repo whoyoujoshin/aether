@@ -168,9 +168,7 @@ var ibcPrefix = commitmenttypes.NewMerklePrefix([]byte(ibcexported.StoreKey))
 
 // OpenConnection runs the full four-step connection handshake:
 // INIT on a, TRY on b, ACK on a, CONFIRM on b. clientA lives on a and
-// tracks b; clientB lives on b and tracks a. Each later step batches a
-// MsgUpdateClient with the handshake message so the proofs it carries
-// verify against a consensus state written in the same tx.
+// tracks b; clientB lives on b and tracks a.
 func OpenConnection(a, b *Chain, clientA, clientB string) (connA, connB string, err error) {
 	initMsg := connectiontypes.NewMsgConnectionOpenInit(clientA, clientB, ibcPrefix, nil, 0, a.FromAddrStr)
 	events, err := a.SignAndBroadcast(initMsg)
@@ -181,22 +179,16 @@ func OpenConnection(a, b *Chain, clientA, clientB string) (connA, connB string, 
 		return "", "", err
 	}
 
-	if err := a.WaitForNextBlock(); err != nil {
-		return "", "", err
-	}
-	upd, h, err := UpdateClientMsg(a, b, clientB)
-	if err != nil {
-		return "", "", err
-	}
-	p, err := queryHandshakeProofs(a, connA, clientA, h)
-	if err != nil {
-		return "", "", err
-	}
-	tryMsg := connectiontypes.NewMsgConnectionOpenTry(
-		clientB, connA, clientA, p.clientState, ibcPrefix, connectiontypes.GetCompatibleVersions(), 0,
-		p.connProof, p.clientProof, p.consensusProof, p.proofHeight, p.consensusHeight, b.FromAddrStr,
-	)
-	events, err = b.SignAndBroadcast(upd, tryMsg)
+	events, err = relayStep(a, b, clientB, func(h clienttypes.Height) (sdk.Msg, error) {
+		p, err := queryHandshakeProofs(a, connA, clientA, h)
+		if err != nil {
+			return nil, err
+		}
+		return connectiontypes.NewMsgConnectionOpenTry(
+			clientB, connA, clientA, p.clientState, ibcPrefix, connectiontypes.GetCompatibleVersions(), 0,
+			p.connProof, p.clientProof, p.consensusProof, p.proofHeight, p.consensusHeight, b.FromAddrStr,
+		), nil
+	})
 	if err != nil {
 		return "", "", fmt.Errorf("ConnOpenTry: %w", err)
 	}
@@ -204,38 +196,26 @@ func OpenConnection(a, b *Chain, clientA, clientB string) (connA, connB string, 
 		return "", "", err
 	}
 
-	if err := b.WaitForNextBlock(); err != nil {
-		return "", "", err
-	}
-	upd, h, err = UpdateClientMsg(b, a, clientA)
-	if err != nil {
-		return "", "", err
-	}
-	p, err = queryHandshakeProofs(b, connB, clientB, h)
-	if err != nil {
-		return "", "", err
-	}
-	ackMsg := connectiontypes.NewMsgConnectionOpenAck(
-		connA, connB, p.clientState, p.connProof, p.clientProof, p.consensusProof,
-		p.proofHeight, p.consensusHeight, p.connection.Versions[0], a.FromAddrStr,
-	)
-	if _, err := a.SignAndBroadcast(upd, ackMsg); err != nil {
+	if _, err = relayStep(b, a, clientA, func(h clienttypes.Height) (sdk.Msg, error) {
+		p, err := queryHandshakeProofs(b, connB, clientB, h)
+		if err != nil {
+			return nil, err
+		}
+		return connectiontypes.NewMsgConnectionOpenAck(
+			connA, connB, p.clientState, p.connProof, p.clientProof, p.consensusProof,
+			p.proofHeight, p.consensusHeight, p.connection.Versions[0], a.FromAddrStr,
+		), nil
+	}); err != nil {
 		return "", "", fmt.Errorf("ConnOpenAck: %w", err)
 	}
 
-	if err := a.WaitForNextBlock(); err != nil {
-		return "", "", err
-	}
-	upd, h, err = UpdateClientMsg(a, b, clientB)
-	if err != nil {
-		return "", "", err
-	}
-	connResp, err := connectionutils.QueryConnection(a.ClientCtx.WithHeight(int64(h.RevisionHeight)), connA, true)
-	if err != nil {
-		return "", "", fmt.Errorf("%s: proving connection %s: %w", a.Name, connA, err)
-	}
-	confirmMsg := connectiontypes.NewMsgConnectionOpenConfirm(connB, connResp.Proof, connResp.ProofHeight, b.FromAddrStr)
-	if _, err := b.SignAndBroadcast(upd, confirmMsg); err != nil {
+	if _, err = relayStep(a, b, clientB, func(h clienttypes.Height) (sdk.Msg, error) {
+		resp, err := connectionutils.QueryConnection(a.ClientCtx.WithHeight(int64(h.RevisionHeight)), connA, true)
+		if err != nil {
+			return nil, fmt.Errorf("%s: proving connection %s: %w", a.Name, connA, err)
+		}
+		return connectiontypes.NewMsgConnectionOpenConfirm(connB, resp.Proof, resp.ProofHeight, b.FromAddrStr), nil
+	}); err != nil {
 		return "", "", fmt.Errorf("ConnOpenConfirm: %w", err)
 	}
 
