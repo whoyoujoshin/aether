@@ -2,7 +2,9 @@ package wallet
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
+	"net"
 	"strconv"
 	"strings"
 	"fmt"
@@ -15,6 +17,7 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -34,13 +37,11 @@ type Client struct {
 	authClient authtypes.QueryClient
 }
 
-// NewClient connects to a node's gRPC endpoint (e.g. "localhost:9090").
-// Uses an insecure (non-TLS) connection, matching this project's
-// existing devnet tooling (cmd/balancecheck) -- appropriate for a
-// devnet/testnet context, not yet hardened for a public mainnet
-// deployment where a real TLS-secured endpoint would be expected.
+// NewClient connects to a node's gRPC endpoint, e.g. "localhost:9090" for a
+// plaintext devnet, or "grpc.example.com:443" for a TLS-terminated one (see
+// GRPCCredentials).
 func NewClient(grpcEndpoint string) (*Client, error) {
-	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(GRPCCredentials(grpcEndpoint)))
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +54,31 @@ func NewClient(grpcEndpoint string) (*Client, error) {
 
 func (c *Client) Close() error {
 	return c.conn.Close()
+}
+
+// GRPCCredentials picks TLS or plaintext transport credentials for a gRPC
+// endpoint, so callers -- this package and cmd/explorer's own direct
+// grpc.NewClient calls -- don't each have to duplicate the choice. Port 443
+// is an unambiguous, zero-configuration signal for "this is TLS-terminated"
+// (e.g. by a reverse proxy in front of the node's own plaintext gRPC): no
+// one runs plaintext gRPC there, and it needs no new flag on any command
+// that already takes an endpoint string. Anything else -- "localhost:9090",
+// a bare IP:port, an internal hostname -- stays plaintext, matching every
+// devnet and the seed's own gRPC port today.
+func GRPCCredentials(grpcEndpoint string) credentials.TransportCredentials {
+	if !strings.HasSuffix(grpcEndpoint, ":443") {
+		return insecure.NewCredentials()
+	}
+	// ServerName must be the bare host: grpc.NewClient (unlike the older
+	// grpc.Dial) doesn't split host:port for the default SNI/verification
+	// name on its own -- leaving ServerName unset here sends the literal
+	// "host:443" as SNI, which every real TLS server (Caddy included)
+	// rejects outright (a reset connection, no cert served).
+	host, _, err := net.SplitHostPort(grpcEndpoint)
+	if err != nil {
+		host = grpcEndpoint
+	}
+	return credentials.NewTLS(&tls.Config{ServerName: host})
 }
 
 // GetBalance returns every coin balance held by the given address.

@@ -31,9 +31,6 @@ func TestAgentCard(t *testing.T) {
 	t.Cleanup(func() {
 		rpcEndpoint, chainID, publicRPC, publicGRPC, publicFaucet, publicSeed = saved[0], saved[1], saved[2], saved[3], saved[4], saved[5]
 	})
-	rpcEndpoint, chainID = node.URL, "aether-testnet-1"
-	publicRPC, publicGRPC, publicSeed, publicFaucet = "", "", "", faucet.URL
-	resolvePublicEndpoints()
 
 	get := func() agentCardDTO {
 		rec := httptest.NewRecorder()
@@ -45,11 +42,26 @@ func TestAgentCard(t *testing.T) {
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &card))
 		return card
 	}
+
+	// Full defaults: the testnet's own endpoints, all TLS since scripts/tls
+	// went live. No plain-HTTP warning here -- that's the point of that work.
+	rpcEndpoint, chainID = node.URL, "aether-testnet-1"
+	publicRPC, publicGRPC, publicSeed, publicFaucet = "", "", "", ""
+	resolvePublicEndpoints()
 	card := get()
 	require.Equal(t, "aether-testnet-1", card.ChainID)
 	require.Equal(t, int64(113900), card.Height)
-	require.Equal(t, agentEndpointsDTO{RPC: testnetRPC, GRPC: testnetGRPC, Faucet: faucet.URL, Seed: testnetSeed,
-		Explorer: "http://explorer.example:8081"}, card.Endpoints, "flags win; the rest default to the public testnet")
+	require.Equal(t, agentEndpointsDTO{RPC: testnetRPC, GRPC: testnetGRPC, Faucet: testnetFaucet, Seed: testnetSeed,
+		Explorer: "http://explorer.example:8081"}, card.Endpoints)
+	require.True(t, strings.HasPrefix(card.Endpoints.RPC, "https://"), "the default is TLS now, not the plain-HTTP seed port")
+	require.NotContains(t, card.Warnings, "Endpoints are plain HTTP (no TLS): some sandboxes won't reach them.")
+
+	// An operator who overrides the faucet with a plain-HTTP one still gets
+	// warned -- the check is real, not just satisfied by the new defaults.
+	publicFaucet = faucet.URL
+	resolvePublicEndpoints()
+	card = get()
+	require.Equal(t, faucet.URL, card.Endpoints.Faucet, "flags win over the default")
 	require.True(t, card.Authz.Active)
 	require.NotNil(t, card.Faucet)
 	require.True(t, *card.Faucet.Reachable)

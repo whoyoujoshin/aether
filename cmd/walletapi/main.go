@@ -282,8 +282,8 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 func main() {
 	flag.StringVar(&keyringDir, "keyring-dir", defaultHomeDir(), "keyring storage directory")
 	flag.StringVar(&keyringBackend, "keyring-backend", "test", "keyring backend (test|file|os)")
-	flag.StringVar(&grpcEndpoint, "grpc", "157.245.252.221:9090", "node gRPC endpoint (defaults to the public testnet)")
-	flag.StringVar(&rpcEndpoint, "rpc", "http://157.245.252.221:26657", "node RPC endpoint (defaults to the public testnet)")
+	flag.StringVar(&grpcEndpoint, "grpc", "grpc.157-245-252-221.sslip.io:443", "node gRPC endpoint (defaults to the public testnet, over TLS)")
+	flag.StringVar(&rpcEndpoint, "rpc", "https://rpc.157-245-252-221.sslip.io", "node RPC endpoint (defaults to the public testnet, over TLS)")
 	flag.StringVar(&chainID, "chain-id", "aether-testnet-1", "chain ID")
 	flag.StringVar(&port, "port", "8090", "local HTTP port to listen on")
 	flag.Parse()

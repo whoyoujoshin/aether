@@ -29,7 +29,6 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/wallet"
@@ -109,7 +108,7 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(wallet.GRPCCredentials(grpcEndpoint)))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to connect to gRPC server: %w", err))
 		return
@@ -203,7 +202,7 @@ func handleBlock(w http.ResponseWriter, r *http.Request) {
 // --- GET /api/validators ---
 
 func handleValidators(w http.ResponseWriter, r *http.Request) {
-	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(wallet.GRPCCredentials(grpcEndpoint)))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -232,7 +231,7 @@ func handleLeaderboard(w http.ResponseWriter, r *http.Request) {
 		epoch = parsed
 	}
 
-	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(wallet.GRPCCredentials(grpcEndpoint)))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -251,7 +250,7 @@ func handleLeaderboard(w http.ResponseWriter, r *http.Request) {
 // --- GET /api/proposals ---
 
 func handleProposals(w http.ResponseWriter, r *http.Request) {
-	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(wallet.GRPCCredentials(grpcEndpoint)))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -277,7 +276,7 @@ func handleProposalTally(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(wallet.GRPCCredentials(grpcEndpoint)))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return

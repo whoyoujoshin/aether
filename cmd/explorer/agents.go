@@ -18,9 +18,9 @@ import (
 
 // The public testnet's endpoints: the defaults on aether-testnet-1.
 const (
-	testnetRPC    = "http://157.245.252.221:26657"
-	testnetGRPC   = "157.245.252.221:9090"
-	testnetFaucet = "http://157.245.252.221:8080/request"
+	testnetRPC    = "https://rpc.157-245-252-221.sslip.io"
+	testnetGRPC   = "grpc.157-245-252-221.sslip.io:443"
+	testnetFaucet = "https://faucet.157-245-252-221.sslip.io/request"
 	testnetSeed   = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"
 )
 

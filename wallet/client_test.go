@@ -35,3 +35,14 @@ func TestClient_GetAccountInfo_ReturnsRealSequenceAndAccountNumber(t *testing.T)
 	require.GreaterOrEqual(t, sequence, uint64(0))
 	_ = accountNumber // just confirming the call succeeds without error; exact value depends on genesis ordering
 }
+// GRPCCredentials needs no live node: it's a pure decision from the
+// endpoint string, and it's the reason a TLS-fronted testnet endpoint
+// doesn't just hang or fail a plaintext handshake against it.
+func TestGRPCCredentials_TLSOnlyOnPort443(t *testing.T) {
+	for _, tls := range []string{"grpc.157-245-252-221.sslip.io:443", "example.com:443"} {
+		require.Equal(t, "tls", wallet.GRPCCredentials(tls).Info().SecurityProtocol, tls)
+	}
+	for _, plain := range []string{"localhost:9090", "157.245.252.221:9090", "grpc.example.com:9443", ""} {
+		require.Equal(t, "insecure", wallet.GRPCCredentials(plain).Info().SecurityProtocol, plain)
+	}
+}

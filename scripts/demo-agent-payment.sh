@@ -16,11 +16,11 @@
 #   RPC GRPC FAUCET CHAIN_ID EXPLORER ALLOWANCE OUT_DIR
 set -euo pipefail
 
-RPC=${RPC:-http://157.245.252.221:26657}
-GRPC=${GRPC:-157.245.252.221:9090}
-FAUCET=${FAUCET:-http://157.245.252.221:8080/request}
+RPC=${RPC:-https://rpc.157-245-252-221.sslip.io}
+GRPC=${GRPC:-grpc.157-245-252-221.sslip.io:443}
+FAUCET=${FAUCET:-https://faucet.157-245-252-221.sslip.io/request}
 CHAIN_ID=${CHAIN_ID:-aether-testnet-1}
-EXPLORER=${EXPLORER:-http://157.245.252.221:8081}
+EXPLORER=${EXPLORER:-https://explorer.157-245-252-221.sslip.io}
 ALLOWANCE=${ALLOWANCE:-0.01 AETH}
 OUT_DIR=${OUT_DIR:-./demo-out}
 

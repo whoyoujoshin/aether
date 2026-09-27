@@ -32,10 +32,10 @@ Canonical design detail remains in [WHITEPAPER.md](WHITEPAPER.md). Live endpoint
 |--|--|
 | Chain ID | `aether-testnet-1` |
 | Seed | `dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656` |
-| RPC | `http://157.245.252.221:26657` |
-| gRPC | `157.245.252.221:9090` |
-| Faucet | `http://157.245.252.221:8080/request` |
-| Explorer | `http://157.245.252.221:8081` |
+| RPC | `https://rpc.157-245-252-221.sslip.io` (plain `http://157.245.252.221:26657` still works) |
+| gRPC | `grpc.157-245-252-221.sslip.io:443`, TLS (plain `157.245.252.221:9090` still works) |
+| Faucet | `https://faucet.157-245-252-221.sslip.io/request` |
+| Explorer | `https://explorer.157-245-252-221.sslip.io` |
 
 Epoch length is **1440** blocks; Top-K is **21** by epoch native work. Only **native** submissions increment Top-K standing.
 
