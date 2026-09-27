@@ -17,6 +17,9 @@ export interface Stats {
   blockReward: string;
   currentEpoch: number;
   treasuryBalance: string;
+  epochLength: number;
+  targetBlockTime: number; // seconds between PoW submissions the difficulty aims for
+  activeValidators: number;
 }
 
 export interface ValidatorInfo {
@@ -90,6 +93,10 @@ export interface AddressPage {
   address: string;
   balance: string;
   transactions: Transaction[];
+  escrow: { balance: string; unlockHeight: number; pending: boolean };
+  banned: boolean;
+  isValidator: boolean;
+  txsSigned: number;
 }
 
 export interface Transfer {
@@ -117,6 +124,25 @@ export interface TransactionDetail {
   timestamp: string;
   transfers: Transfer[];
   auxPow: AuxPowInfo | null;
+  codespace: string;
+  msgTypes: string[];
+  messages: TxMessage[];
+  events: TxEvent[];
+  fee: string; // uaeth
+  gasLimit: number;
+  memo: string;
+  signer: string;
+  sequence: number | null;
+  latestHeight: number;
+  raw: unknown;
+}
+
+/** A message as the chain's proto JSON: "@type" plus its own fields. */
+export type TxMessage = { "@type": string } & Record<string, unknown>;
+
+export interface TxEvent {
+  type: string;
+  attributes: { key: string; value: string }[];
 }
 
 export interface SearchResult {
@@ -142,6 +168,71 @@ export interface BlockDetail {
   dataHash: string;
   numTxs: number;
   txHashes: string[];
+  parentHash: string;
+  sizeBytes: number;
+  gasUsed: number;
+  gasWanted: number;
+  maxGas: number; // -1: no block gas limit
+  latestHeight: number;
+  epochLength: number;
+  proposer: string; // the proposer's miner account
+  txs: BlockTx[];
+  pow: PowProof[];
+}
+
+export interface BlockTx {
+  hash: string;
+  msgType: string;
+  msgCount: number;
+  code: number;
+  from: string;
+  to: string;
+  amount: string;
+}
+
+/** One MsgSubmitPoW in a block; hash/target only for native submissions. */
+export interface PowProof {
+  txHash: string;
+  code: number;
+  miner: string;
+  kind: "native" | "auxpow";
+  claimedHeight?: number;
+  nonce?: number;
+  difficulty?: number;
+  hash?: string;
+  target?: string;
+  valid: boolean;
+  margin?: string;
+  reward: string;
+}
+
+export interface ValidatorSetEntry {
+  consensusAddress: string;
+  account: string;
+  bootstrap: boolean;
+  votingPower: number;
+  tenureRatio: string;
+  enteredAtUnix: number;
+  signed: boolean[]; // oldest first
+  missed: number;
+  banned: boolean;
+  status: "active" | "missing" | "pending" | "banned";
+}
+
+export interface ValidatorSet {
+  height: number;
+  window: number;
+  totalPower: number;
+  topKSize: number;
+  validators: ValidatorSetEntry[];
+  signingHeights: number[];
+}
+
+export interface GovernanceParams {
+  minDeposit: number; // uaeth
+  depositPeriod: number; // seconds
+  votingPeriod: number; // seconds
+  activeValidators: number;
 }
 
 export interface ServiceListing {
@@ -218,6 +309,8 @@ export interface AgentCard {
 export const api = {
   stats: () => getJSON<Stats>("/api/stats"),
   validators: () => getJSON<ValidatorInfo[]>("/api/validators"),
+  validatorSet: () => getJSON<ValidatorSet>("/api/validator-set"),
+  governanceParams: () => getJSON<GovernanceParams>("/api/governance/params"),
   leaderboard: (epoch?: number) =>
     getJSON<Leaderboard>(`/api/leaderboard${epoch ? `?epoch=${epoch}` : ""}`),
   proposals: () => getJSON<Proposal[]>("/api/proposals"),

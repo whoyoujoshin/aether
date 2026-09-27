@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { int, shortAddr, shortHash } from "../format";
 
-export function truncate(value: string, head = 10, tail = 6): string {
-  if (value.length <= head + tail + 3) return value;
-  return `${value.slice(0, head)}…${value.slice(-tail)}`;
-}
+export { truncate } from "../format";
 
 /** A copy-to-clipboard button, self-contained so any component can drop one in next to a hash/address. */
 export function CopyButton({ value }: { value: string }) {
@@ -25,29 +23,50 @@ export function CopyButton({ value }: { value: string }) {
   }
 
   return (
-    <button className={`copy-btn${copied ? " copied" : ""}`} onClick={handleCopy} title="Copy">
-      {copied ? "✓" : "⧉"}
-    </button>
+    <button
+      type="button"
+      className={`copy-btn${copied ? " copied" : ""}`}
+      onClick={handleCopy}
+      title={copied ? "Copied" : "Copy"}
+      aria-label="Copy"
+    />
   );
 }
 
 /** A truncated, monospace, copyable transaction hash linking to its detail page. */
-export function TxHash({ hash, full = false }: { hash: string; full?: boolean }) {
+export function TxHash({ hash, full = false, copy = true }: { hash: string; full?: boolean; copy?: boolean }) {
   return (
     <span className="hash-link">
-      <Link to={`/tx/${hash}`}>{full ? hash : truncate(hash)}</Link>
-      <CopyButton value={hash} />
+      <Link to={`/tx/${hash}`} title={hash}>
+        {full ? hash.toUpperCase() : shortHash(hash)}
+      </Link>
+      {copy && <CopyButton value={hash} />}
     </span>
   );
 }
 
-/** A truncated, monospace, copyable address linking to its detail page. */
-export function AddressLink({ address, full = false }: { address: string; full?: boolean }) {
-  if (!address) return <span className="mono">—</span>;
+/**
+ * A truncated, monospace, copyable address linking to its detail page.
+ * plain: bone-colored, for counterparties in dense lists.
+ */
+export function AddressLink({
+  address,
+  full = false,
+  copy = true,
+  plain = false,
+}: {
+  address: string;
+  full?: boolean;
+  copy?: boolean;
+  plain?: boolean;
+}) {
+  if (!address) return <span className="mono faint">—</span>;
   return (
-    <span className="hash-link">
-      <Link to={`/address/${address}`}>{full ? address : truncate(address)}</Link>
-      <CopyButton value={address} />
+    <span className={`hash-link${plain ? " plain" : ""}`}>
+      <Link to={`/address/${encodeURIComponent(address)}`} title={address}>
+        {full ? address : shortAddr(address)}
+      </Link>
+      {copy && <CopyButton value={address} />}
     </span>
   );
 }
@@ -56,7 +75,7 @@ export function AddressLink({ address, full = false }: { address: string; full?:
 export function BlockLink({ height }: { height: number }) {
   return (
     <Link className="mono" to={`/blocks/${height}`}>
-      {height}
+      {int(height)}
     </Link>
   );
 }

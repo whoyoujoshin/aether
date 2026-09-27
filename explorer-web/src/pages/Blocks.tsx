@@ -1,60 +1,69 @@
+import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useApi } from "../hooks";
-import { BlockLink, truncate } from "../components/Hash";
+import { ErrorBanner } from "../components/ui";
+import { int, timeAgo, truncate, utc } from "../format";
 
-function timeAgo(iso: string): string {
-  if (!iso) return "—";
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return iso;
-  const seconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
-}
+const COLS = "120px minmax(0,1.4fr) minmax(0,1fr) 70px 110px";
 
 export default function Blocks() {
   const blocks = useApi(api.blocks, [], 6000);
+  const list = blocks.data ?? [];
+  const maxTxs = Math.max(1, ...list.map((b) => b.numTxs));
 
   return (
     <div className="page">
-      <h1 className="page-title">Blocks</h1>
-
-      <div className="panel">
-        <div className="panel-header">
-          <div className="panel-title">Recent Blocks</div>
-          <div className="panel-meta">auto-refreshes every 6s</div>
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Blocks</h1>
+          <div className="page-sub">The latest blocks, signed by Aether's validators. Miners' proof-of-work arrives inside them as transactions.</div>
         </div>
-        {blocks.error && <div className="error-banner" style={{ margin: 16 }}>{blocks.error}</div>}
+      </div>
+
+      <div className="card gap-top-lg">
+        <div className="card-head">
+          <span className="card-title">Recent blocks</span>
+          <span className="card-meta">auto-refresh 6s</span>
+        </div>
+        <ErrorBanner error={blocks.error} />
         {blocks.loading && !blocks.data ? (
           <div className="loading">Loading…</div>
-        ) : blocks.data && blocks.data.length > 0 ? (
-          <table>
-            <thead>
-              <tr>
-                <th>Height</th>
-                <th>Hash</th>
-                <th>Proposer</th>
-                <th>Txs</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {blocks.data.map((b) => (
-                <tr key={b.height}>
-                  <td>
-                    <BlockLink height={b.height} />
-                  </td>
-                  <td className="mono">{truncate(b.hash)}</td>
-                  <td className="mono">{truncate(b.proposerAddress, 8, 4)}</td>
-                  <td className="mono">{b.numTxs}</td>
-                  <td className="mono">{timeAgo(b.time)}</td>
-                </tr>
+        ) : list.length > 0 ? (
+          <div className="scroll-x">
+            <div className="rows">
+              <div className="row th" style={{ gridTemplateColumns: COLS }}>
+                <span>Height</span>
+                <span>Hash</span>
+                <span>Proposer</span>
+                <span className="right">Txs</span>
+                <span className="right">Age</span>
+              </div>
+              {list.map((b, i) => (
+                <div key={b.height} className="row hover" style={{ gridTemplateColumns: COLS }}>
+                  <Link to={`/blocks/${b.height}`} className="mono" style={{ fontWeight: 600, color: i === 0 ? "var(--red)" : "var(--text-2)" }}>
+                    {int(b.height)}
+                  </Link>
+                  <span className="mono muted ellipsis" style={{ fontSize: 13 }}>
+                    {truncate(b.hash, 14, 8)}
+                  </span>
+                  <span className="mono muted ellipsis" style={{ fontSize: 12 }}>
+                    {truncate(b.proposerAddress.toUpperCase(), 8, 4)}
+                  </span>
+                  <span className="right mono" style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end", fontSize: 13 }}>
+                    <span className="mini-bar" style={{ width: 28 }}>
+                      <span style={{ width: `${(b.numTxs / maxTxs) * 100}%` }} />
+                    </span>
+                    {b.numTxs}
+                  </span>
+                  <span className="right muted" style={{ fontSize: 13 }} title={utc(b.time)}>
+                    {timeAgo(b.time)}
+                  </span>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </div>
         ) : (
-          <div className="empty-state">No blocks found.</div>
+          <div className="empty">No blocks found.</div>
         )}
       </div>
     </div>
