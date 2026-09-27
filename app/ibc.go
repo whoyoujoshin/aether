@@ -22,12 +22,11 @@ import (
 // IBCActivationHeight is the first block that executes with IBC (core,
 // ICS-20 transfer, ICS-27 interchain accounts) live.
 //
-// PLACEHOLDER, same as AuthzFeegrantActivationHeight's original
-// "100,000 placeholder" -- this value is not yet coordinated with the
-// operator and MUST be replaced with a real, agreed height (based on
-// the live chain tip at the time) before this activates anywhere. Do
-// not let this height arrive on a live node before that coordination
-// happens: like every gate in this file, an un-restarted node just
+// Coordinated with the operator on 2026-09-27 with the live tip at
+// 121,807 -- both this and AccountAuthActivationHeight ride the same
+// cutover, 193 blocks out (~3.2 hours at the 60s target block time).
+// Every node must be on a binary carrying this height before it
+// arrives: like every gate in this file, an un-restarted node just
 // halts at it (see checkIBCActivation), so the practical failure mode
 // is a halted node, not silent data corruption -- but it's still an
 // avoidable operational surprise.
@@ -43,7 +42,7 @@ import (
 // interchain-accounts keepers themselves may land in separate commits
 // first: bundling every new IBC-related store into one coordinated
 // cutover avoids asking every operator to restart their node twice.
-const IBCActivationHeight int64 = 200_000
+const IBCActivationHeight int64 = 122_000
 
 // ibcActivationHeight is what New() actually reads, so tests can
 // exercise the store-upgrade path at a small height instead of

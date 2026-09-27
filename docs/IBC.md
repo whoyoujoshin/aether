@@ -2,14 +2,17 @@
 
 Core IBC, ICS-20 (fungible token transfer), and ICS-27 (interchain
 accounts) are built, wired into `app/app.go`, and covered by real
-integration tests (`app/ibc_handshake_test.go`, `app/ibc_ica_test.go`) --
-not yet live on any deployed chain. See `app/ibc.go`'s `IBCActivationHeight`
-doc comment for why: like `x/authz`/`x/feegrant` before it
+integration tests (`app/ibc_handshake_test.go`, `app/ibc_ica_test.go`).
+See `app/ibc.go`'s `IBCActivationHeight` doc comment for why activation
+is height-gated: like `x/authz`/`x/feegrant` before it
 (`app/authz_feegrant.go`), adding new stores to an already-running chain
-needs a coordinated, height-gated cutover, not a plain code deploy. The
-constant is currently a placeholder; activating it for real means picking
-a real height near the live chain's tip, the same way `AuthzFeegrantActivationHeight`
-was finalized at 109,000, and is not done by this doc.
+needs a coordinated, height-gated cutover, not a plain code deploy.
+`IBCActivationHeight` is **122,000**, coordinated with the operator on
+2026-09-27 with the live tip at 121,807 -- the same coordinated cutover
+as `AccountAuthActivationHeight` (see `docs/ACCOUNT_ABSTRACTION.md`),
+the same way `AuthzFeegrantActivationHeight` was finalized at 109,000.
+Every node must be running a binary that carries this height before it
+arrives, and restart once at `activation-1` to mount the new stores.
 
 ## What's wired
 
@@ -67,13 +70,12 @@ unmodified once the chain is built.
 
 ## Activating this for real
 
-1. Agree a real `IBCActivationHeight` with the operator based on the live
-   chain's tip (same process as the authz/feegrant cutover).
-2. Every node must run a binary with this height before it arrives, and
+1. `IBCActivationHeight` is agreed at 122,000 (see above) -- every node
+   must run a binary carrying this height before it arrives, and
    restart once at `activation-1` to mount the new stores -- see
    `app/ibc.go` and `app/authz_feegrant.go`'s own doc comments for the
    mechanics.
-3. Point a relayer (e.g. Hermes) at the chain and open a real client/
+2. Point a relayer (e.g. Hermes) at the chain and open a real client/
    connection/channel -- nothing here has been run against a live,
    independently-operated counterparty chain yet, only the in-process
    `ibctesting` harness.

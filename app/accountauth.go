@@ -11,19 +11,18 @@ import (
 // AccountAuthActivationHeight is the first block that executes with
 // x/accountauth live.
 //
-// PLACEHOLDER, same as IBCActivationHeight's own placeholder -- this
-// value is not yet coordinated with the operator and MUST be replaced
-// with a real, agreed height (based on the live chain tip at the time)
-// before this activates anywhere. An un-restarted node just halts at
-// it (see checkAccountAuthActivation), so the practical failure mode is
-// a halted node, not silent data corruption.
+// Coordinated with the operator on 2026-09-27 with the live tip at
+// 121,807 -- rides the same cutover as IBCActivationHeight, 193 blocks
+// out (~3.2 hours at the 60s target block time). An un-restarted node
+// just halts at it (see checkAccountAuthActivation), so the practical
+// failure mode is a halted node, not silent data corruption.
 //
 // Follows the exact same mechanism as AuthzFeegrantActivationHeight and
 // IBCActivationHeight (see app/authz_feegrant.go's doc comment for the
 // full rationale: a live multistore can't just start mounting new KV
 // stores, and every mounted store -- even an empty one -- is a leaf in
 // the AppHash, so activation must be height-gated and restart-driven).
-const AccountAuthActivationHeight int64 = 300_000
+const AccountAuthActivationHeight int64 = 122_000
 
 // accountAuthActivationHeight is what New() actually reads, so tests
 // can exercise the store-upgrade path at a small height instead of
