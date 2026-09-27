@@ -32,7 +32,10 @@ import (
 	authzcli "github.com/cosmos/cosmos-sdk/x/authz/client/cli"
 	feegrantcli "cosmossdk.io/x/feegrant/client/cli"
 	addresscodec "github.com/cosmos/cosmos-sdk/codec/address"
-	
+	ibccli "github.com/cosmos/ibc-go/v8/modules/core/client/cli"
+	ibctransfercli "github.com/cosmos/ibc-go/v8/modules/apps/transfer/client/cli"
+	icacli "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/client/cli"
+
 )
 
 var encodingConfig = app.MakeEncodingConfig()
@@ -104,6 +107,9 @@ txCmd := &cobra.Command{
 	bankcli.NewTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
 	authzcli.GetTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
 	feegrantcli.GetTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
+	ibccli.GetTxCmd(),
+	ibctransfercli.NewTxCmd(),
+	icacli.NewTxCmd(),
 )
 	setDefaultGas(txCmd, defaultGasLimit)
 	rootCmd.AddCommand(txCmd)
