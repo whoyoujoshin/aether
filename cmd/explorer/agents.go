@@ -31,7 +31,7 @@ var publicRPC, publicGRPC, publicFaucet, publicSeed string
 // agentmcpTools are the MCP wallet's tools; TestAgentCard_ListsEveryAgentmcpTool
 // keeps this in step with cmd/agentmcp.
 var agentmcpTools = []string{
-	"get_agent_address", "get_balance", "get_spending_status", "request_testnet_funds",
+	"get_agent_address", "get_balance", "get_spending_status", "get_account_authenticators", "request_testnet_funds",
 	"send_aeth", "get_transaction_status", "wait_for_transaction", "get_transaction_history",
 	"create_invoice", "wait_for_payment",
 	"fetch_paid", "list_purchases", "list_prepaid_balances", "withdraw_prepaid",

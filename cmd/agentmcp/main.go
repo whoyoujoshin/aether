@@ -486,6 +486,12 @@ func newServer() *mcp.Server {
 	}, coded(toolGetSpendingStatus))
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name: "get_account_authenticators",
+		Description: "See the pluggable authenticators (x/accountauth) an address has registered -- session keys and guardian thresholds, a second, chain-native way to delegate authority alongside authz grants. " +
+			"Defaults to this agent's own account if no address is given. Read-only: this server doesn't act as a session key or guardian itself.",
+	}, coded(toolGetAccountAuthenticators))
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name: "send_aeth",
 		Description: "Send AETH. The amount must include its unit (\"1.5 AETH\" or \"1500000uaeth\"); the result echoes it in both units. " +
 			"Requires an idempotencyKey: retrying with the same key never pays twice. " +

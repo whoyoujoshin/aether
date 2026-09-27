@@ -393,7 +393,7 @@ func TestExecAuthenticated_GuardianThreshold(t *testing.T) {
 	msgsAny := []*codectypes.Any{anyOf(t, send)}
 
 	sign := func(priv *mldsa.PrivKey, pub []byte, sequence uint64) *GuardianSignature {
-		bz := guardianExecSigningBytes(ctx.ChainID(), account.String(), id, sequence, msgsAny)
+		bz := GuardianExecSigningBytes(ctx.ChainID(), account.String(), id, sequence, msgsAny)
 		sig, err := priv.Sign(bz)
 		require.NoError(t, err)
 		return &GuardianSignature{Pubkey: pub, Signature: sig}

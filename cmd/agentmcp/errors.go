@@ -21,26 +21,27 @@ import (
 // retryable means "the identical call may succeed if repeated"; codes
 // are part of this server's interface and are never renamed.
 const (
-	codeInvalidAmount       = "INVALID_AMOUNT"
-	codeInvalidAddress      = "INVALID_ADDRESS"
-	codeInvalidArgument     = "INVALID_ARGUMENT"
-	codePerTxLimit          = "PER_TX_LIMIT_EXCEEDED"
-	codeDailyLimit          = "DAILY_LIMIT_EXCEEDED"
-	codeIdempotencyConflict = "IDEMPOTENCY_CONFLICT"
-	codeAccountNotFound     = "ACCOUNT_NOT_FOUND"
-	codeInsufficientFunds   = "INSUFFICIENT_FUNDS"
-	codeInsufficientFee     = "INSUFFICIENT_FEE"
-	codeGrantNotActive      = "GRANT_NOT_ACTIVE"
-	codeGrantNotFound       = "GRANT_NOT_FOUND"
-	codeGrantExpired        = "GRANT_EXPIRED"
-	codeGrantLimit          = "GRANT_LIMIT_EXCEEDED"
-	codeGrantRecipient      = "GRANT_RECIPIENT_NOT_ALLOWED"
-	codeFeeGrantRejected    = "FEE_GRANT_REJECTED"
-	codeNodeUnreachable     = "NODE_UNREACHABLE"
-	codeBroadcastUncertain  = "BROADCAST_UNCERTAIN"
-	codeTxRejected          = "TX_REJECTED" // refused before entering a block
-	codeTxFailed            = "TX_FAILED"   // in a block, but failed
-	codeScanLimit           = "SCAN_LIMIT"
+	codeInvalidAmount        = "INVALID_AMOUNT"
+	codeInvalidAddress       = "INVALID_ADDRESS"
+	codeInvalidArgument      = "INVALID_ARGUMENT"
+	codePerTxLimit           = "PER_TX_LIMIT_EXCEEDED"
+	codeDailyLimit           = "DAILY_LIMIT_EXCEEDED"
+	codeIdempotencyConflict  = "IDEMPOTENCY_CONFLICT"
+	codeAccountNotFound      = "ACCOUNT_NOT_FOUND"
+	codeInsufficientFunds    = "INSUFFICIENT_FUNDS"
+	codeInsufficientFee      = "INSUFFICIENT_FEE"
+	codeGrantNotActive       = "GRANT_NOT_ACTIVE"
+	codeAccountAuthNotActive = "ACCOUNT_AUTH_NOT_ACTIVE"
+	codeGrantNotFound        = "GRANT_NOT_FOUND"
+	codeGrantExpired         = "GRANT_EXPIRED"
+	codeGrantLimit           = "GRANT_LIMIT_EXCEEDED"
+	codeGrantRecipient       = "GRANT_RECIPIENT_NOT_ALLOWED"
+	codeFeeGrantRejected     = "FEE_GRANT_REJECTED"
+	codeNodeUnreachable      = "NODE_UNREACHABLE"
+	codeBroadcastUncertain   = "BROADCAST_UNCERTAIN"
+	codeTxRejected           = "TX_REJECTED" // refused before entering a block
+	codeTxFailed             = "TX_FAILED"   // in a block, but failed
+	codeScanLimit            = "SCAN_LIMIT"
 	// fetch_paid
 	codeHTTPError              = "HTTP_ERROR" // couldn't reach the server
 	codePaymentUnsupported     = "PAYMENT_UNSUPPORTED"
@@ -97,6 +98,8 @@ func classify(err error) *agentError {
 	switch {
 	case errors.Is(err, wallet.ErrAuthzNotActive):
 		return newError(codeGrantNotActive, err.Error())
+	case errors.Is(err, wallet.ErrAccountAuthNotActive):
+		return newError(codeAccountAuthNotActive, err.Error())
 	case errors.Is(err, context.DeadlineExceeded):
 		return newError(codeNodeUnreachable, err.Error())
 	}

@@ -217,10 +217,10 @@ func (k msgServer) acceptSessionKey(ctx sdk.Context, account, signer sdk.AccAddr
 
 // acceptGuardianThreshold verifies at least threshold valid signatures
 // from distinct registered guardians over the exec's canonical signing
-// bytes (see guardianExecSigningBytes), then advances next_sequence so
+// bytes (see GuardianExecSigningBytes), then advances next_sequence so
 // the same signatures can never be replayed.
 func (k msgServer) acceptGuardianThreshold(ctx sdk.Context, account sdk.AccAddress, a *Authenticator, gt *GuardianThreshold, msg *MsgExecAuthenticated) error {
-	signingBytes := guardianExecSigningBytes(ctx.ChainID(), msg.Account, msg.AuthenticatorId, gt.NextSequence, msg.Msgs)
+	signingBytes := GuardianExecSigningBytes(ctx.ChainID(), msg.Account, msg.AuthenticatorId, gt.NextSequence, msg.Msgs)
 
 	registered := make(map[string]bool, len(gt.GuardianPubkeys))
 	for _, pk := range gt.GuardianPubkeys {
@@ -244,12 +244,12 @@ func (k msgServer) acceptGuardianThreshold(ctx sdk.Context, account sdk.AccAddre
 	return nil
 }
 
-// guardianExecSigningBytes is the exact byte string a guardian signs to
+// GuardianExecSigningBytes is the exact byte string a guardian signs to
 // authorize one MsgExecAuthenticated: domain-separated, covering the
 // chain, account, authenticator, replay-protection sequence, and every
 // inner message's type URL and raw bytes (in order) -- changing any of
 // those invalidates every existing signature.
-func guardianExecSigningBytes(chainID, account string, authenticatorID uint64, sequence uint64, msgs []*cdctypes.Any) []byte {
+func GuardianExecSigningBytes(chainID, account string, authenticatorID uint64, sequence uint64, msgs []*cdctypes.Any) []byte {
 	h := sha256.New()
 	fmt.Fprintf(h, "aether-accountauth-exec/v1\n%s\n%s\n%d\n%d\n", chainID, account, authenticatorID, sequence)
 	for _, m := range msgs {
