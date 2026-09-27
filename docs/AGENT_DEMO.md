@@ -100,6 +100,5 @@ Two fresh, disposable keypairs, never used before this run:
 - Collector: http://157.245.252.221:8081/address/aether1pkqhuupkql6k6unll9ka4jv2kdq8cnknxldlv0crv69jth5twewswc5sla
 - The collection transaction (`MsgExec`): http://157.245.252.221:8081/tx/99222A32CBFC567E9A7D373D1ED1BA8755562B7E7D3130D9996E099F2B06A308
 
-The full MCP tool-call transcript (every request and response, including the seller's signed receipts)
-was generated alongside this write-up as `transcript.json`; ask Gitty for it if you want to inspect it,
-it wasn't relayed into this doc.
+The full MCP tool-call transcript from this run -- every request and response, including the seller's
+signed receipts -- is [`docs/agent-demo-transcript.json`](agent-demo-transcript.json).
