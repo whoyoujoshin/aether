@@ -124,24 +124,30 @@ Those three IDs stay on Aether, idle; the counterparty chain is gone.
 Still not done: a connection to a counterparty chain someone else
 operates. That's an operational step, not a code one.
 
-### The live chain's IBC unbonding period is 1h40m, not 72h
+### Open issue: the live chain's bond cooldown and IBC unbonding period
 
-The live run reported a bond cooldown of 1h40m. The testnet still has
-`x/pow`'s original 100-block placeholder `BondCooldown` (100 blocks x 60s
-target). `BondCooldownProduction` (4,320 blocks, 72h) is only the default
-for chains started from genesis after it landed; see `x/pow/types.go`
-and the whitepaper. Two consequences:
+The live run reported an unbonding period of 1h40m. The testnet still has
+`x/pow`'s original 100-block placeholder `BondCooldown`;
+`BondCooldownProduction` (4,320 blocks) is only the default for chains
+started from genesis after it landed. Three facts make this worse than
+it looks, and the fix is still being decided:
 
-- **Short-lived light clients.** A client of Aether on another chain
-  gets a trusting period of about 67 minutes (2/3 of 1h40m, the usual
-  relayer default). A standing connection would need a client update at
-  least that often, or the client expires and needs a governance
-  recovery on the other chain.
-- **The economic-security gap `types.go` describes.** 1h40m is far
-  shorter than the 48h evidence window, so a validator could equivocate
-  and withdraw before the evidence stops being valid.
+- **The real lockup is shorter than reported.**
+  `app/ibc_self_consensus.go` converts `BondCooldown` to time using the
+  60s *target* block time, but live blocks run at about 5s. So 100
+  blocks is really about 8 minutes, not 1h40m. Aether therefore
+  overstates its unbonding period to every light client by about 12x,
+  and that code needs fixing whatever value is chosen.
+- **Evidence stays valid longer than `x/pow/types.go` assumes.** CometBFT
+  expires evidence only when it is older than *both*
+  `max_age_num_blocks` (100,000) and `max_age_duration` (48h); the
+  comment in `types.go` says either. At ~5s blocks that window is
+  about 5.8 days, so a validator can withdraw long before evidence
+  against them expires.
+- **4,320 blocks doesn't close it.** At ~5s blocks it's about 6 hours.
 
-One governance proposal fixes both:
-`aetherd tx pow draft-update-params params.json --bond-cooldown 4320`,
-then submit and pass it. Do this before opening any IBC connection
-that's meant to stay up.
+Options under consideration: a bond cooldown above 100,000 blocks;
+lowering the evidence block limit so the 48h bound always governs,
+together with a matching cooldown; or making the cooldown time-based
+in code. Until one lands, don't open an IBC connection that's meant to
+stay up.
