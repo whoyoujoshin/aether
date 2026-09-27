@@ -9,8 +9,10 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/module"
 	capability "github.com/cosmos/ibc-go/modules/capability"
 	capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
+	ica "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts"
 	icacontrollertypes "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/controller/types"
 	icahosttypes "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/host/types"
+	icatypes "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/types"
 	transfer "github.com/cosmos/ibc-go/v8/modules/apps/transfer"
 	ibctransfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
 	ibc "github.com/cosmos/ibc-go/v8/modules/core"
@@ -138,11 +140,13 @@ func (app *App) initIBCGenesisAtActivation(ctx sdk.Context) error {
 		capability.NewAppModule(app.cdc, *app.CapabilityKeeper, false),
 		ibc.NewAppModule(app.IBCKeeper),
 		transfer.NewAppModule(app.TransferKeeper),
+		ica.NewAppModule(&app.ICAControllerKeeper, &app.ICAHostKeeper),
 	)
 	genesisState := map[string]json.RawMessage{
 		capabilitytypes.ModuleName:  capability.AppModuleBasic{}.DefaultGenesis(app.cdc),
 		ibcexported.ModuleName:      ibc.AppModuleBasic{}.DefaultGenesis(app.cdc),
 		ibctransfertypes.ModuleName: transfer.AppModuleBasic{}.DefaultGenesis(app.cdc),
+		icatypes.ModuleName:         ica.AppModuleBasic{}.DefaultGenesis(app.cdc),
 	}
 	if _, err := mgr.InitGenesis(ctx, app.cdc, genesisState); err != nil {
 		// Mirrors InitChainer's own tolerance (see app.go): this chain

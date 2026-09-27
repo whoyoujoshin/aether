@@ -23,3 +23,11 @@ type noLegacyParamSubspace struct{}
 func (noLegacyParamSubspace) GetParamSet(ctx sdk.Context, ps paramtypes.ParamSet) {
 	panic("noLegacyParamSubspace.GetParamSet called: IBC's legacy-params migration should be unreachable on Aether (see type doc)")
 }
+
+// GetParamSetIfExists satisfies interchain accounts' own slightly wider
+// ParamSubspace interface (it also wants this non-panicking variant, used
+// by its own legacy migration path) -- same unreachability rationale as
+// GetParamSet above.
+func (noLegacyParamSubspace) GetParamSetIfExists(ctx sdk.Context, ps paramtypes.ParamSet) {
+	panic("noLegacyParamSubspace.GetParamSetIfExists called: IBC's legacy-params migration should be unreachable on Aether (see type doc)")
+}
