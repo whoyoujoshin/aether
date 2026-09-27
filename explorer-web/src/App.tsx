@@ -1,4 +1,4 @@
-import { Routes, Route, Link } from "react-router-dom";
+import { Routes, Route, Link, useLocation } from "react-router-dom";
 import { TopBar } from "./components/TopBar";
 import Dashboard from "./pages/Dashboard";
 import Validators from "./pages/Validators";
@@ -14,7 +14,7 @@ function NotFound() {
   return (
     <div className="page">
       <h1 className="page-title">Page not found</h1>
-      <div className="empty-state">
+      <div className="page-sub">
         Nothing lives at this address. <Link to="/">Back to the overview</Link>
       </div>
     </div>
@@ -22,9 +22,12 @@ function NotFound() {
 }
 
 export default function App() {
+  // The overview draws its own top bar inside its hero glow.
+  const home = useLocation().pathname === "/";
+
   return (
     <div className="layout">
-      <TopBar />
+      {!home && <TopBar />}
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/blocks" element={<Blocks />} />
@@ -37,7 +40,10 @@ export default function App() {
         <Route path="/tx/:hash" element={<Transaction />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
-      <div className="footer">Aether Explorer</div>
+      <div className="footer">
+        <img src="/aether-mark-reversed.svg" alt="" />
+        Aether Explorer · read live from the chain
+      </div>
     </div>
   );
 }

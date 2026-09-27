@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { api } from "../api";
 
-export function TopBar() {
+/** The shared search box logic: the backend decides whether it's an address, tx or block. */
+export function useSearch() {
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  async function handleSearch(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     const q = query.trim();
     if (!q) return;
@@ -31,44 +32,48 @@ export function TopBar() {
     }
   }
 
+  return { query, setQuery, error, submit };
+}
+
+const links: [string, string][] = [
+  ["/", "Overview"],
+  ["/blocks", "Blocks"],
+  ["/validators", "Validators"],
+  ["/governance", "Governance"],
+  ["/services", "Services"],
+  ["/agents", "For agents"],
+];
+
+/** home: the overview's variant, with the search in the hero instead of the bar. */
+export function TopBar({ home = false }: { home?: boolean }) {
+  const search = useSearch();
+
   return (
-    <div className="topbar">
-      <div className="brand">
-        <span className="brand-mark">⚡</span> Aether Explorer
-      </div>
+    <div className={`topbar${home ? " home" : ""}`}>
+      <Link to="/" className="brand" aria-label="Aether Explorer home">
+        <img src="/aether-mark-reversed.svg" alt="" />
+        <span className="brand-word">AETHER</span>
+        <span className="brand-sub">Explorer</span>
+      </Link>
       <nav className="nav-links">
-        <NavLink to="/" end className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Overview
-        </NavLink>
-        <NavLink to="/blocks" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Blocks
-        </NavLink>
-        <NavLink to="/validators" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Validators
-        </NavLink>
-        <NavLink to="/governance" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Governance
-        </NavLink>
-        <NavLink to="/services" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          Services
-        </NavLink>
-        <NavLink to="/agents" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-          For agents
-        </NavLink>
+        {links.map(([to, label]) => (
+          <NavLink key={to} to={to} end={to === "/"} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+            {label}
+          </NavLink>
+        ))}
       </nav>
-      <form className="search-form" onSubmit={handleSearch}>
-        <input
-          className="search-input"
-          type="text"
-          placeholder="Search by address or transaction hash"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <button className="search-button" type="submit">
-          Search
-        </button>
-      </form>
-      {error && <div className="error-banner" style={{ position: "absolute", top: 56, right: 24 }}>{error}</div>}
+      {!home && (
+        <form className="search-form" onSubmit={search.submit} role="search">
+          <input
+            type="text"
+            placeholder="Search address, hash or height"
+            aria-label="Search address, hash or height"
+            value={search.query}
+            onChange={(e) => search.setQuery(e.target.value)}
+          />
+          {search.error && <div className="error-banner search-error">{search.error}</div>}
+        </form>
+      )}
     </div>
   );
 }

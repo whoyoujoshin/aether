@@ -99,6 +99,7 @@ type statsResponse struct {
 	BlockReward     string `json:"blockReward"`
 	CurrentEpoch    int64  `json:"currentEpoch"`
 	TreasuryBalance string `json:"treasuryBalance"`
+	statsExtrasDTO
 }
 
 func handleStats(w http.ResponseWriter, r *http.Request) {
@@ -128,6 +129,8 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 	if epochResp, err := powClient.CurrentEpoch(ctx, &pow.QueryCurrentEpochRequest{}); err == nil {
 		resp.CurrentEpoch = epochResp.Epoch
 	}
+
+	resp.statsExtrasDTO = statsExtras(ctx, conn)
 
 	bankClient := banktypes.NewQueryClient(conn)
 	treasuryAddr := authtypes.NewModuleAddress("treasury")
@@ -196,7 +199,7 @@ func handleBlock(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, fmt.Errorf("block %d not found", height))
 		return
 	}
-	writeJSON(w, http.StatusOK, toBlockDetailDTO(result))
+	writeJSON(w, http.StatusOK, blockExtras(r.Context(), rpcClient, toBlockDetailDTO(result), result.Block))
 }
 
 // --- GET /api/validators ---
@@ -337,6 +340,7 @@ type addressResponse struct {
 	Address      string           `json:"address"`
 	Balance      string           `json:"balance"`
 	Transactions []transactionDTO `json:"transactions"`
+	addressExtrasDTO
 }
 
 func handleAddress(w http.ResponseWriter, r *http.Request) {
@@ -366,9 +370,10 @@ func handleAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, addressResponse{
-		Address:      addr,
-		Balance:      balance.AmountOf("uaeth").String(),
-		Transactions: toTransactionDTOs(txs),
+		Address:          addr,
+		Balance:          balance.AmountOf("uaeth").String(),
+		Transactions:     toTransactionDTOs(txs),
+		addressExtrasDTO: addressExtras(r.Context(), addr),
 	})
 }
 
@@ -430,7 +435,13 @@ func handleTx(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, fmt.Errorf("transaction not found: %w", err))
 		return
 	}
-	writeJSON(w, http.StatusOK, toTransactionDetailDTO(detail))
+	out, err := txExtras(r.Context(), toTransactionDetailDTO(detail))
+	if err != nil {
+		// The summary above already came from the node; the decoded
+		// messages and events are extras, not worth failing the page over.
+		log.Printf("tx %s: decoded detail unavailable: %v", hash, err)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // notFoundInterceptor lets spaFallback ask "would the wrapped handler
@@ -509,9 +520,11 @@ func main() {
 	mux.HandleFunc("/api/blocks", withCORS(handleBlocks))
 	mux.HandleFunc("/api/block", withCORS(handleBlock))
 	mux.HandleFunc("/api/validators", withCORS(handleValidators))
+	mux.HandleFunc("/api/validator-set", withCORS(handleValidatorSet))
 	mux.HandleFunc("/api/leaderboard", withCORS(handleLeaderboard))
 	mux.HandleFunc("/api/proposals", withCORS(handleProposals))
 	mux.HandleFunc("/api/proposals/tally", withCORS(handleProposalTally))
+	mux.HandleFunc("/api/governance/params", withCORS(handleGovernanceParams))
 	mux.HandleFunc("/api/recent-transactions", withCORS(handleRecentTransactions))
 	mux.HandleFunc("/api/address", withCORS(handleAddress))
 	mux.HandleFunc("/api/tx", withCORS(handleTx))
