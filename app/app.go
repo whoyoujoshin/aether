@@ -49,6 +49,7 @@ import (
 	"github.com/cosmos/gogoproto/grpc"
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	"github.com/whoyoujoshin/aether/x/accountauth"
 	"github.com/whoyoujoshin/aether/x/governance"
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/treasury"
@@ -131,6 +132,9 @@ var ModuleBasics = module.NewBasicManager(
 	ibctm.AppModuleBasic{},
 	transfer.AppModuleBasic{},
 	ica.AppModuleBasic{},
+	// Same story, gated on AccountAuthActivationHeight instead: see
+	// app/accountauth.go.
+	accountauth.AppModuleBasic{},
 )
 
 type EncodingConfig struct {
@@ -247,6 +251,12 @@ type App struct {
 
 	ibcWired bool
 
+	// Zero-valued (unusable) until accountAuthWired -- see
+	// AccountAuthActivationHeight.
+	AccountAuthKeeper accountauth.Keeper
+
+	accountAuthWired bool
+
 	sm                 *module.Manager
 	BasicModuleManager module.BasicManager
 }
@@ -307,6 +317,14 @@ func New(
 	app.ibcWired = ibcCutover.wire
 	if ibcCutover.wire {
 		for _, name := range ibcStoreKeys {
+			app.keys[name] = storetypes.NewKVStoreKey(name)
+		}
+	}
+
+	accountAuthCutover := planAccountAuth(rootmulti.GetLatestVersion(db), accountAuthActivationHeight)
+	app.accountAuthWired = accountAuthCutover.wire
+	if accountAuthCutover.wire {
+		for _, name := range accountAuthStoreKeys {
 			app.keys[name] = storetypes.NewKVStoreKey(name)
 		}
 	}
@@ -477,6 +495,13 @@ func New(
 		app.IBCKeeper.SetRouter(ibcRouter)
 	}
 
+	// Pluggable account abstraction, gated on AccountAuthActivationHeight
+	// (see app/accountauth.go for why: same reasoning as authz/feegrant
+	// and IBC above).
+	if accountAuthCutover.wire {
+		app.AccountAuthKeeper = accountauth.NewKeeper(appCodec, app.keys[accountauth.StoreKey], app.MsgServiceRouter())
+	}
+
 	// Module manager
 	powModule := pow.NewAppModule(appCodec, app.PowKeeper)
 
@@ -507,6 +532,9 @@ func New(
 			transfer.NewAppModule(app.TransferKeeper),
 			ica.NewAppModule(&app.ICAControllerKeeper, &app.ICAHostKeeper),
 		)
+	}
+	if accountAuthCutover.wire {
+		modules = append(modules, accountauth.NewAppModule(app.AccountAuthKeeper))
 	}
 	app.sm = module.NewManager(modules...)
 
@@ -564,13 +592,16 @@ func New(
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
 	app.SetEndBlocker(app.EndBlocker)
-	if authzFeegrant.addStores || ibcCutover.addStores {
+	if authzFeegrant.addStores || ibcCutover.addStores || accountAuthCutover.addStores {
 		var added []string
 		if authzFeegrant.addStores {
 			added = append(added, authzFeegrantStoreKeys...)
 		}
 		if ibcCutover.addStores {
 			added = append(added, ibcStoreKeys...)
+		}
+		if accountAuthCutover.addStores {
+			added = append(added, accountAuthStoreKeys...)
 		}
 		app.SetStoreLoader(func(ms storetypes.CommitMultiStore) error {
 			return ms.LoadLatestVersionAndUpgrade(&storetypes.StoreUpgrades{Added: added})
@@ -627,6 +658,9 @@ func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 		return sdk.BeginBlock{}, err
 	}
 	if err := app.checkIBCActivation(ctx); err != nil {
+		return sdk.BeginBlock{}, err
+	}
+	if err := app.checkAccountAuthActivation(ctx); err != nil {
 		return sdk.BeginBlock{}, err
 	}
 	if err := app.MigrateConsensusParamsToNewStore(ctx); err != nil {
