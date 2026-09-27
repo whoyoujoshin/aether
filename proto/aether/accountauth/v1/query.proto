@@ -1,0 +1,18 @@
+syntax = "proto3";
+package aether.accountauth.v1;
+
+import "gogoproto/gogo.proto";
+import "aether/accountauth/v1/accountauth.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/accountauth";
+
+service Query {
+  rpc Authenticators(QueryAuthenticatorsRequest) returns (QueryAuthenticatorsResponse);
+}
+
+message QueryAuthenticatorsRequest {
+  string account = 1;
+}
+message QueryAuthenticatorsResponse {
+  repeated Authenticator authenticators = 1;
+}

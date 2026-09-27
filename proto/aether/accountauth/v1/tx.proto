@@ -1,0 +1,52 @@
+syntax = "proto3";
+package aether.accountauth.v1;
+
+import "gogoproto/gogo.proto";
+import "cosmos/msg/v1/msg.proto";
+import "google/protobuf/any.proto";
+import "aether/accountauth/v1/accountauth.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/accountauth";
+
+service Msg {
+  rpc RegisterAuthenticator(MsgRegisterAuthenticator) returns (MsgRegisterAuthenticatorResponse);
+  rpc RevokeAuthenticator(MsgRevokeAuthenticator) returns (MsgRevokeAuthenticatorResponse);
+  rpc ExecAuthenticated(MsgExecAuthenticated) returns (MsgExecAuthenticatedResponse);
+}
+
+// MsgRegisterAuthenticator is signed by the account's own primary
+// (ML-DSA) key -- registering an authenticator never needs a new
+// ante-handler path, since this is an ordinary signed message like any
+// other.
+message MsgRegisterAuthenticator {
+  option (cosmos.msg.v1.signer) = "account";
+  string account = 1;
+  Authenticator authenticator = 2; // id is ignored on input; the keeper assigns it
+}
+message MsgRegisterAuthenticatorResponse {
+  uint64 id = 1;
+}
+
+message MsgRevokeAuthenticator {
+  option (cosmos.msg.v1.signer) = "account";
+  string account = 1;
+  uint64 id = 2;
+}
+message MsgRevokeAuthenticatorResponse {}
+
+// MsgExecAuthenticated dispatches msgs as account, authorized either by
+// signer being a registered session key (signer's own tx signature,
+// already verified by the normal ante handler, is the proof) or by
+// guardian_signatures meeting a registered guardian threshold (verified
+// inside the handler itself, independent of who submits the tx).
+message MsgExecAuthenticated {
+  option (cosmos.msg.v1.signer) = "signer";
+  string signer = 1;  // whoever submits the tx: the session key itself, or anyone relaying guardian signatures
+  string account = 2; // whose behalf the inner msgs execute on
+  uint64 authenticator_id = 3;
+  repeated google.protobuf.Any msgs = 4;
+  repeated GuardianSignature guardian_signatures = 5; // only for a guardian_threshold authenticator
+}
+message MsgExecAuthenticatedResponse {
+  repeated bytes results = 1;
+}
