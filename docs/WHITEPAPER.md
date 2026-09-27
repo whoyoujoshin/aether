@@ -240,10 +240,10 @@ Public testnet endpoints (subject to change; verify against the live README):
 |----------|--------|
 | Chain ID | `aether-testnet-1` |
 | Seed | `dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656` |
-| RPC | `http://157.245.252.221:26657` |
-| gRPC | `157.245.252.221:9090` |
-| Faucet | `http://157.245.252.221:8080/request` (POST JSON `{"address":"aether1..."}`) |
-| Explorer | `http://157.245.252.221:8081` |
+| RPC | `https://rpc.157-245-252-221.sslip.io` (plain `http://157.245.252.221:26657` still works) |
+| gRPC | `grpc.157-245-252-221.sslip.io:443`, TLS (plain `157.245.252.221:9090` still works) |
+| Faucet | `https://faucet.157-245-252-221.sslip.io/request` (POST JSON `{"address":"aether1..."}`) |
+| Explorer | `https://explorer.157-245-252-221.sslip.io` |
 | Genesis | [`testnet/genesis.json`](../testnet/genesis.json) |
 
 Minimal join steps:

@@ -10,7 +10,7 @@ Design history, live-verification notes, and locked architectural decisions are 
 
 ## AI agents: start here
 
-Agents use the same accounts and transactions as people: there is no AI-only lane. **Testnet only: use disposable keys, never anything of value.** Endpoints are plain HTTP (no TLS).
+Agents use the same accounts and transactions as people: there is no AI-only lane. **Testnet only: use disposable keys, never anything of value.**
 
 ```bash
 go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest   # Go 1.25+
@@ -24,13 +24,13 @@ That gives the agent a spend-capped wallet as MCP tools: balance, send, invoice 
 | | |
 |--|--|
 | Chain ID | `aether-testnet-1` · denom `uaeth` (1 AETH = 10⁶ uaeth) · addresses `aether1...` |
-| RPC / gRPC | `http://157.245.252.221:26657` / `157.245.252.221:9090` |
-| Faucet | `curl -X POST http://157.245.252.221:8080/request -H 'Content-Type: application/json' -d '{"address":"aether1..."}'` |
-| Explorer | `http://157.245.252.221:8081/agents` · balance: `/api/address?addr=aether1...` · this card as JSON: `/api/agents` |
+| RPC / gRPC | `https://rpc.157-245-252-221.sslip.io` / `grpc.157-245-252-221.sslip.io:443` (TLS; plain `157.245.252.221:26657`/`:9090` still work) |
+| Faucet | `curl -X POST https://faucet.157-245-252-221.sslip.io/request -H 'Content-Type: application/json' -d '{"address":"aether1..."}'` |
+| Explorer | `https://explorer.157-245-252-221.sslip.io/agents` · balance: `/api/address?addr=aether1...` · this card as JSON: `/api/agents` |
 
 Let an agent spend from your account with a chain-enforced cap instead of holding funds: [agent permissions](#on-chain-agent-permissions-xauthz-xfeegrant). Sell to agents: [paid APIs](#paid-apis-x402). See one agent pay another for a tool call, live, in [docs/AGENT_DEMO.md](docs/AGENT_DEMO.md). A prompt to check an agent is set up (the address is a test counterparty run by the project):
 
-> Using the aether-wallet tools: get your address and balance. If you have under 1 AETH, call request_testnet_funds and wait until your balance shows it. Then send 0.001 AETH to aether1cdugwhxk9cktjsemm6yjrd6xtfsq9wkjvnef03ml4u6ltuv7edcs0eyjds with idempotencyKey "aether-smoke-1", wait for the transaction to confirm, and report its hash and http://157.245.252.221:8081/tx/<hash>.
+> Using the aether-wallet tools: get your address and balance. If you have under 1 AETH, call request_testnet_funds and wait until your balance shows it. Then send 0.001 AETH to aether1cdugwhxk9cktjsemm6yjrd6xtfsq9wkjvnef03ml4u6ltuv7edcs0eyjds with idempotencyKey "aether-smoke-1", wait for the transaction to confirm, and report its hash and https://explorer.157-245-252-221.sslip.io/tx/<hash>.
 
 ## Current status
 
@@ -65,10 +65,10 @@ Every account transaction must use ML-DSA-44 from genesis (no classical fallback
 |--|--|
 | **Chain ID** | `aether-testnet-1` |
 | **Seed** | `dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656` |
-| **RPC** | `http://157.245.252.221:26657` |
-| **gRPC** | `157.245.252.221:9090` |
-| **Faucet** | `http://157.245.252.221:8080/request` — `POST` JSON `{"address":"aether1..."}` |
-| **Explorer** | `http://157.245.252.221:8081` |
+| **RPC** | `https://rpc.157-245-252-221.sslip.io` (plain `http://157.245.252.221:26657` still works) |
+| **gRPC** | `grpc.157-245-252-221.sslip.io:443`, TLS (plain `157.245.252.221:9090` still works) |
+| **Faucet** | `https://faucet.157-245-252-221.sslip.io/request` — `POST` JSON `{"address":"aether1..."}` |
+| **Explorer** | `https://explorer.157-245-252-221.sslip.io` |
 | **Genesis** | [`testnet/genesis.json`](testnet/genesis.json) |
 
 ### Connecting a node

@@ -24,9 +24,9 @@ import (
 
 // The public testnet's endpoints: what `agentmcp init` connects to by default.
 const (
-	testnetFaucet = "http://157.245.252.221:8080/request"
-	testnetGRPC   = "157.245.252.221:9090"
-	testnetRPC    = "http://157.245.252.221:26657"
+	testnetFaucet = "https://faucet.157-245-252-221.sslip.io/request"
+	testnetGRPC   = "grpc.157-245-252-221.sslip.io:443"
+	testnetRPC    = "https://rpc.157-245-252-221.sslip.io"
 )
 
 var (
