@@ -149,8 +149,17 @@ it looks, and the fix is still being decided:
   against them expires.
 - **4,320 blocks doesn't close it.** At ~5s blocks it's about 6 hours.
 
-Options under consideration: a bond cooldown above 100,000 blocks;
-lowering the evidence block limit so the 48h bound always governs,
-together with a matching cooldown; or making the cooldown time-based
-in code. Until one lands, don't open an IBC connection that's meant to
-stay up.
+**Decided 2026-09-27: two governance proposals.** Gitty measured live
+blocks at 5.014s over the last 500 (steady; 6.6s before the 122,000
+cutover). Joshua approved:
+
+- `x/consensus` evidence `max_age_num_blocks`: 100,000 -> **2,880**.
+  Evidence then stays valid for exactly 48h at any block time up to
+  60s, since the time bound always governs.
+- `x/pow` `bond_cooldown`: 100 -> **51,840**, which is 72h (48h plus a
+  day of margin) at ~5s blocks.
+
+Both passed a local governance rehearsal. The cooldown is still counted
+in blocks, so re-check it if block time ever drops (below ~3.4s it
+falls under 48h). Until both proposals pass on `aether-testnet-1`, don't
+open an IBC connection that's meant to stay up.
