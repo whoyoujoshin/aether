@@ -81,7 +81,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("querying aether's unbonding-period analog: %v", err)
 	}
-	fmt.Printf("aether bond-cooldown period: %s\n", aetherUnbonding)
+	fmt.Printf("aether unbonding period (bond cooldown x measured block time): %s\n", aetherUnbonding)
 
 	cpartyUnbonding, err := relayer.StakingUnbondingPeriod(cparty)
 	if err != nil {

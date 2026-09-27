@@ -15,17 +15,58 @@ import (
 	"github.com/whoyoujoshin/aether/x/pow"
 )
 
-// AetherUnbondingPeriod queries chain's real, live x/pow params and
-// derives IBC's "unbonding period" analog from them -- see
-// app/ibc_self_consensus.go's selfConsensusStakingShim.UnbondingTime
-// doc comment for why BondCooldown*TargetBlockTime is Aether's genuine
-// equivalent (never hardcode this: governance can change either param).
+// blockTimeSampleBlocks is how far back AetherUnbondingPeriod looks to
+// measure the chain's real block interval.
+const blockTimeSampleBlocks = 1000
+
+// AetherUnbondingPeriod is the unbonding period a light client of Aether
+// should use: x/pow's BondCooldown (the blocks a validator's escrow
+// stays slashable after its last activity) times the chain's MEASURED
+// block interval. Not x/pow's TargetBlockTime: live blocks run ~5s
+// against a 60s target, and converting with the target overstated the
+// real lockup ~12x, letting a client keep trusting validators who had
+// already withdrawn.
+//
+// This is purely the relayer's choice. ibc-go v8's connection handshake
+// only verifies connection state; it never checks a client of Aether
+// against Aether's own view (ValidateSelfClient is unused), so nothing
+// on-chain enforces or advertises this value.
 func AetherUnbondingPeriod(chain *Chain) (time.Duration, error) {
 	resp, err := pow.NewQueryClient(chain.ClientCtx).Params(context.Background(), &pow.QueryParamsRequest{})
 	if err != nil {
 		return 0, fmt.Errorf("%s: querying pow params: %w", chain.Name, err)
 	}
-	return time.Duration(resp.BondCooldown) * time.Duration(resp.TargetBlockTime) * time.Second, nil
+	perBlock, err := measuredBlockTime(chain)
+	if err != nil {
+		return 0, err
+	}
+	return time.Duration(resp.BondCooldown) * perBlock, nil
+}
+
+// measuredBlockTime averages the interval between the latest header and
+// the one blockTimeSampleBlocks (or as many as exist) before it.
+func measuredBlockTime(chain *Chain) (time.Duration, error) {
+	node, err := chain.ClientCtx.GetNode()
+	if err != nil {
+		return 0, err
+	}
+	latest, err := node.Commit(context.Background(), nil)
+	if err != nil {
+		return 0, fmt.Errorf("%s: latest header: %w", chain.Name, err)
+	}
+	tip := latest.Height
+	from := tip - blockTimeSampleBlocks
+	if from < 1 {
+		from = 1
+	}
+	if from >= tip {
+		return 0, fmt.Errorf("%s: need at least 2 blocks to measure block time, have %d", chain.Name, tip)
+	}
+	old, err := node.Commit(context.Background(), &from)
+	if err != nil {
+		return 0, fmt.Errorf("%s: header %d: %w", chain.Name, from, err)
+	}
+	return latest.Time.Sub(old.Time) / time.Duration(tip-from), nil
 }
 
 // StakingUnbondingPeriod queries chain's real, live x/staking params
