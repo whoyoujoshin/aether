@@ -2,57 +2,77 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"encoding/json"
 	"strings"
 
-	dbm "github.com/cosmos/cosmos-db"
 	"cosmossdk.io/log"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	"github.com/cosmos/gogoproto/grpc"
+	"cosmossdk.io/store/rootmulti"
 	storetypes "cosmossdk.io/store/types"
+	"cosmossdk.io/x/feegrant"
+	feegrantkeeper "cosmossdk.io/x/feegrant/keeper"
+	feegrantmodule "cosmossdk.io/x/feegrant/module"
+	signing "cosmossdk.io/x/tx/signing"
+	abci "github.com/cometbft/cometbft/abci/types"
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/codec/address"
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/cosmos/cosmos-sdk/server/api"
 	"github.com/cosmos/cosmos-sdk/server/config"
 	"github.com/cosmos/cosmos-sdk/server/types"
 	"github.com/cosmos/cosmos-sdk/std"
-	"github.com/cosmos/cosmos-sdk/types/module"
-	"github.com/cosmos/cosmos-sdk/x/auth/tx"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	abci "github.com/cometbft/cometbft/abci/types"
+	"github.com/cosmos/cosmos-sdk/types/module"
+	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
+	"github.com/cosmos/cosmos-sdk/x/auth"
+	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
+	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+	"github.com/cosmos/cosmos-sdk/x/auth/tx"
+	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	authzkeeper "github.com/cosmos/cosmos-sdk/x/authz/keeper"
+	authzmodule "github.com/cosmos/cosmos-sdk/x/authz/module"
+	"github.com/cosmos/cosmos-sdk/x/bank"
+	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	"github.com/cosmos/cosmos-sdk/x/consensus"
+	consensuskeeper "github.com/cosmos/cosmos-sdk/x/consensus/keeper"
+	"github.com/cosmos/gogoproto/grpc"
+	"github.com/cosmos/gogoproto/proto"
+	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	"github.com/whoyoujoshin/aether/x/accountauth"
 	"github.com/whoyoujoshin/aether/x/governance"
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/treasury"
-	"github.com/cosmos/cosmos-sdk/x/consensus"
-	consensuskeeper "github.com/cosmos/cosmos-sdk/x/consensus/keeper"
-	"github.com/cosmos/cosmos-sdk/codec/address"
-	"github.com/cosmos/cosmos-sdk/runtime"
-	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	"github.com/cosmos/cosmos-sdk/x/auth"
-	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
-	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
-	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-	"github.com/cosmos/cosmos-sdk/x/bank"
-	signing "cosmossdk.io/x/tx/signing"
-	"github.com/cosmos/gogoproto/proto"
-	"github.com/whoyoujoshin/aether/crypto/mldsa"
-	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
-	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
-	"cosmossdk.io/store/rootmulti"
-	"cosmossdk.io/x/feegrant"
-	feegrantkeeper "cosmossdk.io/x/feegrant/keeper"
-	feegrantmodule "cosmossdk.io/x/feegrant/module"
-	authzkeeper "github.com/cosmos/cosmos-sdk/x/authz/keeper"
-	authzmodule "github.com/cosmos/cosmos-sdk/x/authz/module"
 
+	capability "github.com/cosmos/ibc-go/modules/capability"
+	capabilitykeeper "github.com/cosmos/ibc-go/modules/capability/keeper"
+	capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
+	ica "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts"
+	icacontroller "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/controller"
+	icacontrollerkeeper "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/controller/keeper"
+	icacontrollertypes "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/controller/types"
+	icahost "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/host"
+	icahostkeeper "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/host/keeper"
+	icahosttypes "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/host/types"
+	icatypes "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/types"
+	transfer "github.com/cosmos/ibc-go/v8/modules/apps/transfer"
+	ibctransferkeeper "github.com/cosmos/ibc-go/v8/modules/apps/transfer/keeper"
+	ibctransfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
+	ibc "github.com/cosmos/ibc-go/v8/modules/core"
+	porttypes "github.com/cosmos/ibc-go/v8/modules/core/05-port/types"
+	ibcexported "github.com/cosmos/ibc-go/v8/modules/core/exported"
+	ibckeeper "github.com/cosmos/ibc-go/v8/modules/core/keeper"
+	ibctm "github.com/cosmos/ibc-go/v8/modules/light-clients/07-tendermint"
 )
 
 const Name = "aether"
@@ -101,6 +121,20 @@ var ModuleBasics = module.NewBasicManager(
 	// these two only once AuthzFeegrantActivationHeight is reached.
 	authzmodule.AppModuleBasic{},
 	feegrantmodule.AppModuleBasic{},
+	// Same story, gated on IBCActivationHeight instead: see app/ibc.go.
+	// ibctm registers the 07-tendermint light client's own ClientState /
+	// ConsensusState / Header Any types: core IBC's own RegisterInterfaces
+	// does NOT include these (see the light-client-as-a-module split in
+	// ibc-go v8), so any tx carrying one (e.g. MsgCreateClient) fails to
+	// decode ("tx parse error": unable to resolve type URL) without this.
+	capability.AppModuleBasic{},
+	ibc.AppModuleBasic{},
+	ibctm.AppModuleBasic{},
+	transfer.AppModuleBasic{},
+	ica.AppModuleBasic{},
+	// Same story, gated on AccountAuthActivationHeight instead: see
+	// app/accountauth.go.
+	accountauth.AppModuleBasic{},
 )
 
 type EncodingConfig struct {
@@ -112,15 +146,15 @@ type EncodingConfig struct {
 
 func MakeEncodingConfig() EncodingConfig {
 	interfaceRegistry, err := cdctypes.NewInterfaceRegistryWithOptions(cdctypes.InterfaceRegistryOptions{
-	ProtoFiles: proto.HybridResolver,
-	SigningOptions: signing.Options{
-		AddressCodec:          address.NewBech32Codec(Bech32MainPrefix),
-		ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
-	},
-})
-if err != nil {
-	panic(err)
-}
+		ProtoFiles: proto.HybridResolver,
+		SigningOptions: signing.Options{
+			AddressCodec:          address.NewBech32Codec(Bech32MainPrefix),
+			ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
 	std.RegisterInterfaces(interfaceRegistry)
 	mldsa.RegisterInterfaces(interfaceRegistry)
 	ModuleBasics.RegisterInterfaces(interfaceRegistry)
@@ -131,15 +165,15 @@ if err != nil {
 	ModuleBasics.RegisterLegacyAminoCodec(legacyAmino)
 
 	txCfg, err := tx.NewTxConfigWithOptions(appCodec, tx.ConfigOptions{
-	EnabledSignModes: tx.DefaultSignModes,
-	SigningOptions: &signing.Options{
-		AddressCodec:          address.NewBech32Codec(Bech32MainPrefix),
-		ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
-	},
-})
-if err != nil {
-	panic(err)
-}
+		EnabledSignModes: tx.DefaultSignModes,
+		SigningOptions: &signing.Options{
+			AddressCodec:          address.NewBech32Codec(Bech32MainPrefix),
+			ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
 
 	return EncodingConfig{
 		InterfaceRegistry: interfaceRegistry,
@@ -186,6 +220,8 @@ type App struct {
 	cdc               codec.Codec
 	interfaceRegistry cdctypes.InterfaceRegistry
 	keys              map[string]*storetypes.KVStoreKey
+	memKeys           map[string]*storetypes.MemoryStoreKey
+	txConfig          client.TxConfig
 
 	AccountKeeper         authkeeper.AccountKeeper
 	BankKeeper            bankkeeper.BaseKeeper
@@ -200,8 +236,29 @@ type App struct {
 
 	authzFeegrantWired bool
 
-	sm *module.Manager
-	BasicModuleManager   module.BasicManager
+	// Zero-valued (unusable) until ibcWired -- see IBCActivationHeight.
+	// IBCKeeper must be a pointer, so its Router can be set after
+	// construction (see New()).
+	CapabilityKeeper          *capabilitykeeper.Keeper
+	IBCKeeper                 *ibckeeper.Keeper
+	TransferKeeper            ibctransferkeeper.Keeper
+	ICAControllerKeeper       icacontrollerkeeper.Keeper
+	ICAHostKeeper             icahostkeeper.Keeper
+	ScopedIBCKeeper           capabilitykeeper.ScopedKeeper
+	ScopedTransferKeeper      capabilitykeeper.ScopedKeeper
+	ScopedICAControllerKeeper capabilitykeeper.ScopedKeeper
+	ScopedICAHostKeeper       capabilitykeeper.ScopedKeeper
+
+	ibcWired bool
+
+	// Zero-valued (unusable) until accountAuthWired -- see
+	// AccountAuthActivationHeight.
+	AccountAuthKeeper accountauth.Keeper
+
+	accountAuthWired bool
+
+	sm                 *module.Manager
+	BasicModuleManager module.BasicManager
 }
 
 func New(
@@ -217,15 +274,15 @@ func New(
 ) types.Application {
 
 	interfaceRegistry, err := cdctypes.NewInterfaceRegistryWithOptions(cdctypes.InterfaceRegistryOptions{
-	ProtoFiles: proto.HybridResolver,
-	SigningOptions: signing.Options{
-		AddressCodec:          address.NewBech32Codec(Bech32MainPrefix),
-		ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
-	},
-})
-if err != nil {
-	panic(err)
-}
+		ProtoFiles: proto.HybridResolver,
+		SigningOptions: signing.Options{
+			AddressCodec:          address.NewBech32Codec(Bech32MainPrefix),
+			ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
 	std.RegisterInterfaces(interfaceRegistry)
 	mldsa.RegisterInterfaces(interfaceRegistry)
 	appCodec := codec.NewProtoCodec(interfaceRegistry)
@@ -256,33 +313,65 @@ if err != nil {
 		}
 	}
 
+	ibcCutover := planIBC(rootmulti.GetLatestVersion(db), ibcActivationHeight)
+	app.ibcWired = ibcCutover.wire
+	if ibcCutover.wire {
+		for _, name := range ibcStoreKeys {
+			app.keys[name] = storetypes.NewKVStoreKey(name)
+		}
+	}
+
+	accountAuthCutover := planAccountAuth(rootmulti.GetLatestVersion(db), accountAuthActivationHeight)
+	app.accountAuthWired = accountAuthCutover.wire
+	if accountAuthCutover.wire {
+		for _, name := range accountAuthStoreKeys {
+			app.keys[name] = storetypes.NewKVStoreKey(name)
+		}
+	}
+
 	app.MountKVStores(app.keys)
 
+	// Memory stores are transient (never committed, no AppHash effect,
+	// rebuilt fresh every process start), so unlike ibcStoreKeys they
+	// don't need height-gating: always mount them. They simply go
+	// unused until IBC (capability) is wired.
+	app.memKeys = map[string]*storetypes.MemoryStoreKey{}
+	for _, name := range ibcMemoryStoreKeys {
+		app.memKeys[name] = storetypes.NewMemoryStoreKey(name)
+	}
+	app.MountMemoryStores(app.memKeys)
+
 	maccPerms := map[string][]string{
-	authtypes.FeeCollectorName: nil,
-	pow.ModuleName:             {authtypes.Minter},
-	treasury.ModuleName:        nil,
-	governance.ModuleName:      {authtypes.Burner},
-}
+		authtypes.FeeCollectorName: nil,
+		pow.ModuleName:             {authtypes.Minter},
+		treasury.ModuleName:        nil,
+		governance.ModuleName:      {authtypes.Burner},
+		// Registered unconditionally (harmless before IBC activates -- see
+		// IBCActivationHeight): AccountKeeper is constructed once, early,
+		// and ibctransferkeeper.NewKeeper / icahostkeeper.NewKeeper panic if
+		// their module account isn't a recognized name here.
+		ibctransfertypes.ModuleName: {authtypes.Minter, authtypes.Burner},
+		icatypes.ModuleName:         nil,
+	}
 
-app.AccountKeeper = authkeeper.NewAccountKeeper(
-	appCodec,
-	runtime.NewKVStoreService(app.keys[authtypes.StoreKey]),
-	authtypes.ProtoBaseAccount,
-	maccPerms,
-	address.NewBech32Codec(Bech32MainPrefix),
-	Bech32MainPrefix,
-	authtypes.NewModuleAddress("gov").String(),
-)
+	app.AccountKeeper = authkeeper.NewAccountKeeper(
+		appCodec,
+		runtime.NewKVStoreService(app.keys[authtypes.StoreKey]),
+		authtypes.ProtoBaseAccount,
+		maccPerms,
+		address.NewBech32Codec(Bech32MainPrefix),
+		Bech32MainPrefix,
+		authtypes.NewModuleAddress("gov").String(),
+	)
 
-app.BankKeeper = bankkeeper.NewBaseKeeper(
-	appCodec,
-	runtime.NewKVStoreService(app.keys[banktypes.StoreKey]),
-	app.AccountKeeper,
-	nil,
-	authtypes.NewModuleAddress("gov").String(),
-	logger,
-)
+	app.BankKeeper = bankkeeper.NewBaseKeeper(
+		appCodec,
+		runtime.NewKVStoreService(app.keys[banktypes.StoreKey]),
+		app.AccountKeeper,
+		nil,
+		authtypes.NewModuleAddress("gov").String(),
+		logger,
+	)
 	// Initialize keepers
 	app.TreasuryKeeper = treasury.NewKeeper(appCodec, app.keys[treasury.StoreKey], app.BankKeeper)
 	app.PowKeeper = pow.NewKeeper(appCodec, app.keys[pow.StoreKey], logger, app.BankKeeper, app.TreasuryKeeper, authtypes.NewModuleAddress(governance.ModuleName).String())
@@ -328,11 +417,96 @@ app.BankKeeper = bankkeeper.NewBaseKeeper(
 		feegrantKeeper = app.FeeGrantKeeper
 	}
 
+	// Capability + core IBC + ICS-20 transfer, gated on
+	// IBCActivationHeight (see app/ibc.go for why: same reasoning as
+	// authz/feegrant above).
+	if ibcCutover.wire {
+		app.CapabilityKeeper = capabilitykeeper.NewKeeper(appCodec, app.keys[capabilitytypes.StoreKey], app.memKeys[capabilitytypes.MemStoreKey])
+		app.ScopedIBCKeeper = app.CapabilityKeeper.ScopeToModule(ibcexported.ModuleName)
+		app.ScopedTransferKeeper = app.CapabilityKeeper.ScopeToModule(ibctransfertypes.ModuleName)
+		app.ScopedICAControllerKeeper = app.CapabilityKeeper.ScopeToModule(icacontrollertypes.SubModuleName)
+		app.ScopedICAHostKeeper = app.CapabilityKeeper.ScopeToModule(icahosttypes.SubModuleName)
+		// Every module that will ever call ScopeToModule against this
+		// keeper must do so before this line -- a later ScopeToModule
+		// panics. This is every scope this chain has.
+		app.CapabilityKeeper.Seal()
+
+		app.IBCKeeper = ibckeeper.NewKeeper(
+			appCodec,
+			app.keys[ibcexported.StoreKey],
+			noLegacyParamSubspace{},
+			selfConsensusStakingShim{app: app},
+			newNoIBCSoftwareUpgrades(),
+			app.ScopedIBCKeeper,
+			authtypes.NewModuleAddress(governance.ModuleName).String(),
+		)
+
+		app.TransferKeeper = ibctransferkeeper.NewKeeper(
+			appCodec,
+			app.keys[ibctransfertypes.StoreKey],
+			noLegacyParamSubspace{},
+			app.IBCKeeper.ChannelKeeper, // ICS4Wrapper: no fee middleware, so this is the base channel keeper directly
+			app.IBCKeeper.ChannelKeeper,
+			app.IBCKeeper.PortKeeper,
+			app.AccountKeeper,
+			app.BankKeeper,
+			app.ScopedTransferKeeper,
+			authtypes.NewModuleAddress(governance.ModuleName).String(),
+		)
+
+		app.ICAControllerKeeper = icacontrollerkeeper.NewKeeper(
+			appCodec,
+			app.keys[icacontrollertypes.StoreKey],
+			noLegacyParamSubspace{},
+			app.IBCKeeper.ChannelKeeper, // ICS4Wrapper: no fee middleware
+			app.IBCKeeper.ChannelKeeper,
+			app.IBCKeeper.PortKeeper,
+			app.ScopedICAControllerKeeper,
+			app.MsgServiceRouter(),
+			authtypes.NewModuleAddress(governance.ModuleName).String(),
+		)
+		app.ICAHostKeeper = icahostkeeper.NewKeeper(
+			appCodec,
+			app.keys[icahosttypes.StoreKey],
+			noLegacyParamSubspace{},
+			app.IBCKeeper.ChannelKeeper,
+			app.IBCKeeper.ChannelKeeper,
+			app.IBCKeeper.PortKeeper,
+			app.AccountKeeper,
+			app.ScopedICAHostKeeper,
+			app.MsgServiceRouter(),
+			authtypes.NewModuleAddress(governance.ModuleName).String(),
+		)
+		// Needed for the host's own module-safe query passthrough
+		// (MsgModuleQuerySafe): without it, RegisterServices panics with
+		// "query router must not be nil" the moment IBC wires up.
+		app.ICAHostKeeper.WithQueryRouter(app.GRPCQueryRouter())
+
+		ibcRouter := porttypes.NewRouter()
+		ibcRouter.AddRoute(ibctransfertypes.ModuleName, transfer.NewIBCModule(app.TransferKeeper))
+		// nil: no custom authentication module wraps the controller --
+		// every icacontroller.IBCMiddleware callback checks "im.app !=
+		// nil" before delegating (see ibc-go's ibc_middleware.go), so
+		// this is the documented way to let any account register and
+		// control its own interchain account directly through the
+		// controller's own Msg service, with no auth-module gatekeeping.
+		ibcRouter.AddRoute(icacontrollertypes.SubModuleName, icacontroller.NewIBCMiddleware(nil, app.ICAControllerKeeper))
+		ibcRouter.AddRoute(icahosttypes.SubModuleName, icahost.NewIBCModule(app.ICAHostKeeper))
+		app.IBCKeeper.SetRouter(ibcRouter)
+	}
+
+	// Pluggable account abstraction, gated on AccountAuthActivationHeight
+	// (see app/accountauth.go for why: same reasoning as authz/feegrant
+	// and IBC above).
+	if accountAuthCutover.wire {
+		app.AccountAuthKeeper = accountauth.NewKeeper(appCodec, app.keys[accountauth.StoreKey], app.MsgServiceRouter())
+	}
+
 	// Module manager
 	powModule := pow.NewAppModule(appCodec, app.PowKeeper)
 
-governanceModule := governance.NewAppModule(appCodec, app.GovernanceKeeper)
-consensusModule := consensus.NewAppModule(appCodec, app.ConsensusParamsKeeper)
+	governanceModule := governance.NewAppModule(appCodec, app.GovernanceKeeper)
+	consensusModule := consensus.NewAppModule(appCodec, app.ConsensusParamsKeeper)
 
 	modules := []module.AppModule{
 		auth.NewAppModule(appCodec, app.AccountKeeper, nil, nil),
@@ -350,6 +524,18 @@ consensusModule := consensus.NewAppModule(appCodec, app.ConsensusParamsKeeper)
 			feegrantmodule.NewAppModule(appCodec, app.AccountKeeper, app.BankKeeper, app.FeeGrantKeeper, app.interfaceRegistry),
 		)
 	}
+	if ibcCutover.wire {
+		modules = append(modules,
+			capability.NewAppModule(appCodec, *app.CapabilityKeeper, false),
+			ibc.NewAppModule(app.IBCKeeper),
+			ibctm.NewAppModule(),
+			transfer.NewAppModule(app.TransferKeeper),
+			ica.NewAppModule(&app.ICAControllerKeeper, &app.ICAHostKeeper),
+		)
+	}
+	if accountAuthCutover.wire {
+		modules = append(modules, accountauth.NewAppModule(app.AccountAuthKeeper))
+	}
 	app.sm = module.NewManager(modules...)
 
 	app.BasicModuleManager = module.NewBasicManagerFromManager(app.sm, nil)
@@ -359,16 +545,17 @@ consensusModule := consensus.NewAppModule(appCodec, app.ConsensusParamsKeeper)
 	app.sm.RegisterServices(configurator)
 
 	txConfig, err := tx.NewTxConfigWithOptions(appCodec, tx.ConfigOptions{
-	EnabledSignModes: tx.DefaultSignModes,
-	SigningOptions: &signing.Options{
-		AddressCodec:          address.NewBech32Codec(Bech32MainPrefix),
-		ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
-	},
-})
-if err != nil {
-	panic(err)
-}
+		EnabledSignModes: tx.DefaultSignModes,
+		SigningOptions: &signing.Options{
+			AddressCodec:          address.NewBech32Codec(Bech32MainPrefix),
+			ValidatorAddressCodec: address.NewBech32Codec(sdk.Bech32PrefixValAddr),
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
 	bApp.SetTxDecoder(txConfig.TxDecoder())
+	app.txConfig = txConfig
 
 	// Standard ante handler
 	stdAnteHandler, err := authante.NewAnteHandler(authante.HandlerOptions{
@@ -376,19 +563,19 @@ if err != nil {
 		BankKeeper:      app.BankKeeper,
 		SignModeHandler: txConfig.SignModeHandler(),
 		FeegrantKeeper:  feegrantKeeper,
-	SigGasConsumer: func(meter storetypes.GasMeter, sig txsigning.SignatureV2, params authtypes.Params) error {
-	switch sig.PubKey.(type) {
-	case *mldsa.PubKey:
-		// Deliberate, modest cost reflecting real measured ML-DSA-44
-		// verification speed (microseconds, per design research) --
-		// not scaled up to match its larger byte size, since that
-		// cost is already charged separately via tx_size_cost_per_byte.
-		meter.ConsumeGas(2000, "ante verify: mldsa44")
-		return nil
-	default:
-		return authante.DefaultSigVerificationGasConsumer(meter, sig, params)
-	}
-},
+		SigGasConsumer: func(meter storetypes.GasMeter, sig txsigning.SignatureV2, params authtypes.Params) error {
+			switch sig.PubKey.(type) {
+			case *mldsa.PubKey:
+				// Deliberate, modest cost reflecting real measured ML-DSA-44
+				// verification speed (microseconds, per design research) --
+				// not scaled up to match its larger byte size, since that
+				// cost is already charged separately via tx_size_cost_per_byte.
+				meter.ConsumeGas(2000, "ante verify: mldsa44")
+				return nil
+			default:
+				return authante.DefaultSigVerificationGasConsumer(meter, sig, params)
+			}
+		},
 	})
 	if err != nil {
 		panic(err)
@@ -405,8 +592,20 @@ if err != nil {
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
 	app.SetEndBlocker(app.EndBlocker)
-	if authzFeegrant.addStores {
-		app.SetStoreLoader(authzFeegrantStoreLoader)
+	if authzFeegrant.addStores || ibcCutover.addStores || accountAuthCutover.addStores {
+		var added []string
+		if authzFeegrant.addStores {
+			added = append(added, authzFeegrantStoreKeys...)
+		}
+		if ibcCutover.addStores {
+			added = append(added, ibcStoreKeys...)
+		}
+		if accountAuthCutover.addStores {
+			added = append(added, accountAuthStoreKeys...)
+		}
+		app.SetStoreLoader(func(ms storetypes.CommitMultiStore) error {
+			return ms.LoadLatestVersionAndUpgrade(&storetypes.StoreUpgrades{Added: added})
+		})
 	}
 	if loadLatest {
 		if err := app.LoadLatestVersion(); err != nil {
@@ -437,10 +636,10 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 	}
 
 	for _, v := range req.Validators {
-	if err := app.PowKeeper.BootstrapValidator(ctx, v.PubKey); err != nil {
-		return nil, err
+		if err := app.PowKeeper.BootstrapValidator(ctx, v.PubKey); err != nil {
+			return nil, err
+		}
 	}
-}
 
 	if req.ConsensusParams != nil {
 		if err := app.StoreConsensusParams(ctx, *req.ConsensusParams); err != nil {
@@ -458,6 +657,12 @@ func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 	if err := app.checkAuthzFeegrantActivation(ctx); err != nil {
 		return sdk.BeginBlock{}, err
 	}
+	if err := app.checkIBCActivation(ctx); err != nil {
+		return sdk.BeginBlock{}, err
+	}
+	if err := app.checkAccountAuthActivation(ctx); err != nil {
+		return sdk.BeginBlock{}, err
+	}
 	if err := app.MigrateConsensusParamsToNewStore(ctx); err != nil {
 		return sdk.BeginBlock{}, err
 	}
@@ -470,12 +675,14 @@ func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 func (app *App) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
 	return app.sm.EndBlock(ctx)
 }
+
 // Required methods
-func (app *App) RegisterAPIRoutes(apiSvr *api.Server, apiConfig config.APIConfig) {}
+func (app *App) RegisterAPIRoutes(apiSvr *api.Server, apiConfig config.APIConfig)     {}
 func (app *App) RegisterGRPCServerWithSkipCheckHeader(grpcSrv grpc.Server, skip bool) {}
 func (app *App) RegisterTxService(clientCtx client.Context) {
 	authtx.RegisterTxService(app.BaseApp.GRPCQueryRouter(), clientCtx, app.BaseApp.Simulate, app.interfaceRegistry)
 }
+
 // RegisterTendermintService serves cosmos.base.tendermint.v1beta1
 // (latest block, node info) over gRPC. Query-only: no state or
 // AppHash effect.
@@ -483,4 +690,4 @@ func (app *App) RegisterTendermintService(clientCtx client.Context) {
 	cmtservice.RegisterTendermintService(clientCtx, app.BaseApp.GRPCQueryRouter(), app.interfaceRegistry, app.Query)
 }
 func (app *App) RegisterNodeService(clientCtx client.Context, cfg config.Config) {}
-func (app *App) GetModuleManager() *module.Manager { return app.sm }
+func (app *App) GetModuleManager() *module.Manager                               { return app.sm }

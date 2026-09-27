@@ -1,0 +1,45 @@
+syntax = "proto3";
+package aether.accountauth.v1;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/accountauth";
+
+// SessionKey is a secondary ML-DSA-44 keypair an account has authorized
+// to execute a bounded set of messages on its behalf -- expiring,
+// capped to specific message types, and capped to a total lifetime
+// uaeth spend. The account itself never signs with this key; it signs
+// its OWN registration (MsgRegisterAuthenticator) with its primary key.
+message SessionKey {
+  bytes pubkey = 1;                      // raw ML-DSA-44 public key
+  int64 expires_at_unix = 2;
+  repeated string allowed_msg_types = 3; // Msg type URLs this key may execute; empty = none allowed
+  string spend_limit_uaeth = 4;          // total this key may ever move, lifetime, across every MsgSend it executes
+  string spent_uaeth = 5;                // running total already spent
+}
+
+// GuardianThreshold lets M of N registered ML-DSA-44 guardians jointly
+// authorize a message on the account's behalf -- social recovery, or
+// any multi-party spending policy -- without any guardian needing a
+// funded account of their own: they only ever sign, and anyone may
+// submit the resulting MsgExecAuthenticated.
+message GuardianThreshold {
+  repeated bytes guardian_pubkeys = 1;
+  uint32 threshold = 2;
+  uint64 next_sequence = 3; // replay protection: what the next accepted exec's signatures must cover, incremented on every accepted exec
+}
+
+// Authenticator is one alternate way to authorize actions on an
+// account, registered by that account's own primary key.
+message Authenticator {
+  uint64 id = 1;
+  oneof kind {
+    SessionKey session_key = 2;
+    GuardianThreshold guardian_threshold = 3;
+  }
+}
+
+message GuardianSignature {
+  bytes pubkey = 1;
+  bytes signature = 2;
+}

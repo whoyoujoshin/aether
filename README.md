@@ -48,7 +48,8 @@ Let an agent spend from your account with a chain-enforced cap instead of holdin
 | Wallet library and CLI | Built, tested, live-verified |
 | Testnet faucet and block explorer | Built, live, deployed with seed node |
 | **Public testnet** | **Live** — see below |
-| Account abstraction, native IBC | Not built |
+| Native IBC (core, ICS-20 transfer, ICS-27 interchain accounts) | Built, tested (real handshake + packet relay, real interchain-account register + execute) — height-gated activation not yet scheduled |
+| Account abstraction (session keys, guardian thresholds) | Built, tested (registration, session-key/guardian-threshold exec, CLI, walletapi, agentmcp) — height-gated activation not yet scheduled |
 | Independent professional security audit | Not yet performed |
 
 See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and [Roadmap](../../wiki/Roadmap).
@@ -383,6 +384,8 @@ aetherd query governance proposal <proposal-id>
 - [Agent & Bot Integration](docs/AGENT_INTEGRATION.md) — participating as software agents (current surface + proposed APIs/policy)
 - [Agent-to-agent payment demo](docs/AGENT_DEMO.md) — a real spend-capped grant and payment, reproducible against any network
 - [TLS for the seed](docs/TLS.md) — HTTPS for RPC/gRPC/faucet/explorer with no domain purchase
+- [IBC](docs/IBC.md) — core IBC, ICS-20 transfer, ICS-27 interchain accounts: built and tested, not yet activated on a live chain
+- [Account abstraction](docs/ACCOUNT_ABSTRACTION.md) — session keys and guardian thresholds (`x/accountauth`): built and tested, not yet activated on a live chain
 - Wiki: [Architecture](../../wiki/Architecture), [Phase 1 Multi-Validator Selection](../../wiki/Phase-1-Multi-Validator-Selection), [Known Issues](../../wiki/Known-Issues-and-Technical-Debt)
 
 ## License and brand

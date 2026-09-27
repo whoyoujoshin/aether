@@ -15,7 +15,7 @@ func TestMCPBManifest(t *testing.T) {
 	m, err := buildMCPBManifest(context.Background(), "0.2.1-testnet")
 	require.NoError(t, err)
 	require.Equal(t, "0.2.1-testnet", m.Version)
-	require.Len(t, m.Tools, 17, "every registered tool is declared")
+	require.Len(t, m.Tools, 18, "every registered tool is declared")
 	for _, tool := range m.Tools {
 		require.NotEmpty(t, tool.Description, tool.Name)
 	}

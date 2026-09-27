@@ -23,6 +23,7 @@ import (
 	powcli "github.com/whoyoujoshin/aether/x/pow/client/cli"
 	governancecli "github.com/whoyoujoshin/aether/x/governance/client/cli"
 	treasurycli "github.com/whoyoujoshin/aether/x/treasury/client/cli"
+	accountauthcli "github.com/whoyoujoshin/aether/x/accountauth/client/cli"
 	"github.com/whoyoujoshin/aether/app"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/cosmos-sdk/client/rpc"
@@ -32,7 +33,10 @@ import (
 	authzcli "github.com/cosmos/cosmos-sdk/x/authz/client/cli"
 	feegrantcli "cosmossdk.io/x/feegrant/client/cli"
 	addresscodec "github.com/cosmos/cosmos-sdk/codec/address"
-	
+	ibccli "github.com/cosmos/ibc-go/v8/modules/core/client/cli"
+	ibctransfercli "github.com/cosmos/ibc-go/v8/modules/apps/transfer/client/cli"
+	icacli "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/client/cli"
+
 )
 
 var encodingConfig = app.MakeEncodingConfig()
@@ -104,6 +108,10 @@ txCmd := &cobra.Command{
 	bankcli.NewTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
 	authzcli.GetTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
 	feegrantcli.GetTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
+	ibccli.GetTxCmd(),
+	ibctransfercli.NewTxCmd(),
+	icacli.NewTxCmd(),
+	accountauthcli.NewTxCmd(),
 )
 	setDefaultGas(txCmd, defaultGasLimit)
 	rootCmd.AddCommand(txCmd)
@@ -124,6 +132,7 @@ txCmd := &cobra.Command{
 	queryCmd.AddCommand(powcli.GetQueryCmd())
 	queryCmd.AddCommand(governancecli.GetQueryCmd())
 	queryCmd.AddCommand(treasurycli.GetQueryCmd())
+	queryCmd.AddCommand(accountauthcli.GetQueryCmd())
 	queryCmd.AddCommand(bankQueryCmd(), authzQueryCmd(), feegrantQueryCmd())
 
 	app.ModuleBasics.AddQueryCommands(queryCmd)

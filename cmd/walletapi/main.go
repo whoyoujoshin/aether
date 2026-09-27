@@ -306,6 +306,11 @@ func main() {
 	http.HandleFunc("/api/history", withCORS(handleHistory))
 	http.HandleFunc("/api/grants", withCORS(handleGrants))
 	http.HandleFunc("/api/grants/revoke", withCORS(handleRevokeGrant))
+	http.HandleFunc("/api/accountauth", withCORS(handleAccountAuth))
+	http.HandleFunc("/api/accountauth/session-key", withCORS(handleRegisterSessionKey))
+	http.HandleFunc("/api/accountauth/guardian-threshold", withCORS(handleRegisterGuardianThreshold))
+	http.HandleFunc("/api/accountauth/revoke", withCORS(handleRevokeAuthenticator))
+	http.HandleFunc("/api/accountauth/exec", withCORS(handleExecAuthenticated))
 
 	addr := "localhost:" + port
 	log.Printf("Aether wallet API listening on %s (chain %s via gRPC %s)", addr, chainID, grpcEndpoint)
