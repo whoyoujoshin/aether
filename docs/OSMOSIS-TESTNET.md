@@ -12,21 +12,26 @@ docs/IBC.md's live-verification note ends with:
 > Until both proposals pass on `aether-testnet-1`, don't open an IBC
 > connection that's meant to stay up.
 
-The two proposals (raising `x/consensus` evidence `max_age_num_blocks`
-100,000 -> 2,880, and `x/pow`'s `bond_cooldown` 100 -> 51,840) close a
-real gap: at live block times, the old values let a validator withdraw
-before misbehavior evidence against them expires, which undermines the
-light client's safety assumption. **Check both have actually passed
-before doing anything below** -- e.g. from the live explorer's
-Governance page, or:
+**Confirmed 2026-09-28, live on `aether-testnet-1`** (`aetherd query
+governance proposal <id> --node https://rpc.157-245-252-221.sslip.io` --
+`--chain-id` isn't accepted on this query path):
 
-```
-aetherd query gov proposals --chain-id aether-testnet-1 --node https://rpc.157-245-252-221.sslip.io
-```
+| id | targets | status |
+|---|---|---|
+| #3 | `consensus` `MsgUpdateParams`, `evidence.max_age_num_blocks = 2880` | `VOTING_PERIOD`, quorum reached, 100% Yes, 3/3 turnout -- voting ends 2026-10-04 15:58:07 CT |
+| #4 | `pow` `MsgUpdateParams`, `bond_cooldown = 51840` | `VOTING_PERIOD`, quorum reached, 100% Yes, 3/3 turnout -- voting ends 2026-10-04 15:58:17 CT |
 
-If they haven't passed, that's the actual next step, not this runbook.
-Given the testnet's own governance quorum has been as low as 1-2 votes
-recently, this may just mean voting them through.
+Both are on track (unanimous, full turnout already), but **neither
+executes early**: this module's `EndBlock` (`x/governance/keeper.go:283`)
+only tallies and executes a proposal once `now > VotingEndTime`, with no
+shortcut for full turnout. So the gate doesn't actually clear until
+**2026-10-04, ~15:58 CT** at the earliest -- assuming no vote changes
+before then. Don't start section 2 onward before that, and re-check
+both proposals' status then rather than assuming they landed.
+
+(Proposal #2, also currently voting, is unrelated -- a `consensus`
+`max_gas` change -- and doesn't affect this gate either way, regardless
+of how its own vote goes.)
 
 ## What this connects
 
