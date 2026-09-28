@@ -38,7 +38,7 @@ switch ($cmd) {
         Write-Host "After editing genesis.json, run: .\aether.ps1 start" -ForegroundColor Green
     }
     "start" {
-        Invoke-Aetherd @("start", "--minimum-gas-prices=0.0001aeth")
+        Invoke-Aetherd @("start", "--minimum-gas-prices=0.0001uaeth")
     }
     "genesis" {
         # quick shortcut to open the genesis file directly
