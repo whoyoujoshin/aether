@@ -6,7 +6,7 @@ Let's Encrypt-issued TLS, confirmed by Gitty (the seed's operator) running
 
 ```
 $ curl -I https://rpc.157-245-252-221.sslip.io/status        # HTTP/2 200
-$ curl -I https://faucet.157-245-252-221.sslip.io/           # HTTP/2 404 (expected: GET / on a POST-only faucet; POST /request works)
+$ curl -I https://faucet.157-245-252-221.sslip.io/           # HTTP/2 200 once the faucet is redeployed from main (GET / describes it); 404 before
 $ curl -I https://explorer.157-245-252-221.sslip.io/api/stats # HTTP/2 200
 $ # a real gRPC call, cmtservice.GetLatestBlock, through grpc.157-245-252-221.sslip.io:443 -> height 119485
 ```

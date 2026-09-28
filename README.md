@@ -26,7 +26,7 @@ That gives the agent a spend-capped wallet as MCP tools: balance, send, invoice 
 | Chain ID | `aether-testnet-1` · denom `uaeth` (1 AETH = 10⁶ uaeth) · addresses `aether1...` |
 | RPC / gRPC | `https://rpc.157-245-252-221.sslip.io` / `grpc.157-245-252-221.sslip.io:443` (TLS; plain `157.245.252.221:26657`/`:9090` still work) |
 | Faucet | `curl -X POST https://faucet.157-245-252-221.sslip.io/request -H 'Content-Type: application/json' -d '{"address":"aether1..."}'` |
-| Explorer | `https://explorer.157-245-252-221.sslip.io/agents` · balance: `/api/address?addr=aether1...` · this card as JSON: `/api/agents` |
+| Explorer | `https://explorer.157-245-252-221.sslip.io/agents` · balance: `/api/address?addr=aether1...` · this card as JSON: `/api/agents` · every endpoint: `/api/openapi.json` · for LLMs: `/llms.txt` |
 
 Let an agent spend from your account with a chain-enforced cap instead of holding funds: [agent permissions](#on-chain-agent-permissions-xauthz-xfeegrant). Sell to agents: [paid APIs](#paid-apis-x402). See one agent pay another for a tool call, live, in [docs/AGENT_DEMO.md](docs/AGENT_DEMO.md). A prompt to check an agent is set up (the address is a test counterparty run by the project):
 
@@ -68,7 +68,7 @@ Every account transaction must use ML-DSA-44 from genesis (no classical fallback
 | **Seed** | `dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656` |
 | **RPC** | `https://rpc.157-245-252-221.sslip.io` (plain `http://157.245.252.221:26657` still works) |
 | **gRPC** | `grpc.157-245-252-221.sslip.io:443`, TLS (plain `157.245.252.221:9090` still works) |
-| **Faucet** | `https://faucet.157-245-252-221.sslip.io/request` — `POST` JSON `{"address":"aether1..."}` |
+| **Faucet** | `https://faucet.157-245-252-221.sslip.io/request` — `POST` JSON `{"address":"aether1..."}`; several at once: [Faucet](#faucet) |
 | **Explorer** | `https://explorer.157-245-252-221.sslip.io` |
 | **Genesis** | [`testnet/genesis.json`](testnet/genesis.json) |
 
@@ -167,6 +167,14 @@ curl -X POST http://localhost:8080/request \
 ```
 
 Requires a funded key named `faucet` in the configured keyring.
+
+It's built for bots as well as people:
+
+- `POST /request/batch` with `{"addresses":["aether1...", ...]}` funds up to `--batch-max` (10) addresses in one transaction and lists any it skipped.
+- `GET /status?address=aether1...` says whether a request would be funded now, and when if not. `GET /` describes the faucet and its limits.
+- Each address is funded once per `--cooldown-minutes` (60), and each caller (client IP) funds at most `--caller-limit` (20) addresses per `--caller-window-minutes` (60). Behind a reverse proxy, list it in `--trusted-proxies` (default: localhost) so `X-Forwarded-For` names the real caller; the header is ignored from anyone else.
+- Every answer has a stable `code` (`sent`, `pending`, `address_cooldown`, `caller_limit`, `invalid_address`, `batch_too_large`, `invalid_request`, `send_failed`) and the caller's quota in `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`; a 429 also has `Retry-After`. A failed send gives back both the cooldown and the quota.
+- `--gas-price` (e.g. `0.0001uaeth`) pays fees for a node with `--minimum-gas-prices`.
 
 ## Block explorer
 
@@ -321,6 +329,29 @@ go run ./cmd/validatorkeygen --miner <your-bech32-address>
 
 Mine and submit successfully within an epoch to accumulate native work. At the epoch boundary (1440 blocks), Top-K (21) by native work become the active set. Downtime (>50% missed signatures in a 60-block window) causes temporary removal; equivocation causes permanent ban and escrow burn.
 
+## Miner and validator alerts
+
+`cmd/minerwatch` watches one or more addresses and pushes what happens as it happens, instead of an agent polling `/api/miner` or scraping `powminer`'s logs:
+
+```bash
+go run ./cmd/minerwatch --address aether1... --webhook https://example.com/hook --low-balance "5 AETH" --state minerwatch.json
+```
+
+Each event is printed to stdout as one JSON object per line and, with `--webhook`, POSTed there with retries. Set `--secret` (or `MINERWATCH_SECRET`) and each body is signed like `agentmcp`'s owner alerts: `X-Aether-Signature` is hex HMAC-SHA256(secret, body). Every event has an `id` that's the same across restarts, so a receiver can drop repeats; `X-Aether-Event` names it.
+
+| Event | When |
+|--|--|
+| `pow_submission_confirmed` / `pow_submission_failed` | one of the address's PoW submissions landed in a block, or failed there (`rawLog` says why) |
+| `validator_selected` | the validator set picked it; `effectiveFrom` is the block its voting power starts |
+| `validator_removed` | it left the set: `reason` is `not_reselected`, `downtime` or `banned` |
+| `miner_banned` | banned for equivocation |
+| `selection_at_risk` | `--at-risk-blocks` (20) before the set is picked, a registered miner isn't eligible or on track: `notEligibleBecause`, `rank` |
+| `balance_low` / `balance_recovered` | the balance crossed `--low-balance` |
+| `node_unreachable` / `node_recovered` | `--unreachable-after` (3) failed polls in a row, then the first success |
+| `chain_stalled` / `chain_resumed` | the node answers but made no block for `--stall-after` (5m) |
+
+It checks every `--interval` (30s) and does nothing until a new block. With `--state <file>` a restart reports what happened while it was down; without it, it starts fresh. `--once` with `--state` suits a cron job.
+
 ## Merged mining (AuxPoW)
 
 Litecoin/Dogecoin-family AuxPoW (chain ID **17776**) may satisfy PoW and earn the reward + retarget difficulty. **Only native work counts toward Top-K.** See `cmd/auxpowtest` and the whitepaper.
@@ -372,6 +403,7 @@ aetherd query governance proposal <proposal-id>
 | `clients/ts`, `clients/python` | TypeScript and Python clients: keys, payments, paid APIs (buying and selling), withdrawals, directory |
 | `clients/vectors` | Generates the shared test vectors both clients are checked against |
 | `cmd/powminer` | Native PoW nonce search against live state |
+| `cmd/minerwatch` | Webhook alerts for a miner or validator: submissions, selection, balance, stalls |
 | `cmd/auxpowtest` | Valid test AuxPoW construction |
 | `cmd/scryptbench` | Scrypt throughput benchmarks |
 | `cmd/validatorkeygen` | Consensus key + PoP for registration |

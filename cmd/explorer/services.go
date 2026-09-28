@@ -103,5 +103,5 @@ func handleServices(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, s)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"directoryAddress": directory.Address(), "services": out})
+	writeJSON(w, http.StatusOK, servicesResponse{DirectoryAddress: directory.Address(), Services: out})
 }

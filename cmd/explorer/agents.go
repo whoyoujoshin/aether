@@ -61,8 +61,10 @@ type agentEndpointsDTO struct {
 
 type agentFaucetDTO struct {
 	URL       string `json:"url"`
-	Request   string `json:"request"`   // how to ask it for funds
-	Reachable *bool  `json:"reachable"` // nil: not checked
+	Request   string `json:"request"`          // how to ask it for funds
+	Batch     string `json:"batch,omitempty"`  // several addresses, one transaction
+	Status    string `json:"status,omitempty"` // whether an address can be funded now
+	Reachable *bool  `json:"reachable"`        // nil: not checked
 }
 
 type agentAuthzDTO struct {
@@ -157,6 +159,9 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			"releases":    repoURL + "/releases",
 			"services":    "/api/services",
 			"miner":       "/api/miner?addr=aether1...",
+			"minerAlerts": repoURL + "#miner-and-validator-alerts",
+			"openapi":     "/api/openapi.json",
+			"llms":        "/llms.txt",
 		},
 		Warnings: []string{
 			"Testnet: use disposable keys and never anything of value.",
@@ -169,6 +174,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			URL:       publicFaucet,
 			Request:   `POST {"address":"aether1..."} as application/json`,
 			Reachable: &ok,
+		}
+		if batch, status := faucetEndpoints(publicFaucet); batch != "" {
+			card.Faucet.Batch = "POST " + batch + ` {"addresses":["aether1...", ...]}`
+			card.Faucet.Status = "GET " + status + "?address=aether1..."
 		}
 	}
 	if strings.HasPrefix(publicRPC, "http://") || strings.HasPrefix(publicFaucet, "http://") {

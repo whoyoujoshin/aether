@@ -49,6 +49,7 @@ jobs:
           go build -o dist/agentmcp${{ matrix.ext }} ./cmd/agentmcp
           go build -o dist/paywall${{ matrix.ext }} ./cmd/paywall
           go build -o dist/powminer${{ matrix.ext }} ./cmd/powminer
+          go build -o dist/minerwatch${{ matrix.ext }} ./cmd/minerwatch
 
       - name: Package archive
         run: |
@@ -113,9 +114,9 @@ jobs:
 
             Download the archive matching your platform, extract it, and run `aetherd` (or `aetherd.exe` on Windows). See the [README](https://github.com/whoyoujoshin/aether#public-testnet) for setup instructions and public testnet connection details.
 
-            Includes: `aetherd` (the node), `wallet` (CLI wallet), `faucet` (testnet faucet service), `explorer` (block explorer dashboard), `agentmcp` (MCP wallet for AI agents: run `agentmcp init`), `paywall` (charge per request for an HTTP API) and `powminer` (native PoW miner).
+            Includes: `aetherd` (the node), `wallet` (CLI wallet), `faucet` (testnet faucet service), `explorer` (block explorer dashboard), `agentmcp` (MCP wallet for AI agents: run `agentmcp init`), `paywall` (charge per request for an HTTP API), `powminer` (native PoW miner) and `minerwatch` (webhook alerts for a miner or validator).
 
-            `Aether-Pay-Setup-*.exe` is the Aether Pay desktop wallet for Windows. It isn't code-signed yet, so Windows SmartScreen will warn on first run: choose "More info", then "Run anyway". It connects to the public testnet and keeps keys in `%USERPROFILE%\.aether` (unencrypted `test` keyring: testnet funds only).
+            `Aether-Pay-Setup-*.exe` is the Aether Pay desktop wallet for Windows. It isn't code-signed yet, so Windows SmartScreen will warn on first run: choose "More info", then "Run anyway". It connects to the public testnet and keeps its own keys in `%APPDATA%\Aether Pay\keyring` (unencrypted `test` keyring: testnet funds only). From 0.2.4-testnet on it updates itself from these releases: Settings shows when a new one is out.
 
             `aether-wallet.mcpb` is agentmcp as an MCP bundle for Windows, macOS and Linux: open it in Claude Desktop (or any client that installs MCPB bundles) to add the wallet. `server.json` is its MCP Registry entry.
 

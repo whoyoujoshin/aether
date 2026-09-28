@@ -24,8 +24,10 @@ Canonical design detail remains in [WHITEPAPER.md](WHITEPAPER.md). Live endpoint
 | Native Scrypt mining + submit (`powminer`) for **epoch native work** | Available |
 | AuxPoW rewards (does **not** count toward Top-K) | Available |
 | Query balances / txs via RPC, gRPC, explorer | Available |
-| Faucet `POST /request` with `{"address":"aether1..."}` | Available (rate-limited) |
+| Faucet `POST /request` with `{"address":"aether1..."}`; `POST /request/batch` for up to 10 wallets in one transaction; `GET /status?address=` to check first. Stable `code`s, `RateLimit-*` headers, `Retry-After` on 429 | Available (per-address cooldown, per-caller quota) |
 | Miner standing in one call: consensus key registered?, work and rank this epoch, blocks until selection, in the validator set?, escrow (explorer `/api/miner?addr=`, agentmcp `get_miner_status`) | Available |
+| Push alerts for a miner or validator: submission landed or failed, selected or removed (and why), selection at risk, low balance, node down, chain stalled (`cmd/minerwatch`, signed webhooks) | Available |
+| Machine-readable discovery: the agent card (`/api/agents`), OpenAPI 3.1 for the explorer (`/api/openapi.json`), `/llms.txt`, MCP Registry entry `io.github.whoyoujoshin/aether-wallet` | Available |
 
 **Public testnet (verify against README if drifted):**
 
@@ -45,8 +47,8 @@ Epoch length is **1440** blocks; Top-K is **21** by epoch native work. Only **na
 These are operational lessons from running automated miners and validators on testnet - not protocol bugs by themselves:
 
 1. **Key custody** - test keyrings and visible terminals expose full signing power; there is no first-class spend policy or session key for bots.
-2. **Observability** - eligibility and confirmations are often inferred by scraping `powminer` logs rather than a stable "PoW count this epoch / registered? / selected?" API or webhook. The API half now exists (`/api/miner`, `get_miner_status`); push notifications don't yet.
-3. **Funding** - faucet rate limits and manual bank sends are awkward for fleets of agent wallets.
+2. **Observability** - eligibility and confirmations are often inferred by scraping `powminer` logs rather than a stable "PoW count this epoch / registered? / selected?" API or webhook. Both halves now exist: the API (`/api/miner`, `get_miner_status`) and push alerts (`cmd/minerwatch`).
+3. **Funding** - faucet rate limits and manual bank sends were awkward for fleets of agent wallets. The faucet now takes batches and says exactly when to come back (`Retry-After`, `RateLimit-*`).
 4. **Headless ops** - some seed/admin steps still assume a human console; agents prefer authenticated remote control of their own miner/validator processes.
 5. **Error semantics** - wait-windows, dual-miner races, and reject codes need stable, machine-readable surfaces (agents retry blindly when logs are the only signal).
 
@@ -68,7 +70,7 @@ Stable gRPC/REST (and optionally webhooks) for:
 - Whether a miner address has a registered consensus pubkey -- **shipped** (same)
 - Native PoW / work count for an address in the current epoch -- **shipped** (same, with rank among eligible miners)
 - Current active Top-K set -- **shipped** (same, per address; `x/pow` `ActiveValidators` for the whole set)
-- Tx inclusion notifications (SubmitPoW confirmed; selected at epoch boundary) -- not yet
+- Tx inclusion notifications (SubmitPoW confirmed; selected at epoch boundary) -- **shipped** (`cmd/minerwatch`: signed webhooks, also removal, at-risk, balance and stall alerts)
 
 Plus idempotent tx submit helpers with clear application codes for wait-window and duplicate-work rejects.
 
@@ -82,7 +84,7 @@ Plus idempotent tx submit helpers with clear application codes for wait-window a
 
 - Authenticated control of *your* miner/validator processes (start/stop/health) without a desktop session
 - Health checks + supervised auto-restart when selected into Top-K
-- Bot-friendly faucet or drip APIs with explicit rate-limit headers
+- Bot-friendly faucet or drip APIs with explicit rate-limit headers -- **shipped** (batch endpoint, status endpoint, `RateLimit-*`, `Retry-After`)
 
 ### 5. Keep the base layer boring
 
