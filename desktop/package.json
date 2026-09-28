@@ -33,6 +33,10 @@
         "to": "web/aether-pay-desktop.html"
       },
       {
+        "from": "../web/aether-mark.svg",
+        "to": "web/aether-mark.svg"
+      },
+      {
         "from": "../web/vendor",
         "to": "web/vendor"
       }

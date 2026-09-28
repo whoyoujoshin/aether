@@ -133,6 +133,26 @@ type Transaction struct {
 	Amount    string
 	Timestamp string
 	Memo      string // set by the sender; untrusted
+	// Counterparty is the other side of the transfer: who paid, or who
+	// was paid. CounterpartyModule names it when it's a module account
+	// ("pow" pays mining rewards), and is empty otherwise.
+	Counterparty       string
+	CounterpartyModule string
+	// MsgType is the first message's short name ("MsgSend", "MsgGrant"),
+	// for transactions that move no money of this address's own.
+	MsgType string
+}
+
+// moduleAccountName names address when it's a module account a wallet
+// sees money move to or from. Computed per call, not at package init:
+// the bech32 prefix is only set once the program starts.
+func moduleAccountName(address string) string {
+	for _, name := range []string{"pow", "treasury", "fee_collector", "governance"} {
+		if authtypes.NewModuleAddress(name).String() == address {
+			return name
+		}
+	}
+	return ""
 }
 
 // GetTransactionHistory returns real, on-chain transactions involving
@@ -163,7 +183,8 @@ func (c *Client) GetTransactionHistory(address string, limit uint64) ([]Transact
 
 								for i, txResp := range resp.TxResponses {
 				amount := ""
-				firstTransfer := ""
+				firstTransfer, firstRecipient := "", ""
+				counterparty := ""
 				direction := q.direction
 				for _, event := range txResp.Events {
 					if event.Type == "transfer" {
@@ -179,7 +200,7 @@ func (c *Client) GetTransactionHistory(address string, limit uint64) ([]Transact
 							}
 						}
 						if firstTransfer == "" {
-							firstTransfer = eventAmount
+							firstTransfer, firstRecipient = eventAmount, eventRecipient
 						}
 						// A single transaction (like MsgSubmitPoW,
 						// which distributes a miner cut and a
@@ -201,9 +222,11 @@ func (c *Client) GetTransactionHistory(address string, limit uint64) ([]Transact
 						if eventRecipient == address {
 							amount = eventAmount
 							direction = "received"
+							counterparty = eventSender
 						} else if eventSender == address {
 							amount = eventAmount
 							direction = "sent"
+							counterparty = eventRecipient
 						}
 					}
 				}
@@ -212,15 +235,19 @@ func (c *Client) GetTransactionHistory(address string, limit uint64) ([]Transact
 				// MsgExec spending a granter's balance.
 				if amount == "" && direction == "sent" {
 					amount = firstTransfer
+					counterparty = firstRecipient
 				}
 				all = append(all, Transaction{
-					Hash:      txResp.TxHash,
-					Height:    txResp.Height,
-					Code:      txResp.Code,
-					Direction: direction,
-					Amount:    amount,
-					Timestamp: txResp.Timestamp,
-					Memo:      memoAt(resp.Txs, i),
+					Hash:               txResp.TxHash,
+					Height:             txResp.Height,
+					Code:               txResp.Code,
+					Direction:          direction,
+					Amount:             amount,
+					Timestamp:          txResp.Timestamp,
+					Memo:               memoAt(resp.Txs, i),
+					Counterparty:       counterparty,
+					CounterpartyModule: moduleAccountName(counterparty),
+					MsgType:            msgTypeAt(resp.Txs, i),
 				})
 			}
 	}
@@ -277,6 +304,14 @@ type TransactionDetail struct {
 // not yet in a block (or dropped from the mempool), as opposed to a
 // failed lookup.
 var ErrTransactionNotFound = errors.New("transaction not found")
+
+func msgTypeAt(txs []*txtypes.Tx, i int) string {
+	if i >= len(txs) || txs[i] == nil || txs[i].Body == nil || len(txs[i].Body.Messages) == 0 {
+		return ""
+	}
+	url := txs[i].Body.Messages[0].TypeUrl
+	return url[strings.LastIndex(url, ".")+1:]
+}
 
 func memoAt(txs []*txtypes.Tx, i int) string {
 	if i < len(txs) && txs[i] != nil && txs[i].Body != nil {

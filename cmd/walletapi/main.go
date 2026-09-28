@@ -136,7 +136,7 @@ func handleAccount(w http.ResponseWriter, r *http.Request) {
 
 	balance, err := client.GetBalance(account.Address)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to fetch balance: %w", err))
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to fetch balance: %w", nodeError(err)))
 		return
 	}
 
@@ -286,6 +286,7 @@ func main() {
 	flag.StringVar(&rpcEndpoint, "rpc", "https://rpc.157-245-252-221.sslip.io", "node RPC endpoint (defaults to the public testnet, over TLS)")
 	flag.StringVar(&chainID, "chain-id", "aether-testnet-1", "chain ID")
 	flag.StringVar(&port, "port", "8090", "local HTTP port to listen on")
+	flag.StringVar(&legacyKeyringDir, "legacy-keyring-dir", "", "another test keyring (e.g. the CLI's ~/.aether) whose keys can be brought over one at a time; empty: none")
 	flag.Parse()
 
 	// The desktop app passes a fresh token in the environment (not the
@@ -302,6 +303,12 @@ func main() {
 
 	http.HandleFunc("/api/account", withCORS(handleAccount))
 	http.HandleFunc("/api/accounts", withCORS(handleAccounts))
+	http.HandleFunc("/api/accounts/create", withCORS(handleCreateAccount))
+	http.HandleFunc("/api/accounts/recover", withCORS(handleRecoverAccount))
+	http.HandleFunc("/api/accounts/bring-over", withCORS(handleBringOverAccount))
+	http.HandleFunc("/api/legacy-accounts", withCORS(handleLegacyAccounts))
+	http.HandleFunc("/api/balance", withCORS(handleBalance))
+	http.HandleFunc("/api/chain", withCORS(handleChain))
 	http.HandleFunc("/api/send", withCORS(handleSend))
 	http.HandleFunc("/api/history", withCORS(handleHistory))
 	http.HandleFunc("/api/grants", withCORS(handleGrants))
