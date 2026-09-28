@@ -2,14 +2,154 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Aether Pay Desktop</title>
+  <title>Aether Pay</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    /* The block explorer's identity (explorer-web/src/theme.css): warm
+       ink and bone, signal red for the brand, green only for success. */
+    :root {
+      --ink: #0a0908; --panel: #12100e; --border: #26221e; --rule: #1c1916;
+      --hover: #1a1714; --cell: #221e1a; --icon: #4a443d;
+      --bone: #f3efe6; --text-2: #d8d1c5; --muted: #9a9186; --faint: #6b645b;
+      --red: #c0503a; --red-12: rgba(192,80,58,.12); --red-35: rgba(192,80,58,.35);
+      --green: #16c784; --green-10: rgba(22,199,132,.1);
+      --danger: #f0506e; --danger-12: rgba(240,80,110,.12);
+      --glow: radial-gradient(100% 80% at 100% 0%, rgba(192,80,58,.16), rgba(192,80,58,0) 60%), var(--panel);
+      --sans: "Space Grotesk", system-ui, sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; background: #08090a; }
-    #root { min-height: 100vh; }
+    html, body, #root { min-height: 100%; }
+    body { margin: 0; background: var(--ink); color: var(--bone); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
+    button, input, textarea, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; }
+    a { color: var(--red); text-decoration: none; }
+    .mono { font-family: var(--mono); }
+    .muted { color: var(--muted); }
+    .faint { color: var(--faint); }
+
+    .app { display: flex; min-height: 100vh; }
+    .side { width: 236px; flex-shrink: 0; border-right: 1px solid var(--rule); padding: 18px 12px 14px; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; height: 100vh; }
+    .brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 22px; }
+    .brand img { width: 32px; height: 32px; }
+    .brand b { display: block; font-size: 16px; font-weight: 700; letter-spacing: .01em; }
+    .brand small { display: block; font: 600 9.5px/1.4 var(--mono); letter-spacing: .16em; color: var(--red); }
+    .nav { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 12px; border: 0; border-left: 2px solid transparent; border-radius: 0 9px 9px 0; background: none; color: var(--muted); font-weight: 500; font-size: 13.5px; text-align: left; }
+    .nav:hover { background: var(--hover); color: var(--text-2); }
+    .nav.on { background: var(--hover); color: var(--bone); border-left-color: var(--red); font-weight: 600; }
+    .nav .g { width: 16px; text-align: center; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+    .nav.on .g { color: var(--red); }
+    .pq { margin-top: auto; border: 1px solid var(--border); border-radius: 12px; padding: 12px 13px; font-size: 11.5px; line-height: 1.5; color: var(--muted); background: var(--panel); }
+    .pq .t { font: 600 10px/1 var(--mono); letter-spacing: .12em; color: var(--green); margin-bottom: 7px; display: flex; align-items: center; gap: 7px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); display: inline-block; flex-shrink: 0; }
+    .dot.bad { background: var(--danger); }
+    .dot.wait { background: var(--faint); }
+
+    .acct { position: relative; margin-top: 12px; }
+    .acct > button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 1px solid transparent; border-radius: 11px; background: none; text-align: left; }
+    .acct > button:hover, .acct > button.open { background: var(--hover); border-color: var(--border); }
+    .av { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--cell); border: 1px solid var(--border); font: 600 11.5px/1 var(--mono); color: var(--text-2); text-transform: lowercase; }
+    .av.agent { color: var(--red); border-color: var(--red-35); }
+    .av.in { color: var(--green); border-color: rgba(22,199,132,.3); }
+    .av.bad { color: var(--danger); border-color: rgba(240,80,110,.3); }
+    .acct .nm { font-weight: 600; font-size: 13px; }
+    .acct .ad { font: 10.5px/1.3 var(--mono); color: var(--faint); }
+    .menu { position: absolute; left: 0; right: -80px; bottom: calc(100% + 6px); background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 8px; box-shadow: 0 16px 40px rgba(0,0,0,.55); z-index: 20; }
+    .menu h6 { margin: 6px 8px 4px; font: 600 9.5px/1 var(--mono); letter-spacing: .14em; color: var(--faint); }
+    .menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 0; border-radius: 8px; background: none; text-align: left; }
+    .menu button:hover { background: var(--hover); }
+    .menu button.sel { background: var(--hover); }
+    .menu .none { padding: 6px 8px 8px; font-size: 11.5px; color: var(--faint); }
+    .menu .add { color: var(--red); font-weight: 600; font-size: 12.5px; border-top: 1px solid var(--rule); border-radius: 0 0 8px 8px; margin-top: 4px; padding-top: 10px; }
+
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .top { height: 58px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 28px; border-bottom: 1px solid var(--rule); }
+    .top h1 { margin: 0; font-size: 15px; font-weight: 600; }
+    .status { display: flex; align-items: center; gap: 10px; font: 11.5px/1 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; }
+    .status .sep { color: var(--icon); }
+    .banner { margin: 18px 28px 0; padding: 12px 14px; border-radius: 10px; font-size: 12.5px; background: var(--danger-12); border: 1px solid rgba(240,80,110,.3); color: #ff9aac; }
+    .content { padding: 22px 28px 40px; display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 20px; max-width: 1220px; align-items: start; }
+    .content.single { grid-template-columns: minmax(0, 720px); }
+    .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; }
+    .card.glow { background: var(--glow); }
+    .card h2 { margin: 0 0 14px; font-size: 16px; font-weight: 600; }
+    .card h3 { margin: 0; font-size: 13.5px; font-weight: 600; }
+    .kicker { font: 600 10.5px/1 var(--mono); letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
+    .headrow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .bal { display: flex; justify-content: space-between; gap: 16px; }
+    .big { font: 600 50px/1.05 var(--mono); letter-spacing: -.02em; margin-top: 10px; }
+    .big .unit { font-size: 19px; color: var(--red); margin-left: 8px; letter-spacing: .02em; }
+    .sub { font: 11.5px/1.5 var(--mono); color: var(--faint); margin-top: 8px; }
+    .actions { display: flex; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+
+    .btn { flex: 1; min-width: 118px; padding: 13px 18px; border-radius: 999px; border: 1px solid var(--border); background: var(--cell); color: var(--bone); font-weight: 600; font-size: 13px; }
+    .btn:hover:not(:disabled) { border-color: #3a342d; background: #29241f; }
+    .btn.primary { background: var(--red); border-color: var(--red); color: #fff; }
+    .btn.primary:hover:not(:disabled) { background: #d05a43; border-color: #d05a43; }
+    .btn:disabled { opacity: .45; }
+    .btn.sm { flex: 0 0 auto; min-width: 0; padding: 7px 13px; font: 600 10.5px/1 var(--mono); letter-spacing: .08em; }
+    .btn.ghost { background: none; }
+    .btn.danger { background: none; border-color: rgba(240,80,110,.4); color: #ff9aac; }
+    .link { background: none; border: 0; padding: 0; color: var(--red); font: 600 10.5px/1 var(--mono); letter-spacing: .1em; }
+
+    .feedhead { display: flex; align-items: baseline; gap: 12px; margin: 6px 2px 0; }
+    .feedhead h3 { margin: 0; font-size: 14px; font-weight: 600; }
+    .feedhead span { font: 10px/1 var(--mono); letter-spacing: .1em; color: var(--faint); text-transform: uppercase; }
+    .tx { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 14px; padding: 16px 18px; }
+    .tx .who { font-size: 13.5px; }
+    .tx .who b { font-weight: 600; }
+    .tx .who .v { color: var(--faint); margin: 0 6px; font-size: 12.5px; }
+    .tx .memo { margin-top: 6px; color: var(--text-2); font-size: 13.5px; overflow-wrap: anywhere; }
+    .tx .memo.none { color: var(--faint); font-style: italic; font-size: 12.5px; }
+    .tx .amt { font: 600 13.5px/1.2 var(--mono); text-align: right; white-space: nowrap; }
+    .tx .amt.in { color: var(--green); }
+    .tx .amt.fail { color: var(--danger); }
+    .tx .meta { font: 10.5px/1 var(--mono); color: var(--faint); letter-spacing: .06em; text-align: right; margin-top: 14px; white-space: nowrap; }
+    .tx .meta a { color: var(--muted); }
+    .tx .meta a:hover { color: var(--red); }
+    .tag { display: inline-block; font: 600 9.5px/1 var(--mono); letter-spacing: .1em; padding: 4px 7px; border-radius: 6px; background: var(--red-12); color: var(--red); vertical-align: 2px; margin-left: 8px; }
+    .tag.ok { background: var(--green-10); color: var(--green); }
+    .tag.bad { background: var(--danger-12); color: var(--danger); }
+
+    .row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+    .row + .row { border-top: 1px solid var(--rule); }
+    .row .grow { flex: 1; min-width: 0; }
+    .row .nm { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+    .row .ad { font: 10.5px/1.4 var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card.empty { padding: 18px 22px; }
+    .facts dl { display: grid; grid-template-columns: 58px 1fr; gap: 12px 14px; margin: 0; }
+    .facts dt { font: 600 10.5px/1.6 var(--mono); color: var(--red); letter-spacing: .06em; }
+    .facts dd { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+    .kv { display: flex; justify-content: space-between; gap: 10px; font: 12px/1 var(--mono); padding: 7px 0; }
+    .kv span:first-child { color: var(--faint); letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
+    .kv .red { color: var(--red); }
+
+    label.f { display: block; font: 600 10.5px/1 var(--mono); letter-spacing: .1em; color: var(--muted); margin: 16px 0 7px; text-transform: uppercase; }
+    .field { width: 100%; padding: 12px 13px; background: var(--ink); border: 1px solid var(--border); border-radius: 10px; font: 13px/1.4 var(--mono); outline: none; }
+    .field:focus { border-color: var(--red-35); }
+    textarea.field { resize: vertical; }
+    .hint { font: 11px/1.4 var(--mono); margin-top: 6px; color: var(--faint); min-height: 15px; }
+    .hint.ok { color: var(--green); }
+    .hint.bad { color: var(--danger); }
+    .note { font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+    .warn { display: flex; gap: 10px; padding: 13px 14px; border-radius: 10px; background: var(--red-12); border: 1px solid var(--red-35); color: #e9a594; font-size: 12.5px; line-height: 1.55; }
+    .addr { font: 13px/1.5 var(--mono); padding: 16px; background: var(--ink); border: 1px solid var(--border); border-radius: 10px; overflow-wrap: anywhere; }
+    .words { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0; }
+    .words div { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--ink); font: 12.5px/1 var(--mono); }
+    .words i { color: var(--faint); font-style: normal; margin-right: 6px; font-size: 10.5px; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+    .tabs button { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--muted); font-weight: 600; font-size: 12.5px; }
+    .tabs button.on { background: var(--cell); color: var(--bone); border-color: #3a342d; }
+    .setup { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+    .setup .card { width: min(560px, 100%); }
+    .empty { color: var(--faint); font-size: 12.5px; padding: 6px 0; }
+    .check { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--text-2); margin: 14px 0 8px; }
+    @media (max-width: 1080px) { .content { grid-template-columns: minmax(0, 1fr); } }
   </style>
 </head>
 <body>
@@ -22,23 +162,86 @@
   <script src="vendor/babel-standalone-7.23.5.min.js"></script>
 
   <script type="text/babel" data-presets="react">
-    const { useState, useEffect, useCallback } = React;
+    const { useState, useEffect, useCallback, useRef } = React;
 
-    const ACC = "#2ad4c4";
-    const GOLD = "#e3b25f";
     const API = "http://localhost:8090";
+    const EXPLORER = "https://explorer.157-245-252-221.sslip.io";
+    const FAUCET = "https://faucet.157-245-252-221.sslip.io/request";
     // walletapi refuses requests without the secret the desktop app (or
     // walletapi itself, when run by hand) put in this page's URL.
     const TOKEN = new URLSearchParams(location.search).get("token") || "";
-    function api(path, opts) {
-      opts = opts || {};
-      return fetch(API + path, Object.assign({}, opts, { headers: Object.assign({ "X-Wallet-Token": TOKEN }, opts.headers || {}) }));
+    const ADDR_RE = /^aether1[a-z0-9]{38,90}$/;
+
+    async function api(path, body) {
+      const opts = { headers: { "X-Wallet-Token": TOKEN } };
+      if (body !== undefined) {
+        opts.method = "POST";
+        opts.headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(body);
+      }
+      let res;
+      try {
+        res = await fetch(API + path, opts);
+      } catch (e) {
+        throw new Error("The wallet's local service isn't answering. Restart Aether Pay.");
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.message || "request failed");
+      return data;
     }
+
+    // Amounts are whole uaeth strings; BigInt keeps every digit.
+    function uaethOf(s) {
+      const m = /^(\d+)/.exec(String(s || "0"));
+      return m ? BigInt(m[1]) : 0n;
+    }
+    function aeth(u, dp = 4) {
+      u = typeof u === "bigint" ? u : uaethOf(u);
+      const whole = u / 1000000n;
+      let frac = (u % 1000000n).toString().padStart(6, "0");
+      frac = frac.slice(0, 6).replace(/0+$/, "");
+      if (frac.length < dp) frac = frac.padEnd(dp, "0");
+      return whole.toLocaleString("en-US") + (frac ? "." + frac : "");
+    }
+    function int(n) { return Number(n).toLocaleString("en-US"); }
+    function short(a) { return a ? a.slice(0, 12) + "…" + a.slice(-6) : ""; }
+    function initials(name) { return (name || "?").replace(/[^A-Za-z0-9]/g, "").slice(0, 2) || "?"; }
+    function ago(ts) {
+      const t = Date.parse(ts);
+      if (!t) return "";
+      const s = Math.max(0, (Date.now() - t) / 1000);
+      if (s < 90) return "just now";
+      if (s < 3600) return Math.round(s / 60) + "m ago";
+      if (s < 86400) return Math.round(s / 3600) + "h ago";
+      if (s < 172800) return "yesterday";
+      return Math.round(s / 86400) + " days ago";
+    }
+    function when(ts) {
+      if (!ts) return "no expiry";
+      const d = new Date(ts);
+      return (d < new Date() ? "expired " : "") + d.toLocaleString();
+    }
+    function coinsU(coins) {
+      const c = (coins || []).find((x) => x.denom === "uaeth");
+      return c ? c.amount : "0";
+    }
+    const MODULES = { pow: "Mining reward", treasury: "Treasury", fee_collector: "Fees", governance: "Governance" };
+    // Transactions that move none of this account's money, by message.
+    const ACTIONS = {
+      MsgGrant: "Gave an agent an allowance",
+      MsgRevoke: "Revoked an agent's allowance",
+      MsgGrantAllowance: "Offered to pay an agent's fees",
+      MsgRevokeAllowance: "Stopped paying an agent's fees",
+      MsgRegisterValidatorPubkey: "Registered a consensus key",
+      MsgSubmitPoW: "Submitted mining work",
+      MsgVote: "Voted on a proposal",
+      MsgSubmitProposal: "Submitted a proposal",
+    };
 
     const NAV = [
       ["home", "Home", "◎"],
       ["send", "Send", "↗"],
-      ["receive", "Receive", "▣"],
+      ["receive", "Receive", "↙"],
       ["activity", "Activity", "≡"],
       ["agents", "Agents", "◇"],
       ["faucet", "Faucet", "◈"],
@@ -46,466 +249,605 @@
       ["swap", "Swap", "⇄"],
     ];
 
-    function fmt(n, min = 4) {
-      return Number(n).toLocaleString("en-US", { minimumFractionDigits: min, maximumFractionDigits: 6 });
-    }
-    function uaethToAeth(uaeth) {
-      return Number(uaeth) / 1000000;
-    }
-    function short(addr) {
-      if (!addr) return "";
-      return addr.slice(0, 11) + "…" + addr.slice(-6);
-    }
-
-    function AetherPayDesktop() {
+    function App() {
+      const [accounts, setAccounts] = useState(null); // this wallet's own keys
+      const [adding, setAdding] = useState(false);
+      const [view, setView] = useState(null); // {kind:"own", name, address} | {kind:"agent", address, perm}
       const [screen, setScreen] = useState("home");
-      const [accounts, setAccounts] = useState([]);
-      const [accountName, setAccountName] = useState("");
-      const [account, setAccount] = useState(null);
-      const [loading, setLoading] = useState(false);
-      const [error, setError] = useState("");
-
-      const [sendTo, setSendTo] = useState("");
-      const [sendAmt, setSendAmt] = useState("");
-      const [sendStep, setSendStep] = useState(0);
-      const [sending, setSending] = useState(false);
-      const [sendResult, setSendResult] = useState(null);
-
-      const [activity, setActivity] = useState([]);
-      const [activityLoading, setActivityLoading] = useState(false);
-
-      const [faucetState, setFaucetState] = useState("idle");
-      const [faucetMsg, setFaucetMsg] = useState("");
-
-      const [copied, setCopied] = useState(false);
-
-      // Agents: what this account lets other accounts (agents) do.
+      const [balance, setBalance] = useState(null);
+      const [activity, setActivity] = useState(null);
       const [perms, setPerms] = useState(null);
-      const [permsError, setPermsError] = useState("");
-      const [agentAddr, setAgentAddr] = useState("");
-      const [agentLimit, setAgentLimit] = useState("");
-      const [agentDays, setAgentDays] = useState("7");
-      const [agentFees, setAgentFees] = useState(true);
-      const [agentFeeLimit, setAgentFeeLimit] = useState("1");
-      const [agentOnly, setAgentOnly] = useState("");
-      const [agentBusy, setAgentBusy] = useState("");
-      const [agentMsg, setAgentMsg] = useState(null);
+      const [chain, setChain] = useState(null);
+      const [chainErr, setChainErr] = useState("");
+      const [err, setErr] = useState("");
+      const [menu, setMenu] = useState(false);
+      const [sendTo, setSendTo] = useState("");
 
       const loadAccounts = useCallback(async () => {
         try {
-          const res = await api("/api/accounts");
-          const data = await res.json();
-          setAccounts(data || []);
-          if (data && data.length > 0 && !accountName) {
-            setAccountName(data[0].Name || data[0].name);
-          }
+          const list = (await api("/api/accounts")).map((a) => ({ name: a.Name || a.name, address: a.Address || a.address }));
+          setAccounts(list);
+          return list;
         } catch (e) {
-          setError("Could not reach the local wallet API at localhost:8090. Is it running? (go run ./cmd/walletapi)");
-        }
-      }, [accountName]);
-
-      const loadAccount = useCallback(async (name) => {
-        if (!name) return;
-        setLoading(true);
-        setError("");
-        try {
-          const res = await api("/api/account?name=" + encodeURIComponent(name));
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || "failed to load account");
-          setAccount(data);
-        } catch (e) {
-          setError(e.message);
-          setAccount(null);
-        }
-        setLoading(false);
-      }, []);
-
-      const loadActivity = useCallback(async (address) => {
-        if (!address) return;
-        setActivityLoading(true);
-        try {
-          const res = await api("/api/history?address=" + encodeURIComponent(address));
-          const data = await res.json();
-          setActivity(data || []);
-        } catch (e) {
-          setActivity([]);
-        }
-        setActivityLoading(false);
-      }, []);
-
-      const loadPerms = useCallback(async (name) => {
-        if (!name) return;
-        setPermsError("");
-        try {
-          const res = await api("/api/grants?name=" + encodeURIComponent(name));
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || "failed to load permissions");
-          setPerms(data);
-        } catch (e) {
-          setPerms(null);
-          setPermsError(e.message);
+          setErr(e.message);
+          setAccounts([]);
+          return [];
         }
       }, []);
-
       useEffect(() => { loadAccounts(); }, []);
-      useEffect(() => { if (accountName && screen === "agents") loadPerms(accountName); }, [accountName, screen]);
-      useEffect(() => { if (accountName) loadAccount(accountName); }, [accountName]);
-      useEffect(() => { if (account && account.address && (screen === "activity" || screen === "home")) loadActivity(account.address); }, [account, screen]);
+      useEffect(() => {
+        if (accounts && accounts.length && !view) setView({ kind: "own", name: accounts[0].name, address: accounts[0].address });
+      }, [accounts]);
 
-      const balanceAeth = account ? uaethToAeth(account.balance) : 0;
-      const validTo = /^aether1[a-z0-9]{38,90}$/.test(sendTo);
-      const amtNum = parseFloat(sendAmt) || 0;
-      const amtOk = amtNum > 0 && amtNum <= balanceAeth;
+      const owner = view && view.kind === "own" ? view : (accounts && accounts.length ? { kind: "own", ...accounts[0] } : null);
+      const address = view ? view.address : "";
 
-      async function doSend() {
-        setSending(true);
+      const loadChain = useCallback(async () => {
+        try { setChain(await api("/api/chain")); setChainErr(""); }
+        catch (e) { setChainErr(e.message); }
+      }, []);
+      useEffect(() => { loadChain(); const t = setInterval(loadChain, 15000); return () => clearInterval(t); }, []);
+
+      const loadBalance = useCallback(async () => {
+        if (!address) return;
         try {
-          const uaeth = Math.round(amtNum * 1000000).toString();
-          const res = await api("/api/send", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ from: accountName, to: sendTo, amount: uaeth }),
-          });
-          const data = await res.json();
-          setSendResult(data);
-          if (data.success) {
-            setSendStep(3);
-            setTimeout(() => loadAccount(accountName), 3000);
-          }
-        } catch (e) {
-          setSendResult({ success: false, message: e.message });
-        }
-        setSending(false);
+          const d = await api("/api/balance?address=" + encodeURIComponent(address));
+          setBalance(d.balance); setErr("");
+        } catch (e) { setErr(e.message); }
+      }, [address]);
+      const loadActivity = useCallback(async () => {
+        if (!address) return;
+        try { setActivity(await api("/api/history?address=" + encodeURIComponent(address))); }
+        catch (e) { setActivity([]); }
+      }, [address]);
+      const loadPerms = useCallback(async () => {
+        if (!owner) return;
+        try { setPerms(await api("/api/grants?name=" + encodeURIComponent(owner.name))); }
+        catch (e) { setPerms({ given: [], received: [], error: e.message }); }
+      }, [owner && owner.name]);
+
+      useEffect(() => {
+        setBalance(null); setActivity(null);
+        loadBalance(); loadActivity();
+        const t = setInterval(() => { loadBalance(); loadActivity(); }, 20000);
+        return () => clearInterval(t);
+      }, [address]);
+      useEffect(() => { loadPerms(); }, [owner && owner.name]);
+
+      const refresh = () => { loadBalance(); loadActivity(); loadChain(); };
+
+      if (accounts === null) return <div className="setup faint mono">Opening wallet…</div>;
+      if (!accounts.length || adding) {
+        return <Setup canCancel={accounts.length > 0} onCancel={() => setAdding(false)} onDone={async (acc) => {
+          await loadAccounts();
+          setAdding(false);
+          setView({ kind: "own", name: acc.name, address: acc.address });
+          setScreen("home");
+        }} />;
       }
 
-      const agentAddrOk = /^aether1[a-z0-9]{38,90}$/.test(agentAddr) && (!account || agentAddr !== account.address);
-      const agentOnlyList = agentOnly.split(/[\s,]+/).filter(Boolean);
-      const agentOnlyOk = agentOnlyList.every((a) => /^aether1[a-z0-9]{38,90}$/.test(a));
-      const agentLimitNum = parseFloat(agentLimit) || 0;
-      const agentFeeNum = parseFloat(agentFeeLimit) || 0;
-      const agentFormOk = agentAddrOk && agentLimitNum > 0 && agentOnlyOk && (!agentFees || agentFeeNum > 0);
+      const agents = (perms && perms.given) || [];
+      const isAgent = view && view.kind === "agent";
+      const title = { home: "Home", send: "Send", receive: "Receive", activity: "Activity", agents: "Agents", faucet: "Faucet", buy: "Buy AETH", swap: "Swap" }[screen];
+      const go = (s) => { setScreen(s); setMenu(false); };
+      const pay = (addr) => { setSendTo(addr); go("send"); };
 
-      // Waits for the change to reach a block, then reloads the list.
-      function afterTx(data, okText) {
-        if (!data.success) {
-          setAgentMsg({ ok: false, text: data.message || data.error || "the chain rejected it" });
-          return;
-        }
-        setAgentMsg({ ok: true, text: okText + " · tx " + data.tx_hash.slice(0, 16) + "…" });
-        setTimeout(() => loadPerms(accountName), 8000);
-      }
+      return (
+        <div className="app" onClick={() => menu && setMenu(false)}>
+          <aside className="side">
+            <div className="brand">
+              <img src="aether-mark.svg" alt="" />
+              <div><b>Aether Pay</b><small>TESTNET</small></div>
+            </div>
+            {NAV.map(([k, label, g]) => (
+              <button key={k} className={"nav" + (screen === k ? " on" : "")} onClick={() => go(k)}>
+                <span className="g">{g}</span>{label}
+              </button>
+            ))}
+            <div className="pq">
+              <div className="t"><span className="dot" />ML-DSA-44 ACTIVE</div>
+              Every transaction from this wallet is signed with a NIST FIPS 204 post-quantum key. Aether has no classical fallback.
+            </div>
+            <div className="acct" onClick={(e) => e.stopPropagation()}>
+              {menu && (
+                <div className="menu">
+                  <h6>YOUR WALLET</h6>
+                  {accounts.map((a) => (
+                    <button key={a.name} className={view && view.kind === "own" && view.name === a.name ? "sel" : ""}
+                      onClick={() => { setView({ kind: "own", ...a }); setMenu(false); }}>
+                      <span className="av">{initials(a.name)}</span>
+                      <span><div className="nm">{a.name}</div><div className="ad">{short(a.address)}</div></span>
+                    </button>
+                  ))}
+                  <h6 style={{ marginTop: 12 }}>AGENTS YOU'VE FUNDED</h6>
+                  {agents.length === 0 && <div className="none">None yet. Give one an allowance under Agents.</div>}
+                  {agents.map((p) => (
+                    <button key={p.account} className={isAgent && view.address === p.account ? "sel" : ""}
+                      onClick={() => { setView({ kind: "agent", address: p.account, perm: p }); setMenu(false); go("home"); }}>
+                      <span className="av agent">ag</span>
+                      <span><div className="nm">Agent · read-only</div><div className="ad">{short(p.account)}</div></span>
+                    </button>
+                  ))}
+                  <button className="add" onClick={() => { setMenu(false); setAdding(true); }}>+ Add an account</button>
+                </div>
+              )}
+              <button className={menu ? "open" : ""} onClick={() => setMenu(!menu)}>
+                <span className={"av" + (isAgent ? " agent" : "")}>{isAgent ? "ag" : initials(view && view.name)}</span>
+                <span style={{ minWidth: 0 }}>
+                  <div className="nm">{isAgent ? "Agent" : view && view.name}{isAgent && <span className="tag">VIEW</span>}</div>
+                  <div className="ad">{short(address)}</div>
+                </span>
+                <span className="faint mono" style={{ marginLeft: "auto" }}>⌃</span>
+              </button>
+            </div>
+          </aside>
 
-      async function grantAgent() {
-        setAgentBusy("grant");
-        setAgentMsg(null);
-        try {
-          const body = {
-            from: accountName, grantee: agentAddr,
-            limit: Math.round(agentLimitNum * 1000000).toString(),
-            expiresAt: Math.floor(Date.now() / 1000) + Number(agentDays) * 86400,
-          };
-          if (agentOnlyList.length) body.allowList = agentOnlyList;
-          if (agentFees) body.feeLimit = Math.round(agentFeeNum * 1000000).toString();
-          const res = await api("/api/grants", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-          const data = await res.json();
-          afterTx(res.ok ? data : { success: false, message: data.error }, "Granted. Updates here within a block");
-          if (data.success) { setAgentAddr(""); setAgentLimit(""); setAgentOnly(""); }
-        } catch (e) {
-          setAgentMsg({ ok: false, text: e.message });
-        }
-        setAgentBusy("");
-      }
+          <main className="main">
+            <div className="top">
+              <h1>{title}</h1>
+              <ChainStatus chain={chain} error={chainErr} />
+            </div>
+            {err && <div className="banner">{err}</div>}
 
-      async function revokeAgent(grantee) {
-        if (!window.confirm("Revoke everything you've allowed " + grantee + " to do? It takes effect in the next block.")) return;
-        setAgentBusy(grantee);
-        setAgentMsg(null);
-        try {
-          const res = await api("/api/grants/revoke", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from: accountName, grantee: grantee }) });
-          const data = await res.json();
-          afterTx(res.ok ? data : { success: false, message: data.error }, "Revoked. Updates here within a block");
-        } catch (e) {
-          setAgentMsg({ ok: false, text: e.message });
-        }
-        setAgentBusy("");
-      }
+            {screen === "home" && (
+              <div className="content">
+                <div className="col">
+                  <div className="card glow">
+                    <div className="bal">
+                      <div style={{ minWidth: 0 }}>
+                        <div className="kicker">{isAgent ? "Agent balance" : "Spendable balance"}{isAgent && <span className="tag">READ-ONLY</span>}</div>
+                        <div className="big">{balance === null ? "—" : aeth(balance)}<span className="unit">AETH</span></div>
+                        <div className="sub">{short(address)}{isAgent && view.perm.send && (" · may still spend " + (view.perm.send.unlimited ? "without limit" : aeth(coinsU(view.perm.send.spendLimit)) + " AETH of yours") + (view.perm.send.expiration ? " · until " + new Date(view.perm.send.expiration).toLocaleString() : ""))}</div>
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <div className="kicker">{balance === null ? "" : int(balance) + " uaeth"}</div>
+                        <button className="btn sm ghost" style={{ marginTop: 12 }} onClick={refresh}>RE-QUERY</button>
+                      </div>
+                    </div>
+                    <div className="actions">
+                      {isAgent ? (
+                        <>
+                          <button className="btn primary" onClick={() => go("agents")}>Manage allowance</button>
+                          <button className="btn" onClick={() => go("receive")}>Fund this agent</button>
+                        </>
+                      ) : (
+                        <>
+                          <button className="btn primary" onClick={() => go("send")}>Send</button>
+                          <button className="btn" onClick={() => go("receive")}>Receive</button>
+                          <button className="btn" onClick={() => go("agents")}>Agents</button>
+                          <button className="btn" onClick={() => go("faucet")}>Get testnet AETH</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="feedhead"><h3>Recent activity</h3><span>memos are public on-chain, and written by the sender</span></div>
+                  <Feed txs={activity} limit={6} me={isAgent ? "this agent" : "you"} />
+                </div>
+                <div className="col">
+                  {!isAgent && <Recipients txs={activity} onPay={pay} />}
+                  <div className="card facts">
+                    <h3 style={{ marginBottom: 14 }}>Why this wallet is different</h3>
+                    <dl>
+                      <dt>PQ-SIG</dt><dd>ML-DSA-44 (Dilithium2), enforced by the chain for every account transaction since genesis. A quantum computer can't forge your signature.</dd>
+                      <dt>POW</dt><dd>Validators earn their seat with real Scrypt mining work, never by stake. Nobody bought their way into securing your payment.</dd>
+                      <dt>1-KEY</dt><dd>Post-quantum keys have no HD derivation yet: one recovery phrase backs up exactly one account.</dd>
+                    </dl>
+                  </div>
+                  <ChainPanel chain={chain} />
+                </div>
+              </div>
+            )}
 
-      async function requestFaucet() {
-        if (!account || !account.address) return;
-        setFaucetState("sending");
-        try {
-          const res = await fetch("http://157.245.252.221:8080/request", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ address: account.address }),
-          });
-          const data = await res.json();
-          if (data.success) {
-            setFaucetState("done");
-            setFaucetMsg("Sent. tx " + (data.tx_hash ? data.tx_hash.slice(0, 16) : "") + "…");
-            setTimeout(() => loadAccount(accountName), 4000);
-          } else {
-            setFaucetState("idle");
-            setFaucetMsg(data.message || "Request failed");
-          }
-        } catch (e) {
-          setFaucetState("idle");
-          setFaucetMsg("Could not reach the public faucet.");
-        }
-      }
-
-      const wrap = { minHeight: "100vh", background: "#08090a", color: "#f2f4f3", fontFamily: "'IBM Plex Sans', sans-serif", display: "flex" };
-      const mono = { fontFamily: "'IBM Plex Mono', monospace" };
-
-      const navBtn = (active) => ({
-        display: "flex", alignItems: "center", gap: 11, width: "100%",
-        background: active ? "rgba(42,212,196,.09)" : "none",
-        border: "none", borderLeft: "2px solid " + (active ? ACC : "transparent"),
-        color: active ? "#f2f4f3" : "#8b9490", padding: "10px 12px",
-        borderRadius: "0 9px 9px 0", cursor: "pointer",
-        font: (active ? 600 : 500) + " 12.5px/1 'IBM Plex Sans',sans-serif", textAlign: "left",
-      });
-
-      const primaryBtn = (enabled) => ({
-        background: enabled ? ACC : "#1a1f20", color: enabled ? "#000" : "#7a8481",
-        border: "none", borderRadius: 50, padding: "14px 24px",
-        font: "600 13px/1 'IBM Plex Sans',sans-serif", cursor: enabled ? "pointer" : "not-allowed", flex: 1,
-      });
-
-      const card = { background: "#0d1011", border: "1px solid rgba(255,255,255,.08)", borderRadius: 14, padding: 20 };
-      const field = Object.assign({ width: "100%", background: "#0a0c0d", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: 12, color: "#f2f4f3", marginTop: 6 }, mono, { fontSize: 12.5 });
-      const label = (text) => React.createElement("label", { style: Object.assign({}, mono, { fontSize: 10.5, color: "#8b9490" }) }, text);
-      const hint = (text, color) => React.createElement("div", { style: Object.assign({}, mono, { fontSize: 10.5, color: color, margin: "4px 0 14px" }) }, text);
-      const input = (value, onChange, placeholder, unit) => React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-        React.createElement("input", { value: value, onChange: (e) => onChange(e.target.value), placeholder: placeholder, style: Object.assign({}, field, { marginBottom: 4 }) }),
-        unit && React.createElement("span", { style: Object.assign({}, mono, { fontSize: 11, color: "#8b9490", marginTop: 6 }) }, unit));
-
-      return React.createElement("div", { style: wrap },
-        React.createElement("div", { style: { width: 220, borderRight: "1px solid rgba(255,255,255,.08)", padding: "20px 10px", display: "flex", flexDirection: "column", gap: 4 } },
-          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "0 12px 20px", fontWeight: 700, fontSize: 16, color: ACC } }, "⚡ Aether Pay"),
-          NAV.map(([key, label, glyph]) =>
-            React.createElement("button", { key: key, style: navBtn(screen === key), onClick: () => setScreen(key) },
-              React.createElement("span", null, glyph), " " + label
-            )
-          ),
-          React.createElement("div", { style: { marginTop: "auto", padding: 12 } },
-            React.createElement("label", { style: Object.assign({}, mono, { fontSize: 10, color: "#6b7570" }) }, "ACCOUNT"),
-            React.createElement("select", {
-              value: accountName,
-              onChange: (e) => setAccountName(e.target.value),
-              style: Object.assign({ width: "100%", marginTop: 6, background: "#0d1011", color: "#f2f4f3", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, padding: 8 }, mono, { fontSize: 11 })
-            }, accounts.map((a) => React.createElement("option", { key: a.Name || a.name, value: a.Name || a.name }, a.Name || a.name)))
-          )
-        ),
-        React.createElement("div", { style: { flex: 1, padding: 32, maxWidth: 700 } },
-          error && React.createElement("div", { style: { background: "rgba(255,122,107,.08)", border: "1px solid rgba(255,122,107,.3)", borderRadius: 10, padding: 14, marginBottom: 20, color: "#ff9b8f", fontSize: 12.5 } }, error),
-
-          screen === "home" && React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 20 } },
-            React.createElement("div", { style: card },
-              React.createElement("div", { style: { color: "#8b9490", fontSize: 11.5, marginBottom: 6 } }, "BALANCE"),
-              React.createElement("div", { style: Object.assign({ fontSize: 40, fontWeight: 600 }, mono) },
-                loading ? "…" : fmt(balanceAeth), " ", React.createElement("span", { style: { fontSize: 18, color: "#8b9490" } }, "AETH")
-              ),
-              React.createElement("div", { style: Object.assign({}, mono, { fontSize: 10.5, color: "#6b7570", marginTop: 8 }) },
-                account ? (account.balance + " uaeth · " + short(account.address)) : "no account loaded"
-              ),
-              React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 18 } },
-                React.createElement("button", { style: primaryBtn(true), onClick: () => setScreen("send") }, "Send"),
-                React.createElement("button", { style: Object.assign({}, primaryBtn(true), { background: "#1a1f20", color: "#f2f4f3" }), onClick: () => setScreen("receive") }, "Receive")
-              )
-            ),
-            React.createElement("div", null,
-              React.createElement("div", { style: { color: "#8b9490", fontSize: 11.5, marginBottom: 10 } }, "RECENT ACTIVITY"),
-              activity.slice(0, 4).map((t) => React.createElement(TxRow, { key: t.Hash, t: t })),
-              activity.length === 0 && React.createElement("div", { style: { color: "#6b7570", fontSize: 12.5 } }, "No transactions yet.")
-            )
-          ),
-
-          screen === "send" && React.createElement("div", { style: card },
-            React.createElement("h2", { style: { marginTop: 0 } }, "Send AETH"),
-            sendStep < 3 && React.createElement(React.Fragment, null,
-              React.createElement("label", { style: Object.assign({}, mono, { fontSize: 10.5, color: "#8b9490" }) }, "RECIPIENT ADDRESS"),
-              React.createElement("input", {
-                value: sendTo, onChange: (e) => setSendTo(e.target.value.trim()), placeholder: "aether1...",
-                style: Object.assign({ width: "100%", background: "#0a0c0d", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: 12, color: "#f2f4f3" }, mono, { fontSize: 12.5, marginTop: 6, marginBottom: 4 })
-              }),
-              React.createElement("div", { style: Object.assign({}, mono, { fontSize: 10.5, color: sendTo === "" ? "transparent" : (validTo ? ACC : "#ff7a6b"), marginBottom: 14 }) },
-                sendTo === "" ? "-" : (validTo ? "✓ valid aether1 address" : "✕ doesn't match aether1 format")
-              ),
-              React.createElement("label", { style: Object.assign({}, mono, { fontSize: 10.5, color: "#8b9490" }) }, "AMOUNT (AETH)"),
-              React.createElement("input", {
-                value: sendAmt, onChange: (e) => setSendAmt(e.target.value.replace(/[^0-9.]/g, "")), placeholder: "0.00",
-                style: Object.assign({ width: "100%", background: "#0a0c0d", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: 12, color: "#f2f4f3" }, mono, { fontSize: 12.5, marginTop: 6, marginBottom: 4 })
-              }),
-              React.createElement("div", { style: Object.assign({}, mono, { fontSize: 10.5, color: "#6b7570", marginBottom: 18 }) },
-                "available " + fmt(balanceAeth) + " AETH · fee 0 uaeth · gas 400,000"
-              ),
-              React.createElement("button", {
-                style: primaryBtn(validTo && amtOk && !sending), disabled: !(validTo && amtOk) || sending, onClick: doSend
-              }, sending ? "Signing with ML-DSA-44…" : "Sign & broadcast")
-            ),
-            sendStep === 3 && sendResult && React.createElement("div", null,
-              React.createElement("div", { style: { color: sendResult.success ? ACC : "#ff7a6b", fontSize: 14, marginBottom: 10 } },
-                sendResult.success ? "✓ Sent" : "✕ Failed"
-              ),
-              React.createElement("div", { style: Object.assign({}, mono, { fontSize: 11, color: "#8b9490", wordBreak: "break-all" }) },
-                sendResult.tx_hash ? ("TX " + sendResult.tx_hash) : sendResult.message
-              ),
-              React.createElement("button", {
-                style: Object.assign({}, primaryBtn(true), { marginTop: 18 }),
-                onClick: () => { setSendStep(0); setSendTo(""); setSendAmt(""); setSendResult(null); }
-              }, "Send another")
-            )
-          ),
-
-          screen === "receive" && account && React.createElement("div", { style: card },
-            React.createElement("h2", { style: { marginTop: 0 } }, "Receive"),
-            React.createElement("div", { style: Object.assign({}, mono, { fontSize: 13, wordBreak: "break-all", background: "#0a0c0d", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: 16, marginBottom: 14 }) }, account.address),
-            React.createElement("button", {
-              style: Object.assign({}, primaryBtn(true), { background: copied ? "rgba(42,212,196,.15)" : ACC, color: copied ? ACC : "#000" }),
-              onClick: () => { navigator.clipboard.writeText(account.address); setCopied(true); setTimeout(() => setCopied(false), 1600); }
-            }, copied ? "Copied to clipboard" : "Copy address")
-          ),
-
-          screen === "activity" && React.createElement("div", null,
-            React.createElement("h2", null, "Activity"),
-            activityLoading && React.createElement("div", { style: { color: "#6b7570" } }, "Loading real chain data…"),
-            !activityLoading && activity.length === 0 && React.createElement("div", { style: { color: "#6b7570" } }, "No transactions yet."),
-            activity.map((t) => React.createElement(TxRow, { key: t.Hash, t: t, full: true }))
-          ),
-
-          screen === "agents" && React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 20 } },
-            React.createElement("div", { style: card },
-              React.createElement("h2", { style: { marginTop: 0 } }, "Give an agent a spending allowance"),
-              React.createElement("p", { style: { color: "#8b9490", fontSize: 12.5, marginTop: 0 } },
-                "The agent can send up to the limit from this account until the date you pick. The chain enforces both, and you can revoke it at any time. Granting the same agent again replaces its limit."),
-              label("AGENT ADDRESS"),
-              input(agentAddr, (v) => setAgentAddr(v.trim()), "aether1..."),
-              hint(agentAddr === "" ? "-" : (agentAddrOk ? "✓ valid aether1 address" : (account && agentAddr === account.address ? "✕ that's this account" : "✕ doesn't match aether1 format")), agentAddr === "" ? "transparent" : (agentAddrOk ? ACC : "#ff7a6b")),
-              React.createElement("div", { style: { display: "flex", gap: 14 } },
-                React.createElement("div", { style: { flex: 1 } },
-                  label("SPEND LIMIT (AETH)"),
-                  input(agentLimit, (v) => setAgentLimit(v.replace(/[^0-9.]/g, "")), "5")
-                ),
-                React.createElement("div", { style: { flex: 1 } },
-                  label("EXPIRES IN"),
-                  React.createElement("select", { value: agentDays, onChange: (e) => setAgentDays(e.target.value), style: Object.assign({}, field, { marginBottom: 4 }) },
-                    [["1", "1 day"], ["7", "7 days"], ["30", "30 days"], ["90", "90 days"]].map(([v, t]) => React.createElement("option", { key: v, value: v }, t)))
-                )
-              ),
-              React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, margin: "14px 0 8px", color: "#c9d0cd" } },
-                React.createElement("input", { type: "checkbox", checked: agentFees, onChange: (e) => setAgentFees(e.target.checked) }),
-                "Also pay its transaction fees, up to"
-              ),
-              agentFees && input(agentFeeLimit, (v) => setAgentFeeLimit(v.replace(/[^0-9.]/g, "")), "1", "AETH"),
-              label("ONLY LET IT PAY THESE ADDRESSES (OPTIONAL)"),
-              React.createElement("textarea", {
-                value: agentOnly, onChange: (e) => setAgentOnly(e.target.value), placeholder: "aether1... (one per line; empty: anyone)", rows: 2,
-                style: Object.assign({}, field, { resize: "vertical" })
-              }),
-              hint(agentOnlyOk ? (agentOnlyList.length ? agentOnlyList.length + " address(es)" : "any recipient") : "✕ one of these isn't an aether1 address", agentOnlyOk ? "#6b7570" : "#ff7a6b"),
-              React.createElement("button", { style: primaryBtn(agentFormOk && !agentBusy), disabled: !agentFormOk || !!agentBusy, onClick: grantAgent },
-                agentBusy === "grant" ? "Signing with ML-DSA-44…" : "Sign & grant"),
-              agentMsg && React.createElement("div", { style: Object.assign({ marginTop: 12, fontSize: 11.5, color: agentMsg.ok ? ACC : "#ff7a6b", wordBreak: "break-all" }, mono) }, agentMsg.text)
-            ),
-            React.createElement("div", { style: card },
-              React.createElement("h2", { style: { marginTop: 0 } }, "Agents you've authorized"),
-              permsError && React.createElement("div", { style: { color: "#ff9b8f", fontSize: 12.5 } }, permsError),
-              !permsError && perms && perms.given.length === 0 && React.createElement("div", { style: { color: "#6b7570", fontSize: 12.5 } }, "None yet."),
-              perms && perms.given.map((p) => React.createElement(PermRow, { key: p.account, p: p, busy: agentBusy === p.account, onRevoke: () => revokeAgent(p.account) }))
-            ),
-            perms && perms.received.length > 0 && React.createElement("div", { style: card },
-              React.createElement("h2", { style: { marginTop: 0 } }, "Permissions this account has received"),
-              perms.received.map((p) => React.createElement(PermRow, { key: p.account, p: p, received: true }))
-            )
-          ),
-
-          screen === "faucet" && React.createElement("div", { style: card },
-            React.createElement("h2", { style: { marginTop: 0 } }, "Testnet Faucet"),
-            React.createElement("p", { style: { color: "#8b9490", fontSize: 12.5 } }, "Requests real testnet AETH from the public faucet at 157.245.252.221. Rate-limited per address."),
-            React.createElement("button", {
-              style: primaryBtn(faucetState === "idle"), disabled: faucetState !== "idle", onClick: requestFaucet
-            }, faucetState === "sending" ? "Broadcasting…" : (faucetState === "done" ? "Cooldown active" : "Request testnet AETH")),
-            faucetMsg && React.createElement("div", { style: Object.assign({ marginTop: 12, fontSize: 11.5, color: "#8b9490" }, mono) }, faucetMsg)
-          ),
-
-          (screen === "buy" || screen === "swap") && React.createElement("div", { style: card },
-            React.createElement("h2", { style: { marginTop: 0 } }, screen === "buy" ? "Buy AETH" : "Swap into AETH"),
-            React.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 10, background: "rgba(227,178,95,.08)", border: "1px solid rgba(227,178,95,.3)", borderRadius: 10, padding: 14 } },
-              React.createElement("span", { style: { color: GOLD } }, "⚠"),
-              React.createElement("div", { style: { fontSize: 12.5, color: "#e8bf78" } },
-                "Not built yet. " + (screen === "buy" ? "A fiat on-ramp" : "Cross-chain swaps") +
-                (screen === "swap" ? " would require infrastructure Aether doesn't have yet -- native IBC is explicitly listed as not built in the project README." : " would require real payment processor infrastructure that doesn't exist for this project yet.")
-              )
-            )
-          )
-        )
+            {screen === "send" && (
+              <div className="content single">
+                {isAgent ? <div className="card"><h2>Send</h2><p className="note">Agents sign their own payments. Switch to your wallet in the account menu to send from it.</p></div>
+                  : <Send owner={owner} balance={balance} to={sendTo} setTo={setSendTo} onSent={() => setTimeout(refresh, 4000)} />}
+              </div>
+            )}
+            {screen === "receive" && (
+              <div className="content single"><Receive address={address} label={isAgent ? "This agent's address" : "Your address"} /></div>
+            )}
+            {screen === "activity" && (
+              <div className="content single"><div className="col"><Feed txs={activity} me={isAgent ? "this agent" : "you"} /></div></div>
+            )}
+            {screen === "agents" && (
+              <div className="content single"><Agents owner={owner} perms={perms} reload={loadPerms} onView={(p) => { setView({ kind: "agent", address: p.account, perm: p }); go("home"); }} /></div>
+            )}
+            {screen === "faucet" && (
+              <div className="content single"><Faucet address={address} onFunded={() => setTimeout(refresh, 5000)} /></div>
+            )}
+            {(screen === "buy" || screen === "swap") && (
+              <div className="content single">
+                <div className="card">
+                  <h2>{screen === "buy" ? "Buy AETH" : "Swap into AETH"}</h2>
+                  <div className="warn"><span>⚠</span><div>
+                    {screen === "buy"
+                      ? "Not built yet. Buying with money needs a payment processor, which Aether doesn't have. On testnet, use the faucet."
+                      : "Not built yet. Aether's IBC is live, but it has no connection to a chain with a DEX yet, so there's nothing to swap through."}
+                  </div></div>
+                </div>
+              </div>
+            )}
+          </main>
+        </div>
       );
     }
 
-    function TxRow(props) {
-      const t = props.t;
-      const aeth = uaethToAeth(parseFloat(t.Amount) || 0);
-      const isSent = t.Direction === "sent";
+    function ChainStatus({ chain, error }) {
+      const [now, setNow] = useState(Date.now());
+      useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+      if (!chain) return <div className="status"><span className={"dot " + (error ? "bad" : "wait")} />{error ? "node unreachable" : "connecting…"}</div>;
+      let next = "";
+      if (chain.avgBlockSeconds > 0) {
+        const due = Date.parse(chain.blockTime) + chain.avgBlockSeconds * 1000 - now;
+        next = due > 0 ? "~" + Math.ceil(due / 1000) + "s" : "any moment";
+      }
+      return (
+        <div className="status" title={error || ""}>
+          <span className={"dot" + (error ? " bad" : "")} />{chain.chainId}
+          <span className="sep">/</span>height {int(chain.height)}
+          {next && <><span className="sep">/</span>next block {next}</>}
+          <span className="sep">/</span>epoch {int(chain.epoch)}
+        </div>
+      );
+    }
+
+    function ChainPanel({ chain }) {
+      return (
+        <div className="card">
+          <h3 style={{ marginBottom: 10 }}>Chain</h3>
+          {!chain ? <div className="empty">Waiting for the node…</div> : (
+            <>
+              <div className="kv"><span>Difficulty</span><span>{int(chain.difficulty)}</span></div>
+              <div className="kv"><span>Block reward</span><span className="red">{aeth(chain.blockRewardUaeth, 2)} AETH</span></div>
+              <div className="kv"><span>Validators</span><span>{chain.activeValidators} / K={chain.topKSize}</span></div>
+              <div className="kv"><span>Next selection</span><span>height {int(chain.selectionHeight)}</span></div>
+              <div className="kv"><span>Treasury</span><span>{aeth(chain.treasuryUaeth, 2)} AETH</span></div>
+              <div className="kv"><span>Avg block</span><span>{chain.avgBlockSeconds ? chain.avgBlockSeconds.toFixed(1) + "s" : "—"}</span></div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    function Feed({ txs, limit, me }) {
+      if (txs === null) return <div className="card empty">Loading real chain data…</div>;
+      const list = limit ? txs.slice(0, limit) : txs;
+      if (!list.length) return <div className="card empty">No transactions yet.</div>;
+      return list.map((t) => <TxCard key={t.Hash} t={t} me={me} />);
+    }
+
+    function TxCard({ t, me }) {
+      const sent = t.Direction === "sent";
       const failed = t.Code !== 0;
-      return React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,.06)" } },
-        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
-          React.createElement("div", {
-            style: {
-              width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-              background: failed ? "rgba(255,122,107,.1)" : (isSent ? "rgba(255,255,255,.05)" : "rgba(42,212,196,.1)"),
-              border: "1px solid " + (failed ? "rgba(255,122,107,.3)" : (isSent ? "rgba(255,255,255,.1)" : "rgba(42,212,196,.28)")),
-              color: failed ? "#ff7a6b" : (isSent ? "#f2f4f3" : ACC), fontFamily: "'IBM Plex Mono',monospace",
-            }
-          }, isSent ? "↗" : "↙"),
-          React.createElement("div", null,
-            React.createElement("div", { style: { fontSize: 12.5 } }, isSent ? "Sent" : "Received"),
-            React.createElement("div", { style: { fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: "#6b7570" } },
-              (props.full ? t.Hash : t.Hash.slice(0, 20) + "…") + " · height " + t.Height
-            )
-          )
-        ),
-        React.createElement("div", { style: { fontFamily: "'IBM Plex Mono',monospace", fontSize: 12.5, color: failed ? "#ff7a6b" : (isSent ? "#f2f4f3" : ACC) } },
-          (isSent ? "−" : "+") + fmt(aeth) + " AETH"
-        )
+      const other = t.CounterpartyModule ? MODULES[t.CounterpartyModule] || t.CounterpartyModule : (t.Counterparty ? short(t.Counterparty) : "someone");
+      if (sent && !t.Counterparty && uaethOf(t.Amount) === 0n) {
+        return (
+          <div className="card tx">
+            <div className={"av" + (failed ? " bad" : "")}>✎</div>
+            <div style={{ minWidth: 0 }}>
+              <div className="who"><b>{ACTIONS[t.MsgType] || "Signed " + (t.MsgType || "a transaction")}</b>{failed && <span className="tag bad">FAILED</span>}</div>
+              <div className={"memo" + (t.Memo ? "" : " none")}>{t.Memo || "no memo"}</div>
+            </div>
+            <div><div className="amt faint">no transfer</div>
+              <div className="meta">{(ago(t.Timestamp) + " · ").toUpperCase()}<a href={EXPLORER + "/tx/" + t.Hash} target="_blank" rel="noreferrer">HEIGHT {int(t.Height)}</a></div></div>
+          </div>
+        );
+      }
+      return (
+        <div className="card tx">
+          <div className={"av" + (failed ? " bad" : sent ? "" : " in")}>{sent ? "↗" : "↙"}</div>
+          <div style={{ minWidth: 0 }}>
+            <div className="who">
+              {sent ? <><b>{me}</b><span className="v">paid</span><b className="mono" style={{ fontSize: 12.5 }}>{other}</b></>
+                : t.CounterpartyModule === "pow" ? <b>Mining reward</b>
+                : <><b className="mono" style={{ fontSize: 12.5 }}>{other}</b><span className="v">paid</span><b>{me}</b></>}
+              {failed && <span className="tag bad">FAILED</span>}
+            </div>
+            <div className={"memo" + (t.Memo ? "" : " none")}>{t.Memo || "no memo"}</div>
+          </div>
+          <div>
+            <div className={"amt" + (failed ? " fail" : sent ? "" : " in")}>{(sent ? "−" : "+") + aeth(t.Amount, 2)} AETH</div>
+            <div className="meta">{(ago(t.Timestamp) + " · ").toUpperCase()}<a href={EXPLORER + "/tx/" + t.Hash} target="_blank" rel="noreferrer">HEIGHT {int(t.Height)}</a></div>
+          </div>
+        </div>
       );
     }
 
-    function coinsAeth(coins) {
-      const u = (coins || []).find((c) => c.denom === "uaeth");
-      return u ? fmt(uaethToAeth(u.amount)) + " AETH" : "0 AETH";
-    }
-
-    function when(ts) {
-      if (!ts) return "never";
-      const d = new Date(ts);
-      return (d < new Date() ? "expired " : "") + d.toLocaleString();
-    }
-
-    // One account's permissions: what it may send, and whose fees are paid.
-    function PermRow(props) {
-      const p = props.p;
-      const mono = { fontFamily: "'IBM Plex Mono',monospace" };
-      const line = (k, v) => React.createElement("div", { style: { display: "flex", gap: 10, fontSize: 12, margin: "3px 0" } },
-        React.createElement("span", { style: { color: "#6b7570", width: 110, flexShrink: 0 } }, k), React.createElement("span", { style: Object.assign({ wordBreak: "break-all" }, mono) }, v));
-      return React.createElement("div", { style: { padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,.06)" } },
-        React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 } },
-          React.createElement("div", { style: Object.assign({ fontSize: 12.5, wordBreak: "break-all" }, mono) }, (props.received ? "from " : "") + p.account),
-          !props.received && React.createElement("button", {
-            onClick: props.onRevoke, disabled: props.busy,
-            style: { background: "none", border: "1px solid rgba(255,122,107,.4)", color: "#ff9b8f", borderRadius: 50, padding: "6px 14px", cursor: "pointer", font: "600 11.5px/1 'IBM Plex Sans',sans-serif", flexShrink: 0 }
-          }, props.busy ? "Revoking…" : "Revoke")
-        ),
-        p.send && line("May send", p.send.unlimited ? "anything (no limit)" : coinsAeth(p.send.spendLimit) + " more"),
-        p.send && line("To", p.send.allowList && p.send.allowList.length ? p.send.allowList.join(", ") : "anyone"),
-        p.send && line("Until", when(p.send.expiration)),
-        p.fees && line("Fees", "paid" + (p.fees.spendLimit && p.fees.spendLimit.length ? ", up to " + coinsAeth(p.fees.spendLimit) + " more" : ", no limit") + " · until " + when(p.fees.expiration)),
-        !p.send && !p.fees && line("Other", (p.other || []).map((g) => g.kind).join(", "))
+    function Recipients({ txs, onPay }) {
+      const seen = new Set();
+      const list = [];
+      for (const t of txs || []) {
+        if (t.Direction !== "sent" || t.Code !== 0 || !t.Counterparty || t.CounterpartyModule || seen.has(t.Counterparty)) continue;
+        seen.add(t.Counterparty);
+        list.push(t);
+        if (list.length === 5) break;
+      }
+      return (
+        <div className="card">
+          <div className="headrow"><h3>Recent recipients</h3></div>
+          {txs === null && <div className="empty">Loading…</div>}
+          {txs && list.length === 0 && <div className="empty">People you pay show up here.</div>}
+          {list.map((t) => (
+            <div className="row" key={t.Counterparty}>
+              <span className="av">{t.Counterparty.slice(7, 9)}</span>
+              <div className="grow"><div className="nm mono" style={{ fontSize: 12 }}>{short(t.Counterparty)}</div><div className="ad">last paid {ago(t.Timestamp)}</div></div>
+              <button className="link" onClick={() => onPay(t.Counterparty)}>PAY</button>
+            </div>
+          ))}
+        </div>
       );
     }
 
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(React.createElement(AetherPayDesktop));
+    function Send({ owner, balance, to, setTo, onSent }) {
+      const [amt, setAmt] = useState("");
+      const [busy, setBusy] = useState(false);
+      const [result, setResult] = useState(null);
+      const validTo = ADDR_RE.test(to) && to !== owner.address;
+      let uaeth = 0n, amtOk = false;
+      if (/^\d+(\.\d{0,6})?$/.test(amt)) {
+        const [w, f = ""] = amt.split(".");
+        uaeth = BigInt(w) * 1000000n + BigInt(f.padEnd(6, "0"));
+        amtOk = uaeth > 0n && balance !== null && uaeth <= uaethOf(balance);
+      }
+      async function send() {
+        setBusy(true);
+        try {
+          const d = await api("/api/send", { from: owner.name, to, amount: uaeth.toString() });
+          setResult(d);
+          if (d.success) onSent();
+        } catch (e) { setResult({ success: false, message: e.message }); }
+        setBusy(false);
+      }
+      if (result && result.success) {
+        return (
+          <div className="card">
+            <h2>Sent <span className="tag ok">BROADCAST</span></h2>
+            <p className="note">{aeth(uaeth)} AETH to <span className="mono">{short(to)}</span>. It's final once it's in a block, usually within a minute.</p>
+            <div className="addr">{result.tx_hash}</div>
+            <div className="actions">
+              <a className="btn" style={{ textAlign: "center" }} href={EXPLORER + "/tx/" + result.tx_hash} target="_blank" rel="noreferrer">View on explorer</a>
+              <button className="btn primary" onClick={() => { setResult(null); setTo(""); setAmt(""); }}>Send another</button>
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div className="card">
+          <h2>Send AETH</h2>
+          <label className="f">Recipient</label>
+          <input className="field" value={to} onChange={(e) => setTo(e.target.value.trim())} placeholder="aether1…" />
+          <div className={"hint " + (to === "" ? "" : validTo ? "ok" : "bad")}>{to === "" ? "" : validTo ? "✓ valid aether1 address" : to === owner.address ? "✕ that's this account" : "✕ not an aether1 address"}</div>
+          <label className="f">Amount</label>
+          <input className="field" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00  AETH" />
+          <div className={"hint" + (amt && !amtOk ? " bad" : "")}>available {balance === null ? "—" : aeth(balance)} AETH · fee 0 · gas 400,000</div>
+          {result && !result.success && <div className="banner" style={{ margin: "14px 0 0" }}>{result.message || result.error}</div>}
+          <div className="actions">
+            <button className="btn primary" disabled={!validTo || !amtOk || busy} onClick={send}>{busy ? "Signing with ML-DSA-44…" : "Sign & send"}</button>
+          </div>
+        </div>
+      );
+    }
+
+    function Receive({ address, label }) {
+      const [copied, setCopied] = useState(false);
+      return (
+        <div className="card">
+          <h2>Receive</h2>
+          <label className="f">{label}</label>
+          <div className="addr">{address}</div>
+          <p className="note">Anyone can pay this address. Payments show up in Activity once they're in a block.</p>
+          <div className="actions">
+            <button className="btn primary" onClick={() => { navigator.clipboard.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1600); }}>{copied ? "Copied" : "Copy address"}</button>
+            <a className="btn" style={{ textAlign: "center" }} href={EXPLORER + "/address/" + address} target="_blank" rel="noreferrer">View on explorer</a>
+          </div>
+        </div>
+      );
+    }
+
+    function Faucet({ address, onFunded }) {
+      const [state, setState] = useState("idle");
+      const [msg, setMsg] = useState("");
+      async function request() {
+        setState("sending"); setMsg("");
+        try {
+          const res = await fetch(FAUCET, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address }) });
+          const d = await res.json().catch(() => ({}));
+          if (res.ok && d.success !== false) {
+            setState("done");
+            setMsg("Sent" + (d.tx_hash ? " · tx " + d.tx_hash.slice(0, 16) + "…" : "") + ". It shows up once it's in a block.");
+            onFunded();
+          } else { setState("idle"); setMsg(d.message || d.error || "The faucet refused (it's rate-limited per address)."); }
+        } catch (e) { setState("idle"); setMsg("Couldn't reach the public faucet."); }
+      }
+      return (
+        <div className="card">
+          <h2>Testnet faucet</h2>
+          <p className="note">Free testnet AETH from the public faucet, sent to <span className="mono">{short(address)}</span>. It's rate-limited per address and has no value.</p>
+          <div className="actions">
+            <button className="btn primary" disabled={state !== "idle"} onClick={request}>{state === "sending" ? "Requesting…" : state === "done" ? "Requested" : "Request testnet AETH"}</button>
+          </div>
+          {msg && <div className="hint" style={{ marginTop: 12 }}>{msg}</div>}
+        </div>
+      );
+    }
+
+    function Agents({ owner, perms, reload, onView }) {
+      const [addr, setAddr] = useState("");
+      const [limit, setLimit] = useState("");
+      const [days, setDays] = useState("7");
+      const [fees, setFees] = useState(true);
+      const [feeLimit, setFeeLimit] = useState("1");
+      const [only, setOnly] = useState("");
+      const [busy, setBusy] = useState("");
+      const [msg, setMsg] = useState(null);
+      const addrOk = ADDR_RE.test(addr) && addr !== owner.address;
+      const onlyList = only.split(/[\s,]+/).filter(Boolean);
+      const onlyOk = onlyList.every((a) => ADDR_RE.test(a));
+      const limitNum = parseFloat(limit) || 0, feeNum = parseFloat(feeLimit) || 0;
+      const formOk = addrOk && limitNum > 0 && onlyOk && (!fees || feeNum > 0);
+
+      function after(d, text) {
+        if (!d.success) { setMsg({ ok: false, text: d.message || d.error || "the chain rejected it" }); return; }
+        setMsg({ ok: true, text: text + " · tx " + d.tx_hash.slice(0, 16) + "…" });
+        setTimeout(reload, 8000);
+      }
+      async function grant() {
+        setBusy("grant"); setMsg(null);
+        try {
+          const body = { from: owner.name, grantee: addr, limit: Math.round(limitNum * 1e6).toString(), expiresAt: Math.floor(Date.now() / 1000) + Number(days) * 86400 };
+          if (onlyList.length) body.allowList = onlyList;
+          if (fees) body.feeLimit = Math.round(feeNum * 1e6).toString();
+          const d = await api("/api/grants", body);
+          after(d, "Granted. It shows here within a block");
+          if (d.success) { setAddr(""); setLimit(""); setOnly(""); }
+        } catch (e) { setMsg({ ok: false, text: e.message }); }
+        setBusy("");
+      }
+      async function revoke(grantee) {
+        if (!window.confirm("Revoke everything you've allowed " + grantee + " to do? It takes effect in the next block.")) return;
+        setBusy(grantee); setMsg(null);
+        try { after(await api("/api/grants/revoke", { from: owner.name, grantee }), "Revoked. It shows here within a block"); }
+        catch (e) { setMsg({ ok: false, text: e.message }); }
+        setBusy("");
+      }
+      return (
+        <div className="col">
+          <div className="card">
+            <h2>Give an agent a spending allowance</h2>
+            <p className="note">The agent can send up to the limit from <b>{owner.name}</b> until the date you pick. The chain enforces both, and you can revoke it any time. Granting the same agent again replaces its limit.</p>
+            <label className="f">Agent address</label>
+            <input className="field" value={addr} onChange={(e) => setAddr(e.target.value.trim())} placeholder="aether1…" />
+            <div className={"hint " + (addr === "" ? "" : addrOk ? "ok" : "bad")}>{addr === "" ? "" : addrOk ? "✓ valid aether1 address" : addr === owner.address ? "✕ that's this account" : "✕ not an aether1 address"}</div>
+            <div style={{ display: "flex", gap: 14 }}>
+              <div style={{ flex: 1 }}><label className="f">Spend limit (AETH)</label><input className="field" value={limit} onChange={(e) => setLimit(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="5" /></div>
+              <div style={{ flex: 1 }}><label className="f">Expires in</label>
+                <select className="field" value={days} onChange={(e) => setDays(e.target.value)}>
+                  {[["1", "1 day"], ["7", "7 days"], ["30", "30 days"], ["90", "90 days"]].map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                </select></div>
+            </div>
+            <label className="check"><input type="checkbox" checked={fees} onChange={(e) => setFees(e.target.checked)} />Also pay its transaction fees, up to</label>
+            {fees && <input className="field" value={feeLimit} onChange={(e) => setFeeLimit(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="1 AETH" />}
+            <label className="f">Only let it pay these addresses (optional)</label>
+            <textarea className="field" rows={2} value={only} onChange={(e) => setOnly(e.target.value)} placeholder="aether1… one per line; empty means anyone" />
+            <div className={"hint" + (onlyOk ? "" : " bad")}>{onlyOk ? (onlyList.length ? onlyList.length + " address(es)" : "any recipient") : "✕ one of these isn't an aether1 address"}</div>
+            <div className="actions"><button className="btn primary" disabled={!formOk || !!busy} onClick={grant}>{busy === "grant" ? "Signing with ML-DSA-44…" : "Sign & grant"}</button></div>
+            {msg && <div className={"hint " + (msg.ok ? "ok" : "bad")} style={{ marginTop: 12, overflowWrap: "anywhere" }}>{msg.text}</div>}
+          </div>
+          <div className="card">
+            <h2>Agents you've funded</h2>
+            {!perms && <div className="empty">Loading…</div>}
+            {perms && perms.error && <div className="hint bad">{perms.error}</div>}
+            {perms && !perms.error && perms.given.length === 0 && <div className="empty">None yet.</div>}
+            {perms && perms.given.map((p) => <Perm key={p.account} p={p} busy={busy === p.account} onRevoke={() => revoke(p.account)} onView={() => onView(p)} />)}
+          </div>
+          {perms && perms.received.length > 0 && (
+            <div className="card">
+              <h2>Allowances this account has received</h2>
+              {perms.received.map((p) => <Perm key={p.account} p={p} received />)}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function Perm({ p, received, busy, onRevoke, onView }) {
+      const line = (k, v) => <div className="kv"><span>{k}</span><span style={{ overflowWrap: "anywhere", textAlign: "right" }}>{v}</span></div>;
+      return (
+        <div style={{ padding: "12px 0", borderTop: "1px solid var(--rule)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
+            <div className="mono" style={{ fontSize: 12.5, overflowWrap: "anywhere" }}>{(received ? "from " : "") + p.account}</div>
+            {!received && <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              <button className="btn sm ghost" onClick={onView}>VIEW</button>
+              <button className="btn sm danger" disabled={busy} onClick={onRevoke}>{busy ? "REVOKING…" : "REVOKE"}</button>
+            </div>}
+          </div>
+          {p.send && line("May send", p.send.unlimited ? "anything (no limit)" : aeth(coinsU(p.send.spendLimit)) + " AETH more")}
+          {p.send && line("To", p.send.allowList && p.send.allowList.length ? p.send.allowList.map(short).join(", ") : "anyone")}
+          {p.send && line("Until", when(p.send.expiration))}
+          {p.fees && line("Fees", "paid" + (p.fees.spendLimit && p.fees.spendLimit.length ? ", up to " + aeth(coinsU(p.fees.spendLimit)) + " AETH more" : ", no limit") + " · " + when(p.fees.expiration))}
+          {!p.send && !p.fees && line("Other", (p.other || []).map((g) => g.kind).join(", "))}
+        </div>
+      );
+    }
+
+    // First run (or "+ Add an account"): this wallet holds only accounts
+    // made here, recovered from their phrase, or picked from the CLI's
+    // keyring on this computer -- never every key that happens to exist.
+    function Setup({ canCancel, onCancel, onDone }) {
+      const [legacy, setLegacy] = useState([]);
+      const [mode, setMode] = useState("create");
+      const [name, setName] = useState("wallet");
+      const [phrase, setPhrase] = useState("");
+      const [created, setCreated] = useState(null);
+      const [saved, setSaved] = useState(false);
+      const [busy, setBusy] = useState("");
+      const [err, setErr] = useState("");
+      useEffect(() => { api("/api/legacy-accounts").then(setLegacy).catch(() => setLegacy([])); }, []);
+      const nameOk = /^[A-Za-z0-9_-]{1,32}$/.test(name);
+
+      async function run(what, fn) {
+        setBusy(what); setErr("");
+        try { await fn(); } catch (e) { setErr(e.message); }
+        setBusy("");
+      }
+      const create = () => run("create", async () => setCreated(await api("/api/accounts/create", { name })));
+      const recover = () => run("recover", async () => onDone(await api("/api/accounts/recover", { name, mnemonic: phrase })));
+      const bring = (n) => run(n, async () => onDone(await api("/api/accounts/bring-over", { name: n })));
+
+      if (created) {
+        const words = created.mnemonic.split(" ");
+        return (
+          <div className="setup"><div className="card">
+            <h2>Write down your recovery phrase</h2>
+            <div className="warn"><span>⚠</span><div>These {words.length} words are the only way to recover <b>{created.name}</b> if this computer is lost. Aether Pay won't show them again. Anyone who has them can spend from this account.</div></div>
+            <div className="words">{words.map((w, i) => <div key={i}><i>{i + 1}</i>{w}</div>)}</div>
+            <div className="addr" style={{ fontSize: 12 }}>{created.address}</div>
+            <label className="check"><input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />I've written them down somewhere safe</label>
+            <div className="actions"><button className="btn primary" disabled={!saved} onClick={() => onDone(created)}>Open my wallet</button></div>
+          </div></div>
+        );
+      }
+      return (
+        <div className="setup"><div className="card">
+          <div className="brand" style={{ padding: "0 0 18px" }}><img src="aether-mark.svg" alt="" /><div><b>Aether Pay</b><small>TESTNET</small></div></div>
+          <h2>{canCancel ? "Add an account" : "Set up your wallet"}</h2>
+          <div className="tabs">
+            <button className={mode === "create" ? "on" : ""} onClick={() => setMode("create")}>Create new</button>
+            <button className={mode === "recover" ? "on" : ""} onClick={() => setMode("recover")}>Recover from phrase</button>
+            {legacy.length > 0 && <button className={mode === "bring" ? "on" : ""} onClick={() => setMode("bring")}>Use one on this computer</button>}
+          </div>
+          {mode !== "bring" && <>
+            <label className="f">Account name</label>
+            <input className="field" value={name} onChange={(e) => setName(e.target.value.trim())} />
+            <div className={"hint" + (nameOk ? "" : " bad")}>{nameOk ? "only you see this name" : "1-32 letters, digits, - or _"}</div>
+          </>}
+          {mode === "create" && <>
+            <p className="note">Makes a new ML-DSA-44 key on this computer, backed up by a 24-word phrase you'll write down next.</p>
+            <div className="actions"><button className="btn primary" disabled={!nameOk || !!busy} onClick={create}>{busy ? "Creating…" : "Create account"}</button></div>
+          </>}
+          {mode === "recover" && <>
+            <label className="f">Recovery phrase</label>
+            <textarea className="field" rows={3} value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder="the 24 words, separated by spaces" />
+            <div className="actions"><button className="btn primary" disabled={!nameOk || phrase.trim().split(/\s+/).length < 12 || !!busy} onClick={recover}>{busy ? "Recovering…" : "Recover account"}</button></div>
+          </>}
+          {mode === "bring" && <>
+            <p className="note">Keys the aetherd command-line tools keep on this computer. Pick yours; only that one is copied into Aether Pay, and the command-line tools keep theirs.</p>
+            {legacy.map((a) => (
+              <div className="row" key={a.name}>
+                <span className="av">{initials(a.name)}</span>
+                <div className="grow"><div className="nm">{a.name}</div><div className="ad">{a.address}</div></div>
+                <button className="btn sm" disabled={!!busy} onClick={() => bring(a.name)}>{busy === a.name ? "…" : "USE THIS"}</button>
+              </div>
+            ))}
+          </>}
+          {err && <div className="banner" style={{ margin: "14px 0 0" }}>{err}</div>}
+          {canCancel && <div style={{ marginTop: 18 }}><button className="link" onClick={onCancel}>← BACK TO WALLET</button></div>}
+        </div></div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   </script>
 </body>
 </html>

@@ -35,9 +35,14 @@ Start menu entry. It isn't code-signed yet, so SmartScreen shows
 **Run anyway**.
 
 The app talks to the public testnet (`aether-testnet-1`) over TLS, so no
-local node is needed. Keys live in `%USERPROFILE%\.aether`, separate from
-a node's `--home` (e.g. `C:\aether-data\.aether`). It listens on
-`localhost:8090`: quit any `walletapi` you started by hand first.
+local node is needed. It keeps its own keys in `%APPDATA%\Aether Pay\keyring`
+(macOS: `~/Library/Application Support/Aether Pay/keyring`), so it lists
+only the accounts you set up in it, never every key the command-line
+tools made in `~/.aether`. The first launch offers to create an account
+(with a 24-word recovery phrase), recover one from its phrase, or bring
+over one key from `~/.aether`; the CLI keeps its copy. The account menu
+also lists the agents you've given an allowance to, read-only. It listens
+on `localhost:8090`: quit any `walletapi` you started by hand first.
 
 ## Run in dev mode
 

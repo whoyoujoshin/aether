@@ -5,13 +5,15 @@
 // existing, already live-verified web/aether-pay-desktop.html
 // unmodified and points it at that local process, the same
 // http://localhost:8090 it already expects.
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, shell } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
+const os = require("os");
 const http = require("http");
 const crypto = require("crypto");
 
 const PORT = 8090;
+const EXPLORER_URL = "https://explorer.157-245-252-221.sslip.io";
 const HEALTH_URL = `http://localhost:${PORT}/api/accounts`;
 
 // A fresh secret per launch, known only to walletapi and this window:
@@ -43,9 +45,19 @@ function backendBinaryPath() {
   return path.join(__dirname, "resources", `${osKey}-${archKey}`, binName);
 }
 
+// The wallet keeps its own keyring (e.g. %APPDATA%\Aether Pay\keyring),
+// so it lists only accounts its user created or chose to bring over,
+// never every key the CLI tools ever made in ~/.aether.
+function backendArgs() {
+  return [
+    "--keyring-dir", path.join(app.getPath("userData"), "keyring"),
+    "--legacy-keyring-dir", path.join(os.homedir(), ".aether"),
+  ];
+}
+
 function startBackend() {
   const binPath = backendBinaryPath();
-  backendProcess = spawn(binPath, [], {
+  backendProcess = spawn(binPath, backendArgs(), {
     stdio: ["ignore", "pipe", "pipe"],
     env: Object.assign({}, process.env, { AETHER_WALLET_TOKEN: API_TOKEN }),
   });
@@ -85,8 +97,8 @@ async function createWindow() {
   await waitForBackend();
 
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 760,
+    width: 1280,
+    height: 860,
     minWidth: 720,
     minHeight: 560,
     title: "Aether Pay",
@@ -97,10 +109,17 @@ async function createWindow() {
     },
   });
 
-  // The UI is the existing, already-shipped, already live-verified
-  // file -- loaded as-is, no changes needed (it already talks to
-  // http://localhost:8090 with CORS wide open on the Go side).
+  // The same page a developer opens by hand against `go run
+  // ./cmd/walletapi`; it talks to walletapi at http://localhost:8090.
   mainWindow.loadFile(path.join(__dirname, "..", "web", "aether-pay-desktop.html"), { query: { token: API_TOKEN } });
+
+  // Explorer links open in the user's browser; the wallet window itself
+  // never navigates away from the wallet (it holds the API token).
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith(EXPLORER_URL + "/")) shell.openExternal(url);
+    return { action: "deny" };
+  });
+  mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
