@@ -18,7 +18,16 @@
     "productName": "Aether Pay",
     "files": [
       "main.js",
+      "preload.js",
       "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "whoyoujoshin",
+        "repo": "aether",
+        "releaseType": "prerelease"
+      }
     ],
     "extraResources": [
       {
@@ -56,5 +65,8 @@
       "target": "AppImage",
       "icon": "build/icon.png"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

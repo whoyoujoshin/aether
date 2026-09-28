@@ -103,6 +103,9 @@ jobs:
             artifacts/aether-wallet.mcpb
             artifacts/server.json
             artifacts/Aether-Pay-Setup-*.exe
+            artifacts/Aether-Pay-Setup-*.exe.blockmap
+            artifacts/latest.yml
+            artifacts/testnet.yml
           body: |
             Pre-built Aether binaries for this release.
 
