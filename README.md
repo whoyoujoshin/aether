@@ -136,6 +136,7 @@ aetherd keys add mywallet --keyring-backend test
 # Mine a valid native PoW nonce against live state
 go run ./cmd/powminer --miner <your-bech32-address>
 # then run the aetherd tx pow submit command it prints
+# (--fees 40uaeth if your node runs with --minimum-gas-prices=0.0001uaeth)
 ```
 
 **Keys:** each account is one ML-DSA-44 keypair — no HD multi-account derivation from a mnemonic.  

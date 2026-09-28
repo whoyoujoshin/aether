@@ -29,7 +29,6 @@ import (
 
 	"flag"
 
-	"cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -178,11 +177,23 @@ func mineOne(rpcAddr, grpcAddr, minerStr string, minerAddr sdk.AccAddress, maxAt
 	return h, currentHeight, nil
 }
 
+// ML-DSA-44 signatures need more than the SDK's 200,000 default.
+const submitGas = 400_000
+
+// feesFlag renders fees for aetherd's --fees, which needs a value even
+// when they're zero (sdk.Coins drops zero amounts).
+func feesFlag(fees sdk.Coins) string {
+	if fees.IsZero() {
+		return "0uaeth"
+	}
+	return fees.String()
+}
+
 // submitAndConfirm builds, signs, and broadcasts a real MsgSubmitPoW via
 // the wallet library, then polls until it's genuinely included in a
 // block (not just accepted at broadcast) -- the same discipline this
 // project has used throughout for every real transaction.
-func submitAndConfirm(wal *wallet.Wallet, client *wallet.Client, fromKey, minerStr, chainID string, h header) error {
+func submitAndConfirm(wal *wallet.Wallet, client *wallet.Client, fromKey, minerStr, chainID string, fees sdk.Coins, h header) error {
 	msg := &pow.MsgSubmitPoW{
 		Miner: minerStr,
 		Submission: &pow.MsgSubmitPoW_Native{
@@ -206,8 +217,8 @@ func submitAndConfirm(wal *wallet.Wallet, client *wallet.Client, fromKey, minerS
 		ChainID:       chainID,
 		AccountNumber: accountNumber,
 		Sequence:      sequence,
-		GasLimit:      400_000, // ML-DSA-44 signatures need more than the SDK's 200,000 default
-		Fees:          sdk.NewCoins(sdk.NewCoin("uaeth", math.NewInt(0))),
+		GasLimit:      submitGas,
+		Fees:          fees,
 	})
 	if err != nil {
 		return fmt.Errorf("building/signing tx: %w", err)
@@ -255,7 +266,14 @@ func main() {
 	fromKey := flag.String("from", "", "keyring name of the miner account (required with --auto-submit)")
 	keyringBackend := flag.String("keyring-backend", "test", "keyring backend the miner account is stored in")
 	loop := flag.Bool("loop", false, "keep mining and submitting continuously (requires --auto-submit); runs until interrupted")
+	feesStr := flag.String("fees", "0uaeth", "fee per submission; a node with --minimum-gas-prices needs at least gas x that price (400000 gas at 0.0001uaeth is 40uaeth)")
 	flag.Parse()
+
+	fees, err := sdk.ParseCoinsNormalized(*feesStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: invalid --fees %q: %v\n", *feesStr, err)
+		os.Exit(1)
+	}
 
 	if *minerStr == "" {
 		fmt.Fprintln(os.Stderr, "error: --miner is required")
@@ -316,13 +334,14 @@ func main() {
 			fmt.Println("Submit with (note: this submission must be broadcast within the chain's")
 			fmt.Println("RecencyWindowK blocks of the height below, or it will be rejected as stale):")
 			fmt.Printf(
-				"aetherd tx pow submit %d %d %s %s %d %d --from %s --chain-id %s --keyring-backend test --fees 0uaeth --gas 400000 -y\n",
+				"aetherd tx pow submit %d %d %s %s %d %d --from %s --chain-id %s --keyring-backend test --fees %s --gas %d -y\n",
 				h.Height, h.Timestamp, hex.EncodeToString(h.PrevHash), hex.EncodeToString(h.MerkleRoot), h.Nonce, h.Difficulty, *minerStr, *chainID,
+				feesFlag(fees), submitGas,
 			)
 			break
 		}
 
-		if err := submitAndConfirm(wal, client, *fromKey, *minerStr, *chainID, h); err != nil {
+		if err := submitAndConfirm(wal, client, *fromKey, *minerStr, *chainID, fees, h); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			if !*loop {
 				os.Exit(1)
