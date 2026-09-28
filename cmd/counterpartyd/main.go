@@ -36,7 +36,7 @@ import (
 	"github.com/whoyoujoshin/aether/counterparty"
 )
 
-var encodingConfig = counterparty.MakeEncodingConfig()
+var encodingConfig = counterparty.MakeEncodingConfig(counterparty.Bech32Prefix)
 
 var initClientCtx = client.Context{}.
 	WithCodec(encodingConfig.Codec).

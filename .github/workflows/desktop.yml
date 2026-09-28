@@ -1,0 +1,64 @@
+name: Desktop installer
+
+# Builds the Aether Pay Windows installer on a real Windows runner:
+# electron-builder's NSIS step needs Wine anywhere else. Runs on its own
+# when the wallet changes (or by hand from the Actions tab), and is
+# called by release.yml so every v* release carries the installer.
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    branches: ['**']
+    paths:
+      - desktop/**
+      - cmd/walletapi/**
+      - wallet/**
+      - web/aether-pay-desktop.html
+      - web/vendor/**
+      - .github/workflows/desktop.yml
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Build Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install
+        working-directory: desktop
+        run: npm ci
+
+      - name: Version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: desktop
+        shell: bash
+        run: npm version --no-git-tag-version "${GITHUB_REF_NAME#v}"
+
+      - name: Build walletapi
+        working-directory: desktop
+        run: node scripts/build-backend.js win-x64
+
+      - name: Package installer
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --win nsis --x64 --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aether-pay-windows
+          path: desktop/dist/Aether-Pay-Setup-*.exe
+          if-no-files-found: error
