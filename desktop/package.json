@@ -41,6 +41,9 @@
       "target": "nsis",
       "icon": "build/icon.ico"
     },
+    "nsis": {
+      "artifactName": "Aether-Pay-Setup-${version}.${ext}"
+    },
     "mac": {
       "target": "dmg",
       "icon": "build/icon.icns"

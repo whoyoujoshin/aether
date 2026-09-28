@@ -18,6 +18,27 @@ allowance: a spend limit, an expiry, optionally only certain recipients,
 and optionally its transaction fees paid. It lists what each agent may
 still spend, and revokes with one click.
 
+## Install on Windows
+
+Download `Aether-Pay-Setup-<version>.exe` from either:
+
+- a [GitHub release](https://github.com/whoyoujoshin/aether/releases): every
+  `v*` tag attaches the installer (`.github/workflows/release.yml`), or
+- the **Desktop installer** workflow in the repo's Actions tab: it runs
+  whenever the wallet changes, and "Run workflow" builds one on demand.
+  The installer is inside the run's `aether-pay-windows` artifact (a zip;
+  needs a GitHub login, kept 90 days).
+
+Run it. It installs for your user only (no admin prompt) and adds a
+Start menu entry. It isn't code-signed yet, so SmartScreen shows
+"Windows protected your PC" the first time: choose **More info**, then
+**Run anyway**.
+
+The app talks to the public testnet (`aether-testnet-1`) over TLS, so no
+local node is needed. Keys live in `%USERPROFILE%\.aether`, separate from
+a node's `--home` (e.g. `C:\aether-data\.aether`). It listens on
+`localhost:8090`: quit any `walletapi` you started by hand first.
+
 ## Run in dev mode
 
 From this directory:
