@@ -36,6 +36,7 @@ var agentmcpTools = []string{
 	"create_invoice", "wait_for_payment",
 	"fetch_paid", "list_purchases", "list_prepaid_balances", "withdraw_prepaid",
 	"find_services", "rate_service", "announce_service",
+	"get_miner_status",
 }
 
 const repoURL = "https://github.com/whoyoujoshin/aether"
@@ -155,6 +156,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			"integration": repoURL + "/blob/main/docs/AGENT_INTEGRATION.md",
 			"releases":    repoURL + "/releases",
 			"services":    "/api/services",
+			"miner":       "/api/miner?addr=aether1...",
 		},
 		Warnings: []string{
 			"Testnet: use disposable keys and never anything of value.",
