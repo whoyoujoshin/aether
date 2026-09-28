@@ -530,6 +530,7 @@ func main() {
 	mux.HandleFunc("/api/tx", withCORS(handleTx))
 	mux.HandleFunc("/api/search", withCORS(handleSearch))
 	mux.HandleFunc("/api/services", withCORS(handleServices))
+	mux.HandleFunc("/api/ibc", withCORS(handleIBC))
 	mux.HandleFunc("/api/grants", withCORS(handleGrants))
 	mux.HandleFunc("/api/agents", withCORS(handleAgents))
 
