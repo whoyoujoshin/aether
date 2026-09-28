@@ -25,6 +25,7 @@ Canonical design detail remains in [WHITEPAPER.md](WHITEPAPER.md). Live endpoint
 | AuxPoW rewards (does **not** count toward Top-K) | Available |
 | Query balances / txs via RPC, gRPC, explorer | Available |
 | Faucet `POST /request` with `{"address":"aether1..."}` | Available (rate-limited) |
+| Miner standing in one call: consensus key registered?, work and rank this epoch, blocks until selection, in the validator set?, escrow (explorer `/api/miner?addr=`, agentmcp `get_miner_status`) | Available |
 
 **Public testnet (verify against README if drifted):**
 
@@ -44,7 +45,7 @@ Epoch length is **1440** blocks; Top-K is **21** by epoch native work. Only **na
 These are operational lessons from running automated miners and validators on testnet - not protocol bugs by themselves:
 
 1. **Key custody** - test keyrings and visible terminals expose full signing power; there is no first-class spend policy or session key for bots.
-2. **Observability** - eligibility and confirmations are often inferred by scraping `powminer` logs rather than a stable "PoW count this epoch / registered? / selected?" API or webhook.
+2. **Observability** - eligibility and confirmations are often inferred by scraping `powminer` logs rather than a stable "PoW count this epoch / registered? / selected?" API or webhook. The API half now exists (`/api/miner`, `get_miner_status`); push notifications don't yet.
 3. **Funding** - faucet rate limits and manual bank sends are awkward for fleets of agent wallets.
 4. **Headless ops** - some seed/admin steps still assume a human console; agents prefer authenticated remote control of their own miner/validator processes.
 5. **Error semantics** - wait-windows, dual-miner races, and reject codes need stable, machine-readable surfaces (agents retry blindly when logs are the only signal).
@@ -63,11 +64,11 @@ These are operational lessons from running automated miners and validators on te
 
 Stable gRPC/REST (and optionally webhooks) for:
 
-- Current epoch index and boundary height
-- Whether a miner address has a registered consensus pubkey
-- Native PoW / work count for an address in the current epoch
-- Current active Top-K set
-- Tx inclusion notifications (SubmitPoW confirmed; selected at epoch boundary)
+- Current epoch index and boundary height -- **shipped** (`/api/miner`, `get_miner_status`)
+- Whether a miner address has a registered consensus pubkey -- **shipped** (same)
+- Native PoW / work count for an address in the current epoch -- **shipped** (same, with rank among eligible miners)
+- Current active Top-K set -- **shipped** (same, per address; `x/pow` `ActiveValidators` for the whole set)
+- Tx inclusion notifications (SubmitPoW confirmed; selected at epoch boundary) -- not yet
 
 Plus idempotent tx submit helpers with clear application codes for wait-window and duplicate-work rejects.
 

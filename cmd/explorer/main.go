@@ -532,6 +532,7 @@ func main() {
 	mux.HandleFunc("/api/services", withCORS(handleServices))
 	mux.HandleFunc("/api/ibc", withCORS(handleIBC))
 	mux.HandleFunc("/api/grants", withCORS(handleGrants))
+	mux.HandleFunc("/api/miner", withCORS(handleMiner))
 	mux.HandleFunc("/api/agents", withCORS(handleAgents))
 
 	// Optional: serve explorer-web's built static assets from the same
