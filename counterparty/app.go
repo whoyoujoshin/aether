@@ -106,12 +106,20 @@ type EncodingConfig struct {
 	Amino             *codec.LegacyAmino
 }
 
-func MakeEncodingConfig() EncodingConfig {
+// MakeEncodingConfig builds an encoding config for a standard Cosmos
+// SDK + ibc-go chain (auth, bank, staking, capability, ibc, transfer --
+// see ModuleBasics), parameterized by bech32Prefix so the same, entirely
+// generic config can address either this package's own local test
+// chain (pass Bech32Prefix) or a real external standard Cosmos SDK
+// chain such as Osmosis (pass its prefix, e.g. "osmo") -- nothing in
+// here besides the address/validator-address codecs is specific to
+// this package's toy chain.
+func MakeEncodingConfig(bech32Prefix string) EncodingConfig {
 	interfaceRegistry, err := cdctypes.NewInterfaceRegistryWithOptions(cdctypes.InterfaceRegistryOptions{
 		ProtoFiles: gogoproto.HybridResolver,
 		SigningOptions: signing.Options{
-			AddressCodec:          address.NewBech32Codec(Bech32Prefix),
-			ValidatorAddressCodec: address.NewBech32Codec(Bech32Prefix + "valoper"),
+			AddressCodec:          address.NewBech32Codec(bech32Prefix),
+			ValidatorAddressCodec: address.NewBech32Codec(bech32Prefix + "valoper"),
 		},
 	})
 	if err != nil {
@@ -128,8 +136,8 @@ func MakeEncodingConfig() EncodingConfig {
 	txCfg, err := authtx.NewTxConfigWithOptions(appCodec, authtx.ConfigOptions{
 		EnabledSignModes: authtx.DefaultSignModes,
 		SigningOptions: &signing.Options{
-			AddressCodec:          address.NewBech32Codec(Bech32Prefix),
-			ValidatorAddressCodec: address.NewBech32Codec(Bech32Prefix + "valoper"),
+			AddressCodec:          address.NewBech32Codec(bech32Prefix),
+			ValidatorAddressCodec: address.NewBech32Codec(bech32Prefix + "valoper"),
 		},
 	})
 	if err != nil {
@@ -176,7 +184,7 @@ func New(
 	appOpts types.AppOptions,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *App {
-	encCfg := MakeEncodingConfig()
+	encCfg := MakeEncodingConfig(Bech32Prefix)
 	appCodec := encCfg.Codec
 	interfaceRegistry := encCfg.InterfaceRegistry
 

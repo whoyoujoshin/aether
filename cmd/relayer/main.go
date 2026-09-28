@@ -1,7 +1,12 @@
 // cmd/relayer drives the minimal, purpose-built relayer in package
 // relayer against two real, independently-running processes: Aether
-// and the standalone counterparty chain (cmd/counterpartyd). It is not
-// a general-purpose relayer -- see relayer/chain.go's package doc.
+// and a counterparty. The "counterparty" encoding config (package
+// counterparty) registers nothing but standard Cosmos SDK + ibc-go
+// modules, so -cparty-* flags can point it at either the standalone
+// test chain (cmd/counterpartyd, the default) or any real external
+// standard Cosmos SDK chain (e.g. Osmosis: -cparty-bech32-prefix osmo
+// plus its real rpc/grpc/chain-id). It is still not a general-purpose
+// relayer beyond that -- see relayer/chain.go's package doc.
 package main
 
 import (
@@ -37,6 +42,7 @@ func main() {
 		cpartyHome     = flag.String("cparty-home", os.ExpandEnv("$HOME/.counterparty"), "Counterparty keyring root dir")
 		cpartyKey      = flag.String("cparty-key", "relayer", "Name of the relayer's key in the counterparty's keyring")
 		cpartyGasPrice = flag.String("cparty-gas-prices", "", "Counterparty gas prices, empty if none required")
+		cpartyBech32   = flag.String("cparty-bech32-prefix", counterparty.Bech32Prefix, "Counterparty chain's bech32 address prefix (e.g. \"osmo\" for Osmosis) -- counterparty's own encoding config is entirely standard Cosmos SDK + ibc-go otherwise, so any standard external chain works by just changing this and the endpoints/chain-id above")
 
 		keyringBackend = flag.String("keyring-backend", "test", "keyring backend for both chains (test/file/os)")
 	)
@@ -50,7 +56,7 @@ func main() {
 		log.Fatalf("opening aether keyring: %v", err)
 	}
 
-	cpartyEnc := counterparty.MakeEncodingConfig()
+	cpartyEnc := counterparty.MakeEncodingConfig(*cpartyBech32)
 	cpartyKr, err := keyring.New("counterpartyd", *keyringBackend, *cpartyHome, os.Stdin, cpartyEnc.Codec)
 	if err != nil {
 		log.Fatalf("opening counterparty keyring: %v", err)
@@ -61,7 +67,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("connecting to aether: %v", err)
 	}
-	cparty, err := relayer.NewChain("counterparty", *cpartyRPC, *cpartyGRPC, *cpartyChainID, counterparty.Bech32Prefix,
+	cparty, err := relayer.NewChain("counterparty", *cpartyRPC, *cpartyGRPC, *cpartyChainID, *cpartyBech32,
 		cpartyEnc.Codec, cpartyEnc.TxConfig, cpartyKr, *cpartyKey, *cpartyGasPrice)
 	if err != nil {
 		log.Fatalf("connecting to counterparty: %v", err)
