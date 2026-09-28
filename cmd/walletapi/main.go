@@ -272,7 +272,7 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 
 	txs, err := client.GetTransactionHistory(address, 20)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to fetch history: %w", err))
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to fetch history: %w", nodeError(err)))
 		return
 	}
 
@@ -309,6 +309,7 @@ func main() {
 	http.HandleFunc("/api/legacy-accounts", withCORS(handleLegacyAccounts))
 	http.HandleFunc("/api/balance", withCORS(handleBalance))
 	http.HandleFunc("/api/chain", withCORS(handleChain))
+	http.HandleFunc("/api/version", withCORS(handleVersion))
 	http.HandleFunc("/api/send", withCORS(handleSend))
 	http.HandleFunc("/api/history", withCORS(handleHistory))
 	http.HandleFunc("/api/grants", withCORS(handleGrants))

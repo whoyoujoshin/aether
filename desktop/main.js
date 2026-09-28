@@ -1,11 +1,12 @@
 // Electron shell for Aether Pay Desktop. Deliberately thin: all real
-// wallet logic (keyring, signing, chain queries) lives in the existing
+// wallet logic (keyring, signing, chain queries) lives in the
 // cmd/walletapi Go binary, spawned here as a child process exactly the
-// way a user running it by hand would. This window just loads the
-// existing, already live-verified web/aether-pay-desktop.html
-// unmodified and points it at that local process, the same
-// http://localhost:8090 it already expects.
-const { app, BrowserWindow, shell } = require("electron");
+// way a user running it by hand would. This window loads
+// web/aether-pay-desktop.html and points it at that local process
+// (http://localhost:8090). The shell adds only what a page can't do
+// itself: open links in the browser, and update the app.
+const { app, BrowserWindow, shell, ipcMain } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const { spawn } = require("child_process");
 const path = require("path");
 const os = require("os");
@@ -14,7 +15,9 @@ const crypto = require("crypto");
 
 const PORT = 8090;
 const EXPLORER_URL = "https://explorer.157-245-252-221.sslip.io";
+const RELEASES_URL = "https://github.com/whoyoujoshin/aether/releases";
 const HEALTH_URL = `http://localhost:${PORT}/api/accounts`;
+const UPDATE_CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 
 // A fresh secret per launch, known only to walletapi and this window:
 // walletapi signs with this machine's keys, and without it any web page
@@ -73,6 +76,13 @@ function startBackend() {
   });
 }
 
+function stopBackend() {
+  if (backendProcess) {
+    backendProcess.kill();
+    backendProcess = null;
+  }
+}
+
 function waitForBackend(timeoutMs = 10000, intervalMs = 200) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve) => {
@@ -93,6 +103,78 @@ function waitForBackend(timeoutMs = 10000, intervalMs = 200) {
   });
 }
 
+// --- Updates ---
+//
+// From this repo's GitHub releases (package.json build.publish), which
+// carry the installer, its .blockmap and the update-info .yml: an
+// update downloads only the blocks that changed when it can, not the
+// whole installer again. Every release is a "-testnet" prerelease, so
+// prereleases are allowed. Nothing downloads or installs until the
+// user asks; only the packaged Windows app updates (the only platform
+// whose installer the releases carry).
+const updatable = app.isPackaged && process.platform === "win32";
+let updateState = { state: updatable ? "idle" : "unsupported" };
+
+function setUpdateState(s) {
+  updateState = s;
+  if (mainWindow) mainWindow.webContents.send("update-state", s);
+}
+
+function setupUpdates() {
+  ipcMain.handle("app-info", () => ({
+    version: app.getVersion(),
+    platform: process.platform,
+    updatable,
+    releasesUrl: RELEASES_URL,
+  }));
+  ipcMain.handle("update-state", () => updateState);
+  ipcMain.handle("update-check", () => checkForUpdates());
+  ipcMain.handle("update-download", async () => {
+    if (!updatable || updateState.state !== "available") return updateState;
+    try {
+      await autoUpdater.downloadUpdate();
+    } catch (err) {
+      setUpdateState({ state: "error", message: err.message });
+    }
+    return updateState;
+  });
+  ipcMain.handle("update-install", () => {
+    if (updateState.state !== "ready") return updateState;
+    stopBackend();
+    // Silent install, then relaunch: the installer is per-user, no prompt.
+    autoUpdater.quitAndInstall(true, true);
+    return updateState;
+  });
+
+  if (!updatable) return;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.allowPrerelease = true;
+  autoUpdater.on("checking-for-update", () => setUpdateState({ state: "checking" }));
+  autoUpdater.on("update-not-available", () => setUpdateState({ state: "current", checkedAt: Date.now() }));
+  autoUpdater.on("update-available", (info) => setUpdateState({
+    state: "available",
+    version: info.version,
+    releaseDate: info.releaseDate,
+    size: (info.files || []).reduce((n, f) => n + (f.size || 0), 0),
+  }));
+  autoUpdater.on("download-progress", (p) => setUpdateState({
+    state: "downloading", version: updateState.version, percent: p.percent, transferred: p.transferred, total: p.total,
+  }));
+  autoUpdater.on("update-downloaded", (info) => setUpdateState({ state: "ready", version: info.version }));
+  autoUpdater.on("error", (err) => setUpdateState({ state: "error", message: err ? err.message : "update failed" }));
+}
+
+async function checkForUpdates() {
+  if (!updatable || ["checking", "downloading", "ready"].includes(updateState.state)) return updateState;
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (err) {
+    setUpdateState({ state: "error", message: err.message });
+  }
+  return updateState;
+}
+
 async function createWindow() {
   await waitForBackend();
 
@@ -106,6 +188,8 @@ async function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      preload: path.join(__dirname, "preload.js"),
     },
   });
 
@@ -113,10 +197,10 @@ async function createWindow() {
   // ./cmd/walletapi`; it talks to walletapi at http://localhost:8090.
   mainWindow.loadFile(path.join(__dirname, "..", "web", "aether-pay-desktop.html"), { query: { token: API_TOKEN } });
 
-  // Explorer links open in the user's browser; the wallet window itself
-  // never navigates away from the wallet (it holds the API token).
+  // Explorer and release links open in the user's browser; the wallet
+  // window itself never navigates away (it holds the API token).
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith(EXPLORER_URL + "/")) shell.openExternal(url);
+    if (url.startsWith(EXPLORER_URL + "/") || url.startsWith(RELEASES_URL)) shell.openExternal(url);
     return { action: "deny" };
   });
   mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
@@ -125,9 +209,14 @@ async function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  setupUpdates();
   startBackend();
-  createWindow();
+  await createWindow();
+  if (updatable) {
+    setTimeout(checkForUpdates, 5000);
+    setInterval(checkForUpdates, UPDATE_CHECK_EVERY_MS);
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -138,9 +227,4 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => {
-  if (backendProcess) {
-    backendProcess.kill();
-    backendProcess = null;
-  }
-});
+app.on("before-quit", stopBackend);

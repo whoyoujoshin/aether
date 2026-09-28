@@ -47,6 +47,9 @@
     .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); display: inline-block; flex-shrink: 0; }
     .dot.bad { background: var(--danger); }
     .dot.wait { background: var(--faint); }
+    .dot.upd { background: var(--red); margin-left: auto; }
+    .bar { height: 6px; border-radius: 3px; background: var(--cell); overflow: hidden; margin-top: 4px; }
+    .bar i { display: block; height: 100%; background: var(--red); transition: width .3s; }
 
     .acct { position: relative; margin-top: 12px; }
     .acct > button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 1px solid transparent; border-radius: 11px; background: none; text-align: left; }
@@ -247,7 +250,11 @@
       ["faucet", "Faucet", "◈"],
       ["buy", "Buy AETH", "$"],
       ["swap", "Swap", "⇄"],
+      ["settings", "Settings", "⚙"],
     ];
+    // Set by the desktop app's preload script; absent in a plain browser.
+    const shellApp = window.aetherApp || null;
+    function mb(n) { return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB"; }
 
     function App() {
       const [accounts, setAccounts] = useState(null); // this wallet's own keys
@@ -262,6 +269,13 @@
       const [err, setErr] = useState("");
       const [menu, setMenu] = useState(false);
       const [sendTo, setSendTo] = useState("");
+      const [update, setUpdate] = useState(null);
+      useEffect(() => {
+        if (!shellApp) return;
+        shellApp.updateState().then(setUpdate);
+        return shellApp.onUpdateState(setUpdate);
+      }, []);
+      const updateFlag = update && (update.state === "available" || update.state === "ready");
 
       const loadAccounts = useCallback(async () => {
         try {
@@ -328,7 +342,7 @@
 
       const agents = (perms && perms.given) || [];
       const isAgent = view && view.kind === "agent";
-      const title = { home: "Home", send: "Send", receive: "Receive", activity: "Activity", agents: "Agents", faucet: "Faucet", buy: "Buy AETH", swap: "Swap" }[screen];
+      const title = { home: "Home", send: "Send", receive: "Receive", activity: "Activity", agents: "Agents", faucet: "Faucet", buy: "Buy AETH", swap: "Swap", settings: "Settings" }[screen];
       const go = (s) => { setScreen(s); setMenu(false); };
       const pay = (addr) => { setSendTo(addr); go("send"); };
 
@@ -342,6 +356,7 @@
             {NAV.map(([k, label, g]) => (
               <button key={k} className={"nav" + (screen === k ? " on" : "")} onClick={() => go(k)}>
                 <span className="g">{g}</span>{label}
+                {k === "settings" && updateFlag && <span className="dot upd" title="Update available" />}
               </button>
             ))}
             <div className="pq">
@@ -455,6 +470,9 @@
             )}
             {screen === "faucet" && (
               <div className="content single"><Faucet address={address} onFunded={() => setTimeout(refresh, 5000)} /></div>
+            )}
+            {screen === "settings" && (
+              <div className="content single"><Settings update={update} /></div>
             )}
             {(screen === "buy" || screen === "swap") && (
               <div className="content single">
@@ -767,6 +785,62 @@
           {p.send && line("Until", when(p.send.expiration))}
           {p.fees && line("Fees", "paid" + (p.fees.spendLimit && p.fees.spendLimit.length ? ", up to " + aeth(coinsU(p.fees.spendLimit)) + " AETH more" : ", no limit") + " · " + when(p.fees.expiration))}
           {!p.send && !p.fees && line("Other", (p.other || []).map((g) => g.kind).join(", "))}
+        </div>
+      );
+    }
+
+    function Settings({ update }) {
+      const [info, setInfo] = useState(null);
+      const [svc, setSvc] = useState(null);
+      useEffect(() => {
+        if (shellApp) shellApp.info().then(setInfo);
+        api("/api/version").then(setSvc).catch(() => setSvc(null));
+      }, []);
+      const u = update || { state: shellApp ? "idle" : "unsupported" };
+      const releases = (info && info.releasesUrl) || "https://github.com/whoyoujoshin/aether/releases";
+      let status;
+      if (!shellApp) status = <p className="note">This page is running outside the desktop app, so it can't update itself.</p>;
+      else if (u.state === "unsupported") status = <p className="note">Updates install from inside the app only in the Windows app. On this computer, download new versions from the releases page.</p>;
+      else if (u.state === "idle" || u.state === "checking") status = <p className="note">{u.state === "checking" ? "Checking for updates…" : "Not checked yet."}</p>;
+      else if (u.state === "current") status = <p className="note"><span className="tag ok" style={{ marginLeft: 0, marginRight: 8 }}>UP TO DATE</span>checked {new Date(u.checkedAt).toLocaleTimeString()}</p>;
+      else if (u.state === "available") status = (
+        <p className="note"><span className="tag" style={{ marginLeft: 0, marginRight: 8 }}>UPDATE AVAILABLE</span>
+          <b>{u.version}</b>{u.size ? " · installer " + mb(u.size) : ""}. It downloads only the parts that changed when it can, and your accounts stay as they are.</p>
+      );
+      else if (u.state === "downloading") status = (
+        <div>
+          <p className="note">Downloading {u.version}… {Math.floor(u.percent || 0)}%{u.total ? " · " + mb(u.transferred || 0) + " of " + mb(u.total) : ""}</p>
+          <div className="bar"><i style={{ width: Math.max(2, u.percent || 0) + "%" }} /></div>
+        </div>
+      );
+      else if (u.state === "ready") status = <p className="note"><span className="tag ok" style={{ marginLeft: 0, marginRight: 8 }}>READY</span><b>{u.version}</b> is downloaded. Restarting installs it and reopens Aether Pay.</p>;
+      else status = <p className="note" style={{ color: "#ff9aac" }}>Couldn't update: {u.message}</p>;
+
+      return (
+        <div className="col">
+          <div className="card">
+            <h2>Aether Pay</h2>
+            <div className="kv"><span>Version</span><span>{info ? info.version : shellApp ? "…" : "not the desktop app"}</span></div>
+            <div style={{ marginTop: 10 }}>{status}</div>
+            <div className="actions">
+              {u.state === "available" && <button className="btn primary" onClick={() => shellApp.downloadUpdate()}>Update to {u.version}</button>}
+              {u.state === "ready" && <button className="btn primary" onClick={() => shellApp.installUpdate()}>Restart to update</button>}
+              {shellApp && ["idle", "current", "error"].includes(u.state) && <button className="btn" onClick={() => shellApp.checkForUpdates()}>{u.state === "error" ? "Try again" : "Check for updates"}</button>}
+              <a className="btn" style={{ textAlign: "center" }} href={releases} target="_blank" rel="noreferrer">Release notes</a>
+            </div>
+          </div>
+          <div className="card">
+            <h2>Wallet service</h2>
+            {!svc ? <div className="empty">Not answering.</div> : (
+              <>
+                <div className="kv"><span>Build</span><span>{svc.build}</span></div>
+                <div className="kv"><span>Chain</span><span>{svc.chainId}</span></div>
+                <div className="kv"><span>Node</span><span>{svc.grpc}</span></div>
+                <div className="kv"><span>Keys folder</span><span style={{ overflowWrap: "anywhere", textAlign: "right" }}>{svc.keyringDir}</span></div>
+              </>
+            )}
+            <p className="note" style={{ marginTop: 12 }}>Your keys stay in that folder on this computer; updating the app doesn't touch them.</p>
+          </div>
         </div>
       );
     }

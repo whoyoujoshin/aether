@@ -44,6 +44,25 @@ over one key from `~/.aether`; the CLI keeps its copy. The account menu
 also lists the agents you've given an allowance to, read-only. It listens
 on `localhost:8090`: quit any `walletapi` you started by hand first.
 
+## Updates
+
+**Settings** shows the app's version and whether a newer release exists;
+the app also checks on launch and every 6 hours, and puts a dot on
+Settings when one does. **Update** downloads it (with the previous
+release's `.blockmap` on GitHub, only the blocks that changed, not the
+whole installer), and **Restart to update** installs it and reopens the
+app. Nothing downloads or installs until you click, and your keys, in
+the keyring folder, aren't touched.
+
+It reads this repo's releases (`electron-updater`, GitHub provider,
+prereleases allowed since every release is `-testnet`), which carry the
+installer, its `.blockmap` and the update-info `.yml` (see
+`.github/workflows/desktop.yml`). Only the Windows app updates itself;
+the releases carry no macOS or Linux build. Versions before
+0.2.3-testnet don't include the updater, so moving to it is one last
+manual install. The installer isn't code-signed, so updates aren't
+signature-checked beyond the SHA-512 in the update-info file.
+
 ## Run in dev mode
 
 From this directory:

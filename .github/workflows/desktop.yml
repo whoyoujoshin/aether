@@ -57,8 +57,22 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npx electron-builder --win nsis --x64 --publish never
 
+      # What the in-app updater reads: the installer's .blockmap (so an
+      # update downloads only changed blocks) and the update-info .yml
+      # (latest.yml, or testnet.yml for a -testnet version).
+      - name: Show update files
+        shell: bash
+        run: |
+          ls -la desktop/dist
+          cat desktop/dist/win-unpacked/resources/app-update.yml
+          for f in desktop/dist/latest.yml desktop/dist/testnet.yml; do [ -f "$f" ] && { echo "== $f"; cat "$f"; }; done; true
+
       - uses: actions/upload-artifact@v4
         with:
           name: aether-pay-windows
-          path: desktop/dist/Aether-Pay-Setup-*.exe
+          path: |
+            desktop/dist/Aether-Pay-Setup-*.exe
+            desktop/dist/Aether-Pay-Setup-*.exe.blockmap
+            desktop/dist/latest.yml
+            desktop/dist/testnet.yml
           if-no-files-found: error
