@@ -16,4 +16,5 @@ var (
 	ErrBannedMiner                 = sdkerrors.Register(ModuleName, 9, "this miner is permanently banned and may not submit further work")
 	ErrInvalidAuthority            = sdkerrors.Register(ModuleName, 10, "invalid authority for MsgUpdateParams")
 	ErrInvalidParamValue           = sdkerrors.Register(ModuleName, 11, "invalid parameter value in MsgUpdateParams")
+	ErrConsensusKeyInUse           = sdkerrors.Register(ModuleName, 12, "consensus key is registered to another miner account")
 )

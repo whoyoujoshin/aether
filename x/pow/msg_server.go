@@ -39,6 +39,21 @@ func (k msgServer) RegisterValidatorPubkey(goCtx context.Context, msg *MsgRegist
 			"signature does not verify against the provided consensus pubkey for miner %s", msg.Miner)
 	}
 
+	consensusAddr := cometed25519.PubKey(msg.ConsensusPubkey).Address()
+
+	// One key, one miner account: two accounts holding the same key can
+	// put it in one block's validator updates twice, which halts the
+	// chain. See ConsensusKeyGuardActivationHeight.
+	if ctx.BlockHeight() >= ConsensusKeyGuardActivationHeight {
+		if holder, ok := k.Keeper.GetMinerByConsensusAddr(ctx, consensusAddr); ok &&
+			!holder.Equals(minerAddr) && !holder.Equals(sdk.AccAddress(consensusAddr)) {
+			if held, ok := k.Keeper.GetValidatorPubkey(ctx, holder); ok && bytes.Equal(held, msg.ConsensusPubkey) {
+				return nil, sdkerrors.Wrapf(types.ErrConsensusKeyInUse,
+					"miner %s already holds this consensus key; register a different key there first to release it", holder)
+			}
+		}
+	}
+
 	// A real, live-flagged gap (Gitty, Section 3 item 1): this handler
 	// never emitted any abci.ValidatorUpdate, so an active miner
 	// rotating consensus keys left their OLD key's real CometBFT
@@ -58,12 +73,19 @@ func (k msgServer) RegisterValidatorPubkey(goCtx context.Context, msg *MsgRegist
 			!bytes.Equal(oldPubkey, msg.ConsensusPubkey) &&
 			k.Keeper.IsActiveValidator(ctx, minerAddr) {
 			k.Keeper.MarkPendingKeyRevocation(ctx, minerAddr, oldPubkey)
+			// Its old key loses power this block and the new one has
+			// none, so it's no longer validating: leave the active set,
+			// or a later removal would name the new key, which CometBFT
+			// doesn't have, and halt the chain. It's back when an
+			// epoch picks it with the new key.
+			if ctx.BlockHeight() >= ConsensusKeyGuardActivationHeight {
+				k.Keeper.RemoveActiveValidator(ctx, minerAddr)
+				k.Keeper.ClearValidatorLiveness(ctx, minerAddr)
+			}
 		}
 	}
 
 	k.Keeper.SetValidatorPubkey(ctx, minerAddr, msg.ConsensusPubkey)
-
-	consensusAddr := cometed25519.PubKey(msg.ConsensusPubkey).Address()
 	k.Keeper.SetConsensusToMiner(ctx, consensusAddr, minerAddr)
 
 	return &MsgRegisterValidatorPubkeyResponse{}, nil

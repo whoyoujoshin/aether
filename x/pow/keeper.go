@@ -564,6 +564,37 @@ func (k Keeper) toValidatorUpdate(rawPubkey []byte, power int64, minerAddr sdk.A
 	}, true
 }
 
+// DedupeValidatorUpdates keeps one update per consensus key -- the last
+// one, since EndBlock appends immediate removals and revocations first
+// and the epoch's selection last, so the last update for a key is the
+// state that key should end the block in. It returns how many it
+// dropped.
+//
+// CometBFT refuses a block whose updates list a key twice, and that
+// refusal halts every node (see ConsensusKeyGuardActivationHeight). This
+// backstop runs at every height, ungated: a list with a repeated key
+// could never have been committed, so no finalized block's updates
+// change, and a fresh replay computes exactly what the chain did.
+func DedupeValidatorUpdates(updates []abci.ValidatorUpdate) ([]abci.ValidatorUpdate, int) {
+	keys := make([]string, len(updates))
+	last := make(map[string]int, len(updates))
+	for i, u := range updates {
+		bz, _ := u.PubKey.Marshal() // a proto oneof of fixed-size key bytes: can't fail
+		keys[i] = string(bz)
+		last[keys[i]] = i
+	}
+	if len(last) == len(updates) {
+		return updates, 0
+	}
+	out := make([]abci.ValidatorUpdate, 0, len(last))
+	for i, u := range updates {
+		if last[keys[i]] == i {
+			out = append(out, u)
+		}
+	}
+	return out, len(updates) - len(out)
+}
+
 // qualifiedEntry is a candidate for this epoch's validator set: has
 // mined real work, holds a registered consensus pubkey, and isn't
 // banned. Shared between ComputeValidatorUpdates and beacon.go's

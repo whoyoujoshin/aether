@@ -329,6 +329,8 @@ go run ./cmd/validatorkeygen --miner <your-bech32-address>
 
 Mine and submit successfully within an epoch to accumulate native work. At the epoch boundary (1440 blocks), Top-K (21) by native work become the active set. Downtime (>50% missed signatures in a 60-block window) causes temporary removal; equivocation causes permanent ban and escrow burn.
 
+**One consensus key, one miner account.** Never register the same node's key under two miner accounts: if both are picked, or one leaves the set as the other joins, the validator updates name that key twice and CometBFT halts the chain. From `ConsensusKeyGuardActivationHeight` (`x/pow/types.go`) the chain refuses it: to move a key to a new miner account, first register a different key on the old one. Rotating an active validator's key also takes it out of the set until an epoch picks it with the new key.
+
 ## Miner and validator alerts
 
 `cmd/minerwatch` watches one or more addresses and pushes what happens as it happens, instead of an agent polling `/api/miner` or scraping `powminer`'s logs:
