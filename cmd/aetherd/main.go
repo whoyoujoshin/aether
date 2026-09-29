@@ -91,7 +91,7 @@ server.AddCommands(
 		app.DefaultNodeHome,
 		createApp,
 		nil,
-		func(startCmd *cobra.Command) {},
+		addHelicaseFlags,
 	)
 
 txCmd := &cobra.Command{
@@ -188,7 +188,7 @@ func createApp(
 	invCheckPeriod := cast.ToUint(appOpts.Get(server.FlagInvCheckPeriod))
 	baseAppOptions := server.DefaultBaseappOptions(appOpts)
 
-	return app.New(
+	a := app.New(
 		logger,
 		db,
 		traceStore,
@@ -198,5 +198,7 @@ func createApp(
 		invCheckPeriod,
 		appOpts,
 		baseAppOptions...,
-	)
+	).(*app.App)
+	startHelicase(a, appOpts, logger)
+	return a
 }
