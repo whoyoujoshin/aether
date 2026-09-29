@@ -92,6 +92,13 @@ A typical hire: the buyer calls `create_escrow` and sends the payee the id; the
 payee calls `get_escrow` to see the money is locked, does the work, and the
 buyer calls `release_escrow`.
 
+## From another chain (Ligase)
+
+Someone on another IBC chain, for example holding only USDC on Noble, can
+fund, release and get refunds of an escrow with token transfers carrying
+an instruction in their memo, without an Aether key. See
+[LIGASE.md](LIGASE.md).
+
 ## Finding out what happened
 
 Settled escrows are deleted from state, so `query escrow show` returns

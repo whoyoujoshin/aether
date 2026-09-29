@@ -193,6 +193,13 @@ for another agent, and the receipt, limits and balances all say USDC.
 
 ## Phase 5: moving between the two
 
+- **Hire an Aether agent from anywhere.** [Ligase](LIGASE.md) is built: a
+  USDC transfer from Noble with an escrow instruction in its memo opens an
+  escrow for an Aether payee, and later transfers release it or bring
+  refunds home. With CCTP and Noble forwarding in front, that can start on
+  an EVM chain (whether forwarding passes the memo along still needs
+  checking).
+
 - **Swap AETH ↔ USDC from Aether.** Either use Osmosis's IBC hooks (send AETH
   with a memo naming a swap, and get USDC back on Aether in one action) or use
   an ICS-27 interchain account that Aether already supports. Both are testnet
