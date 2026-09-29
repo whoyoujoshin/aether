@@ -29,8 +29,17 @@ func Transfer(src *Chain, srcChannel string, coin sdk.Coin, receiver string) (ch
 
 // TransferWithTimeout is Transfer with a packet timeout this far from now.
 func TransferWithTimeout(src *Chain, srcChannel string, coin sdk.Coin, receiver string, after time.Duration) (channeltypes.Packet, error) {
+	return transfer(src, srcChannel, coin, receiver, after, "")
+}
+
+// TransferWithMemo is Transfer with a memo.
+func TransferWithMemo(src *Chain, srcChannel string, coin sdk.Coin, receiver, memo string) (channeltypes.Packet, error) {
+	return transfer(src, srcChannel, coin, receiver, 10*time.Minute, memo)
+}
+
+func transfer(src *Chain, srcChannel string, coin sdk.Coin, receiver string, after time.Duration, memo string) (channeltypes.Packet, error) {
 	timeout := uint64(time.Now().Add(after).UnixNano())
-	msg := transfertypes.NewMsgTransfer(transfertypes.PortID, srcChannel, coin, src.FromAddrStr, receiver, clienttypes.ZeroHeight(), timeout, "")
+	msg := transfertypes.NewMsgTransfer(transfertypes.PortID, srcChannel, coin, src.FromAddrStr, receiver, clienttypes.ZeroHeight(), timeout, memo)
 	events, err := src.SignAndBroadcast(msg)
 	if err != nil {
 		return channeltypes.Packet{}, fmt.Errorf("%s: MsgTransfer: %w", src.Name, err)

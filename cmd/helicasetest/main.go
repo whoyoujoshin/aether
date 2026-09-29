@@ -43,7 +43,9 @@ import (
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/counterparty"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	"github.com/whoyoujoshin/aether/ligase"
 	"github.com/whoyoujoshin/aether/relayer"
+	"github.com/whoyoujoshin/aether/x/escrow"
 )
 
 func main() {
@@ -66,6 +68,7 @@ func main() {
 
 		keyringBackend = flag.String("keyring-backend", "test", "keyring backend for both chains")
 		wait           = flag.Duration("wait", 90*time.Second, "how long to wait for Helicase at each step")
+		withLigase     = flag.Bool("ligase", false, "with --outbound-key: also fund and release an Aether escrow from the counterparty through Ligase")
 		outboundKey    = flag.String("outbound-key", "", "if set, cmd/outbound is running with this counterparty key: relay nothing by hand, wait for it, and check it signed the counterparty's side")
 	)
 	flag.Parse()
@@ -175,6 +178,9 @@ func main() {
 	fmt.Println("   aether processed the acknowledgement, delivered by the proposer, unsigned")
 
 	if outbound != "" {
+		if *withLigase {
+			ligaseStep(aetherUserChain, cparty, chanA, chanC, *cpartyDenom, *wait)
+		}
 		// With cmd/outbound running, nothing stays unrelayed long enough
 		// to time out; step 3 runs without it.
 		finish(aetherHandshake, relayerSeq)
@@ -202,6 +208,52 @@ func main() {
 
 	finish(aetherHandshake, relayerSeq)
 	fmt.Println("helicase proven: packets, acknowledgements and timeouts reached aether with no relayer signature")
+}
+
+// ligaseStep: someone on the counterparty, with only a counterparty key,
+// escrows tokens for an Aether user through Ligase and then releases
+// them. Helicase and cmd/outbound carry every packet.
+func ligaseStep(aether, cparty *relayer.Chain, chanA, chanC, denom string, wait time.Duration) {
+	aetherAddr := address.NewBech32Codec(app.Bech32MainPrefix)
+	ligaseAddr, err := aetherAddr.BytesToString(ligase.Address)
+	must(err, "ligase address")
+	mailboxBz := ligase.Mailbox(chanA, cparty.FromAddrStr)
+	mailbox, err := aetherAddr.BytesToString(mailboxBz)
+	must(err, "mailbox address")
+	payee := aether.FromAddrStr
+	voucher := transfertypes.ParseDenomTrace(transfertypes.GetPrefixedDenom(transfertypes.PortID, chanA, denom)).IBCDenom()
+	before, err := relayer.Balance(aether, payee, voucher)
+	must(err, "payee balance")
+
+	amount := math.NewInt(5_000)
+	memo := fmt.Sprintf(`{"aether":{"escrow":{"payee":%q,"expires_in":"72h","on_expiry":"refund","terms":"devnet job"}}}`, payee)
+	_, err = relayer.TransferWithMemo(cparty, chanC, sdk.NewCoin(denom, amount), ligaseAddr, memo)
+	must(err, "counterparty transfer to ligase")
+	fmt.Printf("\n4. counterparty user sent %s%s to ligase with an escrow instruction for %s\n", amount, denom, payee)
+
+	var id uint64
+	waitFor(wait, "the escrow to open", func() (bool, error) {
+		res, err := escrow.NewQueryClient(aether.ClientCtx).EscrowsByAddress(context.Background(), &escrow.QueryEscrowsByAddressRequest{Address: mailbox})
+		if err != nil || len(res.Escrows) == 0 {
+			return false, err
+		}
+		e := res.Escrows[0]
+		if e.Payer != mailbox || e.Payee != payee || !e.Amount.Equal(sdk.NewCoins(sdk.NewCoin(voucher, amount))) {
+			return false, fmt.Errorf("unexpected escrow %+v", e)
+		}
+		id = e.Id
+		return true, nil
+	})
+	fmt.Printf("   escrow %d open on aether: payer %s (the sender's mailbox), %s%s\n", id, mailbox, amount, voucher)
+
+	_, err = relayer.TransferWithMemo(cparty, chanC, sdk.NewCoin(denom, math.NewInt(1)), ligaseAddr, fmt.Sprintf(`{"aether":{"release":{"id":"%d"}}}`, id))
+	must(err, "counterparty release instruction")
+	fmt.Println("   counterparty user sent 1 more with a release instruction")
+	waitFor(wait, "the payee to be paid", func() (bool, error) {
+		bal, err := relayer.Balance(aether, payee, voucher)
+		return err == nil && bal.Amount.Sub(before.Amount).Equal(amount), err
+	})
+	fmt.Printf("   released: %s got %s%s; the counterparty user never signed on aether\n", payee, amount, voucher)
 }
 
 // finish checks nothing signed on Aether with the relayer key after the
