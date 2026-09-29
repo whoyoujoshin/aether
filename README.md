@@ -50,6 +50,7 @@ Let an agent spend from your account with a chain-enforced cap instead of holdin
 | **Public testnet** | **Live** — see below |
 | Native IBC (core, ICS-20 transfer, ICS-27 interchain accounts) | Built, tested, live-verified — activated at block 122,000; full client/connection/channel/transfer round trip relayed with Aether's own ML-DSA relayer, locally and on the live testnet |
 | Account abstraction (session keys, guardian thresholds) | Built, tested, live-verified — activated at block 122,000 |
+| Escrow between accounts (`x/escrow`: release, refund, arbiter, deadline) | Built, tested on a devnet — not yet active; needs a coordinated activation height |
 | Independent professional security audit | Not yet performed |
 
 See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and [Roadmap](../../wiki/Roadmap).
@@ -392,6 +393,7 @@ aetherd query governance proposal <proposal-id>
 | `x/pow` | Mining (Scrypt + AuxPoW), difficulty, rewards, validators, slashing, liveness |
 | `x/governance` | Proposals, tenure-weighted voting, queries |
 | `x/treasury` | Community funds; governance-authorized spends |
+| `x/escrow` | Money locked for another account until released, refunded or expired (not the validator reward escrow in `x/pow`) |
 | `crypto/mldsa` | ML-DSA-44, ADR-028 addresses, keyring / ante |
 | `wallet/` | Account management, queries, tx construction |
 | `app/` | App wiring; `authz_feegrant.go` gates x/authz + x/feegrant activation |
@@ -423,6 +425,7 @@ aetherd query governance proposal <proposal-id>
 - [IBC](docs/IBC.md) — core IBC, ICS-20 transfer, ICS-27 interchain accounts: live since block 122,000, plus the ML-DSA relayer and counterparty chain used to test it end to end, including on the live testnet
 - [Connecting to Osmosis testnet](docs/OSMOSIS-TESTNET.md) — runbook for a real external IBC counterparty; blocked on a governance precondition, not yet executed
 - [Account abstraction](docs/ACCOUNT_ABSTRACTION.md) — session keys and guardian thresholds (`x/accountauth`): live on the testnet since block 122,000
+- [Escrow](docs/ESCROW.md) — lock money for another account (or agent) until the payer or an arbiter releases it, the payee or arbiter refunds it, or its deadline settles it: built, not yet active
 - Wiki: [Architecture](../../wiki/Architecture), [Phase 1 Multi-Validator Selection](../../wiki/Phase-1-Multi-Validator-Selection), [Known Issues](../../wiki/Known-Issues-and-Technical-Debt)
 
 ## License and brand

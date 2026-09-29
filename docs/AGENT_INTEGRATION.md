@@ -76,7 +76,7 @@ Plus idempotent tx submit helpers with clear application codes for wait-window a
 
 ### 3. Agent-to-agent money primitives
 
-- Escrow / conditional release (height, proof, or oracle)
+- Escrow / conditional release -- **built, not yet active** (`x/escrow`, [docs/ESCROW.md](ESCROW.md)): payer or arbiter releases, payee or arbiter refunds, and a deadline settles it the way the payer chose; needs a coordinated activation height
 - Invoices and optional micropayment streams for tool calls, inference, or bandwidth
 - Optional **permissionless** agent registry (pubkey <-> metadata) - still no privileged AI lane
 
