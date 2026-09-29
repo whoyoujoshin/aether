@@ -99,10 +99,10 @@ before step 1 of any phase. This planning session can't reach either chain.
 > block proposer now relays everything *onto Aether* (client updates,
 > packets, acknowledgements, timeouts) with no relayer key, and keeps
 > Aether's clients of Noble and Osmosis fresh. What's left for a relayer
-> service is the other direction, onto Noble and Osmosis. Those chains
-> take ordinary keys, so a stock relayer or our own can do it, with no
-> ML-DSA fork. Decision 1 below is mostly moot. The table is kept for the
-> record.
+> service is the other direction, onto Noble and Osmosis, and
+> `cmd/outbound` now does it: unattended, signing only there with an
+> ordinary key, with a health endpoint. Decision 1 below is moot. The
+> table is kept for the record.
 
 Both connections need packets relayed continuously and clients refreshed
 before they expire. The Osmosis client is the tight one: 24h unbonding. Our

@@ -51,7 +51,7 @@ Let an agent spend from your account with a chain-enforced cap instead of holdin
 | Native IBC (core, ICS-20 transfer, ICS-27 interchain accounts) | Built, tested, live-verified — activated at block 122,000; full client/connection/channel/transfer round trip relayed with Aether's own ML-DSA relayer, locally and on the live testnet |
 | Account abstraction (session keys, guardian thresholds) | Built, tested, live-verified — activated at block 122,000 |
 | Escrow between accounts (`x/escrow`: release, refund, arbiter, deadline) | Built, tested on a devnet — not yet active; needs a coordinated activation height |
-| Helicase: the block proposer relays IBC packets, acknowledgements and timeouts onto Aether, unsigned and proof-checked, so no relayer signs on Aether | Built, tested, proven on a two-chain devnet — not yet active; needs a coordinated activation height ([docs/HELICASE.md](docs/HELICASE.md)) |
+| Helicase: the block proposer relays IBC packets, acknowledgements and timeouts onto Aether, unsigned and proof-checked, so no relayer signs on Aether; `cmd/outbound` relays the other way with the other chain's own keys | Built, tested, both directions proven unattended on a two-chain devnet — not yet active; needs a coordinated activation height ([docs/HELICASE.md](docs/HELICASE.md)) |
 | Independent professional security audit | Not yet performed |
 
 See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and [Roadmap](../../wiki/Roadmap).
@@ -400,7 +400,8 @@ aetherd query governance proposal <proposal-id>
 | `wallet/` | Account management, queries, tx construction |
 | `app/` | App wiring; `authz_feegrant.go` gates x/authz + x/feegrant activation; `helicase.go` accepts proposer-included relay transactions |
 | `helicase/` | The node's Helicase worker: finds packets to relay in from another chain and proves them |
-| `relayer/`, `cmd/relayer` | Aether's own ML-DSA relayer: handshakes, and relaying onto the other chain |
+| `relayer/`, `cmd/relayer` | Aether's own ML-DSA relayer: opens paths (handshakes); `relayer.Plan` finds what's pending in either direction |
+| `cmd/outbound` | Unattended relayer onto another chain, signing only there; Helicase covers the direction onto Aether |
 | `cmd/aetherd` | Node binary |
 | `cmd/wallet` | CLI over `wallet/` |
 | `cmd/faucet` | Rate-limited faucet |

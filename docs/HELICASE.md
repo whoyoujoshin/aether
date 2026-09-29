@@ -70,9 +70,36 @@ contents from the transaction that sent it.
 ## What still needs a signature
 
 - **The handshake.** Creating the clients, connection and channel is done once, by `cmd/relayer` with an ML-DSA-44 key, as before. Those messages aren't proven against an existing client, so they aren't relay messages.
-- **The other direction.** Packets going *out* are delivered *to* the other chain, which wants its own kind of signature. Relaying onto Noble or Osmosis takes any key those chains accept. Noble charges no fee for packets, acknowledgements or client updates.
-  - The devnet proof does this with `relayer.DeliverPacket` and `relayer.DeliverAcknowledgement` using a secp256k1 key.
-  - Running it unattended, as our own daemon or a stock relayer, is the next step.
+- **The other direction.** Packets going *out* are delivered *to* the other chain, which wants its own kind of signature. `cmd/outbound` does this unattended (see [Outbound](#outbound-cmdoutbound)), with any key that chain accepts. Noble charges no fee for packets, acknowledgements or client updates.
+
+## Outbound: `cmd/outbound`
+
+The other half. It reads Aether and signs only on the other chain, with
+an ordinary key there. Every few seconds it relays onto that chain:
+
+- packets Aether sent;
+- acknowledgements Aether wrote for that chain's packets;
+- timeouts for that chain's packets Aether never received;
+- a client update to Aether's latest block ahead of them, plus a refresh at a third of the client's trusting period on a quiet channel.
+
+It runs the same planner as Helicase (`relayer.Plan`), with the two
+chains swapped. It keeps no state of its own, so a restart or a second
+copy picks up from what's on both chains; a packet relayed twice is a
+no-op. It simulates gas, and pays whatever gas price you give it: none
+for Noble's relay messages.
+
+```bash
+outbound --aether-rpc http://127.0.0.1:26657 \
+  --cparty-rpc https://<rpc> --cparty-grpc <grpc> --cparty-chain-id grand-1 \
+  --cparty-bech32-prefix noble --cparty-key relayer --cparty-home ~/.noble \
+  --client-id 07-tendermint-<n>
+```
+
+`GET /healthz` (default `127.0.0.1:8095`) returns JSON: last success,
+last error, when the client expires, and what it has relayed. It answers
+200 while cycles succeed and the client has more than
+`--expiry-warning` (24h) left, and 503 otherwise. Run it under systemd
+with `Restart=always`, and point monitoring at `/healthz`.
 
 ## Proof
 
@@ -92,6 +119,14 @@ contents from the transaction that sent it.
   - The proposer drops invalid transactions from its own proposal.
   - With a block gas limit, relay transactions take at most half of it.
 - **The main test depends on Helicase:** with activation moved out of reach, it fails.
+
+**Both directions unattended**, 2026-09-29: the same devnet with
+`cmd/outbound` running under its own counterparty key, and
+`cmd/helicasetest --outbound-key outbound` relaying nothing by hand.
+
+- A counterparty packet reached Aether through Helicase, and Aether's acknowledgement reached the counterparty through `cmd/outbound`.
+- An Aether packet reached the counterparty through `cmd/outbound`, and the acknowledgement came back through Helicase.
+- Every counterparty-side relay was signed by the outbound key. Every Aether-side one was unsigned. The Aether relayer key didn't move after the handshake.
 
 **Devnet** (`cmd/helicasetest`), 2026-09-29. The setup was an Aether node
 and a `counterpartyd` node, each its own process. The Aether binary was a
@@ -135,6 +170,4 @@ with a different app hash and stop at the next block.
 - **One path per node.** A node follows one client, `--helicase.client-id`, and every open channel over it. Following several chains means one worker per client, which is a small change.
 - **Only 07-tendermint clients.** Every Cosmos SDK chain uses that client type.
 - **The proposer does the work.** Relaying adds RPC reads to the other chain on the node that proposes. The worker runs beside consensus and never blocks it: `PrepareProposal` only takes what's already built.
-- **Next:**
-  - an unattended relayer for the outbound direction;
-  - then Noble and Osmosis testnets (see [USDC-PLAN.md](USDC-PLAN.md)).
+- **Next:** Noble and Osmosis testnets (see [USDC-PLAN.md](USDC-PLAN.md)).
