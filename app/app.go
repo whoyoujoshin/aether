@@ -580,6 +580,9 @@ func New(
 		panic(err)
 	}
 	bApp.SetTxDecoder(txConfig.TxDecoder())
+	// PrepareProposal re-encodes each transaction it takes from the
+	// app-side mempool (app.toml mempool.max-txs >= 0).
+	bApp.SetTxEncoder(txConfig.TxEncoder())
 	app.txConfig = txConfig
 
 	// Standard ante handler
