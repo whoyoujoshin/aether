@@ -47,11 +47,12 @@ func TestRequestTestnetFunds(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "pending", out.Status)
 
-	srv, _ = fakeFaucet(t, http.StatusTooManyRequests, `{"success":false,"message":"please wait 23h59m"}`)
+	srv, _ = fakeFaucet(t, http.StatusTooManyRequests, `{"success":false,"code":"address_cooldown","message":"please wait 23h59m","retry_after_seconds":86340}`)
 	faucetURL = srv.URL
 	_, _, err = toolRequestTestnetFunds(context.Background(), nil, requestFundsInput{})
 	ae := requireCode(t, err, codeFaucetRateLimited)
 	require.Contains(t, ae.Message, "23h59m")
+	require.EqualValues(t, 86340, ae.RetryAfterSeconds, "the faucet's wait is passed on")
 
 	faucetURL = "http://127.0.0.1:1"
 	_, _, err = toolRequestTestnetFunds(context.Background(), nil, requestFundsInput{})

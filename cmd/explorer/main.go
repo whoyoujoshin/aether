@@ -300,10 +300,7 @@ func handleProposalTally(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"tally": toTallyDTO(tally),
-		"votes": toVoteDTOs(votes.Votes),
-	})
+	writeJSON(w, http.StatusOK, tallyResponse{Tally: toTallyDTO(tally), Votes: toVoteDTOs(votes.Votes)})
 }
 
 // --- GET /api/recent-transactions?limit= ---
@@ -391,12 +388,12 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if strings.HasPrefix(q, "aether1") {
-		writeJSON(w, http.StatusOK, map[string]string{"kind": "address", "value": q})
+		writeJSON(w, http.StatusOK, searchResponse{Kind: "address", Value: q})
 		return
 	}
 
 	if h, err := strconv.ParseInt(q, 10, 64); err == nil && h > 0 && len(q) < 32 {
-		writeJSON(w, http.StatusOK, map[string]string{"kind": "block", "value": strconv.FormatInt(h, 10)})
+		writeJSON(w, http.StatusOK, searchResponse{Kind: "block", Value: strconv.FormatInt(h, 10)})
 		return
 	}
 
@@ -409,11 +406,11 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if isHex {
-		writeJSON(w, http.StatusOK, map[string]string{"kind": "tx", "value": hexCandidate})
+		writeJSON(w, http.StatusOK, searchResponse{Kind: "tx", Value: hexCandidate})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"kind": "address", "value": q})
+	writeJSON(w, http.StatusOK, searchResponse{Kind: "address", Value: q})
 }
 
 func handleTx(w http.ResponseWriter, r *http.Request) {
@@ -516,24 +513,11 @@ func main() {
 	// endpoints to the internet.
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/api/stats", withCORS(handleStats))
-	mux.HandleFunc("/api/blocks", withCORS(handleBlocks))
-	mux.HandleFunc("/api/block", withCORS(handleBlock))
-	mux.HandleFunc("/api/validators", withCORS(handleValidators))
-	mux.HandleFunc("/api/validator-set", withCORS(handleValidatorSet))
-	mux.HandleFunc("/api/leaderboard", withCORS(handleLeaderboard))
-	mux.HandleFunc("/api/proposals", withCORS(handleProposals))
-	mux.HandleFunc("/api/proposals/tally", withCORS(handleProposalTally))
-	mux.HandleFunc("/api/governance/params", withCORS(handleGovernanceParams))
-	mux.HandleFunc("/api/recent-transactions", withCORS(handleRecentTransactions))
-	mux.HandleFunc("/api/address", withCORS(handleAddress))
-	mux.HandleFunc("/api/tx", withCORS(handleTx))
-	mux.HandleFunc("/api/search", withCORS(handleSearch))
-	mux.HandleFunc("/api/services", withCORS(handleServices))
-	mux.HandleFunc("/api/ibc", withCORS(handleIBC))
-	mux.HandleFunc("/api/grants", withCORS(handleGrants))
-	mux.HandleFunc("/api/miner", withCORS(handleMiner))
-	mux.HandleFunc("/api/agents", withCORS(handleAgents))
+	for _, rt := range apiRoutes() {
+		mux.HandleFunc(rt.path, withCORS(rt.handler))
+	}
+	mux.HandleFunc("/api/openapi.json", withCORS(handleOpenAPI))
+	mux.HandleFunc("/llms.txt", handleLLMsTxt)
 
 	// Optional: serve explorer-web's built static assets from the same
 	// process/port, so production deploys are a single binary + one

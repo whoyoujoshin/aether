@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,6 +48,9 @@ type faucetResult struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 	TxHash  string `json:"tx_hash"`
+	// RetryAfterSeconds is when a refused request may succeed: the
+	// faucet's Retry-After header, else its body's retry_after_seconds.
+	RetryAfterSeconds int64 `json:"retry_after_seconds"`
 }
 
 func askFaucet(ctx context.Context, url, address string) (faucetResult, error) {
@@ -69,6 +73,9 @@ func askFaucet(ctx context.Context, url, address string) (faucetResult, error) {
 		r.Message = strings.TrimSpace(string(bz))
 	}
 	r.Status = resp.StatusCode
+	if secs, err := strconv.ParseInt(resp.Header.Get("Retry-After"), 10, 64); err == nil && secs > 0 {
+		r.RetryAfterSeconds = secs
+	}
 	return r, nil
 }
 
@@ -105,7 +112,9 @@ func toolRequestTestnetFunds(ctx context.Context, _ *mcp.CallToolRequest, _ requ
 	case r.Status == http.StatusAccepted:
 		return nil, requestFundsOutput{Status: "pending", Address: acc.Address, TxHash: r.TxHash, Message: r.Message}, nil
 	case r.Status == http.StatusTooManyRequests:
-		return nil, requestFundsOutput{}, newError(codeFaucetRateLimited, "the faucet says: "+r.Message)
+		e := newError(codeFaucetRateLimited, "the faucet says: "+r.Message)
+		e.RetryAfterSeconds = r.RetryAfterSeconds
+		return nil, requestFundsOutput{}, e
 	}
 	return nil, requestFundsOutput{}, newError(codeFaucetUnavailable, fmt.Sprintf("the faucet refused (HTTP %d): %s", r.Status, r.Message))
 }

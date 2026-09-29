@@ -19,6 +19,7 @@ require (
 	github.com/cosmos/gogoproto v1.7.0
 	github.com/cosmos/ibc-go/modules/capability v1.0.1
 	github.com/cosmos/ibc-go/v8 v8.8.0
+	github.com/google/jsonschema-go v0.4.2
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0
 	github.com/modelcontextprotocol/go-sdk v1.4.1
 	github.com/spf13/cast v1.7.1
@@ -124,7 +125,6 @@ require (
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/flatbuffers v1.12.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/google/orderedcode v0.0.1 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/uuid v1.6.0 // indirect
