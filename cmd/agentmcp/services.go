@@ -119,9 +119,10 @@ type findServicesOutput struct {
 
 func toolFindServices(ctx context.Context, _ *mcp.CallToolRequest, in findServicesInput) (*mcp.CallToolResult, findServicesOutput, error) {
 	var maxPrice math.Int
+	var maxAsset wallet.Asset
 	if in.MaxPrice != "" {
 		var err error
-		if maxPrice, err = parseAmount(in.MaxPrice); err != nil {
+		if maxAsset, maxPrice, err = parseAssetAmount(in.MaxPrice); err != nil {
 			return nil, findServicesOutput{}, err
 		}
 	}
@@ -138,7 +139,9 @@ func toolFindServices(ctx context.Context, _ *mcp.CallToolRequest, in findServic
 	out := findServicesOutput{Services: []serviceDTO{}}
 	for _, l := range listings {
 		price, err := wallet.ParseUaeth(l.Manifest.Price)
-		if err != nil || (!maxPrice.IsNil() && price.GT(maxPrice)) {
+		asset := assetOfDenom(l.Manifest.Denom())
+		// A maxPrice in one asset says nothing about a price in another.
+		if err != nil || (!maxPrice.IsNil() && (asset.Denom != maxAsset.Denom || price.GT(maxPrice))) {
 			continue
 		}
 		text := strings.ToLower(l.Manifest.Name + " " + l.Manifest.Description + " " + l.URL)
@@ -153,18 +156,18 @@ func toolFindServices(ctx context.Context, _ *mcp.CallToolRequest, in findServic
 			continue
 		}
 		s := serviceDTO{
-			Name: l.Manifest.Name, Description: l.Manifest.Description, URL: l.URL, Price: newAmountDTO(price),
+			Name: l.Manifest.Name, Description: l.Manifest.Description, URL: l.URL, Price: newAssetAmountDTO(asset, price),
 			Schemes: l.Manifest.Schemes, PayTo: l.Announcer, ListedAt: l.Height,
 		}
 		if dep, err := wallet.ParseUaeth(l.Manifest.MinDeposit); err == nil {
-			d := newAmountDTO(dep)
+			d := newAssetAmountDTO(asset, dep)
 			s.MinDeposit = &d
 		}
 		if r := l.Reputation; r != nil {
 			all := directory.Summarize(r.Ratings, nil)
 			mine := directory.Summarize(r.Ratings, func(rater string) bool { return trusted[rater] })
 			s.Reputation = &reputationDTO{
-				WindowBlocks: directory.DefaultWindow, Payments: r.Stats.Payments, Payers: r.Stats.Payers, Volume: newAmountDTO(r.Stats.Volume),
+				WindowBlocks: directory.DefaultWindow, Payments: r.Stats.Payments, Payers: r.Stats.Payers, Volume: newAssetAmountDTO(asset, r.Stats.Volume),
 				Ratings: ratingSummaryDTO(all), TrustedRatings: ratingSummaryDTO(mine),
 			}
 		}

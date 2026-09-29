@@ -56,7 +56,7 @@ func TestAssess_OnlyRatingsFromPayingBuyersCount(t *testing.T) {
 		{Rater: payee, URL: "https://w.example", Score: 5, Height: 18}, // rating yourself
 		{Rater: alice, URL: "https://other.example", Score: 1, Height: 15},
 	}
-	rep := Assess("https://w.example", payee, paid, ratings, 5)
+	rep := Assess("https://w.example", payee, wallet.BaseDenom, paid, ratings, 5)
 	require.Equal(t, 3, rep.Stats.Payments)
 	require.Equal(t, 2, rep.Stats.Payers)
 	require.Equal(t, "60000", rep.Stats.Volume.String())

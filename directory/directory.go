@@ -228,7 +228,7 @@ func (d *Directory) assess(listings []Listing, directoryPayments []wallet.Incomi
 			if err != nil && !errors.Is(err, wallet.ErrTooMuchHistory) {
 				return
 			}
-			rep := Assess(l.URL, l.Manifest.PayTo, paid, ratings, since)
+			rep := Assess(l.URL, l.Manifest.PayTo, l.Manifest.Denom(), paid, ratings, since)
 			l.Reputation = &rep
 		}(&listings[i])
 	}

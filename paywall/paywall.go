@@ -19,9 +19,12 @@ import (
 
 // Config sets what a Paywall charges and how it checks payment.
 type Config struct {
-	PayTo       string   // address payments must go to
-	Price       math.Int // per request, in uaeth
-	Network     string   // chain ID
+	PayTo string   // address payments must go to
+	Price math.Int // per request, in Asset's base unit
+	// Asset is what prices, deposits, balances and allowances are in:
+	// AETH if unset. One paywall charges one asset.
+	Asset       wallet.Asset
+	Network     string // chain ID
 	Description string
 	MimeType    string
 
@@ -74,8 +77,11 @@ func New(cfg Config) (*Paywall, error) {
 	if _, err := sdk.AccAddressFromBech32(cfg.PayTo); err != nil {
 		return nil, fmt.Errorf("invalid payTo address %q: %w", cfg.PayTo, err)
 	}
+	if cfg.Asset.Denom == "" {
+		cfg.Asset = wallet.AETH
+	}
 	if cfg.Price.IsNil() || !cfg.Price.IsPositive() || !cfg.Price.IsUint64() {
-		return nil, errors.New("price must be a positive uaeth amount")
+		return nil, errors.New("price must be a positive amount")
 	}
 	if cfg.Network == "" || cfg.Lookup == nil {
 		return nil, errors.New("network and lookup are required")
@@ -138,7 +144,7 @@ func (p *Paywall) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		header := r.Header.Get(HeaderPayment)
 		if header == "" {
-			p.paymentRequired(w, r, ErrPaymentRequired, "this resource costs "+wallet.FormatAeth(p.cfg.Price)+" AETH per request", "")
+			p.paymentRequired(w, r, ErrPaymentRequired, "this resource costs "+p.both(p.cfg.Price)+" per request", "")
 			return
 		}
 		var pay PaymentPayload
@@ -202,7 +208,7 @@ func (p *Paywall) Middleware(next http.Handler) http.Handler {
 		}
 		paid, payer := p.received(detail)
 		if paid.LT(math.NewIntFromUint64(inv.price)) {
-			p.paymentRequired(w, r, ErrInsufficient, fmt.Sprintf("paid %s uaeth to %s; the invoice is for %d uaeth", paid, p.cfg.PayTo, inv.price), "")
+			p.paymentRequired(w, r, ErrInsufficient, fmt.Sprintf("paid %s to %s; the invoice is for %s", p.both(paid), p.cfg.PayTo, p.both(math.NewIntFromUint64(inv.price))), "")
 			return
 		}
 		if !p.store.Redeem(invoiceID, inv.expiry) {
@@ -244,12 +250,36 @@ func (p *Paywall) received(d *wallet.TransactionDetail) (math.Int, string) {
 		if err != nil {
 			continue
 		}
-		total = total.Add(coins.AmountOf(Asset))
+		total = total.Add(coins.AmountOf(p.cfg.Asset.Denom))
 		if payer == "" {
 			payer = t.From
 		}
 	}
 	return total, payer
+}
+
+// both states amount in the asset's base unit and in the asset:
+// "20000uaeth (0.02 AETH)".
+func (p *Paywall) both(amount math.Int) string {
+	return amount.String() + p.cfg.Asset.BaseUnit + " (" + p.cfg.Asset.Format(amount) + ")"
+}
+
+// priced sets e's price fields for this paywall's asset.
+func (p *Paywall) priced(e Extra) Extra {
+	e.Symbol, e.Amount = p.cfg.Asset.Symbol, p.cfg.Asset.Decimal(p.cfg.Price)
+	if p.cfg.Asset.Denom == Asset {
+		e.AmountAeth = wallet.FormatAeth(p.cfg.Price)
+	}
+	return e
+}
+
+// text adapts instructions written for AETH to this paywall's asset:
+// amounts are in its base unit, and the asset field names its denom.
+func (p *Paywall) text(s string) string {
+	if p.cfg.Asset.Denom == Asset {
+		return s
+	}
+	return strings.ReplaceAll(s, " uaeth", " "+p.cfg.Asset.BaseUnit+" (of the asset field's denom)")
 }
 
 func (p *Paywall) schemes() []string {
@@ -292,29 +322,27 @@ func (p *Paywall) paymentRequiredFor(w http.ResponseWriter, r *http.Request, cod
 			Scheme:            Scheme,
 			Network:           p.cfg.Network,
 			MaxAmountRequired: p.cfg.Price.String(),
-			Asset:             Asset,
+			Asset:             p.cfg.Asset.Denom,
 			PayTo:             p.cfg.PayTo,
 			Resource:          resourceURL(r),
 			Description:       p.cfg.Description,
 			MimeType:          p.cfg.MimeType,
 			MaxTimeoutSeconds: int64(p.cfg.InvoiceTTL.Seconds()),
-			Extra: Extra{
+			Extra: p.priced(Extra{
 				Invoice:      invoiceID,
-				AmountAeth:   wallet.FormatAeth(p.cfg.Price),
 				ExpiresAt:    expiry.UTC().Format(time.RFC3339),
-				Instructions: instructions,
-			},
+				Instructions: p.text(instructions),
+			}),
 		}},
 	}
 	if p.cfg.Prepaid != nil {
 		prepaid := body.Accepts[0]
 		prepaid.Scheme = SchemePrepaid
-		prepaid.Extra = Extra{
-			AmountAeth:   wallet.FormatAeth(p.cfg.Price),
+		prepaid.Extra = p.priced(Extra{
 			DepositMemo:  DepositMemoPrefix + "<address>",
 			MinDeposit:   p.cfg.Prepaid.MinDeposit.String(),
-			Instructions: prepaidInstructions,
-		}
+			Instructions: p.text(prepaidInstructions),
+		})
 		if p.cfg.Prepaid.Payout != nil {
 			prepaid.Extra.WithdrawPath = WithdrawPath
 		}
@@ -328,12 +356,11 @@ func (p *Paywall) paymentRequiredFor(w http.ResponseWriter, r *http.Request, cod
 	if p.cfg.Pull != nil {
 		pull := body.Accepts[0]
 		pull.Scheme = SchemePull
-		pull.Extra = Extra{
-			AmountAeth:   wallet.FormatAeth(p.cfg.Price),
+		pull.Extra = p.priced(Extra{
 			Grantee:      p.cfg.Pull.Grantee,
 			Credit:       p.cfg.Pull.Credit.String(),
-			Instructions: pullInstructions,
-		}
+			Instructions: p.text(pullInstructions),
+		})
 		if account != "" {
 			if a, err := p.cfg.Pull.Ledger.PullAccount(account); err == nil {
 				pull.Extra.Owed = a.Owed().String()

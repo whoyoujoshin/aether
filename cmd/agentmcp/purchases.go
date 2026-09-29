@@ -9,6 +9,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/whoyoujoshin/aether/paywall"
+	"github.com/whoyoujoshin/aether/wallet"
 )
 
 // Every paid response fetch_paid returns is logged with its receipt (if
@@ -24,8 +25,9 @@ type purchaseRecord struct {
 	Method   string    `json:"method"`
 	PayTo    string    `json:"payTo"`
 	Scheme   string    `json:"scheme"`
-	Payment  string    `json:"payment"` // tx hash or prepaid request ID
-	Amount   string    `json:"amountUaeth"`
+	Payment  string    `json:"payment"`         // tx hash or prepaid request ID
+	Amount   string    `json:"amountUaeth"`     // in Denom's base unit
+	Denom    string    `json:"denom,omitempty"` // "" for AETH
 	Status   int       `json:"httpStatus"`
 	At       time.Time `json:"at"`
 	Receipt  string    `json:"receipt,omitempty"` // the X-PAYMENT-RECEIPT header, as received
@@ -45,8 +47,16 @@ type purchase struct {
 	method, payTo, scheme, payer string
 	payment                      string
 	amount                       math.Int
+	asset                        wallet.Asset // zero value: AETH
 	reqBody                      []byte
 	res                          *httpResult
+}
+
+func (p purchase) assetOrAeth() wallet.Asset {
+	if p.asset.Denom == "" {
+		return wallet.AETH
+	}
+	return p.asset
 }
 
 // recordPurchase checks the response's receipt, logs the purchase and
@@ -54,7 +64,7 @@ type purchase struct {
 func recordPurchase(p purchase) *receiptDTO {
 	rec := purchaseRecord{
 		Service: serviceBase(p.u), URL: p.u.String(), Method: p.method, PayTo: p.payTo, Scheme: p.scheme,
-		Payment: p.payment, Amount: p.amount.String(), Status: p.res.status, At: time.Now().UTC(),
+		Payment: p.payment, Amount: p.amount.String(), Denom: recordDenom(p.assetOrAeth()), Status: p.res.status, At: time.Now().UTC(),
 	}
 	var out *receiptDTO
 	if h := p.res.header.Get(paywall.HeaderReceipt); h != "" {
@@ -98,7 +108,7 @@ func expectation(p purchase, skipResponse bool) paywall.ReceiptExpectation {
 		path = "/"
 	}
 	e := paywall.ReceiptExpectation{
-		Network: chainID, PayTo: p.payTo, Payer: p.payer, Scheme: p.scheme, Payment: p.payment, Amount: p.amount.String(),
+		Network: chainID, PayTo: p.payTo, Payer: p.payer, Scheme: p.scheme, Payment: p.payment, Amount: paywall.ReceiptAmount(p.amount, p.assetOrAeth().Denom),
 		Method: p.method, Host: p.u.Host, Path: path, RequestBody: p.reqBody, ResponseBody: p.res.body, Status: p.res.status,
 	}
 	e.ResponseUnknown = skipResponse
@@ -157,7 +167,7 @@ func toolListPurchases(_ context.Context, _ *mcp.CallToolRequest, in listPurchas
 		amt, _ := math.NewIntFromString(p.Amount)
 		out.Purchases = append(out.Purchases, purchaseDTO{
 			Service: p.Service, URL: p.URL, Method: p.Method, PayTo: p.PayTo, Scheme: p.Scheme, Payment: p.Payment,
-			Amount: newAmountDTO(amt), Status: p.Status, At: p.At, Receipt: p.Receipt, Verified: p.Verified, Problem: p.Problem,
+			Amount: newAssetAmountDTO(assetOfDenom(p.Denom), amt), Status: p.Status, At: p.At, Receipt: p.Receipt, Verified: p.Verified, Problem: p.Problem,
 		})
 	}
 	return nil, out, nil

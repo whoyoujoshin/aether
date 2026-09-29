@@ -69,6 +69,8 @@ const (
 	codeEscrowInvalid     = "ESCROW_INVALID"
 	// an asset the owner hasn't enabled spending of (USDC without its limits)
 	codeAssetNotEnabled = "ASSET_NOT_ENABLED"
+	// fetch_paid: the service charges one asset and maxAmount is in another
+	codeAssetMismatch = "ASSET_MISMATCH"
 )
 
 var retryableCodes = map[string]bool{

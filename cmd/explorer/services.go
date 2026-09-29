@@ -27,8 +27,11 @@ type serviceDTO struct {
 	Name        string       `json:"name"`
 	Description string       `json:"description"`
 	URL         string       `json:"url"`
-	Price       string       `json:"price"` // uaeth per request
-	PriceAeth   string       `json:"priceAeth"`
+	Price       string       `json:"price"` // per request, in the asset's base unit
+	PriceAeth   string       `json:"priceAeth,omitempty"`
+	Asset       string       `json:"asset"` // denom the price is in
+	Symbol      string       `json:"symbol,omitempty"`
+	PriceAmount string       `json:"priceAmount,omitempty"`
 	Schemes     []string     `json:"schemes"`
 	MinDeposit  string       `json:"minDeposit,omitempty"`
 	PayTo       string       `json:"payTo"`
@@ -94,6 +97,7 @@ func handleServices(w http.ResponseWriter, r *http.Request) {
 		s := serviceDTO{
 			Name: l.Manifest.Name, Description: l.Manifest.Description, URL: l.URL,
 			Price: l.Manifest.Price, PriceAeth: l.Manifest.PriceAeth, Schemes: l.Manifest.Schemes,
+			Asset: l.Manifest.Denom(), Symbol: l.Manifest.Symbol, PriceAmount: l.Manifest.PriceAmount,
 			MinDeposit: l.Manifest.MinDeposit, PayTo: l.Announcer, Height: l.Height, TxHash: l.TxHash,
 		}
 		if r := l.Reputation; r != nil {

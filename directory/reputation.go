@@ -91,7 +91,7 @@ type Stats struct {
 	SinceHeight int64       `json:"sinceHeight"`
 	Payments    int         `json:"payments"`
 	Payers      int         `json:"payers"` // distinct accounts
-	Volume      sdkmath.Int `json:"volume"` // uaeth
+	Volume      sdkmath.Int `json:"volume"` // in the service's asset's base unit
 }
 
 // Reputation is what the chain says about one service.
@@ -102,8 +102,9 @@ type Reputation struct {
 }
 
 // Assess computes a service's reputation from payments to its payee at
-// or above sinceHeight (oldest first) and all current ratings.
-func Assess(url, payTo string, paid []wallet.IncomingPayment, ratings []Rating, sinceHeight int64) Reputation {
+// or above sinceHeight (oldest first) and all current ratings. Volume
+// counts denom, the asset the service charges.
+func Assess(url, payTo, denom string, paid []wallet.IncomingPayment, ratings []Rating, sinceHeight int64) Reputation {
 	rep := Reputation{Stats: Stats{SinceHeight: sinceHeight, Volume: sdkmath.ZeroInt()}, Ratings: []Rating{}}
 	firstPaid := map[string]int64{} // payer -> height of their first payment in the window
 	for _, p := range paid {
@@ -111,7 +112,7 @@ func Assess(url, payTo string, paid []wallet.IncomingPayment, ratings []Rating, 
 			continue
 		}
 		rep.Stats.Payments++
-		rep.Stats.Volume = rep.Stats.Volume.Add(p.Amount.AmountOf(wallet.BaseDenom))
+		rep.Stats.Volume = rep.Stats.Volume.Add(p.Amount.AmountOf(denom))
 		if h, seen := firstPaid[p.From]; !seen || p.Height < h {
 			firstPaid[p.From] = p.Height
 		}

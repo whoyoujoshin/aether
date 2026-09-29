@@ -54,7 +54,7 @@ type fetchPaidInput struct {
 	Method         string `json:"method,omitempty" jsonschema:"HTTP method (default GET)"`
 	Body           string `json:"body,omitempty" jsonschema:"request body, if any"`
 	ContentType    string `json:"contentType,omitempty" jsonschema:"Content-Type of body (default application/json when a body is given)"`
-	MaxAmount      string `json:"maxAmount" jsonschema:"the most you'll pay for this request, WITH its unit, e.g. \"0.05 AETH\". A higher price is refused without paying"`
+	MaxAmount      string `json:"maxAmount" jsonschema:"the most you'll pay for this request, WITH its unit, in the asset the service charges: e.g. \"0.05 AETH\", or \"0.10 USDC\" for a service priced in USDC. A higher price, or one in another asset, is refused without paying"`
 	IdempotencyKey string `json:"idempotencyKey" jsonschema:"unique ID for this purchase. Retrying with the same key never pays twice: it resumes the same payment"`
 	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"how long to wait for the payment to confirm (default 150, max 300); blocks are ~60s apart"`
 	Prepay         string `json:"prepay,omitempty" jsonschema:"for making many requests to one service: if it offers prepaid, deposit this much (with unit, e.g. \"1 AETH\") whenever the balance there runs out, then pay each request instantly by signature instead of one transaction per request. The seller holds the unspent balance"`
@@ -94,7 +94,8 @@ type fetchRecord struct {
 	BodyHash  string    `json:"bodyHash"`
 	Invoice   string    `json:"invoice"`
 	PayTo     string    `json:"payTo"`
-	Price     string    `json:"priceUaeth"`
+	Price     string    `json:"priceUaeth"`      // in Denom's base unit
+	Denom     string    `json:"denom,omitempty"` // "" for AETH
 	ExpiresAt time.Time `json:"expiresAt,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 }
@@ -178,10 +179,18 @@ func quote(r *httpResult) (paywall.PaymentRequirements, string, error) {
 	if err := json.Unmarshal(r.body, &pr); err != nil {
 		return paywall.PaymentRequirements{}, "", newError(codePaymentUnsupported, "the server asked for payment (HTTP 402) but not in the x402 format")
 	}
+	var unknown string
 	for _, req := range pr.Accepts {
-		if req.Scheme == paywall.Scheme && req.Network == chainID && req.Asset == paywall.Asset {
+		if req.Scheme != paywall.Scheme || req.Network != chainID {
+			continue
+		}
+		if _, ok := assets.ByDenom(req.Asset); ok {
 			return req, pr.Error, nil
 		}
+		unknown = req.Asset
+	}
+	if unknown != "" {
+		return paywall.PaymentRequirements{}, pr.Error, newError(codePaymentUnsupported, fmt.Sprintf("the server charges in %s, which this agent doesn't know (for Noble USDC, its owner sets --usdc-channel)", unknown))
 	}
 	return paywall.PaymentRequirements{}, pr.Error, newError(codePaymentUnsupported, fmt.Sprintf("the server doesn't accept %q payments on %s", paywall.Scheme, chainID))
 }
@@ -195,7 +204,7 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 	if method == "" {
 		method = http.MethodGet
 	}
-	maxAmount, err := parseAmount(in.MaxAmount)
+	maxAsset, maxAmount, err := parseAssetAmount(in.MaxAmount)
 	if err != nil {
 		return nil, fetchPaidOutput{}, err
 	}
@@ -239,13 +248,15 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 		if first.status != http.StatusPaymentRequired {
 			return nil, first.output("ok"), nil
 		}
-		if !pullAllowance.IsNil() && granter == "" {
+		// Pull and prepaid are AETH-only for now: a service charging
+		// another asset is paid per request.
+		if !pullAllowance.IsNil() && granter == "" && maxAsset.Denom == baseDenom {
 			if req, ok := quoteScheme(first, paywall.SchemePull); ok {
 				out, err := fetchPull(ctx, in, method, req, maxAmount, pullAllowance)
 				return nil, out, err
 			}
 		}
-		if !prepay.IsNil() {
+		if !prepay.IsNil() && maxAsset.Denom == baseDenom {
 			if req, ok := quoteScheme(first, paywall.SchemePrepaid); ok {
 				out, err := fetchPrepaid(ctx, in, method, req, maxAmount, prepay)
 				return nil, out, err
@@ -259,8 +270,12 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 		if err != nil {
 			return nil, fetchPaidOutput{}, newError(codePaymentUnsupported, "the server's price is invalid: "+err.Error())
 		}
+		asset, _ := assets.ByDenom(req.Asset)
+		if asset.Denom != maxAsset.Denom {
+			return nil, fetchPaidOutput{}, newError(codeAssetMismatch, fmt.Sprintf("the server charges %s; your maxAmount is in %s. Nothing was paid: give maxAmount in %s", asset.Format(price), maxAsset.Symbol, asset.Symbol))
+		}
 		if price.GT(maxAmount) {
-			return nil, fetchPaidOutput{}, newError(codePriceExceedsMax, fmt.Sprintf("the server asks %s AETH (%s uaeth); your maxAmount is %s AETH. Nothing was paid", formatAeth(price), price, formatAeth(maxAmount)))
+			return nil, fetchPaidOutput{}, newError(codePriceExceedsMax, fmt.Sprintf("the server asks %s (%s%s); your maxAmount is %s. Nothing was paid", asset.Format(price), price, asset.BaseUnit, asset.Format(maxAmount)))
 		}
 		if _, err := sdk.AccAddressFromBech32(req.PayTo); err != nil {
 			return nil, fetchPaidOutput{}, newError(codePaymentUnsupported, fmt.Sprintf("the server's payTo %q is not a valid address", req.PayTo))
@@ -268,7 +283,7 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 		if req.Extra.Invoice == "" || len(req.Extra.Invoice) > maxMemoLength {
 			return nil, fetchPaidOutput{}, newError(codePaymentUnsupported, "the server's invoice is missing or too long for a memo")
 		}
-		rec = &fetchRecord{URL: in.URL, Method: method, BodyHash: bodyHash, Invoice: req.Extra.Invoice, PayTo: req.PayTo, Price: price.String(), CreatedAt: time.Now()}
+		rec = &fetchRecord{URL: in.URL, Method: method, BodyHash: bodyHash, Invoice: req.Extra.Invoice, PayTo: req.PayTo, Price: price.String(), Denom: recordDenom(asset), CreatedAt: time.Now()}
 		if exp, err := time.Parse(time.RFC3339, req.Extra.ExpiresAt); err == nil {
 			rec.ExpiresAt = exp
 		}
@@ -292,13 +307,14 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 	// Pay the recorded invoice. send_aeth's own idempotency makes this
 	// the same transaction every time for this key.
 	price, _ := math.NewIntFromString(rec.Price)
+	asset := assetOfDenom(rec.Denom)
 	_, sent, err := toolSendAeth(ctx, nil, sendAethInput{
-		To: rec.PayTo, Amount: rec.Price + baseDenom, Memo: rec.Invoice, IdempotencyKey: rec.sendKey(in.IdempotencyKey),
+		To: rec.PayTo, Amount: rec.Price + asset.BaseUnit, Memo: rec.Invoice, IdempotencyKey: rec.sendKey(in.IdempotencyKey),
 	})
 	if err != nil {
 		return nil, fetchPaidOutput{}, err
 	}
-	payment := &fetchPaymentDTO{Scheme: paywall.Scheme, TxHash: sent.TxHash, Amount: newAmountDTO(price), PayTo: rec.PayTo, Invoice: rec.Invoice, Replayed: sent.Replayed}
+	payment := &fetchPaymentDTO{Scheme: paywall.Scheme, TxHash: sent.TxHash, Amount: newAssetAmountDTO(asset, price), PayTo: rec.PayTo, Invoice: rec.Invoice, Replayed: sent.Replayed}
 	if sent.Status == statusPendingApproval {
 		return nil, fetchPaidOutput{Status: "approval_pending", Payment: payment, ApprovalID: sent.ApprovalID, Message: sent.Message}, nil
 	}
@@ -362,7 +378,7 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 	out := res.output("paid")
 	out.Payment = payment
 	out.Receipt = recordPurchase(purchase{u: u, method: method, payTo: rec.PayTo, scheme: paywall.Scheme, payer: sent.From,
-		payment: sent.TxHash, amount: price, reqBody: []byte(in.Body), res: res})
+		payment: sent.TxHash, amount: price, asset: asset, reqBody: []byte(in.Body), res: res})
 	return nil, out, nil
 }
 

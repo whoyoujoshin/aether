@@ -246,7 +246,7 @@ func (p *Paywall) servePrepaid(w http.ResponseWriter, r *http.Request, raw json.
 	pay, maxPrice, now := req.pay, req.maxPrice, p.cfg.Now()
 	// Signed and fresh: from here on the account is who it claims.
 	if maxPrice.LT(p.cfg.Price) {
-		refuse(ErrPriceAboveMax, fmt.Sprintf("the price is %s uaeth; the request allows at most %s", p.cfg.Price, maxPrice), pay.Account)
+		refuse(ErrPriceAboveMax, fmt.Sprintf("the price is %s (%s); the request allows at most %s", p.both(p.cfg.Price), p.cfg.Price, maxPrice), pay.Account)
 		return
 	}
 
@@ -268,7 +268,7 @@ func (p *Paywall) servePrepaid(w http.ResponseWriter, r *http.Request, raw json.
 		return
 	}
 	if !ok {
-		refuse(ErrInsufficientBalance, fmt.Sprintf("balance %s uaeth is less than the price %s uaeth: deposit to %s with memo %s%s", balance, p.cfg.Price, p.cfg.PayTo, DepositMemoPrefix, pay.Account), pay.Account)
+		refuse(ErrInsufficientBalance, fmt.Sprintf("balance %s is less than the price %s: deposit to %s with memo %s%s", p.both(balance), p.both(p.cfg.Price), p.cfg.PayTo, DepositMemoPrefix, pay.Account), pay.Account)
 		return
 	}
 
@@ -312,7 +312,7 @@ func (p *Paywall) creditDeposit(w http.ResponseWriter, r *http.Request, txHash, 
 	}
 	paid, _ := p.received(detail)
 	if paid.LT(p.cfg.Prepaid.MinDeposit) {
-		refuse(ErrInsufficient, fmt.Sprintf("deposits must be at least %s uaeth to %s", p.cfg.Prepaid.MinDeposit, p.cfg.PayTo))
+		refuse(ErrInsufficient, fmt.Sprintf("deposits must be at least %s to %s", p.both(p.cfg.Prepaid.MinDeposit), p.cfg.PayTo))
 		return false
 	}
 	// Credit whoever the memo names: presenting someone else's deposit

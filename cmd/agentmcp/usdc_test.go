@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"cosmossdk.io/math"
@@ -10,6 +12,8 @@ import (
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/stretchr/testify/require"
 
+	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	"github.com/whoyoujoshin/aether/paywall"
 	"github.com/whoyoujoshin/aether/wallet"
 )
 
@@ -170,4 +174,73 @@ func TestConfigureUSDC_RefusesMistakes(t *testing.T) {
 		usdcPerTxLimit, usdcDailyLimit = 0, 0
 		require.Error(t, configureUSDC(c[0], c[1], c[2], c[3]), name)
 	}
+}
+
+// usdcSeller is a paid API priced at 0.05 USDC, signing receipts.
+func usdcSeller(t *testing.T, f *fakeChain, usdc wallet.Asset) (*httptest.Server, string) {
+	t.Helper()
+	sk, err := mldsa.GenPrivKey()
+	require.NoError(t, err)
+	payTo := sdk.AccAddress(sk.PubKey().Address()).String()
+	pw, err := paywall.New(paywall.Config{
+		PayTo: payTo, Price: math.NewInt(50_000), Asset: usdc, Network: chainID, Lookup: f.lookup,
+		Receipts: &paywall.ReceiptConfig{Sign: func(msg []byte) ([]byte, []byte, error) {
+			sig, err := sk.Sign(msg)
+			return sig, sk.PubKey().Bytes(), err
+		}},
+	})
+	require.NoError(t, err)
+	srv := httptest.NewServer(pw.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "paid in dollars") })))
+	t.Cleanup(srv.Close)
+	return srv, payTo
+}
+
+func TestUSDC_FetchPaidBuysFromAUSDCPricedService(t *testing.T) {
+	f := setupAgent(t)
+	f.autoInclude = true
+	usdc := useUSDC(t, "1 USDC", "2 USDC", "")
+	srv, payTo := usdcSeller(t, f, usdc)
+
+	// A maxAmount in AETH says nothing about a USDC price: nothing is paid.
+	_, err := fetch(t, srv.URL, "1 AETH", "wrong-asset", 5)
+	requireCode(t, err, codeAssetMismatch)
+	_, err = fetch(t, srv.URL, "0.04 USDC", "too-cheap", 5)
+	requireCode(t, err, codePriceExceedsMax)
+	require.Empty(t, f.broadcasts)
+
+	out, err := fetch(t, srv.URL, "0.10 USDC", "buy", 5)
+	require.NoError(t, err)
+	require.Equal(t, "paid", out.Status)
+	require.Equal(t, "paid in dollars", out.Body)
+	require.Equal(t, amountDTO{Asset: "USDC", Amount: "0.05", Base: "50000", Denom: usdc.Denom}, out.Payment.Amount)
+	require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin(usdc.Denom, 50_000)), sentCoins(t, f), "paid in USDC")
+
+	// The seller's receipt states the asset, and checks out.
+	require.NotNil(t, out.Receipt)
+	require.True(t, out.Receipt.Verified, out.Receipt.Problem)
+	require.Equal(t, "50000"+usdc.Denom, out.Receipt.Receipt.Amount)
+	require.Equal(t, payTo, out.Receipt.Receipt.PayTo)
+
+	// It counted against USDC's cap, not AETH's.
+	_, status, err := toolGetSpendingStatus(context.Background(), nil, getSpendingStatusInput{})
+	require.NoError(t, err)
+	require.Equal(t, "0", status.SpentLast24h.Aeth)
+	require.Equal(t, "0.05", status.Assets[1].SpentLast24h.Amount)
+
+	_, list, err := toolListPurchases(context.Background(), nil, listPurchasesInput{})
+	require.NoError(t, err)
+	require.Equal(t, "USDC", list.Purchases[0].Amount.Asset)
+}
+
+func TestUSDC_UnknownAssetIsNotPaid(t *testing.T) {
+	f := setupAgent(t)
+	f.autoInclude = true
+	usdc, err := wallet.USDC("channel-3")
+	require.NoError(t, err)
+	srv, _ := usdcSeller(t, f, usdc) // this agent has no --usdc-channel
+
+	_, err = fetch(t, srv.URL, "1 AETH", "k", 5)
+	ae := requireCode(t, err, codePaymentUnsupported)
+	require.Contains(t, ae.Message, usdc.Denom)
+	require.Empty(t, f.broadcasts)
 }

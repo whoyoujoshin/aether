@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
@@ -48,8 +49,11 @@ type Receipt struct {
 	Scheme      string `json:"scheme"`
 	// Payment is the transaction hash (aether-memo) or the request ID
 	// (aether-prepaid) that paid.
-	Payment     string `json:"payment"`
-	Amount      string `json:"amount"` // uaeth
+	Payment string `json:"payment"`
+	// Amount is what the response cost: a bare number of uaeth for an
+	// AETH price (as receipts always were), or the amount followed by
+	// the denom for any other asset, e.g. 50000ibc/... (ReceiptAmount).
+	Amount      string `json:"amount"`
 	Method      string `json:"method"`
 	Host        string `json:"host"`
 	Path        string `json:"path"`
@@ -72,6 +76,14 @@ type ReceiptDelegation struct {
 	Expires     int64  `json:"expires"` // unix seconds
 	PayToPubKey string `json:"payToPubKey"`
 	Signature   string `json:"signature"` // base64, over DelegationSigningMessage
+}
+
+// ReceiptAmount is how a receipt states amount of denom.
+func ReceiptAmount(amount math.Int, denom string) string {
+	if denom == "" || denom == Asset {
+		return amount.String()
+	}
+	return amount.String() + denom
 }
 
 // ReceiptSigningMessage is the exact byte string a receipt's signer signs.
@@ -363,7 +375,7 @@ func (p *Paywall) signReceipt(r *http.Request, paid paidRequest, status int, bod
 	c := p.cfg.Receipts
 	rec := Receipt{
 		X402Version: X402Version, Network: p.cfg.Network, PayTo: p.cfg.PayTo, Payer: paid.payer, Scheme: paid.scheme,
-		Payment: paid.payment, Amount: p.cfg.Price.String(), Method: r.Method, Host: r.Host, Path: r.URL.Path,
+		Payment: paid.payment, Amount: ReceiptAmount(p.cfg.Price, p.cfg.Asset.Denom), Method: r.Method, Host: r.Host, Path: r.URL.Path,
 		Status: status, At: p.cfg.Now().Unix(), Delegation: c.Delegation,
 	}
 	if paid.body != nil {

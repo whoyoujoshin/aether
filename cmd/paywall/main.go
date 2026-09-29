@@ -34,6 +34,7 @@ package main
 
 import (
 	"context"
+	"cosmossdk.io/math"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -61,7 +62,8 @@ func main() {
 	listen := flag.String("listen", ":8402", "address to serve on")
 	upstream := flag.String("upstream", "", "URL of the API to charge for (required)")
 	payTo := flag.String("pay-to", "", "address payments go to (required)")
-	price := flag.String("price", "", `price per request with its unit, e.g. "0.01 AETH" (required)`)
+	price := flag.String("price", "", `price per request with its unit, which also picks the asset everything is charged in: e.g. "0.01 AETH", or "0.05 USDC" with --usdc-channel (required)`)
+	usdcChannel := flag.String("usdc-channel", "", "Aether's end of its channel to Noble (e.g. channel-3), to charge in USDC: Noble's uusdc over exactly this channel")
 	grpcEndpoint := flag.String("grpc", "localhost:9090", "node gRPC endpoint used to verify payments")
 	chainID := flag.String("chain-id", "aether-testnet-1", "chain ID payments must be on")
 	description := flag.String("description", "", "what a payment buys, shown to payers and in the service directory")
@@ -93,9 +95,24 @@ func main() {
 	if err != nil || target.Scheme == "" || target.Host == "" {
 		log.Fatalf("invalid --upstream %q", *upstream)
 	}
-	amount, err := wallet.ParseAmount(*price)
+	assets, err := wallet.NewAssets(*usdcChannel)
+	if err != nil {
+		log.Fatalf("invalid --usdc-channel: %v", err)
+	}
+	asset, amount, err := assets.Parse(*price)
 	if err != nil {
 		log.Fatalf("invalid --price: %v", err)
+	}
+	// Every other amount must be in the price's asset.
+	parseSame := func(flagName, s string) math.Int {
+		a, v, err := assets.Parse(s)
+		if err != nil {
+			log.Fatalf("invalid %s: %v", flagName, err)
+		}
+		if a.Denom != asset.Denom {
+			log.Fatalf("%s is in %s but --price is in %s: one paywall charges one asset", flagName, a.Symbol, asset.Symbol)
+		}
+		return v
 	}
 	client, err := wallet.NewClient(*grpcEndpoint)
 	if err != nil {
@@ -104,7 +121,7 @@ func main() {
 	defer client.Close()
 
 	cfg := paywall.Config{
-		PayTo: *payTo, Price: amount, Network: *chainID, Description: *description,
+		PayTo: *payTo, Price: amount, Asset: asset, Network: *chainID, Description: *description,
 		InvoiceTTL: *ttl, Lookup: client.GetTransactionByHash,
 	}
 	var prepaidFile *paywall.FileLedger
@@ -116,9 +133,7 @@ func main() {
 		prepaidFile = ledger
 		cfg.Prepaid = &paywall.PrepaidConfig{Ledger: ledger}
 		if *minDeposit != "" {
-			if cfg.Prepaid.MinDeposit, err = wallet.ParseAmount(*minDeposit); err != nil {
-				log.Fatalf("invalid --min-deposit: %v", err)
-			}
+			cfg.Prepaid.MinDeposit = parseSame("--min-deposit", *minDeposit)
 		}
 	}
 	if *payoutKey != "" {
@@ -130,7 +145,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("--payout-key %q: %v", *payoutKey, err)
 		}
-		cfg.Prepaid.Payout = &paywall.ChainPayout{Wallet: w, KeyName: *payoutKey, Address: acc.Address, Chain: client, ChainID: *chainID}
+		cfg.Prepaid.Payout = &paywall.ChainPayout{Wallet: w, KeyName: *payoutKey, Address: acc.Address, Chain: client, ChainID: *chainID, Denom: asset.Denom}
 		log.Printf("paywall: withdrawals of unspent prepaid balances are paid from %s (%s)", *payoutKey, acc.Address)
 	}
 	if *pullKey != "" {
@@ -148,12 +163,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("--pull-key %q: %v", *pullKey, err)
 		}
-		collector := &paywall.ChainCollector{ChainPayout: paywall.ChainPayout{Wallet: w, KeyName: *pullKey, Address: acc.Address, Chain: client, ChainID: *chainID}, PayTo: *payTo}
+		collector := &paywall.ChainCollector{ChainPayout: paywall.ChainPayout{Wallet: w, KeyName: *pullKey, Address: acc.Address, Chain: client, ChainID: *chainID, Denom: asset.Denom}, PayTo: *payTo}
 		cfg.Pull = &paywall.PullConfig{Ledger: ledger, Collector: collector, Grantee: acc.Address, CollectEvery: *pullEvery, Grants: client.GetSendGrant}
 		if *pullCredit != "" {
-			if cfg.Pull.Credit, err = wallet.ParseAmount(*pullCredit); err != nil {
-				log.Fatalf("invalid --pull-credit: %v", err)
-			}
+			cfg.Pull.Credit = parseSame("--pull-credit", *pullCredit)
 		}
 		log.Printf("paywall: aether-pull allowances are granted to %s (%s) and collected every %s", *pullKey, acc.Address, *pullEvery)
 	}
