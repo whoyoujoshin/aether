@@ -300,7 +300,7 @@ func TestFindServices(t *testing.T) {
 	require.Len(t, out.Services, 1)
 	s := out.Services[0]
 	require.Equal(t, "Weather", s.Name)
-	require.Equal(t, amountDTO{Uaeth: "20000", Aeth: "0.02"}, s.Price)
+	require.Equal(t, amountDTO{Asset: "AETH", Amount: "0.02", Base: "20000", Denom: "uaeth", Uaeth: "20000", Aeth: "0.02"}, s.Price)
 	require.Equal(t, "0.1", s.MinDeposit.Aeth)
 	require.Equal(t, sellerA, s.PayTo)
 

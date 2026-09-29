@@ -67,6 +67,8 @@ const (
 	codeEscrowNotAllowed  = "ESCROW_NOT_ALLOWED"
 	codeEscrowTooManyOpen = "ESCROW_TOO_MANY_OPEN"
 	codeEscrowInvalid     = "ESCROW_INVALID"
+	// an asset the owner hasn't enabled spending of (USDC without its limits)
+	codeAssetNotEnabled = "ASSET_NOT_ENABLED"
 )
 
 var retryableCodes = map[string]bool{

@@ -59,7 +59,7 @@ func TestFetchPaid_PaysOnceAndGetsTheResponse(t *testing.T) {
 	require.Equal(t, "paid", out.Status)
 	require.Equal(t, http.StatusOK, out.HTTPStatus)
 	require.Equal(t, `{"forecast":"sunny"}`, out.Body)
-	require.Equal(t, amountDTO{Uaeth: "20000", Aeth: "0.02"}, out.Payment.Amount)
+	require.Equal(t, amountDTO{Asset: "AETH", Amount: "0.02", Base: "20000", Denom: "uaeth", Uaeth: "20000", Aeth: "0.02"}, out.Payment.Amount)
 	require.Equal(t, sellerAddr(), out.Payment.PayTo)
 	require.Len(t, f.broadcasts, 1)
 	memo, _ := decode(t, f.broadcasts[0])
@@ -182,7 +182,7 @@ func TestCreateInvoice(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, a.Invoice, b.Invoice)
 	require.Equal(t, int64(777), a.SinceHeight)
-	require.Equal(t, amountDTO{Uaeth: "500000", Aeth: "0.5"}, a.Amount)
+	require.Equal(t, amountDTO{Asset: "AETH", Amount: "0.5", Base: "500000", Denom: "uaeth", Uaeth: "500000", Aeth: "0.5"}, a.Amount)
 	require.Contains(t, a.Instructions, a.Invoice)
 
 	_, _, err = toolCreateInvoice(context.Background(), nil, createInvoiceInput{Amount: "5"})

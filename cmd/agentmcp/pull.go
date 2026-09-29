@@ -77,11 +77,7 @@ func fetchPull(ctx context.Context, in fetchPaidInput, method string, req paywal
 		stateMu.Lock()
 		st, err := loadState()
 		if err == nil && !st.hasSpend(spendTag) {
-			if price.Int64() > perTxLimit {
-				err = newError(codePerTxLimit, fmt.Sprintf("%s AETH exceeds the per-transaction limit of %s AETH", formatAeth(price), formatAeth(math.NewInt(perTxLimit))))
-			} else if st.spentInWindow(time.Now())+price.Int64() > dailyLimit {
-				err = dailyLimitError(st, time.Now(), price.Int64())
-			}
+			err = checkLimits(st, wallet.AETH, price)
 		}
 		stateMu.Unlock()
 		if err != nil {
@@ -101,7 +97,7 @@ func fetchPull(ctx context.Context, in fetchPaidInput, method string, req paywal
 			stateMu.Lock()
 			st, err := loadState()
 			if err == nil && !st.hasSpend(spendTag) {
-				st.Events = append(st.Events, spendEvent{Time: time.Now(), Amount: price.Int64(), TxHash: spendTag})
+				st.Events = append(st.Events, newSpend(time.Now(), wallet.AETH, price.Int64(), spendTag))
 				err = st.save()
 			}
 			stateMu.Unlock()
@@ -215,7 +211,7 @@ func ensurePullGrantTx(ctx context.Context, w *wallet.Wallet, agent string, req 
 	// Granting an allowance commits up to its amount: the owner approves
 	// it like a payment of that much.
 	gate := sendAethInput{To: grantee, Amount: allowance.String() + baseDenom, Memo: pullGrantMemo(req.PayTo), IdempotencyKey: key + "/" + allowance.String()}
-	if proceed, p, err := approvalGate(st, agent, gate, allowance); !proceed {
+	if proceed, p, err := approvalGate(st, agent, gate, wallet.AETH, allowance); !proceed {
 		stateMu.Unlock()
 		if err != nil {
 			return out, false, err

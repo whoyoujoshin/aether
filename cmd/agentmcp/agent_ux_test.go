@@ -69,7 +69,7 @@ func TestSendAeth_AmountInEitherUnitIsTheSamePayment(t *testing.T) {
 	f := setupAgent(t)
 	first, err := send(t, "same", "0.25 AETH", "")
 	require.NoError(t, err)
-	require.Equal(t, amountDTO{Uaeth: "250000", Aeth: "0.25"}, first.Amount)
+	require.Equal(t, amountDTO{Asset: "AETH", Amount: "0.25", Base: "250000", Denom: "uaeth", Uaeth: "250000", Aeth: "0.25"}, first.Amount)
 
 	again, err := send(t, "same", "250000uaeth", "")
 	require.NoError(t, err)
@@ -146,15 +146,15 @@ func TestRetryAfter(t *testing.T) {
 		{Time: now.Add(-23 * time.Hour), Amount: 3},
 		{Time: now.Add(-1 * time.Hour), Amount: 5},
 	}}
-	wait, ok := st.retryAfter(now, 2, 8) // 8 spent; need 2 free: the oldest (3) must age out, in 1h
+	wait, ok := st.retryAfter(now, 2, 8, baseDenom) // 8 spent; need 2 free: the oldest (3) must age out, in 1h
 	require.True(t, ok)
 	require.InDelta(t, time.Hour.Seconds(), wait.Seconds(), 1)
 
-	wait, ok = st.retryAfter(now, 6, 8) // needs both to age out: 23h
+	wait, ok = st.retryAfter(now, 6, 8, baseDenom) // needs both to age out: 23h
 	require.True(t, ok)
 	require.InDelta(t, (23 * time.Hour).Seconds(), wait.Seconds(), 1)
 
-	_, ok = st.retryAfter(now, 9, 8) // bigger than the whole limit: never
+	_, ok = st.retryAfter(now, 9, 8, baseDenom) // bigger than the whole limit: never
 	require.False(t, ok)
 }
 
@@ -261,7 +261,7 @@ func TestGrantMode_SpendingStatusShowsGrant(t *testing.T) {
 	require.Equal(t, "grant", out.Mode)
 	require.NotNil(t, out.Grant)
 	require.Equal(t, "active", out.Grant.Status)
-	require.Equal(t, amountDTO{Uaeth: "3500000", Aeth: "3.5"}, *out.Grant.Remaining)
+	require.Equal(t, amountDTO{Asset: "AETH", Amount: "3.5", Base: "3500000", Denom: "uaeth", Uaeth: "3500000", Aeth: "3.5"}, *out.Grant.Remaining)
 	require.Equal(t, "9", out.Grant.Balance.Aeth)
 	require.Equal(t, "2030-01-01T00:00:00Z", out.Grant.Expiration)
 

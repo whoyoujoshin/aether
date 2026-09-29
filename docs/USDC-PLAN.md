@@ -167,6 +167,19 @@ explorer shows the channel.
 
 ## Phase 4: USDC as a first-class payment asset on Aether
 
+> **Progress, 2026-09-29.** Built:
+> - `wallet.Assets`, with USDC pinned to `transfer/<channel>/uusdc`;
+> - agentmcp spending, escrowing, invoicing and receiving USDC, under the
+>   USDC caps described below, which are off until set.
+>
+> Still to do:
+> - the paywall's price asset, and fetch_paid, prepaid and pull in USDC;
+> - the TypeScript and Python clients;
+> - the desktop wallet and explorer;
+> - `--usdc-channel` in the Claude Desktop bundle once the Noble channel
+>   exists. Its settings can't be blank, so it waits for a real channel
+>   number.
+
 The chain already moves any coin. The tools around it assume AETH: about 60
 references in `agentmcp`, 40 in the paywall, and 180 across the TypeScript and
 Python clients. The work:

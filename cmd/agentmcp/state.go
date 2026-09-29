@@ -23,9 +23,20 @@ const (
 )
 
 type spendEvent struct {
-	Time   time.Time `json:"time"`
-	Amount int64     `json:"amountUaeth"`
-	TxHash string    `json:"txHash,omitempty"`
+	Time time.Time `json:"time"`
+	// Amount is in Denom's base unit; the JSON name is from when
+	// everything was AETH.
+	Amount int64 `json:"amountUaeth"`
+	// Denom is "" for AETH.
+	Denom  string `json:"denom,omitempty"`
+	TxHash string `json:"txHash,omitempty"`
+}
+
+func (e spendEvent) denom() string {
+	if e.Denom == "" {
+		return baseDenom
+	}
+	return e.Denom
 }
 
 // sendRecord binds an idempotency key to one signed transaction. The
@@ -41,7 +52,8 @@ type sendRecord struct {
 	From      string    `json:"from"`              // the signer: this agent
 	Granter   string    `json:"granter,omitempty"` // whose funds, in grant mode
 	To        string    `json:"to"`
-	Amount    string    `json:"amountUaeth"`
+	Amount    string    `json:"amountUaeth"`     // in Denom's base unit
+	Denom     string    `json:"denom,omitempty"` // "" for AETH
 	Memo      string    `json:"memo,omitempty"`
 	TxHash    string    `json:"txHash"`
 	TxBase64  string    `json:"txBase64"`
@@ -154,10 +166,11 @@ func (st *agentState) prune(now time.Time) {
 	}
 }
 
-func (st *agentState) spentInWindow(now time.Time) int64 {
+// spentInWindow is the rolling 24h total of denom.
+func (st *agentState) spentInWindow(now time.Time, denom string) int64 {
 	var total int64
 	for _, e := range st.Events {
-		if e.Time.After(now.Add(-spendWindow)) {
+		if e.denom() == denom && e.Time.After(now.Add(-spendWindow)) {
 			total += e.Amount
 		}
 	}
@@ -166,18 +179,18 @@ func (st *agentState) spentInWindow(now time.Time) int64 {
 
 // retryAfter is how long until enough of the window's spending ages
 // out for amount to fit under limit; ok is false if it never will.
-func (st *agentState) retryAfter(now time.Time, amount, limit int64) (time.Duration, bool) {
+func (st *agentState) retryAfter(now time.Time, amount, limit int64, denom string) (time.Duration, bool) {
 	if amount > limit {
 		return 0, false
 	}
 	var live []spendEvent
 	for _, e := range st.Events {
-		if e.Time.After(now.Add(-spendWindow)) {
+		if e.denom() == denom && e.Time.After(now.Add(-spendWindow)) {
 			live = append(live, e)
 		}
 	}
 	sort.Slice(live, func(i, j int) bool { return live[i].Time.Before(live[j].Time) })
-	excess := st.spentInWindow(now) + amount - limit
+	excess := st.spentInWindow(now, denom) + amount - limit
 	for _, e := range live {
 		if excess <= 0 {
 			break

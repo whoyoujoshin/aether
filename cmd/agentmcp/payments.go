@@ -115,7 +115,7 @@ var dialChain = func() (chain, error) {
 
 type sendAethInput struct {
 	To             string `json:"to" jsonschema:"recipient Aether address (aether1...)"`
-	Amount         string `json:"amount" jsonschema:"amount WITH its unit, e.g. \"1.5 AETH\" or \"1500000uaeth\" (1 AETH = 1,000,000 uaeth). A bare number is refused"`
+	Amount         string `json:"amount" jsonschema:"amount WITH its unit, which also picks the asset: \"1.5 AETH\" or \"1500000uaeth\" (1 AETH = 1,000,000 uaeth), or \"5 USDC\" / \"5000000uusdc\" if this agent may spend USDC. A bare number is refused"`
 	Memo           string `json:"memo,omitempty" jsonschema:"optional payment reference the recipient can match on, e.g. an invoice ID (max 256 characters)"`
 	IdempotencyKey string `json:"idempotencyKey" jsonschema:"unique ID for this payment (e.g. a UUID or order ID). Retrying with the same key never pays twice: it re-sends the identical signed transaction and returns its status. Use a new key only for a genuinely new payment"`
 }
@@ -125,7 +125,7 @@ type sendAethOutput struct {
 	ApprovalID string    `json:"approvalId,omitempty" jsonschema:"when pending_approval: what the owner approves"`
 	TxHash     string    `json:"txHash,omitempty"`
 	Replayed   bool      `json:"replayed" jsonschema:"true if this idempotency key was already used and no new payment was made"`
-	Amount     amountDTO `json:"amount" jsonschema:"the amount paid, in both units -- check it is what you meant"`
+	Amount     amountDTO `json:"amount" jsonschema:"the amount paid, with its asset, in both units -- check it is what you meant"`
 	From       string    `json:"from" jsonschema:"the account the funds come from: the granter in grant mode, else this agent"`
 	To         string    `json:"to"`
 	ErrorCode  string    `json:"errorCode,omitempty" jsonschema:"set when status is failed, e.g. INSUFFICIENT_FUNDS or GRANT_LIMIT_EXCEEDED"`
@@ -133,21 +133,21 @@ type sendAethOutput struct {
 	Message    string    `json:"message,omitempty"`
 }
 
-func validateSend(in sendAethInput) (math.Int, error) {
-	amount, err := parseAmount(in.Amount)
+func validateSend(in sendAethInput) (wallet.Asset, math.Int, error) {
+	asset, amount, err := parseAssetAmount(in.Amount)
 	if err != nil {
-		return math.Int{}, err
+		return wallet.Asset{}, math.Int{}, err
 	}
 	if _, err := sdk.AccAddressFromBech32(in.To); err != nil {
-		return math.Int{}, newError(codeInvalidAddress, fmt.Sprintf("invalid recipient address %q: %v", in.To, err))
+		return wallet.Asset{}, math.Int{}, newError(codeInvalidAddress, fmt.Sprintf("invalid recipient address %q: %v", in.To, err))
 	}
 	if len(in.Memo) > maxMemoLength {
-		return math.Int{}, newError(codeInvalidArgument, fmt.Sprintf("memo is %d characters; the limit is %d", len(in.Memo), maxMemoLength))
+		return wallet.Asset{}, math.Int{}, newError(codeInvalidArgument, fmt.Sprintf("memo is %d characters; the limit is %d", len(in.Memo), maxMemoLength))
 	}
 	if in.IdempotencyKey == "" || len(in.IdempotencyKey) > maxIdempotencyKeyLength {
-		return math.Int{}, newError(codeInvalidArgument, fmt.Sprintf("idempotencyKey is required (1-%d characters) so a retried call can't pay twice", maxIdempotencyKeyLength))
+		return wallet.Asset{}, math.Int{}, newError(codeInvalidArgument, fmt.Sprintf("idempotencyKey is required (1-%d characters) so a retried call can't pay twice", maxIdempotencyKeyLength))
 	}
-	return amount, nil
+	return asset, amount, nil
 }
 
 // payer is whose funds send_aeth spends: the granter in grant mode.
@@ -158,22 +158,12 @@ func payer(agent string) string {
 	return agent
 }
 
-func dailyLimitError(st *agentState, now time.Time, amount int64) error {
-	spent := st.spentInWindow(now)
-	e := newError(codeDailyLimit, fmt.Sprintf("%s AETH would exceed the rolling 24h limit of %s AETH (%s AETH already committed in the last 24h)",
-		formatAeth(math.NewInt(amount)), formatAeth(math.NewInt(dailyLimit)), formatAeth(math.NewInt(spent))))
-	if wait, ok := st.retryAfter(now, amount, dailyLimit); ok {
-		e.RetryAfterSeconds = int64(wait.Seconds()) + 1
-	}
-	return e
-}
-
 // checkGrant fails early, with a specific code, on a payment the
 // chain would reject under the granter's grant. The chain enforces
 // the grant regardless; this only saves a failed transaction. It sees
 // committed state, so it can't account for this agent's own payments
 // still in the mempool -- the chain will.
-func checkGrant(c chain, grantee, to string, amount math.Int, now time.Time) error {
+func checkGrant(c chain, grantee, to string, asset wallet.Asset, amount math.Int, now time.Time) error {
 	g, err := c.sendGrant(granter, grantee)
 	switch {
 	case errors.Is(err, wallet.ErrAuthzNotActive):
@@ -187,8 +177,8 @@ func checkGrant(c chain, grantee, to string, amount math.Int, now time.Time) err
 		return newError(codeGrantExpired, fmt.Sprintf("the grant from %s expired at %s", granter, g.Expiration.UTC().Format(time.RFC3339)))
 	}
 	if !g.Unlimited {
-		if left := g.SpendLimit.AmountOf(baseDenom); left.LT(amount) {
-			return newError(codeGrantLimit, fmt.Sprintf("%s AETH exceeds what's left of the on-chain grant from %s (%s AETH)", formatAeth(amount), granter, formatAeth(left)))
+		if left := g.SpendLimit.AmountOf(asset.Denom); left.LT(amount) {
+			return newError(codeGrantLimit, fmt.Sprintf("%s exceeds what's left of the on-chain grant from %s (%s)", asset.Format(amount), granter, asset.Format(left)))
 		}
 	}
 	if len(g.AllowList) > 0 && !slices.Contains(g.AllowList, to) {
@@ -201,8 +191,8 @@ func checkGrant(c chain, grantee, to string, amount math.Int, now time.Time) err
 // its own account, or in grant mode an x/authz MsgExec wrapping a
 // MsgSend from the granter's account -- which the chain executes only
 // within the grant's limits.
-func buildPayment(w *wallet.Wallet, agent, to string, amount math.Int, params wallet.TxParams) (wallet.SignedTx, error) {
-	coins := sdk.NewCoins(sdk.NewCoin(baseDenom, amount))
+func buildPayment(w *wallet.Wallet, agent, to string, asset wallet.Asset, amount math.Int, params wallet.TxParams) (wallet.SignedTx, error) {
+	coins := sdk.NewCoins(sdk.NewCoin(asset.Denom, amount))
 	var msg sdk.Msg = banktypes.NewMsgSend(sdk.MustAccAddressFromBech32(payer(agent)), sdk.MustAccAddressFromBech32(to), coins)
 	if granter != "" {
 		exec := authz.NewMsgExec(sdk.MustAccAddressFromBech32(agent), []sdk.Msg{msg})
@@ -215,7 +205,7 @@ func buildPayment(w *wallet.Wallet, agent, to string, amount math.Int, params wa
 }
 
 func toolSendAeth(_ context.Context, _ *mcp.CallToolRequest, in sendAethInput) (*mcp.CallToolResult, sendAethOutput, error) {
-	amount, err := validateSend(in)
+	asset, amount, err := validateSend(in)
 	if err != nil {
 		return nil, sendAethOutput{}, err
 	}
@@ -238,14 +228,11 @@ func toolSendAeth(_ context.Context, _ *mcp.CallToolRequest, in sendAethInput) (
 	}
 
 	refused := func(err error) (*mcp.CallToolResult, sendAethOutput, error) {
-		notify("payment_refused", map[string]any{"to": in.To, "amount": newAmountDTO(amount), "memo": in.Memo, "reason": classify(err).Code})
+		notify("payment_refused", map[string]any{"to": in.To, "amount": newAssetAmountDTO(asset, amount), "memo": in.Memo, "reason": classify(err).Code})
 		return nil, sendAethOutput{}, err
 	}
-	if amount.Int64() > perTxLimit {
-		return refused(newError(codePerTxLimit, fmt.Sprintf("%s AETH exceeds the per-transaction limit of %s AETH", formatAeth(amount), formatAeth(math.NewInt(perTxLimit)))))
-	}
-	if spent := st.spentInWindow(time.Now()); spent+amount.Int64() > dailyLimit {
-		return refused(dailyLimitError(st, time.Now(), amount.Int64()))
+	if err := checkLimits(st, asset, amount); err != nil {
+		return refused(err)
 	}
 
 	w, err := newWallet()
@@ -256,27 +243,27 @@ func toolSendAeth(_ context.Context, _ *mcp.CallToolRequest, in sendAethInput) (
 	if err != nil {
 		return nil, sendAethOutput{}, err
 	}
-	if proceed, pending, err := approvalGate(st, from.Address, in, amount); !proceed {
+	if proceed, pending, err := approvalGate(st, from.Address, in, asset, amount); !proceed {
 		if err != nil {
 			return refused(err)
 		}
 		return nil, pending, nil
 	}
 	if granter != "" {
-		if err := checkGrant(c, from.Address, in.To, amount, time.Now()); err != nil {
+		if err := checkGrant(c, from.Address, in.To, asset, amount, time.Now()); err != nil {
 			return refused(err)
 		}
 	}
 	accountNumber, chainSeq, err := c.accountInfo(from.Address)
 	if status.Code(err) == codes.NotFound {
-		return nil, sendAethOutput{}, newError(codeAccountNotFound, fmt.Sprintf("the agent account %s doesn't exist on chain yet: send it any amount of AETH (in grant mode, a feegrant allowance to it also creates it)", from.Address))
+		return nil, sendAethOutput{}, newError(codeAccountNotFound, fmt.Sprintf("the agent account %s doesn't exist on chain yet: send it any amount of AETH or USDC (in grant mode, a feegrant allowance to it also creates it)", from.Address))
 	}
 	if err != nil {
 		return nil, sendAethOutput{}, fmt.Errorf("failed to fetch agent account info for %s: %w", from.Address, err)
 	}
 	seq := st.nextSequence(from.Address, chainSeq)
 
-	signed, err := buildPayment(w, from.Address, in.To, amount, wallet.TxParams{
+	signed, err := buildPayment(w, from.Address, in.To, asset, amount, wallet.TxParams{
 		ChainID:       chainID,
 		AccountNumber: accountNumber,
 		Sequence:      seq,
@@ -294,12 +281,12 @@ func toolSendAeth(_ context.Context, _ *mcp.CallToolRequest, in sendAethInput) (
 	// transaction instead of signing a second one.
 	now := time.Now()
 	rec := &sendRecord{
-		From: from.Address, Granter: granter, To: in.To, Amount: amount.String(), Memo: in.Memo,
+		From: from.Address, Granter: granter, To: in.To, Amount: amount.String(), Denom: recordDenom(asset), Memo: in.Memo,
 		TxHash: wallet.TxHash(signed), TxBase64: base64.StdEncoding.EncodeToString(signed.Bytes),
 		Sequence: seq, CreatedAt: now,
 	}
 	st.Sends[in.IdempotencyKey] = rec
-	st.Events = append(st.Events, spendEvent{Time: now, Amount: amount.Int64(), TxHash: rec.TxHash})
+	st.Events = append(st.Events, newSpend(now, asset, amount.Int64(), rec.TxHash))
 	consumeApproval(st, in.IdempotencyKey)
 	if err := st.save(); err != nil {
 		return nil, sendAethOutput{}, fmt.Errorf("failed to record payment before sending (nothing was sent): %w", err)
@@ -338,14 +325,14 @@ func recordOutput(rec *sendRecord) sendAethOutput {
 	if rec.Granter != "" {
 		from = rec.Granter
 	}
-	return sendAethOutput{TxHash: rec.TxHash, Amount: newAmountDTO(amt), From: from, To: rec.To}
+	return sendAethOutput{TxHash: rec.TxHash, Amount: newAssetAmountDTO(assetOfDenom(rec.Denom), amt), From: from, To: rec.To}
 }
 
 func replaySend(st *agentState, c chain, rec *sendRecord, in sendAethInput) (*mcp.CallToolResult, sendAethOutput, error) {
-	amount, _ := parseAmount(in.Amount)
-	if rec.To != in.To || rec.Amount != amount.String() || rec.Memo != in.Memo {
+	asset, amount, _ := parseAssetAmount(in.Amount)
+	if rec.To != in.To || rec.Amount != amount.String() || rec.Denom != recordDenom(asset) || rec.Memo != in.Memo {
 		prev, _ := math.NewIntFromString(rec.Amount)
-		e := newError(codeIdempotencyConflict, fmt.Sprintf("idempotencyKey %q was already used for a different payment (%s AETH to %s); use a new key for a new payment", in.IdempotencyKey, formatAeth(prev), rec.To))
+		e := newError(codeIdempotencyConflict, fmt.Sprintf("idempotencyKey %q was already used for a different payment (%s to %s); use a new key for a new payment", in.IdempotencyKey, assetOfDenom(rec.Denom).Format(prev), rec.To))
 		e.TxHash = rec.TxHash
 		return nil, sendAethOutput{}, e
 	}
@@ -373,10 +360,13 @@ func replaySend(st *agentState, c chain, rec *sendRecord, in sendAethInput) (*mc
 	// Its reservation was released if an earlier attempt was rejected;
 	// re-reserve (within limits) before it gets another chance to spend.
 	amt, _ := math.NewIntFromString(rec.Amount)
+	recAsset := assetOfDenom(rec.Denom)
 	reserved := st.hasSpend(rec.TxHash)
 	if !reserved {
-		if spent := st.spentInWindow(time.Now()); spent+amt.Int64() > dailyLimit {
-			return nil, sendAethOutput{}, dailyLimitError(st, time.Now(), amt.Int64())
+		if l, err := limitsFor(recAsset); err != nil {
+			return nil, sendAethOutput{}, err
+		} else if st.spentInWindow(time.Now(), recAsset.Denom)+amt.Int64() > l.daily {
+			return nil, sendAethOutput{}, dailyLimitError(st, time.Now(), recAsset, amt.Int64())
 		}
 	}
 
@@ -394,7 +384,7 @@ func replaySend(st *agentState, c chain, rec *sendRecord, in sendAethInput) (*mc
 	case 0, codeTxInMempool:
 		rec.Accepted = true
 		if !reserved {
-			st.Events = append(st.Events, spendEvent{Time: time.Now(), Amount: amt.Int64(), TxHash: rec.TxHash})
+			st.Events = append(st.Events, newSpend(time.Now(), recAsset, amt.Int64(), rec.TxHash))
 		}
 		out.Status = statusPending
 		out.Message = "already sent; not yet in a block. Call wait_for_transaction"
@@ -533,7 +523,7 @@ func awaitTransaction(ctx context.Context, c chain, hash string, deadline time.T
 
 type waitForPaymentInput struct {
 	Memo           string `json:"memo" jsonschema:"the exact memo the payer was asked to attach, e.g. an invoice from create_invoice. Use a unique memo per request so one payment can't satisfy two"`
-	MinAmount      string `json:"minAmount" jsonschema:"minimum amount that counts as paid, WITH its unit, e.g. \"0.5 AETH\" or \"500000uaeth\""`
+	MinAmount      string `json:"minAmount" jsonschema:"minimum amount that counts as paid, WITH its unit, which also picks the asset: e.g. \"0.5 AETH\", \"500000uaeth\" or \"2 USDC\""`
 	SinceHeight    int64  `json:"sinceHeight,omitempty" jsonschema:"only look at blocks from this height on: pass create_invoice's sinceHeight (or a previous call's resumeFromHeight). Omitted, the agent's whole history is scanned"`
 	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"how long to wait (default 90, max 300); blocks are ~60s apart"`
 }
@@ -550,20 +540,20 @@ type waitForPaymentOutput struct {
 
 // findPayment returns the first confirmed payment to address at or
 // above sinceHeight whose memo matches exactly and which moved at
-// least minAmount uaeth to it. It reads every indexed payment in that
+// least minAmount of asset to it. It reads every indexed payment in that
 // range, not just the latest few.
-func findPayment(c chain, address, memo string, minAmount math.Int, sinceHeight int64) (*waitForPaymentOutput, error) {
+func findPayment(c chain, address, memo string, asset wallet.Asset, minAmount math.Int, sinceHeight int64) (*waitForPaymentOutput, error) {
 	payments, err := c.incoming(address, sinceHeight, paymentScanLimit)
 	tooMuch := errors.Is(err, wallet.ErrTooMuchHistory)
 	if err != nil && !tooMuch {
 		return nil, err
 	}
 	for _, p := range payments {
-		got := p.Amount.AmountOf(baseDenom)
+		got := p.Amount.AmountOf(asset.Denom)
 		if p.Code != 0 || p.Memo != memo || got.LT(minAmount) {
 			continue
 		}
-		amt := newAmountDTO(got)
+		amt := newAssetAmountDTO(asset, got)
 		return &waitForPaymentOutput{Paid: true, TxHash: p.Hash, From: p.From, Amount: &amt, Height: p.Height}, nil
 	}
 	if tooMuch {
@@ -576,7 +566,7 @@ func toolWaitForPayment(ctx context.Context, _ *mcp.CallToolRequest, in waitForP
 	if in.Memo == "" {
 		return nil, waitForPaymentOutput{}, newError(codeInvalidArgument, "memo is required -- it's how a payment is matched to a request")
 	}
-	minAmount, err := parseAmount(in.MinAmount)
+	asset, minAmount, err := parseAssetAmount(in.MinAmount)
 	if err != nil {
 		return nil, waitForPaymentOutput{}, err
 	}
@@ -601,7 +591,7 @@ func toolWaitForPayment(ctx context.Context, _ *mcp.CallToolRequest, in waitForP
 		if err != nil {
 			return nil, waitForPaymentOutput{}, err
 		}
-		found, err := findPayment(c, acc.Address, in.Memo, minAmount, since)
+		found, err := findPayment(c, acc.Address, in.Memo, asset, minAmount, since)
 		if err != nil {
 			return nil, waitForPaymentOutput{}, err
 		}
@@ -621,7 +611,7 @@ func toolWaitForPayment(ctx context.Context, _ *mcp.CallToolRequest, in waitForP
 // --- create_invoice ---
 
 type createInvoiceInput struct {
-	Amount string `json:"amount" jsonschema:"what the payer should pay, WITH its unit, e.g. \"0.5 AETH\""`
+	Amount string `json:"amount" jsonschema:"what the payer should pay, WITH its unit, which also picks the asset: e.g. \"0.5 AETH\" or \"2 USDC\""`
 }
 
 type createInvoiceOutput struct {
@@ -633,7 +623,7 @@ type createInvoiceOutput struct {
 }
 
 func toolCreateInvoice(_ context.Context, _ *mcp.CallToolRequest, in createInvoiceInput) (*mcp.CallToolResult, createInvoiceOutput, error) {
-	amount, err := parseAmount(in.Amount)
+	asset, amount, err := parseAssetAmount(in.Amount)
 	if err != nil {
 		return nil, createInvoiceOutput{}, err
 	}
@@ -660,8 +650,8 @@ func toolCreateInvoice(_ context.Context, _ *mcp.CallToolRequest, in createInvoi
 	}
 	invoice := "inv-" + hex.EncodeToString(nonce)
 	return nil, createInvoiceOutput{
-		Invoice: invoice, PayTo: acc.Address, Amount: newAmountDTO(amount), SinceHeight: tip,
-		Instructions: fmt.Sprintf("Send %s AETH (%s uaeth) to %s with the memo %s exactly. Then call wait_for_payment with this memo, minAmount %q and sinceHeight %d.",
-			formatAeth(amount), amount, acc.Address, invoice, formatAeth(amount)+" AETH", tip),
+		Invoice: invoice, PayTo: acc.Address, Amount: newAssetAmountDTO(asset, amount), SinceHeight: tip,
+		Instructions: fmt.Sprintf("Send %s (%s%s, denom %s) to %s with the memo %s exactly. Then call wait_for_payment with this memo, minAmount %q and sinceHeight %d.",
+			asset.Format(amount), amount, asset.BaseUnit, asset.Denom, acc.Address, invoice, asset.Format(amount), tip),
 	}, nil
 }
