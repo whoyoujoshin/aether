@@ -91,6 +91,12 @@ signed. So the repo carries its own:
   txs with ML-DSA-44 and counterparty txs with secp256k1, and uses
   ibc-go's own client/connection/channel query and proof helpers.
 
+Since then, [Helicase](HELICASE.md) removes the need for a relayer to
+sign anything on Aether after the handshake: the block proposer relays
+packets, acknowledgements and timeouts in itself, unsigned and checked
+by the light client. `cmd/relayer` still opens paths, and relays onto the
+other chain.
+
 One run of `cmd/relayer` does the whole path: a 07-tendermint client on
 each side (trusting/unbonding periods read from each chain's live params
 -- `x/pow` bond cooldown for Aether, `x/staking` unbonding time for the
