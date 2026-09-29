@@ -46,6 +46,12 @@ of how its own vote goes.)
 | Faucet | `https://faucet.157-245-252-221.sslip.io/request` | `https://faucet.testnet.osmosis.zone` (~100 OSMO/day/address) |
 | Unbonding period | governed by `x/pow`'s `bond_cooldown` (see gate above) | 24h (`86400s`) -- short; see risks below |
 
+**Check the endpoints first.** As of 2026-09-29 the Cosmos chain registry
+lists `https://rpc.osmotest5.osmosis.zone`, `https://grpc.osmotest5.osmosis.zone`
+and `https://lcd.osmotest5.osmosis.zone` for `osmo-test-5`. Confirm which answer
+from the seed before step 5. See also docs/USDC-PLAN.md: a one-shot relayer run
+isn't enough to keep this connection up, and that plan covers the service it needs.
+
 ## Why this doesn't need new relayer code
 
 `cmd/relayer`'s counterparty side (`counterparty.MakeEncodingConfig`)

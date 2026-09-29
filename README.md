@@ -425,6 +425,7 @@ aetherd query governance proposal <proposal-id>
 - [TLS for the seed](docs/TLS.md) — HTTPS for RPC/gRPC/faucet/explorer with no domain purchase
 - [IBC](docs/IBC.md) — core IBC, ICS-20 transfer, ICS-27 interchain accounts: live since block 122,000, plus the ML-DSA relayer and counterparty chain used to test it end to end, including on the live testnet
 - [Connecting to Osmosis testnet](docs/OSMOSIS-TESTNET.md) — runbook for a real external IBC counterparty; blocked on a governance precondition, not yet executed
+- [Plan: Aether ↔ Osmosis ↔ Noble, paying in USDC or AETH](docs/USDC-PLAN.md) — what each connection is for, the relayer service both need, and the phases to USDC payments
 - [Account abstraction](docs/ACCOUNT_ABSTRACTION.md) — session keys and guardian thresholds (`x/accountauth`): live on the testnet since block 122,000
 - [Escrow](docs/ESCROW.md) — lock money for another account (or agent) until the payer or an arbiter releases it, the payee or arbiter refunds it, or its deadline settles it: built, not yet active
 - Wiki: [Architecture](../../wiki/Architecture), [Phase 1 Multi-Validator Selection](../../wiki/Phase-1-Multi-Validator-Selection), [Known Issues](../../wiki/Known-Issues-and-Technical-Debt)
