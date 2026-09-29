@@ -40,7 +40,12 @@ func (AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {
 	return cdc.MustMarshalJSON(&g)
 }
 
+// ValidateGenesis and InitGenesis treat a missing section as the
+// default: genesis files written before this module existed have none.
 func (AppModuleBasic) ValidateGenesis(cdc codec.JSONCodec, config client.TxEncodingConfig, bz json.RawMessage) error {
+	if len(bz) == 0 {
+		return nil
+	}
 	var g GenesisState
 	if err := cdc.UnmarshalJSON(bz, &g); err != nil {
 		return err
@@ -74,8 +79,10 @@ func (am AppModule) RegisterServices(cfg module.Configurator) {
 func (am AppModule) ConsensusVersion() uint64 { return 1 }
 
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.RawMessage) {
-	var g GenesisState
-	cdc.MustUnmarshalJSON(data, &g)
+	g := DefaultGenesisState()
+	if len(data) > 0 {
+		cdc.MustUnmarshalJSON(data, &g)
+	}
 	am.keeper.InitGenesis(ctx, g)
 }
 
