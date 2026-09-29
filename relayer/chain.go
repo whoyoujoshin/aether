@@ -102,6 +102,7 @@ func NewChain(name, rpcAddr, grpcAddr, chainID, bech32Prefix string, cdc codec.C
 		WithChainID(chainID).
 		WithTxConfig(txConfig).
 		WithKeybase(kr).
+		WithFromName(fromName). // gas simulation looks the key up by it
 		WithAccountRetriever(authtypes.AccountRetriever{}).
 		// Handshake txs batch a MsgUpdateClient (commit verification)
 		// with a message carrying three merkle proofs, and Aether's
@@ -133,6 +134,13 @@ func (c *Chain) SignAndBroadcast(msgs ...sdk.Msg) ([]abci.Event, error) {
 	txf, err := c.Factory.Prepare(c.ClientCtx)
 	if err != nil {
 		return nil, fmt.Errorf("%s: preparing tx: %w", c.Name, err)
+	}
+	if txf.SimulateAndExecute() {
+		_, gas, err := tx.CalculateGas(c.ClientCtx, txf, msgs...)
+		if err != nil {
+			return nil, fmt.Errorf("%s: simulating tx: %w", c.Name, err)
+		}
+		txf = txf.WithGas(gas)
 	}
 	unsigned, err := txf.BuildUnsignedTx(msgs...)
 	if err != nil {
