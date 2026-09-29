@@ -43,7 +43,9 @@ import (
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/counterparty"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	"github.com/whoyoujoshin/aether/ligase"
 	"github.com/whoyoujoshin/aether/relayer"
+	"github.com/whoyoujoshin/aether/x/escrow"
 )
 
 func main() {
@@ -66,6 +68,8 @@ func main() {
 
 		keyringBackend = flag.String("keyring-backend", "test", "keyring backend for both chains")
 		wait           = flag.Duration("wait", 90*time.Second, "how long to wait for Helicase at each step")
+		withLigase     = flag.Bool("ligase", false, "with --outbound-key: also fund and release an Aether escrow from the counterparty through Ligase")
+		outboundKey    = flag.String("outbound-key", "", "if set, cmd/outbound is running with this counterparty key: relay nothing by hand, wait for it, and check it signed the counterparty's side")
 	)
 	flag.Parse()
 
@@ -110,6 +114,16 @@ func main() {
 	helicaseAddr, err := address.NewBech32Codec(app.Bech32MainPrefix).BytesToString(app.HelicaseAddress)
 	must(err, "encoding the helicase address")
 
+	var outbound string // the outbound relayer's counterparty address
+	if *outboundKey != "" {
+		rec, err := cpartyKr.Key(*outboundKey)
+		must(err, "outbound key")
+		addr, err := rec.GetAddress()
+		must(err, "outbound key address")
+		outbound, err = address.NewBech32Codec(counterparty.Bech32Prefix).BytesToString(addr)
+		must(err, "encoding outbound address")
+	}
+
 	// --- 1. In: counterparty -> Aether. ---
 	amount := math.NewInt(7_000)
 	packet, err := relayer.Transfer(cparty, chanC, sdk.NewCoin(*cpartyDenom, amount), aetherUserChain.FromAddrStr)
@@ -124,24 +138,55 @@ func main() {
 	checkHelicaseTx(aetherUserChain, channeltypes.EventTypeRecvPacket, channeltypes.AttributeKeyDstChannel, chanA, packet.Sequence, helicaseAddr)
 	fmt.Printf("   aether received it: %s%s, delivered by the proposer, unsigned\n", amount, voucher)
 
-	_, ack, err := relayer.FindAcknowledgement(aetherUserChain, transfertypes.PortID, chanA, packet.Sequence)
-	must(err, "finding aether's acknowledgement")
-	must(relayer.DeliverAcknowledgement(aetherUserChain, cparty, clientOnCparty, packet, ack), "acknowledging on the counterparty")
-	fmt.Println("   counterparty got aether's acknowledgement (relayed with a secp256k1 key, onto the counterparty only)")
+	if outbound != "" {
+		waitFor(*wait, "the counterparty to process aether's acknowledgement", func() (bool, error) {
+			return relayer.CommitmentCleared(cparty, packet)
+		})
+		checkSignedBy(cparty, channeltypes.EventTypeAcknowledgePacket, channeltypes.AttributeKeySrcChannel, chanC, packet.Sequence, outbound)
+		fmt.Println("   counterparty got aether's acknowledgement from cmd/outbound (its own secp256k1 key)")
+	} else {
+		_, ack, err := relayer.FindAcknowledgement(aetherUserChain, transfertypes.PortID, chanA, packet.Sequence)
+		must(err, "finding aether's acknowledgement")
+		must(relayer.DeliverAcknowledgement(aetherUserChain, cparty, clientOnCparty, packet, ack), "acknowledging on the counterparty")
+		fmt.Println("   counterparty got aether's acknowledgement (relayed with a secp256k1 key, onto the counterparty only)")
+	}
 
 	// --- 2. Out: Aether -> counterparty. ---
 	out := sdk.NewCoin("uaeth", math.NewInt(12_345))
 	packet, err = relayer.Transfer(aetherUserChain, chanA, out, cparty.FromAddrStr)
 	must(err, "aether transfer to counterparty")
 	fmt.Printf("\n2. aether user sent packet %d: %s (an ordinary ML-DSA-signed transfer)\n", packet.Sequence, out)
-	_, err = relayer.DeliverPacket(aetherUserChain, cparty, clientOnCparty, packet)
-	must(err, "delivering to the counterparty")
-	fmt.Println("   counterparty received it (relayed with a secp256k1 key)")
+	if outbound != "" {
+		aethVoucher := transfertypes.ParseDenomTrace(transfertypes.GetPrefixedDenom(transfertypes.PortID, chanC, "uaeth")).IBCDenom()
+		before, err := relayer.Balance(cparty, cparty.FromAddrStr, aethVoucher)
+		must(err, "counterparty voucher balance")
+		waitFor(*wait, "the counterparty to receive packet "+fmt.Sprint(packet.Sequence), func() (bool, error) {
+			bal, err := relayer.Balance(cparty, cparty.FromAddrStr, aethVoucher)
+			return err == nil && bal.Amount.Sub(before.Amount).Equal(out.Amount), err
+		})
+		checkSignedBy(cparty, channeltypes.EventTypeRecvPacket, channeltypes.AttributeKeyDstChannel, chanC, packet.Sequence, outbound)
+		fmt.Println("   counterparty received it from cmd/outbound")
+	} else {
+		_, err = relayer.DeliverPacket(aetherUserChain, cparty, clientOnCparty, packet)
+		must(err, "delivering to the counterparty")
+		fmt.Println("   counterparty received it (relayed with a secp256k1 key)")
+	}
 	waitFor(*wait, "aether to process the acknowledgement of packet "+fmt.Sprint(packet.Sequence), func() (bool, error) {
 		return relayer.CommitmentCleared(aetherUserChain, packet)
 	})
 	checkHelicaseTx(aetherUserChain, channeltypes.EventTypeAcknowledgePacket, channeltypes.AttributeKeySrcChannel, chanA, packet.Sequence, helicaseAddr)
 	fmt.Println("   aether processed the acknowledgement, delivered by the proposer, unsigned")
+
+	if outbound != "" {
+		if *withLigase {
+			ligaseStep(aetherUserChain, cparty, chanA, chanC, *cpartyDenom, *wait)
+		}
+		// With cmd/outbound running, nothing stays unrelayed long enough
+		// to time out; step 3 runs without it.
+		finish(aetherHandshake, relayerSeq)
+		fmt.Println("both directions ran unattended: helicase onto aether, cmd/outbound onto the counterparty")
+		return
+	}
 
 	// --- 3. Timeout: Aether -> counterparty, never relayed. ---
 	before, err := relayer.Balance(aetherUserChain, aetherUserChain.FromAddrStr, "uaeth")
@@ -161,10 +206,82 @@ func main() {
 	}
 	fmt.Printf("   aether timed it out and refunded %s, delivered by the proposer, unsigned\n", out)
 
-	if got := sequence(aetherHandshake, aetherHandshake.FromAddr); got != relayerSeq {
+	finish(aetherHandshake, relayerSeq)
+	fmt.Println("helicase proven: packets, acknowledgements and timeouts reached aether with no relayer signature")
+}
+
+// ligaseStep: someone on the counterparty, with only a counterparty key,
+// escrows tokens for an Aether user through Ligase and then releases
+// them. Helicase and cmd/outbound carry every packet.
+func ligaseStep(aether, cparty *relayer.Chain, chanA, chanC, denom string, wait time.Duration) {
+	aetherAddr := address.NewBech32Codec(app.Bech32MainPrefix)
+	ligaseAddr, err := aetherAddr.BytesToString(ligase.Address)
+	must(err, "ligase address")
+	mailboxBz := ligase.Mailbox(chanA, cparty.FromAddrStr)
+	mailbox, err := aetherAddr.BytesToString(mailboxBz)
+	must(err, "mailbox address")
+	payee := aether.FromAddrStr
+	voucher := transfertypes.ParseDenomTrace(transfertypes.GetPrefixedDenom(transfertypes.PortID, chanA, denom)).IBCDenom()
+	before, err := relayer.Balance(aether, payee, voucher)
+	must(err, "payee balance")
+
+	amount := math.NewInt(5_000)
+	memo := fmt.Sprintf(`{"aether":{"escrow":{"payee":%q,"expires_in":"72h","on_expiry":"refund","terms":"devnet job"}}}`, payee)
+	_, err = relayer.TransferWithMemo(cparty, chanC, sdk.NewCoin(denom, amount), ligaseAddr, memo)
+	must(err, "counterparty transfer to ligase")
+	fmt.Printf("\n4. counterparty user sent %s%s to ligase with an escrow instruction for %s\n", amount, denom, payee)
+
+	var id uint64
+	waitFor(wait, "the escrow to open", func() (bool, error) {
+		res, err := escrow.NewQueryClient(aether.ClientCtx).EscrowsByAddress(context.Background(), &escrow.QueryEscrowsByAddressRequest{Address: mailbox})
+		if err != nil || len(res.Escrows) == 0 {
+			return false, err
+		}
+		e := res.Escrows[0]
+		if e.Payer != mailbox || e.Payee != payee || !e.Amount.Equal(sdk.NewCoins(sdk.NewCoin(voucher, amount))) {
+			return false, fmt.Errorf("unexpected escrow %+v", e)
+		}
+		id = e.Id
+		return true, nil
+	})
+	fmt.Printf("   escrow %d open on aether: payer %s (the sender's mailbox), %s%s\n", id, mailbox, amount, voucher)
+
+	_, err = relayer.TransferWithMemo(cparty, chanC, sdk.NewCoin(denom, math.NewInt(1)), ligaseAddr, fmt.Sprintf(`{"aether":{"release":{"id":"%d"}}}`, id))
+	must(err, "counterparty release instruction")
+	fmt.Println("   counterparty user sent 1 more with a release instruction")
+	waitFor(wait, "the payee to be paid", func() (bool, error) {
+		bal, err := relayer.Balance(aether, payee, voucher)
+		return err == nil && bal.Amount.Sub(before.Amount).Equal(amount), err
+	})
+	fmt.Printf("   released: %s got %s%s; the counterparty user never signed on aether\n", payee, amount, voucher)
+}
+
+// finish checks nothing signed on Aether with the relayer key after the
+// handshake.
+func finish(aether *relayer.Chain, relayerSeq uint64) {
+	if got := sequence(aether, aether.FromAddr); got != relayerSeq {
 		log.Fatalf("aether relayer key moved from sequence %d to %d: something signed a relay on aether", relayerSeq, got)
 	}
-	fmt.Printf("\naether relayer key still at sequence %d\nhelicase proven: packets, acknowledgements and timeouts reached aether with no relayer signature\n", relayerSeq)
+	fmt.Printf("\naether relayer key still at sequence %d\n", relayerSeq)
+}
+
+// checkSignedBy finds the counterparty transaction whose eventType event
+// names channel and seq, and checks signer sent it.
+func checkSignedBy(c *relayer.Chain, eventType, channelKey, channel string, seq uint64, signer string) {
+	node, err := c.ClientCtx.GetNode()
+	must(err, "counterparty node")
+	query := fmt.Sprintf("%s.%s='%s' AND %s.%s='%d'", eventType, channelKey, channel, eventType, channeltypes.AttributeKeySequence, seq)
+	page, perPage := 1, 10
+	res, err := node.TxSearch(context.Background(), query, false, &page, &perPage, "asc")
+	must(err, "searching the counterparty for "+query)
+	for _, r := range res.Txs {
+		sender, _ := relayer.EventAttr(r.TxResult.Events, sdk.EventTypeMessage, sdk.AttributeKeySender)
+		if r.TxResult.Code == 0 && sender == signer {
+			fmt.Printf("   counterparty tx %X at height %d, signed by %s\n", r.Hash, r.Height, sender)
+			return
+		}
+	}
+	log.Fatalf("no successful counterparty tx with %s sent by %s", query, signer)
 }
 
 // checkHelicaseTx finds the Aether transaction whose eventType event names

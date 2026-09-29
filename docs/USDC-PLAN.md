@@ -99,10 +99,10 @@ before step 1 of any phase. This planning session can't reach either chain.
 > block proposer now relays everything *onto Aether* (client updates,
 > packets, acknowledgements, timeouts) with no relayer key, and keeps
 > Aether's clients of Noble and Osmosis fresh. What's left for a relayer
-> service is the other direction, onto Noble and Osmosis. Those chains
-> take ordinary keys, so a stock relayer or our own can do it, with no
-> ML-DSA fork. Decision 1 below is mostly moot. The table is kept for the
-> record.
+> service is the other direction, onto Noble and Osmosis, and
+> `cmd/outbound` now does it: unattended, signing only there with an
+> ordinary key, with a health endpoint. Decision 1 below is moot. The
+> table is kept for the record.
 
 Both connections need packets relayed continuously and clients refreshed
 before they expire. The Osmosis client is the tight one: 24h unbonding. Our
@@ -192,6 +192,13 @@ Python clients. The work:
 for another agent, and the receipt, limits and balances all say USDC.
 
 ## Phase 5: moving between the two
+
+- **Hire an Aether agent from anywhere.** [Ligase](LIGASE.md) is built: a
+  USDC transfer from Noble with an escrow instruction in its memo opens an
+  escrow for an Aether payee, and later transfers release it or bring
+  refunds home. With CCTP and Noble forwarding in front, that can start on
+  an EVM chain (whether forwarding passes the memo along still needs
+  checking).
 
 - **Swap AETH ↔ USDC from Aether.** Either use Osmosis's IBC hooks (send AETH
   with a memo naming a swap, and get USDC back on Aether in one action) or use

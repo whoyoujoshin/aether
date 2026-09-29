@@ -51,7 +51,8 @@ Let an agent spend from your account with a chain-enforced cap instead of holdin
 | Native IBC (core, ICS-20 transfer, ICS-27 interchain accounts) | Built, tested, live-verified — activated at block 122,000; full client/connection/channel/transfer round trip relayed with Aether's own ML-DSA relayer, locally and on the live testnet |
 | Account abstraction (session keys, guardian thresholds) | Built, tested, live-verified — activated at block 122,000 |
 | Escrow between accounts (`x/escrow`: release, refund, arbiter, deadline) | Built, tested on a devnet — not yet active; needs a coordinated activation height |
-| Helicase: the block proposer relays IBC packets, acknowledgements and timeouts onto Aether, unsigned and proof-checked, so no relayer signs on Aether | Built, tested, proven on a two-chain devnet — not yet active; needs a coordinated activation height ([docs/HELICASE.md](docs/HELICASE.md)) |
+| Ligase: someone on another chain funds, releases and withdraws Aether escrows with IBC transfers carrying an instruction; such instructions can never move AETH | Built, tested, proven on a two-chain devnet — not yet active; needs x/escrow and a coordinated activation height ([docs/LIGASE.md](docs/LIGASE.md)) |
+| Helicase: the block proposer relays IBC packets, acknowledgements and timeouts onto Aether, unsigned and proof-checked, so no relayer signs on Aether; `cmd/outbound` relays the other way with the other chain's own keys | Built, tested, both directions proven unattended on a two-chain devnet — not yet active; needs a coordinated activation height ([docs/HELICASE.md](docs/HELICASE.md)) |
 | Independent professional security audit | Not yet performed |
 
 See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and [Roadmap](../../wiki/Roadmap).
@@ -400,7 +401,9 @@ aetherd query governance proposal <proposal-id>
 | `wallet/` | Account management, queries, tx construction |
 | `app/` | App wiring; `authz_feegrant.go` gates x/authz + x/feegrant activation; `helicase.go` accepts proposer-included relay transactions |
 | `helicase/` | The node's Helicase worker: finds packets to relay in from another chain and proves them |
-| `relayer/`, `cmd/relayer` | Aether's own ML-DSA relayer: handshakes, and relaying onto the other chain |
+| `relayer/`, `cmd/relayer` | Aether's own ML-DSA relayer: opens paths (handshakes); `relayer.Plan` finds what's pending in either direction |
+| `cmd/outbound` | Unattended relayer onto another chain, signing only there; Helicase covers the direction onto Aether |
+| `ligase/` | A transfer from another chain that carries an escrow instruction in its memo: fund, release, withdraw, without an Aether key |
 | `cmd/aetherd` | Node binary |
 | `cmd/wallet` | CLI over `wallet/` |
 | `cmd/faucet` | Rate-limited faucet |
@@ -431,6 +434,7 @@ aetherd query governance proposal <proposal-id>
 - [Connecting to Osmosis testnet](docs/OSMOSIS-TESTNET.md) — runbook for a real external IBC counterparty; blocked on a governance precondition, not yet executed
 - [Plan: Aether ↔ Osmosis ↔ Noble, paying in USDC or AETH](docs/USDC-PLAN.md) — what each connection is for, the relayer service both need, and the phases to USDC payments
 - [Account abstraction](docs/ACCOUNT_ABSTRACTION.md) — session keys and guardian thresholds (`x/accountauth`): live on the testnet since block 122,000
+- [Ligase](docs/LIGASE.md) — escrow from another chain with one transfer and no Aether key; the two-strands rule that keeps AETH under post-quantum signatures
 - [Escrow](docs/ESCROW.md) — lock money for another account (or agent) until the payer or an arbiter releases it, the payee or arbiter refunds it, or its deadline settles it: built, not yet active
 - Wiki: [Architecture](../../wiki/Architecture), [Phase 1 Multi-Validator Selection](../../wiki/Phase-1-Multi-Validator-Selection), [Known Issues](../../wiki/Known-Issues-and-Technical-Debt)
 
