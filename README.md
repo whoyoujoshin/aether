@@ -51,6 +51,7 @@ Let an agent spend from your account with a chain-enforced cap instead of holdin
 | Native IBC (core, ICS-20 transfer, ICS-27 interchain accounts) | Built, tested, live-verified — activated at block 122,000; full client/connection/channel/transfer round trip relayed with Aether's own ML-DSA relayer, locally and on the live testnet |
 | Account abstraction (session keys, guardian thresholds) | Built, tested, live-verified — activated at block 122,000 |
 | Escrow between accounts (`x/escrow`: release, refund, arbiter, deadline) | Built, tested on a devnet — not yet active; needs a coordinated activation height |
+| Helicase: the block proposer relays IBC packets, acknowledgements and timeouts onto Aether, unsigned and proof-checked, so no relayer signs on Aether | Built, tested, proven on a two-chain devnet — not yet active; needs a coordinated activation height ([docs/HELICASE.md](docs/HELICASE.md)) |
 | Independent professional security audit | Not yet performed |
 
 See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and [Roadmap](../../wiki/Roadmap).
@@ -397,7 +398,9 @@ aetherd query governance proposal <proposal-id>
 | `x/escrow` | Money locked for another account until released, refunded or expired (not the validator reward escrow in `x/pow`) |
 | `crypto/mldsa` | ML-DSA-44, ADR-028 addresses, keyring / ante |
 | `wallet/` | Account management, queries, tx construction |
-| `app/` | App wiring; `authz_feegrant.go` gates x/authz + x/feegrant activation |
+| `app/` | App wiring; `authz_feegrant.go` gates x/authz + x/feegrant activation; `helicase.go` accepts proposer-included relay transactions |
+| `helicase/` | The node's Helicase worker: finds packets to relay in from another chain and proves them |
+| `relayer/`, `cmd/relayer` | Aether's own ML-DSA relayer: handshakes, and relaying onto the other chain |
 | `cmd/aetherd` | Node binary |
 | `cmd/wallet` | CLI over `wallet/` |
 | `cmd/faucet` | Rate-limited faucet |
@@ -424,7 +427,9 @@ aetherd query governance proposal <proposal-id>
 - [Agent-to-agent payment demo](docs/AGENT_DEMO.md) — a real spend-capped grant and payment, reproducible against any network
 - [TLS for the seed](docs/TLS.md) — HTTPS for RPC/gRPC/faucet/explorer with no domain purchase
 - [IBC](docs/IBC.md) — core IBC, ICS-20 transfer, ICS-27 interchain accounts: live since block 122,000, plus the ML-DSA relayer and counterparty chain used to test it end to end, including on the live testnet
+- [Helicase](docs/HELICASE.md) — the block proposer relays IBC packets onto Aether without any relayer signature: why it's safe, how to run it, the devnet proof
 - [Connecting to Osmosis testnet](docs/OSMOSIS-TESTNET.md) — runbook for a real external IBC counterparty; blocked on a governance precondition, not yet executed
+- [Plan: Aether ↔ Osmosis ↔ Noble, paying in USDC or AETH](docs/USDC-PLAN.md) — what each connection is for, the relayer service both need, and the phases to USDC payments
 - [Account abstraction](docs/ACCOUNT_ABSTRACTION.md) — session keys and guardian thresholds (`x/accountauth`): live on the testnet since block 122,000
 - [Escrow](docs/ESCROW.md) — lock money for another account (or agent) until the payer or an arbiter releases it, the payee or arbiter refunds it, or its deadline settles it: built, not yet active
 - Wiki: [Architecture](../../wiki/Architecture), [Phase 1 Multi-Validator Selection](../../wiki/Phase-1-Multi-Validator-Selection), [Known Issues](../../wiki/Known-Issues-and-Technical-Debt)

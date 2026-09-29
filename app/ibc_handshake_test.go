@@ -48,6 +48,13 @@ import (
 
 func newIBCTestChain(t *testing.T, coord *ibctesting.Coordinator, chainID string) *ibctesting.TestChain {
 	t.Helper()
+	return newIBCTestChainWithOptions(t, coord, chainID)
+}
+
+// newIBCTestChainWithOptions is newIBCTestChain with extra BaseApp
+// options, e.g. a mempool.
+func newIBCTestChainWithOptions(t *testing.T, coord *ibctesting.Coordinator, chainID string, opts ...func(*baseapp.BaseApp)) *ibctesting.TestChain {
+	t.Helper()
 
 	// One real CometBFT validator at exactly x/pow's flat voting power,
 	// so app.GetStakingKeeper()'s test view (see testing_support.go),
@@ -84,7 +91,7 @@ func newIBCTestChain(t *testing.T, coord *ibctesting.Coordinator, chainID string
 	defer func(orig int64) { ibcActivationHeight = orig }(ibcActivationHeight)
 	ibcActivationHeight = 0
 
-	app := New(log.NewNopLogger(), dbm.NewMemDB(), nil, true, nil, t.TempDir(), 0, emptyAppOptions{}, baseapp.SetChainID(chainID)).(*App)
+	app := New(log.NewNopLogger(), dbm.NewMemDB(), nil, true, nil, t.TempDir(), 0, emptyAppOptions{}, append([]func(*baseapp.BaseApp){baseapp.SetChainID(chainID)}, opts...)...).(*App)
 	require.True(t, app.ibcWired)
 
 	genesisTime := coord.CurrentTime.UTC()

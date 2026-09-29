@@ -265,6 +265,10 @@ type App struct {
 
 	escrowWired bool
 
+	// The worker this node proposes relay transactions from; see
+	// app/helicase.go.
+	helicase helicaseState
+
 	sm                 *module.Manager
 	BasicModuleManager module.BasicManager
 }
@@ -580,6 +584,9 @@ func New(
 		panic(err)
 	}
 	bApp.SetTxDecoder(txConfig.TxDecoder())
+	// PrepareProposal re-encodes each transaction it takes from the
+	// app-side mempool (app.toml mempool.max-txs >= 0).
+	bApp.SetTxEncoder(txConfig.TxEncoder())
 	app.txConfig = txConfig
 
 	// Standard ante handler
@@ -610,10 +617,20 @@ func New(
 	// The decorator calls next (the standard handler) after its own logic.
 	pqDecorator := NewPostQuantumDecorator()
 	anteHandler := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (newCtx sdk.Context, err error) {
+		// A proposer-included relay transaction has no signature to check
+		// (see app/helicase.go); everything else is signed and must be
+		// ML-DSA-44.
+		if helicaseActive(ctx.BlockHeight()) && isHelicaseTx(tx) {
+			return helicaseAnteHandle(ctx, tx, simulate)
+		}
 		return pqDecorator.AnteHandle(ctx, tx, simulate, stdAnteHandler)
 	}
 
 	app.SetAnteHandler(anteHandler)
+	wrapHelicaseMempool(bApp)
+	proposals := baseapp.NewDefaultProposalHandler(bApp.Mempool(), bApp)
+	app.SetPrepareProposal(app.helicasePrepareProposal(proposals.PrepareProposalHandler()))
+	app.SetProcessProposal(app.helicaseProcessProposal(proposals.ProcessProposalHandler()))
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
 	app.SetEndBlocker(app.EndBlocker)

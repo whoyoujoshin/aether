@@ -205,3 +205,20 @@ func (c *Chain) LatestHeight() (int64, error) {
 	}
 	return info.Response.LastBlockHeight, nil
 }
+
+// NewReadOnlyChain is a Chain for reading one side only: queries and
+// proofs over RPC, no keyring and no signer. Helicase uses it inside the
+// node, where it relays without signing anything.
+func NewReadOnlyChain(name, rpcAddr, chainID string, cdc codec.Codec, txConfig client.TxConfig) (*Chain, error) {
+	rpcClient, err := rpchttp.New(rpcAddr, "/websocket")
+	if err != nil {
+		return nil, fmt.Errorf("%s: dialing rpc %s: %w", name, rpcAddr, err)
+	}
+	clientCtx := client.Context{}.
+		WithChainID(chainID).
+		WithClient(rpcClient).
+		WithCodec(cdc).
+		WithInterfaceRegistry(cdc.InterfaceRegistry()).
+		WithTxConfig(txConfig)
+	return &Chain{Name: name, ChainID: chainID, ClientCtx: clientCtx}, nil
+}
