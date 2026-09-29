@@ -49,6 +49,7 @@ import (
 	"github.com/cosmos/gogoproto/grpc"
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	"github.com/whoyoujoshin/aether/ligase"
 	"github.com/whoyoujoshin/aether/x/accountauth"
 	"github.com/whoyoujoshin/aether/x/escrow"
 	"github.com/whoyoujoshin/aether/x/governance"
@@ -506,7 +507,9 @@ func New(
 		app.ICAHostKeeper.WithQueryRouter(app.GRPCQueryRouter())
 
 		ibcRouter := porttypes.NewRouter()
-		ibcRouter.AddRoute(ibctransfertypes.ModuleName, transfer.NewIBCModule(app.TransferKeeper))
+		// Ligase wraps transfer: a transfer to the Ligase address can carry
+		// an instruction for x/escrow (see app/ligase.go).
+		ibcRouter.AddRoute(ibctransfertypes.ModuleName, ligase.NewIBCModule(transfer.NewIBCModule(app.TransferKeeper), ligaseHost{app}))
 		// nil: no custom authentication module wraps the controller --
 		// every icacontroller.IBCMiddleware callback checks "im.app !=
 		// nil" before delegating (see ibc-go's ibc_middleware.go), so
