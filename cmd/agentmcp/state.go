@@ -34,8 +34,9 @@ type spendEvent struct {
 // signed in, so the chain can include it at most once however many
 // times it is broadcast.
 type sendRecord struct {
-	// Kind is "" for a payment, or sendKindPullGrant for an aether-pull
-	// allowance (not a payment: nothing moves until the seller collects).
+	// Kind is "" for a payment, sendKindPullGrant for an aether-pull
+	// allowance (not a payment: nothing moves until the seller collects),
+	// or sendKindEscrowCreate / sendKindEscrowSettle.
 	Kind      string    `json:"kind,omitempty"`
 	From      string    `json:"from"`              // the signer: this agent
 	Granter   string    `json:"granter,omitempty"` // whose funds, in grant mode
@@ -47,6 +48,8 @@ type sendRecord struct {
 	Sequence  uint64    `json:"sequence"`
 	Accepted  bool      `json:"accepted"` // passed CheckTx at least once
 	CreatedAt time.Time `json:"createdAt"`
+	// Escrow is set for create_escrow / release_escrow / refund_escrow.
+	Escrow *escrowParams `json:"escrow,omitempty"`
 }
 
 type agentState struct {

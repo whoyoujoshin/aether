@@ -60,6 +60,13 @@ const (
 	codeWithdrawalFailed       = "WITHDRAWAL_FAILED" // not paid out; the balance is intact
 	codeWithdrawalRejected     = "WITHDRAWAL_REJECTED"
 	codeInternal               = "INTERNAL"
+	// escrow
+	codeEscrowNotActive   = "ESCROW_NOT_ACTIVE"
+	codeEscrowGrantMode   = "ESCROW_NOT_IN_GRANT_MODE"
+	codeEscrowNotFound    = "ESCROW_NOT_FOUND"
+	codeEscrowNotAllowed  = "ESCROW_NOT_ALLOWED"
+	codeEscrowTooManyOpen = "ESCROW_TOO_MANY_OPEN"
+	codeEscrowInvalid     = "ESCROW_INVALID"
 )
 
 var retryableCodes = map[string]bool{
@@ -142,6 +149,16 @@ func chainErrorCode(codespace string, code uint32, rawLog, fallback string) stri
 		return codeGrantExpired
 	case codespace == "feegrant":
 		return codeFeeGrantRejected
+	case codespace == "escrow":
+		switch code {
+		case 3:
+			return codeEscrowTooManyOpen
+		case 4:
+			return codeEscrowNotFound
+		case 5:
+			return codeEscrowNotAllowed
+		}
+		return codeEscrowInvalid
 	}
 	return fallback
 }

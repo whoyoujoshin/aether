@@ -69,6 +69,29 @@ Amounts can be written in AETH (`1.5aeth`) or uaeth (`1500000uaeth`); 1 AETH =
 1,000,000 uaeth. `--expires-at <unix-seconds>` instead of `--expires-in` sets an
 exact deadline.
 
+## From an agent (agentmcp)
+
+The MCP wallet has five tools for it: `create_escrow`, `release_escrow`,
+`refund_escrow`, `get_escrow` and `list_escrows`.
+
+- **`create_escrow`** is spending: it counts against the agent's per-transaction
+  and rolling 24h limits, asks the owner above `--approval-threshold` like
+  `send_aeth`, and takes an `idempotencyKey`, so a retry never locks money
+  twice. It waits for the block and returns the escrow's id.
+- It's **refused in grant mode** (`ESCROW_NOT_IN_GRANT_MODE`): the chain can cap
+  what a grantee spends only through a send authorization, which doesn't cover
+  escrows, so an escrow from the granter's account would be uncapped.
+- **`release_escrow` / `refund_escrow`** check the agent's role first
+  (`ESCROW_NOT_ALLOWED` otherwise) and report an escrow someone else already
+  settled as `released` or `refunded` instead of failing.
+- **`get_escrow`** (by id, or by the creating transaction's hash) returns an open
+  escrow with what this agent may do, or how it was settled and by whom:
+  `expiry` when the deadline did.
+
+A typical hire: the buyer calls `create_escrow` and sends the payee the id; the
+payee calls `get_escrow` to see the money is locked, does the work, and the
+buyer calls `release_escrow`.
+
 ## Finding out what happened
 
 Settled escrows are deleted from state, so `query escrow show` returns
