@@ -37,6 +37,7 @@ var agentmcpTools = []string{
 	"fetch_paid", "list_purchases", "list_prepaid_balances", "withdraw_prepaid",
 	"find_services", "rate_service", "announce_service",
 	"get_miner_status",
+	"create_escrow", "release_escrow", "refund_escrow", "get_escrow", "list_escrows",
 }
 
 const repoURL = "https://github.com/whoyoujoshin/aether"

@@ -24,6 +24,7 @@ import (
 	governancecli "github.com/whoyoujoshin/aether/x/governance/client/cli"
 	treasurycli "github.com/whoyoujoshin/aether/x/treasury/client/cli"
 	accountauthcli "github.com/whoyoujoshin/aether/x/accountauth/client/cli"
+	escrowcli "github.com/whoyoujoshin/aether/x/escrow/client/cli"
 	"github.com/whoyoujoshin/aether/app"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/cosmos-sdk/client/rpc"
@@ -112,6 +113,7 @@ txCmd := &cobra.Command{
 	ibctransfercli.NewTxCmd(),
 	icacli.NewTxCmd(),
 	accountauthcli.NewTxCmd(),
+	escrowcli.NewTxCmd(),
 )
 	setDefaultGas(txCmd, defaultGasLimit)
 	rootCmd.AddCommand(txCmd)
@@ -133,6 +135,7 @@ txCmd := &cobra.Command{
 	queryCmd.AddCommand(governancecli.GetQueryCmd())
 	queryCmd.AddCommand(treasurycli.GetQueryCmd())
 	queryCmd.AddCommand(accountauthcli.GetQueryCmd())
+	queryCmd.AddCommand(escrowcli.GetQueryCmd())
 	queryCmd.AddCommand(bankQueryCmd(), authzQueryCmd(), feegrantQueryCmd())
 
 	app.ModuleBasics.AddQueryCommands(queryCmd)

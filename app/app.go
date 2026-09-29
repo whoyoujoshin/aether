@@ -50,6 +50,7 @@ import (
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	"github.com/whoyoujoshin/aether/x/accountauth"
+	"github.com/whoyoujoshin/aether/x/escrow"
 	"github.com/whoyoujoshin/aether/x/governance"
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/treasury"
@@ -135,6 +136,8 @@ var ModuleBasics = module.NewBasicManager(
 	// Same story, gated on AccountAuthActivationHeight instead: see
 	// app/accountauth.go.
 	accountauth.AppModuleBasic{},
+	// And on EscrowActivationHeight: see app/escrow.go.
+	escrow.AppModuleBasic{},
 )
 
 type EncodingConfig struct {
@@ -257,6 +260,11 @@ type App struct {
 
 	accountAuthWired bool
 
+	// Zero-valued (unusable) until escrowWired -- see EscrowActivationHeight.
+	EscrowKeeper escrow.Keeper
+
+	escrowWired bool
+
 	sm                 *module.Manager
 	BasicModuleManager module.BasicManager
 }
@@ -329,6 +337,14 @@ func New(
 		}
 	}
 
+	escrowCutover := planEscrow(rootmulti.GetLatestVersion(db), escrowActivationHeight)
+	app.escrowWired = escrowCutover.wire
+	if escrowCutover.wire {
+		for _, name := range escrowStoreKeys {
+			app.keys[name] = storetypes.NewKVStoreKey(name)
+		}
+	}
+
 	app.MountKVStores(app.keys)
 
 	// Memory stores are transient (never committed, no AppHash effect,
@@ -352,6 +368,9 @@ func New(
 		// their module account isn't a recognized name here.
 		ibctransfertypes.ModuleName: {authtypes.Minter, authtypes.Burner},
 		icatypes.ModuleName:         nil,
+		// Holds escrowed money. Registered unconditionally for the same
+		// reason; the account itself is created at EscrowActivationHeight.
+		escrow.ModuleName: nil,
 	}
 
 	app.AccountKeeper = authkeeper.NewAccountKeeper(
@@ -501,6 +520,9 @@ func New(
 	if accountAuthCutover.wire {
 		app.AccountAuthKeeper = accountauth.NewKeeper(appCodec, app.keys[accountauth.StoreKey], app.MsgServiceRouter())
 	}
+	if escrowCutover.wire {
+		app.EscrowKeeper = escrow.NewKeeper(appCodec, app.keys[escrow.StoreKey], app.BankKeeper, logger)
+	}
 
 	// Module manager
 	powModule := pow.NewAppModule(appCodec, app.PowKeeper)
@@ -535,6 +557,9 @@ func New(
 	}
 	if accountAuthCutover.wire {
 		modules = append(modules, accountauth.NewAppModule(app.AccountAuthKeeper))
+	}
+	if escrowCutover.wire {
+		modules = append(modules, escrow.NewAppModule(app.EscrowKeeper))
 	}
 	app.sm = module.NewManager(modules...)
 
@@ -592,7 +617,7 @@ func New(
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
 	app.SetEndBlocker(app.EndBlocker)
-	if authzFeegrant.addStores || ibcCutover.addStores || accountAuthCutover.addStores {
+	if authzFeegrant.addStores || ibcCutover.addStores || accountAuthCutover.addStores || escrowCutover.addStores {
 		var added []string
 		if authzFeegrant.addStores {
 			added = append(added, authzFeegrantStoreKeys...)
@@ -602,6 +627,9 @@ func New(
 		}
 		if accountAuthCutover.addStores {
 			added = append(added, accountAuthStoreKeys...)
+		}
+		if escrowCutover.addStores {
+			added = append(added, escrowStoreKeys...)
 		}
 		app.SetStoreLoader(func(ms storetypes.CommitMultiStore) error {
 			return ms.LoadLatestVersionAndUpgrade(&storetypes.StoreUpgrades{Added: added})
@@ -661,6 +689,9 @@ func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 		return sdk.BeginBlock{}, err
 	}
 	if err := app.checkAccountAuthActivation(ctx); err != nil {
+		return sdk.BeginBlock{}, err
+	}
+	if err := app.checkEscrowActivation(ctx); err != nil {
 		return sdk.BeginBlock{}, err
 	}
 	if err := app.MigrateConsensusParamsToNewStore(ctx); err != nil {

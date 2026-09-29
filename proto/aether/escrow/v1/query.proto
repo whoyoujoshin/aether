@@ -1,0 +1,35 @@
+syntax = "proto3";
+package aether.escrow.v1;
+
+import "gogoproto/gogo.proto";
+import "aether/escrow/v1/escrow.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/escrow";
+
+service Query {
+  // Escrow is one open escrow. Settled ones are deleted: NotFound.
+  rpc Escrow(QueryEscrowRequest) returns (QueryEscrowResponse);
+  // EscrowsByAddress lists open escrows address is payer, payee or
+  // arbiter of, oldest first.
+  rpc EscrowsByAddress(QueryEscrowsByAddressRequest) returns (QueryEscrowsByAddressResponse);
+}
+
+message QueryEscrowRequest {
+  uint64 id = 1;
+}
+message QueryEscrowResponse {
+  Escrow escrow = 1 [(gogoproto.nullable) = false];
+}
+
+message QueryEscrowsByAddressRequest {
+  string address = 1;
+  // Only ids above this: pass the last id of the previous page.
+  uint64 after_id = 2;
+  // At most this many (default and maximum 100).
+  uint32 limit = 3;
+}
+message QueryEscrowsByAddressResponse {
+  repeated Escrow escrows = 1 [(gogoproto.nullable) = false];
+  // Set when there may be more: the after_id for the next page.
+  uint64 next_after_id = 2;
+}

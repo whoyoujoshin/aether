@@ -50,6 +50,7 @@ Let an agent spend from your account with a chain-enforced cap instead of holdin
 | **Public testnet** | **Live** — see below |
 | Native IBC (core, ICS-20 transfer, ICS-27 interchain accounts) | Built, tested, live-verified — activated at block 122,000; full client/connection/channel/transfer round trip relayed with Aether's own ML-DSA relayer, locally and on the live testnet |
 | Account abstraction (session keys, guardian thresholds) | Built, tested, live-verified — activated at block 122,000 |
+| Escrow between accounts (`x/escrow`: release, refund, arbiter, deadline) | Built, tested on a devnet — not yet active; needs a coordinated activation height |
 | Independent professional security audit | Not yet performed |
 
 See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and [Roadmap](../../wiki/Roadmap).
@@ -216,6 +217,7 @@ Built for how agents actually fail:
 - **Can get paid.** `create_invoice` returns a unique memo and the current height; `wait_for_payment(memo, minAmount, sinceHeight)` waits for a confirmed incoming payment that matches. It reads every incoming payment since that height, page by page, so a busy agent can't miss one. Memos are sender-controlled, so tools label them as untrusted data.
 - **Can buy from paid APIs.** `fetch_paid(url, maxAmount, idempotencyKey)` requests a URL; if the server answers HTTP 402 (see [Paid APIs](#paid-apis-x402)), it pays at most `maxAmount`, waits for the payment to confirm and returns the response. Retrying with the same key resumes the same payment, never a second one. For many requests to one service, add `pullAllowance` (e.g. `"1 AETH"`): if the service offers `aether-pull`, the agent grants it an on-chain allowance of that much (payable only to it, for 7 days, revocable, and approved by the owner like a payment of that size when it's over the approval threshold), then pays each request instantly by signature; the service collects what the agent owes later, so nothing is deposited with it. Or add `prepay` (e.g. `"1 AETH"`): the agent deposits that once and then pays each request instantly by signature — milliseconds instead of a block. `list_prepaid_balances` shows what's left where, and `withdraw_prepaid(service)` takes it back, from services that offer withdrawals.
 - **Can find services, and tell good ones from bad.** `find_services(query, maxPrice)` lists paid APIs from the on-chain [service directory](#service-directory) with each one's reputation: recent payments and payers, ratings from paying accounts, ratings from accounts you trust (the owner, the agent itself, `--trust <addresses>`), and the agent's own history with it. `orderBy: "trusted"` puts what can't be faked first. `rate_service(url, score)` rates one it has bought from; `announce_service` lists one the agent runs.
+- **Hires other agents through escrow** (once `x/escrow` is active: see [docs/ESCROW.md](docs/ESCROW.md)). `create_escrow` locks AETH for a payee until this agent or an arbiter releases it, the payee or arbiter refunds it, or its deadline settles it the way `onExpiry` says; it counts against the same limits and owner approvals as `send_aeth`, takes an idempotency key, and isn't available in grant mode (the chain caps grant spending only for plain sends). `release_escrow`, `refund_escrow`, `get_escrow` (open, or how and by whom it was settled, including at the deadline) and `list_escrows` cover the rest; the payee checks `get_escrow` before starting work.
 - **Knows where it stands as a miner.** `get_miner_status` answers in one call, as of one block: whether the address has a registered consensus key, its work this epoch, its rank among eligible miners against the Top-K size, blocks and estimated seconds until the epoch's last block picks the next validator set, whether it's a validator now, and its escrowed rewards — no log scraping. The explorer serves the same at `/api/miner?addr=`.
 - **Keeps receipts.** When a seller signs receipts, `fetch_paid` checks each one against exactly what was sent and received and returns it; `list_purchases` is the log of what the agent bought, with each receipt — proof anyone can check against the seller's address.
 - **Answers to its owner.** With `--approval-threshold "0.5 AETH" --approver <owner-address>`, bigger payments wait (nothing signed or sent) until the owner runs `agentmcp approve <id>`, which signs the decision with the **owner's** key — so the agent can't approve itself even if it can write files on the machine. `agentmcp approvals` lists what's waiting. With `--notify-webhook <url>` (and `--notify-secret` to HMAC-sign each alert), every payment, approval request and refusal is POSTed there.
@@ -392,6 +394,7 @@ aetherd query governance proposal <proposal-id>
 | `x/pow` | Mining (Scrypt + AuxPoW), difficulty, rewards, validators, slashing, liveness |
 | `x/governance` | Proposals, tenure-weighted voting, queries |
 | `x/treasury` | Community funds; governance-authorized spends |
+| `x/escrow` | Money locked for another account until released, refunded or expired (not the validator reward escrow in `x/pow`) |
 | `crypto/mldsa` | ML-DSA-44, ADR-028 addresses, keyring / ante |
 | `wallet/` | Account management, queries, tx construction |
 | `app/` | App wiring; `authz_feegrant.go` gates x/authz + x/feegrant activation |
@@ -423,6 +426,7 @@ aetherd query governance proposal <proposal-id>
 - [IBC](docs/IBC.md) — core IBC, ICS-20 transfer, ICS-27 interchain accounts: live since block 122,000, plus the ML-DSA relayer and counterparty chain used to test it end to end, including on the live testnet
 - [Connecting to Osmosis testnet](docs/OSMOSIS-TESTNET.md) — runbook for a real external IBC counterparty; blocked on a governance precondition, not yet executed
 - [Account abstraction](docs/ACCOUNT_ABSTRACTION.md) — session keys and guardian thresholds (`x/accountauth`): live on the testnet since block 122,000
+- [Escrow](docs/ESCROW.md) — lock money for another account (or agent) until the payer or an arbiter releases it, the payee or arbiter refunds it, or its deadline settles it: built, not yet active
 - Wiki: [Architecture](../../wiki/Architecture), [Phase 1 Multi-Validator Selection](../../wiki/Phase-1-Multi-Validator-Selection), [Known Issues](../../wiki/Known-Issues-and-Technical-Debt)
 
 ## License and brand
