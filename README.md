@@ -329,6 +329,8 @@ go run ./cmd/validatorkeygen --miner <your-bech32-address>
 
 Mine and submit successfully within an epoch to accumulate native work. At the epoch boundary (1440 blocks), Top-K (21) by native work become the active set. Downtime (>50% missed signatures in a 60-block window) causes temporary removal; equivocation causes permanent ban and escrow burn.
 
+**One consensus key, one miner account.** Never register the same node's key under two miner accounts: if both are picked, or one leaves the set as the other joins, the validator updates name that key twice and CometBFT halts the chain. From `ConsensusKeyGuardActivationHeight` (`x/pow/types.go`) the chain refuses it: to move a key to a new miner account, first register a different key on the old one. Rotating an active validator's key also takes it out of the set until an epoch picks it with the new key.
+
 ## Miner and validator alerts
 
 `cmd/minerwatch` watches one or more addresses and pushes what happens as it happens, instead of an agent polling `/api/miner` or scraping `powminer`'s logs:
@@ -420,7 +422,7 @@ aetherd query governance proposal <proposal-id>
 - [TLS for the seed](docs/TLS.md) — HTTPS for RPC/gRPC/faucet/explorer with no domain purchase
 - [IBC](docs/IBC.md) — core IBC, ICS-20 transfer, ICS-27 interchain accounts: live since block 122,000, plus the ML-DSA relayer and counterparty chain used to test it end to end, including on the live testnet
 - [Connecting to Osmosis testnet](docs/OSMOSIS-TESTNET.md) — runbook for a real external IBC counterparty; blocked on a governance precondition, not yet executed
-- [Account abstraction](docs/ACCOUNT_ABSTRACTION.md) — session keys and guardian thresholds (`x/accountauth`): built and tested, not yet activated on a live chain
+- [Account abstraction](docs/ACCOUNT_ABSTRACTION.md) — session keys and guardian thresholds (`x/accountauth`): live on the testnet since block 122,000
 - Wiki: [Architecture](../../wiki/Architecture), [Phase 1 Multi-Validator Selection](../../wiki/Phase-1-Multi-Validator-Selection), [Known Issues](../../wiki/Known-Issues-and-Technical-Debt)
 
 ## License and brand

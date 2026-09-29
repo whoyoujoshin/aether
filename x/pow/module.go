@@ -126,7 +126,18 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 }
 
 func (am AppModule) EndBlock(ctx context.Context) ([]abci.ValidatorUpdate, error) {
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	updates := am.endBlockUpdates(sdk.UnwrapSDKContext(ctx))
+	updates, dropped := DedupeValidatorUpdates(updates)
+	if dropped > 0 {
+		am.keeper.logger.Error("validator updates named a consensus key more than once; kept the last update for each so the block can commit",
+			"height", sdk.UnwrapSDKContext(ctx).BlockHeight(), "dropped", dropped)
+	}
+	return updates, nil
+}
+
+// endBlockUpdates does EndBlock's work and returns every validator
+// update it produced, repeats and all.
+func (am AppModule) endBlockUpdates(sdkCtx sdk.Context) []abci.ValidatorUpdate {
 
 	am.keeper.ReleaseMaturedEscrows(sdkCtx)
 	am.keeper.RecordRecentBlock(sdkCtx)
@@ -183,18 +194,18 @@ func (am AppModule) EndBlock(ctx context.Context) ([]abci.ValidatorUpdate, error
 
 	epochLength := am.keeper.GetEpochLength(sdkCtx)
 	if epochLength <= 0 {
-		return updates, nil
+		return updates
 	}
 
 	height := sdkCtx.BlockHeight()
 	if (height+1)%epochLength != 0 {
-		return updates, nil
+		return updates
 	}
 
 	epoch := am.keeper.CurrentEpoch(sdkCtx)
 	epochUpdates := am.keeper.ComputeValidatorUpdates(sdkCtx, epoch)
 	updates = append(updates, epochUpdates...)
-	return updates, nil
+	return updates
 }
 
 func (am AppModule) BeginBlock(ctx context.Context) error {

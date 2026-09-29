@@ -73,7 +73,7 @@ func handleLLMsTxt(w http.ResponseWriter, r *http.Request) {
 	p("")
 	p("- [Whitepaper](%s/blob/main/docs/WHITEPAPER.md): consensus, economics, cryptography, known limitations", repoURL)
 	p("- [IBC](%s/blob/main/docs/IBC.md): ICS-20 transfers and ICS-27 interchain accounts", repoURL)
-	p("- [Account abstraction](%s/blob/main/docs/ACCOUNT_ABSTRACTION.md): session keys and guardian thresholds (not yet active on the testnet)", repoURL)
+	p("- [Account abstraction](%s/blob/main/docs/ACCOUNT_ABSTRACTION.md): session keys and guardian thresholds, live since block 122,000", repoURL)
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Access-Control-Allow-Origin", "*")

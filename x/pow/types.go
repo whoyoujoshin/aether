@@ -322,6 +322,36 @@ const (
 	RotationRevocationActivationHeight int64 = 90000
 )
 
+// ConsensusKeyGuardActivationHeight gates two fixes for ways the
+// validator updates EndBlock hands CometBFT could halt the chain.
+// CometBFT refuses a block whose updates list one consensus key twice
+// ("changing validator set: duplicate entry") or remove a key it never
+// gave power ("failed to find validator to remove"), and refusing it
+// stops every node -- no fork, no recovery without a patch.
+//
+//  1. One consensus key registered under two miner accounts. Both can
+//     then be picked in one epoch (K:power twice), or one dropped as
+//     the other is picked (K:0 then K:power). Reproduced on a devnet
+//     2026-09-28. From this height RegisterValidatorPubkey refuses a key
+//     another miner account currently holds; that account must rotate to
+//     a different key first. A genesis bootstrap entry doesn't count as a
+//     holder: it never mines, so it's never picked again, and the
+//     K:0 + K:power it can produce once is what the always-on backstop
+//     in DedupeValidatorUpdates resolves.
+//  2. An active validator rotating its consensus key. Its old key loses
+//     power at once (RotationRevocationActivationHeight), but it stayed in
+//     the active set, so if the next epoch didn't pick it again it was
+//     removed by its new key -- which never had power. From this height
+//     rotating takes it out of the active set too: it's a validator again
+//     only when an epoch picks it with the new key.
+//
+// Both change what a message does, so, like every gate here, they must
+// reach every node before this height, and a fresh replay must see the
+// old behavior below it. PLACEHOLDER: replace with a height agreed with
+// the operators and confirmed against the live tip immediately before
+// the cutover, never an estimate.
+const ConsensusKeyGuardActivationHeight int64 = 1_000_000
+
 // RandomnessBeaconActivationHeight gates Phase 3 of
 // aether-randomness-beacon-design.md (see beacon.go): the
 // sequential-hashing epoch beacon and the switch from deterministic
