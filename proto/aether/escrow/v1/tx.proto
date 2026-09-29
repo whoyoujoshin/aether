@@ -1,0 +1,52 @@
+syntax = "proto3";
+package aether.escrow.v1;
+
+import "gogoproto/gogo.proto";
+import "cosmos/msg/v1/msg.proto";
+import "cosmos/base/v1beta1/coin.proto";
+import "aether/escrow/v1/escrow.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/escrow";
+
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+
+  rpc CreateEscrow(MsgCreateEscrow) returns (MsgCreateEscrowResponse);
+  rpc ReleaseEscrow(MsgReleaseEscrow) returns (MsgReleaseEscrowResponse);
+  rpc RefundEscrow(MsgRefundEscrow) returns (MsgRefundEscrowResponse);
+}
+
+// MsgCreateEscrow moves amount from payer into escrow.
+message MsgCreateEscrow {
+  option (cosmos.msg.v1.signer) = "payer";
+  string payer = 1;
+  string payee = 2;
+  string arbiter = 3; // optional
+  repeated cosmos.base.v1beta1.Coin amount = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
+  ];
+  int64 expires_at = 5; // unix seconds
+  OnExpiry on_expiry = 6;
+  string terms = 7;
+}
+message MsgCreateEscrowResponse {
+  uint64 id = 1;
+}
+
+// MsgReleaseEscrow pays the payee. Signed by the payer or the arbiter.
+message MsgReleaseEscrow {
+  option (cosmos.msg.v1.signer) = "sender";
+  string sender = 1;
+  uint64 id = 2;
+}
+message MsgReleaseEscrowResponse {}
+
+// MsgRefundEscrow returns the money to the payer. Signed by the payee
+// or the arbiter.
+message MsgRefundEscrow {
+  option (cosmos.msg.v1.signer) = "sender";
+  string sender = 1;
+  uint64 id = 2;
+}
+message MsgRefundEscrowResponse {}

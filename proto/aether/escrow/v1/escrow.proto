@@ -1,0 +1,44 @@
+syntax = "proto3";
+package aether.escrow.v1;
+
+import "gogoproto/gogo.proto";
+import "cosmos/base/v1beta1/coin.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/escrow";
+
+// OnExpiry is what happens to an escrow nobody settled by its deadline.
+enum OnExpiry {
+  option (gogoproto.goproto_enum_prefix) = false;
+
+  ON_EXPIRY_UNSPECIFIED = 0;
+  // Back to the payer: protects the payer; the payee's recourse is the arbiter.
+  ON_EXPIRY_REFUND = 1;
+  // On to the payee: protects the payee; the payer's recourse is the arbiter.
+  ON_EXPIRY_RELEASE = 2;
+}
+
+// Escrow is money a payer has locked for a payee until one of them, or
+// the arbiter, settles it, or it expires. Settled escrows are deleted;
+// their outcome stays in the escrow_released / escrow_refunded events.
+message Escrow {
+  uint64 id = 1;
+  string payer = 2;
+  string payee = 3;
+  // Optional: may release or refund at any time.
+  string arbiter = 4;
+  repeated cosmos.base.v1beta1.Coin amount = 5 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
+  ];
+  // Unix seconds, compared with block time.
+  int64 expires_at = 6;
+  OnExpiry on_expiry = 7;
+  // What the money is for, e.g. "invoice #42" or a hash of the job spec.
+  string terms = 8;
+  int64 created_height = 9;
+}
+
+message GenesisState {
+  uint64 next_id = 1;
+  repeated Escrow escrows = 2 [(gogoproto.nullable) = false];
+}
