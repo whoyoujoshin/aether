@@ -139,11 +139,18 @@ func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubm
 	// LastResultsHash) on any historical tx that happens to hit the gas
 	// limit. See SubmissionCapActivationHeight's doc comment.
 	enforceCap := ctx.BlockHeight() >= SubmissionCapActivationHeight
-	if enforceCap {
-		if lastHeight, ok := k.Keeper.GetLastAcceptedSubmissionHeight(ctx); ok && lastHeight == ctx.BlockHeight() {
-			return nil, sdkerrors.Wrapf(types.ErrTooManySubmissionsThisBlock,
-				"a PoW submission has already been accepted at height %d; try again next block", ctx.BlockHeight())
+	// From MergedMiningActivationHeight AuxPoW has its own slot, so each
+	// block takes one native and one AuxPoW submission (change C of
+	// docs/MERGED-MINING-PLAN.md). Before it both share the native slot.
+	_, isAux := msg.Submission.(*MsgSubmitPoW_AuxPow)
+	auxTrack := isAux && ctx.BlockHeight() >= MergedMiningActivationHeight
+	if enforceCap && k.Keeper.submissionSlotTaken(ctx, auxTrack) {
+		kind := "a PoW"
+		if auxTrack {
+			kind = "an AuxPoW"
 		}
+		return nil, sdkerrors.Wrapf(types.ErrTooManySubmissionsThisBlock,
+			"%s submission has already been accepted at height %d; try again next block", kind, ctx.BlockHeight())
 	}
 
 	var resp *MsgSubmitPoWResponse
@@ -160,7 +167,7 @@ func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubm
 	}
 
 	if enforceCap {
-		k.Keeper.SetLastAcceptedSubmissionHeight(ctx, ctx.BlockHeight())
+		k.Keeper.takeSubmissionSlot(ctx, auxTrack)
 	}
 	return resp, nil
 }
@@ -210,7 +217,15 @@ func (k msgServer) submitNativePoW(ctx sdk.Context, minerAddr sdk.AccAddress, na
 		return nil, sdkerrors.Wrapf(types.ErrDuplicateWork, "this exact mining header has already been accepted")
 	}
 
-	if err := k.Keeper.DistributeBlockReward(ctx, minerAddr); err != nil {
+	// From MergedMiningActivationHeight a native submission gives up the
+	// merged share of the reward while merged mining is active.
+	var err error
+	if ctx.BlockHeight() >= MergedMiningActivationHeight {
+		err = k.Keeper.DistributeReward(ctx, minerAddr, k.Keeper.NativeReward(ctx))
+	} else {
+		err = k.Keeper.DistributeBlockReward(ctx, minerAddr)
+	}
+	if err != nil {
 		return nil, sdkerrors.Wrapf(err, "failed to distribute block reward")
 	}
 	newDifficulty := k.Keeper.AdjustDifficulty(ctx)
@@ -226,14 +241,36 @@ func (k msgServer) submitNativePoW(ctx sdk.Context, minerAddr sdk.AccAddress, na
 }
 
 // submitAuxPoW handles a merged-mining submission. Per the locked
-// design (see auxpow-decision-addendum.md): earns the full mining
-// reward and retargets difficulty exactly like a native submission,
-// but deliberately does NOT call AddMiningWork -- AuxPoW work secures
+// design (see auxpow-decision-addendum.md): earns a mining reward and
+// retargets difficulty like a native submission (from
+// MergedMiningActivationHeight, its own share and its own difficulty;
+// see merged_mining.go), but deliberately does NOT call AddMiningWork -- AuxPoW work secures
 // the chain and earns rewards, but never counts toward Top-K validator
 // eligibility, bonding, tenure, or governance voting power. Only
 // native, dedicated work does.
 func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPow *AuxPowData) (*MsgSubmitPoWResponse, error) {
-	currentDifficulty := k.Keeper.GetDifficulty(ctx).Uint64()
+	// Below MergedMiningActivationHeight the signer is paid the full
+	// reward, aux_block_hash is unchecked, and AuxPoW shares the native
+	// difficulty, as it always did. From it, the proof must commit to a
+	// recent block and a reward address, and that address is paid whoever
+	// signs (change B); and AuxPoW runs on its own difficulty and earns
+	// its share of the reward (change C, merged_mining.go).
+	merged := ctx.BlockHeight() >= MergedMiningActivationHeight
+	rewardAddr := minerAddr
+	if merged {
+		addr, err := k.checkAuxPoWTemplate(ctx, auxPow)
+		if err != nil {
+			return nil, err
+		}
+		rewardAddr = addr
+	}
+
+	var currentDifficulty uint64
+	if merged {
+		currentDifficulty = k.Keeper.GetAuxDifficulty(ctx).Uint64()
+	} else {
+		currentDifficulty = k.Keeper.GetDifficulty(ctx).Uint64()
+	}
 	if err := CheckAuxPow(auxPow, currentDifficulty, ctx.BlockHeight()); err != nil {
 		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "AuxPoW verification failed: %s", err)
 	}
@@ -242,18 +279,53 @@ func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPo
 		return nil, sdkerrors.Wrapf(types.ErrDuplicateWork, "this exact AuxPoW submission has already been accepted")
 	}
 
-	if err := k.Keeper.DistributeBlockReward(ctx, minerAddr); err != nil {
-		return nil, sdkerrors.Wrapf(err, "failed to distribute block reward")
+	if merged {
+		if err := k.Keeper.DistributeReward(ctx, rewardAddr, k.Keeper.AuxReward(ctx)); err != nil {
+			return nil, sdkerrors.Wrapf(err, "failed to distribute block reward")
+		}
+		k.Keeper.SetAuxDifficulty(ctx, k.Keeper.AdjustAuxDifficulty(ctx))
+		k.Keeper.SetAuxLastBlockTime(ctx, ctx.BlockTime().Unix())
+	} else {
+		if err := k.Keeper.DistributeBlockReward(ctx, rewardAddr); err != nil {
+			return nil, sdkerrors.Wrapf(err, "failed to distribute block reward")
+		}
+		newDifficulty := k.Keeper.AdjustDifficulty(ctx)
+		k.Keeper.SetDifficulty(ctx, newDifficulty)
+		k.Keeper.SetLastBlockTime(ctx, ctx.BlockTime().Unix())
 	}
-	newDifficulty := k.Keeper.AdjustDifficulty(ctx)
-	k.Keeper.SetDifficulty(ctx, newDifficulty)
-	k.Keeper.SetLastBlockTime(ctx, ctx.BlockTime().Unix())
 
 	// Deliberately no AddMiningWork call here -- see function comment.
 
 	k.Keeper.MarkWorkAccepted(ctx, auxPow.AuxBlockHash)
 
 	return &MsgSubmitPoWResponse{}, nil
+}
+
+// checkAuxPoWTemplate checks that an AuxPoW submission commits to a
+// recent Aether block and its reward address (change B of
+// docs/MERGED-MINING-PLAN.md) and returns the address to pay. The same
+// recency window as native work applies, and a banned address can't be
+// paid by having someone else relay its proof.
+func (k msgServer) checkAuxPoWTemplate(ctx sdk.Context, auxPow *AuxPowData) (sdk.AccAddress, error) {
+	reward, err := sdk.AccAddressFromBech32(auxPow.RewardAddress)
+	if err != nil {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "invalid reward_address %q: %s", auxPow.RewardAddress, err)
+	}
+	if k.Keeper.IsBanned(ctx, reward) {
+		return nil, sdkerrors.Wrapf(types.ErrBannedMiner, "reward address %s is permanently banned", reward)
+	}
+	blockHash, ok := k.Keeper.GetRecentHash(ctx, auxPow.TemplateHeight)
+	if !ok {
+		return nil, sdkerrors.Wrapf(types.ErrUnknownAncestor, "no known block at template height %d", auxPow.TemplateHeight)
+	}
+	if window := k.Keeper.GetRecencyWindowK(ctx); ctx.BlockHeight()-auxPow.TemplateHeight > window {
+		return nil, sdkerrors.Wrapf(types.ErrStaleAncestor, "template height %d is more than %d blocks behind current height %d", auxPow.TemplateHeight, window, ctx.BlockHeight())
+	}
+	want := AuxPoWTemplateHash(ctx.ChainID(), auxPow.TemplateHeight, blockHash, reward)
+	if !bytes.Equal(auxPow.AuxBlockHash, want) {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "aux_block_hash is not the template for height %d and reward address %s", auxPow.TemplateHeight, reward)
+	}
+	return reward, nil
 }
 
 // UpdateParams is x/pow's authority-gated params-update handler --

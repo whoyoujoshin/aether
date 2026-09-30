@@ -448,7 +448,14 @@ func (k Keeper) AdjustDifficulty(ctx sdk.Context) math.Int {
 }
 
 func (k Keeper) DistributeBlockReward(ctx sdk.Context, miner sdk.AccAddress) error {
-	reward := k.GetBlockReward(ctx)
+	return k.DistributeReward(ctx, miner, k.GetBlockReward(ctx))
+}
+
+// DistributeReward mints reward and splits it exactly as a block reward:
+// the treasury cut, then the miner's part paid out or escrowed. From
+// MergedMiningActivationHeight a submission's reward may be a share of the
+// block reward (NativeReward, AuxReward).
+func (k Keeper) DistributeReward(ctx sdk.Context, miner sdk.AccAddress, reward math.Int) error {
 	if reward.IsZero() {
 		return nil
 	}

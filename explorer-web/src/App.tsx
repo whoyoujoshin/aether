@@ -13,6 +13,9 @@ import Block from "./pages/Block";
 import Services from "./pages/Services";
 import Agents from "./pages/Agents";
 import IBC from "./pages/IBC";
+import HelixOverview from "./pages/HelixOverview";
+import HelixBlocks from "./pages/HelixBlocks";
+import { ChainProvider, useChain } from "./chain";
 
 function NotFound() {
   return (
@@ -25,7 +28,28 @@ function NotFound() {
   );
 }
 
+/** The overview: both chains as a helix when there's an IBC chain to draw, else Aether's own. */
+function Overview() {
+  const { ready, ibcName } = useChain();
+  if (!ready) return <TopBar />;
+  return ibcName ? <HelixOverview /> : <Dashboard />;
+}
+
+function BlocksPage() {
+  const { ready, ibcName } = useChain();
+  if (!ready) return null;
+  return ibcName ? <HelixBlocks /> : <Blocks />;
+}
+
 export default function App() {
+  return (
+    <ChainProvider>
+      <Shell />
+    </ChainProvider>
+  );
+}
+
+function Shell() {
   // The overview draws its own top bar inside its hero glow.
   const home = useLocation().pathname === "/";
   // Which denoms have names (USDC over the explorer's one channel); redraw once known.
@@ -38,8 +62,8 @@ export default function App() {
     <div className="layout">
       {!home && <TopBar />}
       <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/blocks" element={<Blocks />} />
+        <Route path="/" element={<Overview />} />
+        <Route path="/blocks" element={<BlocksPage />} />
         <Route path="/blocks/:height" element={<Block />} />
         <Route path="/validators" element={<Validators />} />
         <Route path="/governance" element={<Governance />} />

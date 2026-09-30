@@ -187,6 +187,8 @@ go run ./cmd/explorer --grpc localhost:9090 --rpc http://localhost:26657 --port 
 
 Open `http://localhost:8081`.
 
+**The helix.** Add `--ibc-rpc <the RPC of the chain on the other end of Aether's transfer channel>`, and optionally `--ibc-name` to name it. The Overview and Blocks pages then draw both chains as the two strands of a helix. Aether's blocks run along one strand and the other chain's along the second. Each IBC packet between them is a rung, labelled in flight, received, acknowledged or timed out. A Both / Aether / other-chain switch sits in the top bar. `/api/helix` serves the data, read live from both chains' RPCs. Without `--ibc-rpc`, both pages stay as they are.
+
 To redeploy the live explorer from `main`, run `bash scripts/deploy-explorer.sh` as root on the server that hosts it. It builds while the old version keeps serving, keeps backups, restarts `aether-explorer` and rolls back if the new one doesn't answer.
 
 ## AI agent wallet (MCP)

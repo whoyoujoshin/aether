@@ -343,6 +343,69 @@ export interface AgentCard {
   warnings: string[];
 }
 
+export interface HelixBlock {
+  height: number;
+  hash: string;
+  time: string;
+  numTxs: number;
+  proposer: string; // Aether: the proposer's miner account; the IBC chain: its consensus address (hex)
+  packets: number; // IBC packet events in the block
+}
+
+export interface HelixStrand {
+  chainId: string;
+  name: string;
+  height: number;
+  blockTimeSecs: number; // 0 with fewer than two blocks
+  validators: number;
+  blocks: HelixBlock[]; // newest first
+}
+
+export interface PacketStep {
+  chain: "aether" | "ibc";
+  height: number;
+  time: string;
+  txHash?: string; // Aether steps only
+}
+
+export interface HelixPacket {
+  direction: "out" | "in"; // out: Aether to the IBC chain
+  sequence: number;
+  srcPort: string;
+  srcChannel: string;
+  dstPort: string;
+  dstChannel: string;
+  denom?: string;
+  amount?: string;
+  sender?: string;
+  receiver?: string;
+  sent?: PacketStep;
+  received?: PacketStep;
+  acked?: PacketStep;
+  timedOut?: PacketStep;
+  status: "in-flight" | "received" | "acked" | "timed-out";
+}
+
+export interface HelixBridge {
+  portId: string;
+  channelId: string;
+  counterpartyChannelId: string;
+  packetsSent: number;
+  inFlight: number;
+  escrowedUaeth: string;
+  avgRelaySecs: number; // 0 if no packet in the window has both ends
+}
+
+export interface Helix {
+  windowSecs: number;
+  now: string;
+  aether: HelixStrand;
+  ibc: HelixStrand | null; // null when the explorer has no --ibc-rpc
+  bridge: HelixBridge | null;
+  packets: HelixPacket[]; // newest first
+  errors?: Record<string, string>;
+}
+
 export const api = {
   stats: () => getJSON<Stats>("/api/stats"),
   validators: () => getJSON<ValidatorInfo[]>("/api/validators"),
@@ -364,4 +427,5 @@ export const api = {
   ibc: () => getJSON<IBCSummary>("/api/ibc"),
   agents: () => getJSON<AgentCard>("/api/agents"),
   assets: () => getJSON<{ assets: AssetInfo[] }>("/api/assets"),
+  helix: (seconds = 96, min = 0) => getJSON<Helix>(`/api/helix?seconds=${seconds}&min=${min}`),
 };

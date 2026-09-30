@@ -63,7 +63,7 @@ func TestOpenAPI_NoRouteRegisteredOutsideTheTable(t *testing.T) {
 
 // Each handler reads exactly the query parameters its route documents.
 func TestOpenAPI_ParametersMatchHandlers(t *testing.T) {
-	files := []string{"main.go", "detail.go", "grants.go", "ibc.go", "miner.go", "services.go", "agents.go"}
+	files := []string{"main.go", "detail.go", "grants.go", "ibc.go", "miner.go", "services.go", "agents.go", "helix.go"}
 	var src strings.Builder
 	for _, f := range files {
 		bz, err := os.ReadFile(f)

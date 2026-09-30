@@ -274,6 +274,10 @@ type auxPowJSONInput struct {
 	ChainBranch    merkleBranchJSON `json:"chain_branch"`
 	ChainNonce     uint32           `json:"chain_nonce"`
 	AuxBlockHash   string           `json:"aux_block_hash"`
+	// From MergedMiningActivationHeight: the recent height and reward
+	// address aux_block_hash commits to (see pow.AuxPoWTemplateHash).
+	TemplateHeight int64  `json:"template_height,omitempty"`
+	RewardAddress  string `json:"reward_address,omitempty"`
 }
 
 type merkleBranchJSON struct {
@@ -322,5 +326,7 @@ func (input auxPowJSONInput) toAuxPowData() (*pow.AuxPowData, error) {
 		ChainBranch:    chainBranch,
 		ChainNonce:     input.ChainNonce,
 		AuxBlockHash:   auxBlockHash,
+		TemplateHeight: input.TemplateHeight,
+		RewardAddress:  input.RewardAddress,
 	}, nil
 }

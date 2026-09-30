@@ -351,20 +351,36 @@ const (
 // cutover as x/escrow (docs/CUTOVER-161000.md).
 const ConsensusKeyGuardActivationHeight int64 = 161_000
 
-// AuxPoWByteOrderActivationHeight is the first height at which an AuxPoW
-// parent header's scrypt hash is compared against Aether's difficulty the
-// way Litecoin compares it: as a little-endian 256-bit number. Below it
-// the raw hash is read big-endian, Aether's own native convention, under
-// which real Litecoin or Dogecoin work clears Aether's target only by
-// chance: real merged mining could never work, and only proofs ground
-// under the same big-endian rule (cmd/auxpowtest) ever passed. Change A of
-// docs/MERGED-MINING-PLAN.md. Native submissions are unaffected.
+// MergedMiningActivationHeight is the first height at which AuxPoW
+// (merged-mining) submissions follow the rules real pool work needs,
+// changes A to D of docs/MERGED-MINING-PLAN.md. Native submissions keep
+// their own rules, apart from giving up a share of the reward while merged
+// mining is active (C).
+//
+//   - A: the parent header's scrypt hash is compared against Aether's
+//     difficulty the way Litecoin compares it, as a little-endian 256-bit
+//     number. Below this height the raw hash is read big-endian, under
+//     which real Litecoin or Dogecoin work clears Aether's target only by
+//     chance, so only proofs ground under that same rule (cmd/auxpowtest)
+//     ever passed.
+//   - B: aux_block_hash must be AuxPoWTemplateHash of a recent Aether block
+//     and the submission's reward_address, and the reward goes to that
+//     address, whoever submits. Below this height aux_block_hash is
+//     anything the submitter likes and the reward goes to the signer, so a
+//     proof seen in the mempool could be resubmitted by anyone.
+//   - C: native and merged work run on separate tracks: separate
+//     difficulties, one slot each per block, and one reward per target
+//     interval between them, 75% native and 25% merged while both are
+//     mining (merged_mining.go). Below this height they share one
+//     difficulty and one slot, so pool hash power would starve native
+//     miners, the only ones who pick validators.
+//   - D: a parent block carrying Aether's own AuxPoW chain ID is refused.
 //
 // It changes which submissions are accepted, so every node needs a
 // binary carrying it before this height, and a fresh replay must see the
 // old rule below it. PLACEHOLDER: replace with a height agreed with the
 // operators and confirmed against the live tip before the cutover.
-const AuxPoWByteOrderActivationHeight int64 = 1_000_000
+const MergedMiningActivationHeight int64 = 1_000_000
 
 // RandomnessBeaconActivationHeight gates Phase 3 of
 // aether-randomness-beacon-design.md (see beacon.go): the
