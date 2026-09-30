@@ -6,8 +6,9 @@ rule that every signature is ML-DSA-44, and it lets Aether connect to
 chains like Noble and Osmosis without a second chain or a relayer fork.
 
 **Status:** built, tested in-process, and proven on a two-chain devnet
-(see [Proof](#proof)). Not active on the testnet: it needs a coordinated
-activation height (see [Activation](#activation)).
+(see [Proof](#proof)). Active on the testnet since block **161,000**
+(see [Activation](#activation)). It relays nothing until a node runs the
+worker and a channel to another chain exists.
 
 ## Why it's safe
 
@@ -155,8 +156,8 @@ To reproduce:
 
 ## Activation
 
-`HelicaseActivationHeight` in `app/helicase.go` is **161,000**, the same
-cutover as `x/escrow` (see [CUTOVER-161000.md](CUTOVER-161000.md)). It adds no
+`HelicaseActivationHeight` in `app/helicase.go` was **161,000**, the same
+cutover as `x/escrow`, activated 2026-09-30 (see [CUTOVER-161000.md](CUTOVER-161000.md)). It adds no
 store, so nothing halts at it: from that height, nodes accept relay
 transactions. That still changes consensus.
 

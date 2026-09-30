@@ -8,9 +8,9 @@ on delivery, on an arbiter's word, or at a deadline both agreed to.
 This is not the validator reward escrow in `x/pow`, which holds back part of a
 new validator's rewards; that one is unrelated and unchanged.
 
-**Status:** built and tested (`x/escrow`, `app/escrow.go`), not yet active on
-the testnet. It needs a coordinated activation height, like
-`x/accountauth` at 122,000 (see [Activation](#activation)).
+**Status:** live on the testnet since block **161,000** (see
+[Activation](#activation)). The escrow module account is
+`aether14pphss726thpwws3yc458hggufynm9x7hnt4kw`.
 
 ## How it works
 
@@ -130,7 +130,8 @@ Adding a store to a running chain needs a coordinated restart, the same way
 authz/feegrant (109,000), IBC and `x/accountauth` (122,000) activated:
 
 1. Every node runs a binary with `EscrowActivationHeight` set to the agreed
-   height: **161,000** (see [CUTOVER-161000.md](CUTOVER-161000.md)).
+   height. It was **161,000**, activated 2026-09-30 (see
+   [CUTOVER-161000.md](CUTOVER-161000.md)).
 2. At that height a node halts with "x/escrow activates at height N: restart
    this node". Restarting adds the store, and the chain continues from that
    block.
@@ -138,5 +139,5 @@ authz/feegrant (109,000), IBC and `x/accountauth` (122,000) activated:
    coins to the escrow address beforehand, leaving an ordinary account there,
    it's converted into the module account, keeping its account number and coins.
 
-The fix in `ConsensusKeyGuardActivationHeight` (see `x/pow/types.go`) can ride
-the same cutover.
+The fix in `ConsensusKeyGuardActivationHeight` (see `x/pow/types.go`) went
+live in the same cutover.

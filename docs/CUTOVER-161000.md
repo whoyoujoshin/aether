@@ -1,5 +1,8 @@
 # Cutover at block 161,000
 
+**Done, 2026-09-30.** See [What happened](#what-happened) for how it went
+and what to do differently next time.
+
 What changes at 161,000:
 
 - **`x/escrow` goes live**: payments held until the payee is paid, the payer
@@ -106,3 +109,46 @@ Neither needs any action at the cutover.
 - **Not enough time:** if the swap can't reach at least three validators
   well before 161,000, don't cut over with a partial fleet. Tell Claude,
   and the heights move to a later block in a new PR.
+
+## What happened
+
+The chain passed 161,000 and runs on the new binary. After the cutover,
+sync3 and sync4 had the same app hash at 161,006 (seed matched once it
+caught up), block 161,003 was signed by all three active validators, and the escrow module
+account exists (`aether14pphss726thpwws3yc458hggufynm9x7hnt4kw`, account 40).
+
+- **Seed missed the swap** (its build was still running at 161,000). It
+  ran 161,000 and a few blocks after on the old binary, so the new binary
+  refused its data ("escrow ... expected 161005 got 0").
+- **The chain stalled at 161,006** while seed was down. peer-1 (behind a
+  home router) reached sync3 and sync4 only through seed, and without it
+  the two left couldn't reach two-thirds. It moved again once seed came back.
+- **Seed was recovered** by restoring its pre-161,000 data, keeping its
+  current `priv_validator_state.json`, and starting the new binary: it
+  caught up, halted once at 161,000 as planned, was restarted, and
+  replayed forward.
+- **Seed isn't a validator.** It has had voting power 0 since about
+  122,400 (its `priv_validator_state.json` stopped there). The active set
+  is peer-1, sync3 and sync4, 1,000,000 each.
+
+## Lessons for the next cutover
+
+- **Three equal validators have no spare.** More than two-thirds of the
+  power must sign, and two of three is exactly two-thirds, so all three
+  must be up for every block. Don't restart a validator unless the other
+  two are healthy, and get a fourth into the active set.
+- **No validator's only network path may run through one node.** Give
+  every validator a direct peer to at least one other validator, and make
+  sure it can actually connect (a node behind a home router dials out; the
+  others need an open inbound P2P port). Check `net_info` before the swap.
+- **`aetherd rollback` undoes exactly one height.** Running it again does
+  nothing more. A node that ran more than one block on the old binary
+  needs its pre-cutover backup instead.
+- **Restoring a backup: keep the current `priv_validator_state.json`.**
+  Copy it aside first and put it back over the backup's copy, so the node
+  never signs a height it already signed.
+- **Swap every node, the seed included, well before the height**, and
+  check the tip with two readings a minute apart to know the block rate.
+  At ~6 s blocks, 500 blocks is under an hour.
+- **The halt check message and restart worked as designed** on every node
+  that had swapped in time.

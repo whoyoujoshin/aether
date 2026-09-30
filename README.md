@@ -50,9 +50,9 @@ Let an agent spend from your account with a chain-enforced cap instead of holdin
 | **Public testnet** | **Live** — see below |
 | Native IBC (core, ICS-20 transfer, ICS-27 interchain accounts) | Built, tested, live-verified — activated at block 122,000; full client/connection/channel/transfer round trip relayed with Aether's own ML-DSA relayer, locally and on the live testnet |
 | Account abstraction (session keys, guardian thresholds) | Built, tested, live-verified — activated at block 122,000 |
-| Escrow between accounts (`x/escrow`: release, refund, arbiter, deadline) | Built, tested on a devnet — not yet active; needs a coordinated activation height |
-| Ligase: someone on another chain funds, releases and withdraws Aether escrows with IBC transfers carrying an instruction; such instructions can never move AETH | Built, tested, proven on a two-chain devnet — not yet active; needs x/escrow and a coordinated activation height ([docs/LIGASE.md](docs/LIGASE.md)) |
-| Helicase: the block proposer relays IBC packets, acknowledgements and timeouts onto Aether, unsigned and proof-checked, so no relayer signs on Aether; `cmd/outbound` relays the other way with the other chain's own keys | Built, tested, both directions proven unattended on a two-chain devnet — not yet active; needs a coordinated activation height ([docs/HELICASE.md](docs/HELICASE.md)) |
+| Escrow between accounts (`x/escrow`: release, refund, arbiter, deadline) | Live since block 161,000 ([docs/ESCROW.md](docs/ESCROW.md)) |
+| Ligase: someone on another chain funds, releases and withdraws Aether escrows with IBC transfers carrying an instruction; such instructions can never move AETH | Live since block 161,000; proven on a two-chain devnet ([docs/LIGASE.md](docs/LIGASE.md)) |
+| Helicase: the block proposer relays IBC packets, acknowledgements and timeouts onto Aether, unsigned and proof-checked, so no relayer signs on Aether; `cmd/outbound` relays the other way with the other chain's own keys | Live since block 161,000; both directions proven unattended on a two-chain devnet ([docs/HELICASE.md](docs/HELICASE.md)) |
 | Independent professional security audit | Not yet performed |
 
 See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and [Roadmap](../../wiki/Roadmap).
