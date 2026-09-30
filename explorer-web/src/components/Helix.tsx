@@ -146,11 +146,19 @@ export function HelixHero({ helix, now, view, width: W, height: H, windowSecs }:
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="helix-svg" role="img" aria-label={hasIbc ? `Aether and ${ibcName} blocks over the last ${windowSecs} seconds` : `Aether blocks over the last ${windowSecs} seconds`}>
-      {hasIbc && <path d={rungs} stroke="#2a2521" strokeWidth={1} fill="none" style={{ ...fade, opacity: view === "both" ? 1 : 0.45 }} />}
+      {/* With no IBC chain connected, its strand is a faint, empty ghost: the place a second chain will go. */}
+      <path d={rungs} stroke="#2a2521" strokeWidth={1} fill="none" style={{ ...fade, opacity: !hasIbc ? 0.4 : view === "both" ? 1 : 0.45 }} />
       <path d={aB} stroke={AETHER_COLOR} strokeOpacity={0.3} strokeWidth={2} fill="none" style={{ ...fade, opacity: dA }} />
-      {hasIbc && <path d={bB} stroke={IBC_COLOR} strokeOpacity={0.25} strokeWidth={2} fill="none" style={{ ...fade, opacity: dB }} />}
+      <path d={bB} stroke={IBC_COLOR} strokeOpacity={0.25} strokeWidth={2} fill="none" style={{ ...fade, opacity: hasIbc ? dB : 0.5 }} />
       <path d={aF} stroke={AETHER_COLOR} strokeWidth={3} fill="none" style={{ ...fade, opacity: dA, filter: "drop-shadow(0 0 5px rgba(192,80,58,.55))" }} />
-      {hasIbc && <path d={bF} stroke={IBC_COLOR} strokeWidth={3} fill="none" style={{ ...fade, opacity: dB }} />}
+      <path
+        d={bF}
+        stroke={IBC_COLOR}
+        strokeWidth={hasIbc ? 3 : 1.5}
+        strokeDasharray={hasIbc ? undefined : "4 6"}
+        fill="none"
+        style={{ ...fade, opacity: hasIbc ? dB : 0.22 }}
+      />
       <path d={aF} className="helix-flow" stroke="#f3efe6" strokeOpacity={0.4} strokeWidth={1} strokeDasharray="2 10" fill="none" style={{ opacity: dA }} />
       {hasIbc && <path d={bF} className="helix-flow" stroke="#0a0908" strokeOpacity={0.5} strokeWidth={1} strokeDasharray="2 10" fill="none" style={{ opacity: dB }} />}
       <line x1={nowX} x2={nowX} y1={6} y2={H - 18} stroke="#4a443d" strokeDasharray="3 4" />

@@ -5,6 +5,7 @@ import { useApi } from "../hooks";
 import { TopBar, useSearch } from "../components/TopBar";
 import { TxHash } from "../components/Hash";
 import { TxStatusText } from "../components/StatusBadge";
+import { AetherHelixCard } from "../components/AetherHelixCard";
 import { ErrorBanner, Legend, StackBar, TypeTile } from "../components/ui";
 import { aeth, compact, int, timeAgo, typeColor, uaethOf, duration } from "../format";
 
@@ -107,6 +108,7 @@ export default function Dashboard() {
         )}
 
         <div className="overview-strip">
+          <AetherHelixCard />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14, gap: 12 }}>
             <Link to="/blocks" className="card-title" style={{ color: "var(--bone)" }}>
               Latest blocks
