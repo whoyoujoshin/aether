@@ -362,12 +362,27 @@ func (k msgServer) UpdateParams(goCtx context.Context, msg *MsgUpdateParams) (*M
 	if msg.BeaconRoundsPerBlock < 0 {
 		return nil, sdkerrors.Wrapf(types.ErrInvalidParamValue, "beacon_rounds_per_block must not be negative, got %d", msg.BeaconRoundsPerBlock)
 	}
+	// 0 keeps the merged share as it is (see the field's proto comment).
+	// Setting it is refused below MergedMiningActivationHeight, where it
+	// isn't used: that keeps every block below the height reading and
+	// writing exactly what it always did.
+	if share := msg.MergedMiningRewardShareBps; share != 0 {
+		if ctx.BlockHeight() < MergedMiningActivationHeight {
+			return nil, sdkerrors.Wrapf(types.ErrInvalidParamValue, "merged_mining_reward_share_bps can be set from height %d, when merged mining's rules start", MergedMiningActivationHeight)
+		}
+		if share > 10_000 {
+			return nil, sdkerrors.Wrapf(types.ErrInvalidParamValue, "merged_mining_reward_share_bps is basis points, at most 10000, got %d", share)
+		}
+	}
 
 	k.Keeper.SetEpochLength(ctx, msg.EpochLength)
 	k.Keeper.SetTopKSize(ctx, msg.TopKSize)
 	k.Keeper.SetBondCooldown(ctx, msg.BondCooldown)
 	k.Keeper.SetRecencyWindowK(ctx, msg.RecencyWindowK)
 	k.Keeper.SetBeaconRoundsPerBlock(ctx, msg.BeaconRoundsPerBlock)
+	if msg.MergedMiningRewardShareBps != 0 {
+		k.Keeper.SetMergedMiningRewardShareBps(ctx, int64(msg.MergedMiningRewardShareBps))
+	}
 
 	return &MsgUpdateParamsResponse{}, nil
 }

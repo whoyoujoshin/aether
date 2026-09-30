@@ -102,6 +102,9 @@ func (q queryServer) Params(goCtx context.Context, req *QueryParamsRequest) (*Qu
 		BondCooldown:         q.Keeper.GetBondCooldown(ctx),
 		RecencyWindowK:       q.Keeper.GetRecencyWindowK(ctx),
 		BeaconRoundsPerBlock: q.Keeper.GetBeaconRoundsPerBlock(ctx),
+		// A query, not consensus: reading the stored share (or the
+		// default) at any height is fine.
+		MergedMiningRewardShareBps: uint32(q.Keeper.GetMergedMiningRewardShareBps(ctx)),
 	}, nil
 }
 

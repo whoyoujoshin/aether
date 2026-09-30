@@ -18,7 +18,8 @@ import (
 //   - Slots. Each block accepts one native and one AuxPoW submission.
 //   - Reward. The emission schedule is one block reward per TargetBlockTime,
 //     and it stays that way. While both tracks are mining, a native
-//     submission earns the reward less MergedMiningRewardShareBps and an
+//     submission earns the reward less the merged share (a governance
+//     parameter, MergedMiningRewardShareBps by default) and an
 //     AuxPoW submission earns that share, so a native and a merged proof
 //     together earn exactly one reward. A track mining alone earns the full
 //     reward, so native miners lose nothing until pools actually show up.
@@ -27,9 +28,10 @@ import (
 //
 // Below the height none of these keys are read or written.
 
-// MergedMiningRewardShareBps is the share of the block reward, in basis
-// points, an AuxPoW submission earns while native mining is active (and
-// that a native submission gives up while merged mining is active).
+// MergedMiningRewardShareBps is the default share of the block reward, in
+// basis points, an AuxPoW submission earns while native mining is active
+// (and that a native submission gives up while merged mining is active):
+// what applies until governance sets another with MsgUpdateParams.
 const MergedMiningRewardShareBps int64 = 2_500
 
 // mergedMiningActiveWindow is how many TargetBlockTime intervals after its
@@ -49,6 +51,7 @@ var (
 	KeyAuxDifficulty                   = []byte("aux_difficulty")
 	KeyAuxLastBlockTime                = []byte("aux_last_block_time")
 	KeyLastAcceptedAuxSubmissionHeight = []byte("last_accepted_aux_submission_height")
+	KeyMergedMiningRewardShareBps      = []byte("merged_mining_reward_share_bps")
 )
 
 func (k Keeper) setInt64(ctx sdk.Context, key []byte, v int64) {
@@ -142,11 +145,24 @@ func (k Keeper) trackMining(ctx sdk.Context, lastTime int64, ok bool) bool {
 	return ctx.BlockTime().Unix()-lastTime <= mergedMiningActiveWindow*k.GetTargetBlockTime(ctx)
 }
 
-// mergedShare is the AuxPoW share of reward: MergedMiningRewardShareBps of
-// it, rounded down. The native share is the rest, so the two always add up
-// to exactly one reward.
-func mergedShare(reward math.Int) math.Int {
-	return reward.MulRaw(MergedMiningRewardShareBps).QuoRaw(10_000)
+// GetMergedMiningRewardShareBps is the merged share in effect, in basis
+// points: what governance last set, else MergedMiningRewardShareBps.
+func (k Keeper) GetMergedMiningRewardShareBps(ctx sdk.Context) int64 {
+	if v, ok := k.getInt64(ctx, KeyMergedMiningRewardShareBps); ok {
+		return v
+	}
+	return MergedMiningRewardShareBps
+}
+
+func (k Keeper) SetMergedMiningRewardShareBps(ctx sdk.Context, bps int64) {
+	k.setInt64(ctx, KeyMergedMiningRewardShareBps, bps)
+}
+
+// mergedShare is the AuxPoW share of reward: the merged share in effect,
+// rounded down. The native share is the rest, so the two always add up to
+// exactly one reward.
+func (k Keeper) mergedShare(ctx sdk.Context, reward math.Int) math.Int {
+	return reward.MulRaw(k.GetMergedMiningRewardShareBps(ctx)).QuoRaw(10_000)
 }
 
 // NativeReward is what a native submission earns from
@@ -155,7 +171,7 @@ func mergedShare(reward math.Int) math.Int {
 func (k Keeper) NativeReward(ctx sdk.Context) math.Int {
 	reward := k.GetBlockReward(ctx)
 	if last, ok := k.GetAuxLastBlockTime(ctx); k.trackMining(ctx, last, ok) {
-		return reward.Sub(mergedShare(reward))
+		return reward.Sub(k.mergedShare(ctx, reward))
 	}
 	return reward
 }
@@ -166,7 +182,7 @@ func (k Keeper) NativeReward(ctx sdk.Context) math.Int {
 func (k Keeper) AuxReward(ctx sdk.Context) math.Int {
 	reward := k.GetBlockReward(ctx)
 	if last, ok := k.GetLastBlockTime(ctx); k.trackMining(ctx, last, ok) {
-		return mergedShare(reward)
+		return k.mergedShare(ctx, reward)
 	}
 	return reward
 }
