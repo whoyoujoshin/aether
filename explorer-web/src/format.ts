@@ -36,11 +36,60 @@ export function uaethOf(coins: string): string {
   return "";
 }
 
-/** A coin string as AETH when it's uaeth, else as given. */
+/** A token the explorer names; anything else is shown by its denom. */
+export interface AssetInfo {
+  symbol: string;
+  denom: string;
+  baseUnit: string;
+  decimals: number;
+  origin: string;
+}
+
+const AETH_ASSET: AssetInfo = { symbol: "AETH", denom: "uaeth", baseUnit: "uaeth", decimals: 6, origin: "Aether" };
+let knownAssets: AssetInfo[] = [AETH_ASSET];
+
+/** Sets the assets /api/assets names (AETH, and USDC over one channel). */
+export function setAssets(list: AssetInfo[] | undefined) {
+  if (list && list.length) knownAssets = list;
+}
+
+/** The asset with this denom, if the explorer knows it. */
+export function assetOf(denom: string): AssetInfo | undefined {
+  return knownAssets.find((a) => a.denom === denom);
+}
+
+/** "USDC (Noble)" for Noble USDC, "AETH" for AETH. */
+export function assetLabel(a: AssetInfo): string {
+  return a.denom === "uaeth" ? a.symbol : `${a.symbol} (${a.origin.split(" ")[0]})`;
+}
+
+/** "ibc/6490A7…" for a long IBC denom. */
+export function shortDenom(denom: string): string {
+  return denom.startsWith("ibc/") ? denom.slice(0, 10) + "…" : denom;
+}
+
+/** Base units (a decimal integer string) as a decimal amount with `decimals` places at most. */
+export function decimalOf(amount: string, decimals: number): string {
+  if (decimals === 6) return aethNumber(amount);
+  const neg = amount.startsWith("-");
+  const s = amount.replace(/^-/, "").replace(/^0+(?=\d)/, "").padStart(decimals + 1, "0");
+  const whole = decimals ? s.slice(0, -decimals) : s;
+  const frac = decimals ? s.slice(-decimals).replace(/0+$/, "") : "";
+  return `${neg ? "−" : ""}${BigInt(whole).toLocaleString("en-US")}${frac ? "." + frac : ""}`;
+}
+
+/** An amount of denom: "12.5 USDC" for a known asset, "7 ibc/0123…" for anything else (never as AETH). */
+export function amountIn(amount: string, denom: string): string {
+  const a = assetOf(denom);
+  return a ? `${decimalOf(amount, a.decimals)} ${a.symbol}` : `${int(amount)} ${shortDenom(denom)}`;
+}
+
+/** A coin string ("12500000uaeth", "5uaeth,3ibc/…") with each coin in its own asset. */
 export function coins(coinStr: string): string {
   if (!coinStr) return "—";
-  const u = uaethOf(coinStr);
-  return u ? aeth(u) : coinStr;
+  const parts = coinStr.split(",").map((c) => /^(\d+)(.+)$/.exec(c.trim()));
+  if (parts.some((m) => !m)) return coinStr;
+  return parts.map((m) => amountIn(m![1], m![2])).join(" + ");
 }
 
 /** 28622232 as "28.62M". */

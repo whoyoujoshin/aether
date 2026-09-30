@@ -44,10 +44,13 @@ type serviceDTO struct {
 // pay itself from other accounts for free, so it's a hint, not proof;
 // agents weigh ratings by accounts they trust.
 type activityDTO struct {
-	WindowBlocks int64   `json:"windowBlocks"`
-	Payments     int     `json:"payments"`
-	Payers       int     `json:"payers"`
-	VolumeAeth   string  `json:"volumeAeth"`
+	WindowBlocks int64 `json:"windowBlocks"`
+	Payments     int   `json:"payments"`
+	Payers       int   `json:"payers"`
+	// Volume is what was paid, in the service's asset (as a decimal of
+	// its symbol); VolumeAeth is the same, set only for an AETH service.
+	Volume       string  `json:"volume"`
+	VolumeAeth   string  `json:"volumeAeth,omitempty"`
 	Ratings      int     `json:"ratings"`
 	AverageScore float64 `json:"averageScore,omitempty"`
 }
@@ -103,7 +106,13 @@ func handleServices(w http.ResponseWriter, r *http.Request) {
 		if r := l.Reputation; r != nil {
 			sum := directory.Summarize(r.Ratings, nil)
 			s.Activity = &activityDTO{WindowBlocks: directory.DefaultWindow, Payments: r.Stats.Payments, Payers: r.Stats.Payers,
-				VolumeAeth: wallet.FormatAeth(r.Stats.Volume), Ratings: sum.Count, AverageScore: sum.Average}
+				Volume: r.Stats.Volume.String(), Ratings: sum.Count, AverageScore: sum.Average}
+			if a, ok := assets.ByDenom(s.Asset); ok {
+				s.Activity.Volume = a.Decimal(r.Stats.Volume)
+			}
+			if s.Asset == wallet.BaseDenom {
+				s.Activity.VolumeAeth = wallet.FormatAeth(r.Stats.Volume)
+			}
 		}
 		out = append(out, s)
 	}

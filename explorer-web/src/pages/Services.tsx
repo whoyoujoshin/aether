@@ -2,6 +2,17 @@ import { api, ServiceListing } from "../api";
 import { useApi } from "../hooks";
 import { AddressLink, BlockLink, CopyButton, TxHash } from "../components/Hash";
 import { ErrorBanner } from "../components/ui";
+import { amountIn, assetOf, int, shortDenom } from "../format";
+
+/** What a service was paid, in its own asset (the backend sends a decimal for a known asset, base units otherwise). */
+function volumeText(s: ServiceListing): string {
+  const a = s.activity;
+  if (!a) return "";
+  if (a.volumeAeth) return `${a.volumeAeth} AETH`;
+  const denom = s.asset || "uaeth";
+  const known = assetOf(denom);
+  return known ? `${a.volume ?? "0"} ${known.symbol}` : `${int(a.volume ?? "0")} ${shortDenom(denom)}`;
+}
 
 const schemeLabel: Record<string, string> = {
   "aether-memo": "Pay per request",
@@ -38,7 +49,9 @@ function ServiceCard({ s }: { s: ServiceListing }) {
           )}
         </div>
         <div className="mono nowrap" style={{ marginLeft: "auto", textAlign: "right" }}>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>{s.priceAeth} AETH</div>
+          <div style={{ fontSize: 15, fontWeight: 600 }} title={assetOf(s.asset || "uaeth") ? undefined : `${s.asset}: a token this explorer doesn't name, whatever the service calls it`}>
+            {amountIn(s.price, s.asset || "uaeth")}
+          </div>
           <div className="muted" style={{ fontSize: 11 }}>
             per request
           </div>
@@ -64,7 +77,7 @@ function ServiceCard({ s }: { s: ServiceListing }) {
         ))}
         {s.minDeposit && (
           <span className="tag" style={{ color: "var(--muted)", background: "var(--cell)" }}>
-            min deposit {s.minDeposit} uaeth
+            min deposit {amountIn(s.minDeposit, s.asset || "uaeth")}
           </span>
         )}
       </div>
@@ -80,7 +93,7 @@ function ServiceCard({ s }: { s: ServiceListing }) {
               payers <span style={{ color: "var(--bone)" }}>{a.payers}</span>
             </span>
             <span>
-              paid <span style={{ color: "var(--bone)" }}>{a.payments}×</span> · <span style={{ color: "var(--bone)" }}>{a.volumeAeth} AETH</span>
+              paid <span style={{ color: "var(--bone)" }}>{a.payments}×</span> · <span style={{ color: "var(--bone)" }}>{volumeText(s)}</span>
             </span>
             <span>{a.ratings > 0 ? <>★ <span style={{ color: "var(--bone)" }}>{a.averageScore?.toFixed(1)}</span> from {a.ratings}</> : "no ratings yet"}</span>
           </>

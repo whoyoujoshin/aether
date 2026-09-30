@@ -175,5 +175,29 @@ func handleBalance(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, nodeError(err))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"address": address, "balance": balance.AmountOf("uaeth").String()})
+	writeJSON(w, http.StatusOK, balanceView(address, balance))
+}
+
+// assetBalance is one known asset's balance, in its base units.
+type assetBalance struct {
+	wallet.Asset
+	Amount string `json:"amount"`
+}
+
+// balanceView is an address's balance: balance in uaeth (as it always
+// was), each asset this wallet knows (AETH first, zero included), and
+// any other token by its bare denom. A token that only looks like USDC
+// (it arrived some other way) is listed there, never as USDC.
+func balanceView(address string, coins sdk.Coins) map[string]any {
+	var known []assetBalance
+	for _, a := range assets.List() {
+		known = append(known, assetBalance{Asset: a, Amount: coins.AmountOf(a.Denom).String()})
+	}
+	others := sdk.Coins{}
+	for _, c := range coins {
+		if _, ok := assets.ByDenom(c.Denom); !ok {
+			others = append(others, c)
+		}
+	}
+	return map[string]any{"address": address, "balance": coins.AmountOf(wallet.BaseDenom).String(), "assets": known, "others": others}
 }

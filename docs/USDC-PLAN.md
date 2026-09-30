@@ -178,14 +178,19 @@ explorer shows the channel.
 > deposit or by pull allowance, and `withdraw_prepaid` takes a USDC
 > balance back. `find_services` shows each service's asset. The
 > TypeScript and Python clients send, receive and buy in USDC the same
-> way (`usdcChannel` / `usdc_channel`).
+> way (`usdcChannel` / `usdc_channel`). The desktop wallet shows USDC as
+> "USDC (Noble)", with the denom on hover, and sends it. The explorer
+> labels it on addresses, transactions and services. Both
+> take `--usdc-channel` (the wallet also reads `AETHER_USDC_CHANNEL`),
+> and both show any other token by its bare denom, never as USDC,
+> whatever it calls itself.
 >
 > Still to do:
 > - the clients' seller kits charging USDC (`cmd/paywall` does);
-> - the desktop wallet and explorer;
-> - `--usdc-channel` in the Claude Desktop bundle once the Noble channel
->   exists. Its settings can't be blank, so it waits for a real channel
->   number.
+> - setting `--usdc-channel` for the desktop wallet, the public explorer
+>   and the Claude Desktop bundle once the Noble channel exists (the
+>   bundle's settings can't be blank, so it waits for a real channel
+>   number).
 
 The chain already moves any coin. The tools around it assume AETH: about 60
 references in `agentmcp`, 40 in the paywall, and 180 across the TypeScript and

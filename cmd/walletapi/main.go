@@ -21,15 +21,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	"github.com/whoyoujoshin/aether/wallet"
-	"github.com/whoyoujoshin/aether/app"
 )
 
 func init() {
@@ -43,6 +44,9 @@ var (
 	rpcEndpoint    string
 	chainID        string
 	port           string
+	// assets are the tokens this wallet names: AETH, and USDC once
+	// --usdc-channel is set.
+	assets, _ = wallet.NewAssets("")
 )
 
 func defaultHomeDir() string {
@@ -165,7 +169,30 @@ func handleAccounts(w http.ResponseWriter, r *http.Request) {
 type sendRequest struct {
 	From   string `json:"from"`
 	To     string `json:"to"`
-	Amount string `json:"amount"` // uaeth, as a plain integer string
+	Amount string `json:"amount"` // base units of denom, as a plain integer string
+	// Denom is what to send: "" or "uaeth" for AETH, or the denom of
+	// another asset this wallet knows (USDC). Anything else is refused,
+	// so a lookalike token is never sent by mistake.
+	Denom string `json:"denom,omitempty"`
+}
+
+// sendDenom is the denom a send request names, if this wallet knows it.
+func sendDenom(d string) (string, error) {
+	if d == "" {
+		return wallet.BaseDenom, nil
+	}
+	if _, ok := assets.ByDenom(d); !ok {
+		return "", fmt.Errorf("unknown asset %q: this wallet sends %s", d, assetNames())
+	}
+	return d, nil
+}
+
+func assetNames() string {
+	var names []string
+	for _, a := range assets.List() {
+		names = append(names, a.Symbol)
+	}
+	return strings.Join(names, " and ")
 }
 
 // parseUaeth reads a positive whole number of uaeth, strictly in base
@@ -197,12 +224,17 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	denom, err := sendDenom(req.Denom)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
 	amountInt, err := parseUaeth(req.Amount)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	amount := sdk.NewCoins(sdk.NewCoin("uaeth", amountInt))
+	amount := sdk.NewCoins(sdk.NewCoin(denom, amountInt))
 	// BuildAndSignSendTx panics on a malformed address.
 	if _, err := sdk.AccAddressFromBech32(req.To); err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid recipient address %q: %w", req.To, err))
@@ -287,7 +319,12 @@ func main() {
 	flag.StringVar(&chainID, "chain-id", "aether-testnet-1", "chain ID")
 	flag.StringVar(&port, "port", "8090", "local HTTP port to listen on")
 	flag.StringVar(&legacyKeyringDir, "legacy-keyring-dir", "", "another test keyring (e.g. the CLI's ~/.aether) whose keys can be brought over one at a time; empty: none")
+	usdcChannel := flag.String("usdc-channel", os.Getenv("AETHER_USDC_CHANNEL"), "Aether's end of its channel to Noble (e.g. channel-3): shows and sends Noble USDC over exactly that channel; empty: AETH only")
 	flag.Parse()
+	var err error
+	if assets, err = wallet.NewAssets(*usdcChannel); err != nil {
+		log.Fatal(err)
+	}
 
 	// The desktop app passes a fresh token in the environment (not the
 	// command line, which other local users can read).

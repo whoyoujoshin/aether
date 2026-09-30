@@ -89,3 +89,37 @@ func TestMergePermissions(t *testing.T) {
 	require.NotNil(t, out[1].Send)
 	require.NotNil(t, out[1].Fees)
 }
+
+func TestBalanceAndSendKnowOnlyTheirAssets(t *testing.T) {
+	t.Cleanup(func() { assets, _ = wallet.NewAssets("") })
+	usdc, err := wallet.USDC("channel-3")
+	require.NoError(t, err)
+	lookalike, err := wallet.USDC("channel-9") // USDC that came another way
+	require.NoError(t, err)
+	coins := sdk.NewCoins(sdk.NewInt64Coin("uaeth", 7), sdk.NewInt64Coin(usdc.Denom, 5_000_000), sdk.NewInt64Coin(lookalike.Denom, 1))
+
+	// AETH only: USDC can't be sent, and shows as an unlabeled token.
+	_, err = sendDenom(usdc.Denom)
+	require.ErrorContains(t, err, "unknown asset")
+	v := balanceView("addr", coins)
+	require.Equal(t, "7", v["balance"])
+	require.Len(t, v["assets"], 1)
+	require.Len(t, v["others"], 2)
+
+	assets, err = wallet.NewAssets("channel-3")
+	require.NoError(t, err)
+	d, err := sendDenom(usdc.Denom)
+	require.NoError(t, err)
+	require.Equal(t, usdc.Denom, d)
+	d, err = sendDenom("")
+	require.NoError(t, err)
+	require.Equal(t, "uaeth", d, "no denom is AETH, as before")
+	_, err = sendDenom(lookalike.Denom)
+	require.Error(t, err, "a lookalike is never sent as USDC")
+
+	v = balanceView("addr", coins)
+	known := v["assets"].([]assetBalance)
+	require.Equal(t, "USDC", known[1].Symbol)
+	require.Equal(t, "5000000", known[1].Amount)
+	require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin(lookalike.Denom, 1)), v["others"])
+}
