@@ -12,8 +12,9 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
     `cmd/auxpowtest`, which grinds a made-up parent header.
 - **Three problems in the chain's rules would stop a real pool** even
   with a bridge. They are listed below.
-- **Change A (byte order) is built.** It's gated on a placeholder
-  height.
+- **Changes A (byte order), B (template binding) and D (parent chain
+  ID) are built.** They share one placeholder activation height,
+  `MergedMiningActivationHeight`. Change C remains.
 
 ## What the code shows
 
@@ -49,7 +50,7 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
 ## Chain changes (one height-gated cutover)
 
 **A. Byte order: built.**
-- From `AuxPoWByteOrderActivationHeight` (`x/pow/types.go`, a
+- From `MergedMiningActivationHeight` (`x/pow/types.go`, a
   placeholder), the parent's scrypt hash is read little-endian before the
   difficulty comparison (`parentPoWHash` in `x/pow/auxpow.go`).
 - Below that height the old rule applies, so history replays unchanged.
@@ -58,15 +59,28 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
   rule the target chain applies. The default stays `legacy` until the
   height is live.
 
-**B. Bind each proof to a template.**
-- `aux_block_hash` must equal
-  `H("aether-auxpow/v1" ‖ chain-id ‖ template_height ‖ block hash at template_height ‖ reward_address)`.
-- `AuxPowData` gains `template_height` and `reward_address`.
-  `template_height` must fall inside the recency window, as for native work
-  (`RecencyWindowK`).
+**B. Bind each proof to a template: built.**
+- From `MergedMiningActivationHeight`, `aux_block_hash` must equal
+  `AuxPoWTemplateHash` (`x/pow/auxpow.go`): SHA-256 over the
+  length-prefixed fields `"aether-auxpow/v1"`, chain ID, template height
+  (8 bytes, big-endian), the block hash at that height, and the reward
+  address bytes.
+- `AuxPowData` gains `template_height` and `reward_address`
+  (`checkAuxPoWTemplate` in `x/pow/msg_server.go`):
+  - `template_height` must have a recorded block hash and fall inside the
+    recency window, as for native work (`RecencyWindowK`);
+  - `reward_address` must be a valid address and not banned.
 - The reward goes to `reward_address` whoever submits. The bridge's key
   then needs no funds and can't redirect anything, and a copied proof
   still pays the pool.
+- A template can be claimed once: the accepted-work record is keyed on
+  `aux_block_hash`, so a pool gets at most one reward per template and
+  can't stockpile shares against an old one.
+- Below the height the signer is paid and `aux_block_hash` is unchecked,
+  as before.
+- `cmd/auxpowtest --template-height N --template-block-hash <hex>
+  --reward-address aether1…` builds a bound proof. It computes the hash
+  independently, and a test checks it against the chain's.
 
 **C. Separate tracks for native and merged work.**
 - AuxPoW gets its own difficulty, retargeted only on AuxPoW submissions.
@@ -75,7 +89,9 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
 - Native mining stays viable at native difficulty and keeps driving
   validator selection.
 
-**D. Reject a parent whose chain ID is 17776,** as the reference
+**D. Reject a parent whose chain ID is 17776: built.** From
+`MergedMiningActivationHeight`, `CheckAuxPow` refuses a parent header
+whose version carries Aether's own AuxPoW chain ID, as the reference
 implementation does.
 
 A, B, C and D change which submissions are accepted, so they share one
@@ -114,9 +130,10 @@ A small service that each pool runs beside its Litecoin node.
 - **Unit tests:**
   - parse real Dogecoin and Namecoin AuxPoW test vectors;
   - the byte-order regression (done, for change A);
-  - rejection of stolen, replayed and stale-template proofs;
+  - rejection of stolen, replayed and stale-template proofs (done, for
+    change B);
   - separate difficulty tracks;
-  - the chain-ID check.
+  - the chain-ID check (done, for change D).
 - **End to end on regtest:**
   - Setup: `litecoind -regtest`, plus a stratum pool with merged mining
     enabled, pointed at `auxpowd` on an Aether devnet.
@@ -126,7 +143,7 @@ A small service that each pool runs beside its Litecoin node.
 
 ## Milestones
 
-1. **M1: chain changes A–D, with tests.** A is done; B, C and D remain.
+1. **M1: chain changes A–D, with tests.** A, B and D are done; C remains.
    This is the consensus-critical part.
 2. **M2: `cmd/auxpowd`.**
 3. **M3: regtest end to end** with a real Litecoin node and pool.

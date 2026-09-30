@@ -15,9 +15,16 @@
 // --byte-order picks how the parent's scrypt hash is read against the
 // difficulty, and must match the rule the chain applies at the height
 // the submission lands: "legacy" (the raw bytes big-endian, the default,
-// for chains below x/pow.AuxPoWByteOrderActivationHeight) or "litecoin"
+// for chains below x/pow.MergedMiningActivationHeight) or "litecoin"
 // (little-endian, as real parent-chain work is counted from that height).
 // Switch the default to "litecoin" once the height is live.
+//
+// From that same height a proof must commit to a recent Aether block and a
+// reward address (x/pow.AuxPoWTemplateHash). Pass --template-height, the
+// block hash at that height (--template-block-hash, from
+// /block?height=N's block_id.hash) and --reward-address to build one; the
+// reward then goes to that address whoever submits. The hash is computed
+// here independently of x/pow, so a mismatch shows up as a rejected proof.
 package main
 
 import (
@@ -30,6 +37,7 @@ import (
 	"math/big"
 	"os"
 
+	"github.com/cosmos/cosmos-sdk/types/bech32"
 	"golang.org/x/crypto/scrypt"
 )
 
@@ -146,13 +154,40 @@ type auxPowJSON struct {
 	ChainBranch    merkleBranchJSON `json:"chain_branch"`
 	ChainNonce     uint32           `json:"chain_nonce"`
 	AuxBlockHash   string           `json:"aux_block_hash"`
+	TemplateHeight int64            `json:"template_height,omitempty"`
+	RewardAddress  string           `json:"reward_address,omitempty"`
+}
+
+// templateHash mirrors x/pow.AuxPoWTemplateHash: sha256 over the
+// length-prefixed domain, chain ID, big-endian height, block hash and
+// reward address bytes.
+func templateHash(chainID string, height int64, blockHash, reward []byte) []byte {
+	h := sha256.New()
+	field := func(b []byte) {
+		var n [4]byte
+		binary.BigEndian.PutUint32(n[:], uint32(len(b)))
+		h.Write(n[:])
+		h.Write(b)
+	}
+	var hb [8]byte
+	binary.BigEndian.PutUint64(hb[:], uint64(height))
+	field([]byte("aether-auxpow/v1"))
+	field([]byte(chainID))
+	field(hb[:])
+	field(blockHash)
+	field(reward)
+	return h.Sum(nil)
 }
 
 func main() {
 	difficulty := flag.Uint64("difficulty", 4, "difficulty to mine the fake parent header against (keep low for fast testing)")
 	output := flag.String("output", "auxpow.json", "output JSON file path")
 	auxChainID := flag.Uint("chain-id", 17776, "Aether's AuxPoW chain ID (must match x/pow.AuxPoWChainID)")
-	byteOrder := flag.String("byte-order", "legacy", `how the parent hash is read: "legacy" (big-endian, below x/pow.AuxPoWByteOrderActivationHeight) or "litecoin" (little-endian, from it)`)
+	byteOrder := flag.String("byte-order", "legacy", `how the parent hash is read: "legacy" (big-endian, below x/pow.MergedMiningActivationHeight) or "litecoin" (little-endian, from it)`)
+	templateHeight := flag.Int64("template-height", 0, "commit to this recent Aether height (needs --template-block-hash and --reward-address); 0 builds a pre-activation proof with an arbitrary aux hash")
+	templateBlockHash := flag.String("template-block-hash", "", "hex block hash of the Aether block at --template-height")
+	rewardAddress := flag.String("reward-address", "", "aether1... address the reward goes to, committed in the proof")
+	aetherChainID := flag.String("aether-chain-id", "aether-testnet-1", "Aether chain ID the template commits to")
 	flag.Parse()
 	if *byteOrder != "litecoin" && *byteOrder != "legacy" {
 		fmt.Fprintf(os.Stderr, "--byte-order must be litecoin or legacy, not %q\n", *byteOrder)
@@ -161,7 +196,20 @@ func main() {
 
 	auxBlockHash := make([]byte, 32)
 	for i := range auxBlockHash {
-		auxBlockHash[i] = byte(0x42 + i%16) // arbitrary but fixed, real chain would use a real block hash
+		auxBlockHash[i] = byte(0x42 + i%16) // arbitrary but fixed: accepted only below the activation height
+	}
+	if *templateHeight != 0 || *rewardAddress != "" || *templateBlockHash != "" {
+		blockHash, err := hex.DecodeString(*templateBlockHash)
+		if err != nil || len(blockHash) == 0 || *templateHeight <= 0 {
+			fmt.Fprintln(os.Stderr, "a template needs --template-height > 0 and --template-block-hash (hex)")
+			os.Exit(2)
+		}
+		hrp, reward, err := bech32.DecodeAndConvert(*rewardAddress)
+		if err != nil || hrp != "aether" {
+			fmt.Fprintf(os.Stderr, "--reward-address must be an aether1... address: %v\n", err)
+			os.Exit(2)
+		}
+		auxBlockHash = templateHash(*aetherChainID, *templateHeight, blockHash, reward)
 	}
 
 	chainNonce := uint32(0)
@@ -213,8 +261,10 @@ func main() {
 			Hashes: []string{},
 			Index:  expectedIndex,
 		},
-		ChainNonce:   chainNonce,
-		AuxBlockHash: hex.EncodeToString(auxBlockHash),
+		ChainNonce:     chainNonce,
+		AuxBlockHash:   hex.EncodeToString(auxBlockHash),
+		TemplateHeight: *templateHeight,
+		RewardAddress:  *rewardAddress,
 	}
 
 	data, err := json.MarshalIndent(result, "", "  ")

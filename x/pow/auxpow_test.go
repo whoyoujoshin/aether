@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"math/big"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -341,6 +342,13 @@ func TestExtractCoinbaseScriptSig_EmptyScriptSig(t *testing.T) {
 // CheckAuxPow's full validation sequence.
 func buildValidAuxPow(t *testing.T, auxBlockHash []byte, difficulty uint64, height int64) *AuxPowData {
 	t.Helper()
+	return buildValidAuxPowWithVersion(t, auxBlockHash, difficulty, height, 1)
+}
+
+// buildValidAuxPowWithVersion is buildValidAuxPow with the parent header's
+// version (whose top 16 bits are its chain ID) chosen by the caller.
+func buildValidAuxPowWithVersion(t *testing.T, auxBlockHash []byte, difficulty uint64, height int64, version uint32) *AuxPowData {
+	t.Helper()
 
 	// Chain branch: zero-depth (h=0), meaning the coinbase's committed
 	// root IS the aux block hash directly, with no intermediate
@@ -376,7 +384,7 @@ scriptSig := buildTestScriptSig([]byte("miner-arbitrary-data"), auxBlockHash, 1,
 	prevBlock := bytes.Repeat([]byte{0x11}, 32)
 	var parentRaw []byte
 	for n := uint32(0); ; n++ {
-		candidate := buildTestParentHeader(1, 1700000000, 0x1e0ffff0, n, prevBlock, coinbaseTxHash)
+		candidate := buildTestParentHeader(version, 1700000000, 0x1e0ffff0, n, prevBlock, coinbaseTxHash)
 		h, err := parseParentHeader(candidate)
 		require.NoError(t, err)
 		hash, err := h.scryptHash()
@@ -404,19 +412,19 @@ func TestCheckAuxPow_ValidSubmissionPasses(t *testing.T) {
 	auxBlockHash := bytes.Repeat([]byte{0x42}, 32)
 	difficulty := uint64(4) // low, so the test brute-forces quickly
 
-	auxPow := buildValidAuxPow(t, auxBlockHash, difficulty, AuxPoWByteOrderActivationHeight)
+	auxPow := buildValidAuxPow(t, auxBlockHash, difficulty, MergedMiningActivationHeight)
 
-	err := CheckAuxPow(auxPow, difficulty, AuxPoWByteOrderActivationHeight)
+	err := CheckAuxPow(auxPow, difficulty, MergedMiningActivationHeight)
 	require.NoError(t, err)
 }
 
 func TestCheckAuxPow_WrongAuxBlockHashFails(t *testing.T) {
 	auxBlockHash := bytes.Repeat([]byte{0x42}, 32)
 	difficulty := uint64(4)
-	auxPow := buildValidAuxPow(t, auxBlockHash, difficulty, AuxPoWByteOrderActivationHeight)
+	auxPow := buildValidAuxPow(t, auxBlockHash, difficulty, MergedMiningActivationHeight)
 	wrongHash := bytes.Repeat([]byte{0x99}, 32)
 	auxPow.AuxBlockHash = wrongHash // tamper with the committed hash after construction
-	err := CheckAuxPow(auxPow, difficulty, AuxPoWByteOrderActivationHeight)
+	err := CheckAuxPow(auxPow, difficulty, MergedMiningActivationHeight)
 	require.Error(t, err)
 }
 
@@ -424,11 +432,11 @@ func TestCheckAuxPow_InsufficientParentPoWFails(t *testing.T) {
 	auxBlockHash := bytes.Repeat([]byte{0x42}, 32)
 	buildDifficulty := uint64(4)
 
-	auxPow := buildValidAuxPow(t, auxBlockHash, buildDifficulty, AuxPoWByteOrderActivationHeight)
+	auxPow := buildValidAuxPow(t, auxBlockHash, buildDifficulty, MergedMiningActivationHeight)
 
 	// Check against a much higher difficulty than the parent header
 	// actually satisfies.
-	err := CheckAuxPow(auxPow, 1_000_000_000, AuxPoWByteOrderActivationHeight)
+	err := CheckAuxPow(auxPow, 1_000_000_000, MergedMiningActivationHeight)
 	require.Error(t, err)
 }
 
@@ -436,7 +444,7 @@ func TestCheckAuxPow_TamperedCoinbaseBreaksMerkleProof(t *testing.T) {
 	auxBlockHash := bytes.Repeat([]byte{0x42}, 32)
 	difficulty := uint64(4)
 
-	auxPow := buildValidAuxPow(t, auxBlockHash, difficulty, AuxPoWByteOrderActivationHeight)
+	auxPow := buildValidAuxPow(t, auxBlockHash, difficulty, MergedMiningActivationHeight)
 	// Tamper with the coinbase after the parent header was mined
 	// against the original -- this must break the merkle-root check,
 	// since the parent header's committed root no longer matches.
@@ -445,7 +453,7 @@ func TestCheckAuxPow_TamperedCoinbaseBreaksMerkleProof(t *testing.T) {
 	tampered[len(tampered)-1] ^= 0xFF
 	auxPow.CoinbaseTx = tampered
 
-	err := CheckAuxPow(auxPow, difficulty, AuxPoWByteOrderActivationHeight)
+	err := CheckAuxPow(auxPow, difficulty, MergedMiningActivationHeight)
 	require.Error(t, err)
 }
 
@@ -453,23 +461,23 @@ func TestCheckAuxPow_ExcessiveChainBranchLengthFails(t *testing.T) {
 	auxBlockHash := bytes.Repeat([]byte{0x42}, 32)
 	difficulty := uint64(4)
 
-	auxPow := buildValidAuxPow(t, auxBlockHash, difficulty, AuxPoWByteOrderActivationHeight)
+	auxPow := buildValidAuxPow(t, auxBlockHash, difficulty, MergedMiningActivationHeight)
 	tooLong := make([][]byte, maxChainMerkleBranchLength+1)
 	for i := range tooLong {
 		tooLong[i] = bytes.Repeat([]byte{0x00}, 32)
 	}
 	auxPow.ChainBranch.Hashes = tooLong
 
-	err := CheckAuxPow(auxPow, difficulty, AuxPoWByteOrderActivationHeight)
+	err := CheckAuxPow(auxPow, difficulty, MergedMiningActivationHeight)
 	require.Error(t, err)
 }
-// Before AuxPoWByteOrderActivationHeight the parent's raw hash is read
+// Before MergedMiningActivationHeight the parent's raw hash is read
 // big-endian, as it always was: a proof ground that way still passes
 // there, so history replays unchanged.
 func TestCheckAuxPow_BeforeActivationKeepsBigEndian(t *testing.T) {
 	auxBlockHash := bytes.Repeat([]byte{0x42}, 32)
 	difficulty := uint64(4)
-	before := AuxPoWByteOrderActivationHeight - 1
+	before := MergedMiningActivationHeight - 1
 
 	auxPow := buildValidAuxPow(t, auxBlockHash, difficulty, before)
 	require.NoError(t, CheckAuxPow(auxPow, difficulty, before))
@@ -482,7 +490,7 @@ func TestCheckAuxPow_BeforeActivationKeepsBigEndian(t *testing.T) {
 func TestCheckAuxPow_ByteOrderSwitchesAtActivation(t *testing.T) {
 	auxBlockHash := bytes.Repeat([]byte{0x42}, 32)
 	difficulty := uint64(4096) // high enough that neither rule passes the other's proof by chance
-	at, before := AuxPoWByteOrderActivationHeight, AuxPoWByteOrderActivationHeight-1
+	at, before := MergedMiningActivationHeight, MergedMiningActivationHeight-1
 
 	litecoinOrder := buildValidAuxPow(t, auxBlockHash, difficulty, at)
 	require.NoError(t, CheckAuxPow(litecoinOrder, difficulty, at))
@@ -515,8 +523,8 @@ func TestParentPoW_RealLitecoinGenesisClearsOnlyLittleEndian(t *testing.T) {
 	target := new(big.Int).Lsh(big.NewInt(0x0ffff0), 8*(0x1e-3))
 	difficulty := new(big.Int).Div(maxTarget, target).Uint64()
 
-	require.True(t, meetsdifficulty(parentPoWHash(hash, AuxPoWByteOrderActivationHeight), difficulty))
-	require.False(t, meetsdifficulty(parentPoWHash(hash, AuxPoWByteOrderActivationHeight-1), difficulty))
+	require.True(t, meetsdifficulty(parentPoWHash(hash, MergedMiningActivationHeight), difficulty))
+	require.False(t, meetsdifficulty(parentPoWHash(hash, MergedMiningActivationHeight-1), difficulty))
 }
 
 func reverseForTest(b []byte) []byte {
@@ -525,4 +533,46 @@ func reverseForTest(b []byte) []byte {
 		out[len(b)-1-i] = b[i]
 	}
 	return out
+}
+
+// Change D: from MergedMiningActivationHeight a parent carrying Aether's
+// own AuxPoW chain ID is refused, as the reference implementation does.
+// Before it, such a parent was accepted, and history replays that way.
+func TestCheckAuxPow_RejectsParentWithAetherChainID(t *testing.T) {
+	auxBlockHash := bytes.Repeat([]byte{0x42}, 32)
+	difficulty := uint64(4)
+	ownChain := AuxPoWChainID<<16 | 1
+
+	at := MergedMiningActivationHeight
+	proof := buildValidAuxPowWithVersion(t, auxBlockHash, difficulty, at, ownChain)
+	require.ErrorContains(t, CheckAuxPow(proof, difficulty, at), "own AuxPoW chain ID")
+
+	before := MergedMiningActivationHeight - 1
+	old := buildValidAuxPowWithVersion(t, auxBlockHash, difficulty, before, ownChain)
+	require.NoError(t, CheckAuxPow(old, difficulty, before))
+
+	// Litecoin's own chain ID (0) is fine.
+	require.NoError(t, CheckAuxPow(buildValidAuxPow(t, auxBlockHash, difficulty, at), difficulty, at))
+}
+
+// Change B: the template hash commits to every field, so no field can be
+// swapped (the reward address above all) without the hash changing.
+func TestAuxPoWTemplateHash_CommitsToEveryField(t *testing.T) {
+	blockHash := bytes.Repeat([]byte{0xab}, 32)
+	pool := sdk.AccAddress("pool_payout_address_")
+	base := AuxPoWTemplateHash("aether-1", 100, blockHash, pool)
+	require.Len(t, base, 32)
+	require.Equal(t, base, AuxPoWTemplateHash("aether-1", 100, blockHash, pool), "deterministic")
+
+	for name, other := range map[string][]byte{
+		"chain ID":       AuxPoWTemplateHash("aether-2", 100, blockHash, pool),
+		"height":         AuxPoWTemplateHash("aether-1", 101, blockHash, pool),
+		"block hash":     AuxPoWTemplateHash("aether-1", 100, bytes.Repeat([]byte{0xac}, 32), pool),
+		"reward address": AuxPoWTemplateHash("aether-1", 100, blockHash, sdk.AccAddress("someone_else_address")),
+	} {
+		require.NotEqual(t, base, other, name)
+	}
+	// Length prefixes keep field boundaries apart: moving a byte between
+	// the chain ID and the block hash changes the hash.
+	require.NotEqual(t, AuxPoWTemplateHash("a", 1, []byte("bc"), pool), AuxPoWTemplateHash("ab", 1, []byte("c"), pool))
 }

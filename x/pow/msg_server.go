@@ -233,6 +233,19 @@ func (k msgServer) submitNativePoW(ctx sdk.Context, minerAddr sdk.AccAddress, na
 // eligibility, bonding, tenure, or governance voting power. Only
 // native, dedicated work does.
 func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPow *AuxPowData) (*MsgSubmitPoWResponse, error) {
+	// Below MergedMiningActivationHeight the signer is paid and
+	// aux_block_hash is unchecked, as it always was. From it, the proof
+	// must commit to a recent block and a reward address, and that
+	// address is paid whoever signs.
+	rewardAddr := minerAddr
+	if ctx.BlockHeight() >= MergedMiningActivationHeight {
+		addr, err := k.checkAuxPoWTemplate(ctx, auxPow)
+		if err != nil {
+			return nil, err
+		}
+		rewardAddr = addr
+	}
+
 	currentDifficulty := k.Keeper.GetDifficulty(ctx).Uint64()
 	if err := CheckAuxPow(auxPow, currentDifficulty, ctx.BlockHeight()); err != nil {
 		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "AuxPoW verification failed: %s", err)
@@ -242,7 +255,7 @@ func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPo
 		return nil, sdkerrors.Wrapf(types.ErrDuplicateWork, "this exact AuxPoW submission has already been accepted")
 	}
 
-	if err := k.Keeper.DistributeBlockReward(ctx, minerAddr); err != nil {
+	if err := k.Keeper.DistributeBlockReward(ctx, rewardAddr); err != nil {
 		return nil, sdkerrors.Wrapf(err, "failed to distribute block reward")
 	}
 	newDifficulty := k.Keeper.AdjustDifficulty(ctx)
@@ -254,6 +267,33 @@ func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPo
 	k.Keeper.MarkWorkAccepted(ctx, auxPow.AuxBlockHash)
 
 	return &MsgSubmitPoWResponse{}, nil
+}
+
+// checkAuxPoWTemplate checks that an AuxPoW submission commits to a
+// recent Aether block and its reward address (change B of
+// docs/MERGED-MINING-PLAN.md) and returns the address to pay. The same
+// recency window as native work applies, and a banned address can't be
+// paid by having someone else relay its proof.
+func (k msgServer) checkAuxPoWTemplate(ctx sdk.Context, auxPow *AuxPowData) (sdk.AccAddress, error) {
+	reward, err := sdk.AccAddressFromBech32(auxPow.RewardAddress)
+	if err != nil {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "invalid reward_address %q: %s", auxPow.RewardAddress, err)
+	}
+	if k.Keeper.IsBanned(ctx, reward) {
+		return nil, sdkerrors.Wrapf(types.ErrBannedMiner, "reward address %s is permanently banned", reward)
+	}
+	blockHash, ok := k.Keeper.GetRecentHash(ctx, auxPow.TemplateHeight)
+	if !ok {
+		return nil, sdkerrors.Wrapf(types.ErrUnknownAncestor, "no known block at template height %d", auxPow.TemplateHeight)
+	}
+	if window := k.Keeper.GetRecencyWindowK(ctx); ctx.BlockHeight()-auxPow.TemplateHeight > window {
+		return nil, sdkerrors.Wrapf(types.ErrStaleAncestor, "template height %d is more than %d blocks behind current height %d", auxPow.TemplateHeight, window, ctx.BlockHeight())
+	}
+	want := AuxPoWTemplateHash(ctx.ChainID(), auxPow.TemplateHeight, blockHash, reward)
+	if !bytes.Equal(auxPow.AuxBlockHash, want) {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "aux_block_hash is not the template for height %d and reward address %s", auxPow.TemplateHeight, reward)
+	}
+	return reward, nil
 }
 
 // UpdateParams is x/pow's authority-gated params-update handler --

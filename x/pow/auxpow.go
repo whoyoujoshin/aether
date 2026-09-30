@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"golang.org/x/crypto/scrypt"
 )
 
@@ -166,6 +167,38 @@ func (h *parentHeader) scryptHash() ([]byte, error) {
 }
 
 const AuxPoWChainID uint32 = 17776
+
+// auxPoWTemplateDomain separates AuxPoW template hashes from any other
+// hash of the same fields.
+const auxPoWTemplateDomain = "aether-auxpow/v1"
+
+// AuxPoWTemplateHash is the aux block hash a merged-mining proof must
+// commit to from MergedMiningActivationHeight: a recent Aether block
+// (templateHeight and its block hash) and the address the reward goes to,
+// on this chain. Committing to the reward address inside the parent
+// chain's coinbase is what stops anyone who sees a proof from claiming it
+// for themselves; committing to a recent block stops proofs being mined
+// ahead and stockpiled. Each field is length-prefixed so no two different
+// sets of fields share an encoding. A pool bridge computes the same value
+// to hand out as work (docs/MERGED-MINING-PLAN.md).
+func AuxPoWTemplateHash(chainID string, templateHeight int64, blockHash []byte, reward sdk.AccAddress) []byte {
+	h := sha256.New()
+	field := func(b []byte) {
+		var n [4]byte
+		binary.BigEndian.PutUint32(n[:], uint32(len(b)))
+		h.Write(n[:])
+		h.Write(b)
+	}
+	var height [8]byte
+	binary.BigEndian.PutUint64(height[:], uint64(templateHeight))
+	field([]byte(auxPoWTemplateDomain))
+	field([]byte(chainID))
+	field(height[:])
+	field(blockHash)
+	field(reward)
+	return h.Sum(nil)
+}
+
 const maxChainMerkleBranchLength = 30
 
 // CheckAuxPow performs the complete AuxPoW validation sequence,
@@ -190,6 +223,12 @@ func CheckAuxPow(data *AuxPowData, currentDifficulty uint64, height int64) error
 	parent, err := parseParentHeader(data.ParentHeader)
 	if err != nil {
 		return fmt.Errorf("invalid parent header: %w", err)
+	}
+	// The parent must be another chain's block: the reference
+	// implementation refuses a parent carrying the merged-mined chain's
+	// own ID, and so does Aether from MergedMiningActivationHeight.
+	if height >= MergedMiningActivationHeight && parent.chainID() == AuxPoWChainID {
+		return fmt.Errorf("parent block carries Aether's own AuxPoW chain ID %d", AuxPoWChainID)
 	}
 
 	// 1. Coinbase must genuinely be part of the parent block's own
@@ -325,11 +364,11 @@ func extractCoinbaseScriptSig(tx []byte) ([]byte, error) {
 // meetsdifficulty compares. Litecoin reads the raw scrypt output as a
 // little-endian number (UintToArith256), so real parent-chain work has
 // its zero bytes at the END of the raw hash; from
-// AuxPoWByteOrderActivationHeight the bytes are reversed so that work
+// MergedMiningActivationHeight the bytes are reversed so that work
 // counts exactly as Litecoin counts it. Below that height the raw bytes
 // are used as they always were, so history replays unchanged.
 func parentPoWHash(scryptHash []byte, height int64) []byte {
-	if height < AuxPoWByteOrderActivationHeight {
+	if height < MergedMiningActivationHeight {
 		return scryptHash
 	}
 	reversed := make([]byte, len(scryptHash))

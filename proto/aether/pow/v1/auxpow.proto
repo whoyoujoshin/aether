@@ -26,4 +26,11 @@ message AuxPowData {
                                       // value in advance since it's baked into what they hash
                                       // against the parent chain's target; Aether independently
                                       // verifies it was genuinely committed via chain_branch
+  // From MergedMiningActivationHeight, aux_block_hash must equal
+  // AuxPoWTemplateHash(chain ID, template_height, the block hash at
+  // template_height, reward_address), and the reward goes to
+  // reward_address whoever signs the submission. Below that height both
+  // are ignored.
+  int64 template_height = 7;         // a recent Aether height (within the recency window) the proof commits to
+  string reward_address = 8;         // the aether1... address paid; committed in aux_block_hash, so a copied proof can't redirect it
 }
