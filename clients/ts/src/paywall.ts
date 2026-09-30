@@ -35,7 +35,9 @@ export interface PaymentRequirements {
   description: string;
   maxTimeoutSeconds: number;
   extra: {
-    invoice?: string; amountAeth: string; expiresAt?: string; depositMemo?: string; minDeposit?: string; balance?: string; withdrawPath?: string;
+    /** symbol and amount state the price in the asset's own unit ("USDC", "0.05"); amountAeth is set only for an AETH price. */
+    symbol?: string; amount?: string;
+    invoice?: string; amountAeth?: string; expiresAt?: string; depositMemo?: string; minDeposit?: string; balance?: string; withdrawPath?: string;
     /** aether-pull: grant this address the allowance; credit is the most owed before collection; owed is what you owe now. */
     grantee?: string; credit?: string; owed?: string;
   };

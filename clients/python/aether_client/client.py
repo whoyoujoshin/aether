@@ -229,12 +229,13 @@ class AetherClient:
             return SendResult(signed.hash, "failed", t.code or code, t.log or log, signed)
         return SendResult(signed.hash, "pending" if code == 19 else "failed", code, log, signed)
 
-    def get_transaction(self, tx_hash: str) -> TransactionInfo:
+    def get_transaction(self, tx_hash: str, denom: str = DENOM) -> TransactionInfo:
+        """A transaction's status, memo and transfers of denom (default uaeth)."""
         t = self.rpc.tx(tx_hash)
         if t is None:
             return TransactionInfo(tx_hash.upper(), "pending")
         return TransactionInfo(t.hash, "confirmed" if t.code == 0 else "failed", t.height, t.code, t.codespace, t.log,
-                               memo_of(t.tx), transfers(t.events))
+                               memo_of(t.tx), transfers(t.events, denom))
 
     def wait_for_transaction(self, tx_hash: str, timeout: float = 90, poll: float = 3) -> TransactionInfo:
         deadline = time.monotonic() + timeout

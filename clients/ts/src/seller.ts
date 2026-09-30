@@ -7,14 +7,14 @@ import { AetherClient } from "./client.js";
 import { RpcError } from "./rpc.js";
 import { Key, addressOf, isAddress } from "./keys.js";
 import { buildSend, buildTx, execSendMsg } from "./tx.js";
-import { formatAeth, parseAmount, parseUaeth } from "./amount.js";
+import { AETH, Assets, DENOM, decimalOf, formatAeth, formatAmount, parseUaeth, receiptAmount, type Asset } from "./amount.js";
 import { MANIFEST_PATH, type Manifest } from "./directory.js";
 import { DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, pullSigningMessage, signingMessage, type PaymentRequired, type PaymentRequirements } from "./paywall.js";
 import { FileLedger, LedgerError, owedOf, type Collection, type Ledger, type PullLedger, type Withdrawal } from "./ledger.js";
 import type { SendGrant } from "./client.js";
 import { RECEIPT_HEADER, receiptFieldsOK, sha256Hex, signReceipt, verifyReceipt, type ReceiptDelegation } from "./receipt.js";
 
-// Selling: charge AETH per HTTP request from a Node service, compatible
+// Selling: charge AETH (or USDC) per HTTP request from a Node service, compatible
 // with the Go paywall (package paywall) and every Aether buyer --
 // agentmcp, these clients, or a person paying an invoice by hand.
 //
@@ -66,8 +66,14 @@ export interface PaywallConfig {
   client: AetherClient;
   /** Address payments go to. */
   payTo: string;
-  /** Per request, with its unit: "0.01 AETH". */
+  /**
+   * Per request, with its unit: "0.01 AETH", or "0.05 USDC" with
+   * usdcChannel. Its asset is what everything is charged in: payments,
+   * deposits and balances, pull allowances and collections, withdrawals.
+   */
   price: string;
+  /** Aether's end of its channel to Noble (e.g. channel-3), to charge in USDC: Noble's uusdc over exactly that channel. */
+  usdcChannel?: string;
   name?: string;
   description?: string;
   mimeType?: string;
@@ -79,7 +85,7 @@ export interface PaywallConfig {
   prepaid?: {
     /** A Ledger, or a file path for a FileLedger. It holds customers' balances: back it up. */
     ledger: Ledger | string;
-    /** Smallest deposit (and partial withdrawal), with unit. Default: the price. */
+    /** Smallest deposit (and partial withdrawal), with unit, in the price's asset. Default: the price. */
     minDeposit?: string;
     /** Pays back unspent balances on request. Keep only a small float in this account. */
     payoutKey?: Key;
@@ -100,7 +106,7 @@ export interface PaywallConfig {
     collectorKey: Key;
     /** Where what buyers owe is recorded: a PullLedger or a file path. Default: the prepaid ledger. */
     ledger?: PullLedger | string;
-    /** Most a buyer may owe before it's collected, with unit ("1 AETH"): your loss if one revokes just before a collection. Default: 100 requests. */
+    /** Most a buyer may owe before it's collected, with unit ("1 AETH"), in the price's asset: your loss if one revokes just before a collection. Default: 100 requests. */
     credit?: string;
     /** Default 60. */
     collectEverySeconds?: number;
@@ -114,6 +120,7 @@ export interface Payment {
   payer: string;
   scheme: string;
   txHash?: string; // aether-memo
+  // Both in the paywall's asset's base units (uaeth unless it charges another asset).
   balanceUaeth?: bigint; // aether-prepaid: left with this seller
   owedUaeth?: bigint; // aether-pull: owed, not yet collected
 }
@@ -172,6 +179,8 @@ function u64(b: Uint8Array, off: number, v: bigint) {
 
 export class Paywall {
   readonly price: bigint;
+  /** What this paywall charges: AETH unless the price is in another asset. */
+  readonly asset: Asset;
   readonly network: string;
   private readonly secret: Uint8Array;
   private readonly ttlMs: number;
@@ -191,22 +200,31 @@ export class Paywall {
 
   constructor(private readonly cfg: PaywallConfig) {
     if (!isAddress(cfg.payTo)) throw new Error(`invalid payTo address "${cfg.payTo}"`);
-    this.price = parseAmount(cfg.price);
+    const assets = new Assets({ usdcChannel: cfg.usdcChannel });
+    const priced = assets.parse(cfg.price);
+    this.asset = priced.asset;
+    this.price = priced.amount;
+    // Every other amount must be in the price's asset: one paywall charges one asset.
+    const same = (what: string, s: string) => {
+      const p = assets.parse(s);
+      if (p.asset.denom !== this.asset.denom) throw new Error(`${what} is in ${p.asset.symbol} but the price is in ${this.asset.symbol}: one paywall charges one asset`);
+      return p.amount;
+    };
     this.network = cfg.client.chainId;
     this.secret = cfg.secret ?? randomBytes(32);
     this.ttlMs = (cfg.invoiceTtlSeconds ?? 86_400) * 1000;
     if (cfg.prepaid) {
       this.ledger = typeof cfg.prepaid.ledger === "string" ? new FileLedger(cfg.prepaid.ledger) : cfg.prepaid.ledger;
-      const min = cfg.prepaid.minDeposit ? parseAmount(cfg.prepaid.minDeposit) : this.price;
+      const min = cfg.prepaid.minDeposit ? same("minDeposit", cfg.prepaid.minDeposit) : this.price;
       this.minDeposit = min < this.price ? this.price : min;
-      if (cfg.prepaid.payoutKey) this.payout = new KeyPayout(cfg.client, cfg.prepaid.payoutKey);
+      if (cfg.prepaid.payoutKey) this.payout = new KeyPayout(cfg.client, cfg.prepaid.payoutKey, this.asset.denom);
     }
     if (cfg.pull) {
       const l = cfg.pull.ledger ?? (this.ledger instanceof FileLedger ? this.ledger : undefined);
       if (l === undefined) throw new Error("pull needs a ledger (pull.ledger, or a prepaid FileLedger)");
       this.pullLedger = typeof l === "string" ? (l === cfg.prepaid?.ledger && this.ledger instanceof FileLedger ? this.ledger : new FileLedger(l)) : l;
-      this.collector = new KeyPayout(cfg.client, cfg.pull.collectorKey);
-      this.credit = cfg.pull.credit ? parseAmount(cfg.pull.credit) : this.price * 100n;
+      this.collector = new KeyPayout(cfg.client, cfg.pull.collectorKey, this.asset.denom);
+      this.credit = cfg.pull.credit ? same("pull credit", cfg.pull.credit) : this.price * 100n;
       if (this.credit < this.price) throw new Error("pull credit must be at least the price");
       this.collectEveryMs = (cfg.pull.collectEverySeconds ?? 60) * 1000;
     }
@@ -225,7 +243,7 @@ export class Paywall {
     if (!r) return undefined;
     return (status: number, responseBody?: Uint8Array) => {
       const fields = {
-        network: this.network, payTo: this.cfg.payTo, payer, scheme, payment, amount: this.price.toString(), method: req.method,
+        network: this.network, payTo: this.cfg.payTo, payer, scheme, payment, amount: receiptAmount(this.price, this.asset.denom), method: req.method,
         host: req.host, path: req.path, requestHash: sha256Hex(body), status,
         responseHash: responseBody ? sha256Hex(responseBody) : undefined, at: Math.floor(this.now() / 1000),
       };
@@ -238,6 +256,25 @@ export class Paywall {
     return this.cfg.now ? this.cfg.now() : Date.now();
   }
 
+  private isAeth() {
+    return this.asset.denom === AETH.denom;
+  }
+
+  /** An amount in the asset's base unit and in the asset: "20000uaeth (0.02 AETH)", like the Go paywall. */
+  private both(amount: bigint): string {
+    return `${amount}${this.asset.baseUnit} (${formatAmount(this.asset, amount)})`;
+  }
+
+  /** The price fields of a 402's extra: symbol and amount always, amountAeth only for AETH. */
+  private priced(): Record<string, string> {
+    return { symbol: this.asset.symbol, amount: decimalOf(this.asset, this.price), ...(this.isAeth() ? { amountAeth: formatAeth(this.price) } : {}) };
+  }
+
+  /** Instructions written for AETH, adapted to this paywall's asset. */
+  private text(s: string): string {
+    return this.isAeth() ? s : s.replaceAll(" uaeth", ` ${this.asset.baseUnit} (of the asset field's denom)`);
+  }
+
   private schemes() {
     return [SCHEME_MEMO, ...(this.ledger ? [SCHEME_PREPAID] : []), ...(this.pullLedger ? [SCHEME_PULL] : [])];
   }
@@ -246,7 +283,8 @@ export class Paywall {
   manifest(): Manifest {
     return {
       x402Version: 1, name: this.cfg.name ?? "", description: this.cfg.description ?? "", network: this.network, payTo: this.cfg.payTo,
-      price: this.price.toString(), priceAeth: formatAeth(this.price), schemes: this.schemes(),
+      price: this.price.toString(), ...(this.isAeth() ? { priceAeth: formatAeth(this.price) } : {}),
+      asset: this.asset.denom, symbol: this.asset.symbol, priceAmount: decimalOf(this.asset, this.price), schemes: this.schemes(),
       ...(this.ledger ? { minDeposit: this.minDeposit.toString() } : {}),
       ...(this.payout ? { withdrawPath: WITHDRAW_PATH } : {}),
     };
@@ -263,7 +301,7 @@ export class Paywall {
   /** Decides a request to a paid route: serve it (then call finish with the response status) or answer it. */
   async handle(req: SellerRequest, body: Uint8Array = new Uint8Array()): Promise<Decision> {
     const header = req.header("x-payment");
-    if (!header) return this.paymentRequired(req, "payment_required", `this resource costs ${formatAeth(this.price)} AETH per request`);
+    if (!header) return this.paymentRequired(req, "payment_required", `this resource costs ${this.both(this.price)} per request`);
     const pay = decodeHeader<{ scheme?: string; network?: string; payload?: unknown }>(header);
     if (!pay) return this.paymentRequired(req, "invalid_payment", "X-PAYMENT must be base64-encoded JSON");
     if (pay.network === this.network && pay.scheme === SCHEME_PREPAID && this.ledger) return this.servePrepaid(req, pay.payload, body);
@@ -285,7 +323,7 @@ export class Paywall {
 
     let t;
     try {
-      t = await this.cfg.client.getTransaction(txHash);
+      t = await this.cfg.client.getTransaction(txHash, this.asset.denom);
     } catch (e) {
       console.error(`paywall: looking up ${txHash}: ${(e as Error).message}`);
       return { kind: "respond", status: 503, headers: { "Retry-After": "10", "Content-Type": "text/plain" }, body: "could not reach the chain to verify payment; retry with the same X-PAYMENT\n" };
@@ -296,7 +334,7 @@ export class Paywall {
     if (t.status === "failed") return this.paymentRequired(req, "payment_failed", `transaction ${txHash} failed on chain`);
     if (t.memo !== invoice) return this.paymentRequired(req, "memo_mismatch", "the transaction's memo must be exactly the invoice");
     const { paid, payer } = this.received(t.transfers);
-    if (paid < inv.price) return this.paymentRequired(req, "insufficient_payment", `paid ${paid} uaeth to ${this.cfg.payTo}; the invoice is for ${inv.price} uaeth`);
+    if (paid < inv.price) return this.paymentRequired(req, "insufficient_payment", `paid ${this.both(paid)} to ${this.cfg.payTo}; the invoice is for ${this.both(inv.price)}`);
     if (!this.redeem(invoice, inv.expiryMs)) return this.paymentRequired(req, "invoice_already_redeemed", "this invoice has already been used for a response");
 
     const settlement = encodeHeader({ success: true, transaction: txHash, network: this.network, payer });
@@ -308,12 +346,12 @@ export class Paywall {
     };
   }
 
-  private received(transfers: { from: string; to: string; amountUaeth: bigint }[]) {
+  private received(transfers: { from: string; to: string; amount: bigint; denom: string }[]) {
     let paid = 0n;
     let payer = "";
     for (const t of transfers) {
-      if (t.to !== this.cfg.payTo) continue;
-      paid += t.amountUaeth;
+      if (t.to !== this.cfg.payTo || t.denom !== this.asset.denom) continue;
+      paid += t.amount;
       payer ||= t.from;
     }
     return { paid, payer };
@@ -373,14 +411,14 @@ export class Paywall {
     }
     const resource = `${req.https ? "https" : "http"}://${req.host}${req.path}`;
     const memo: PaymentRequirements & { mimeType: string } = {
-      scheme: SCHEME_MEMO, network: this.network, maxAmountRequired: this.price.toString(), asset: "uaeth", payTo: this.cfg.payTo,
+      scheme: SCHEME_MEMO, network: this.network, maxAmountRequired: this.price.toString(), asset: this.asset.denom, payTo: this.cfg.payTo,
       resource, description: this.cfg.description ?? "", mimeType: this.cfg.mimeType ?? "", maxTimeoutSeconds: this.ttlMs / 1000,
-      extra: { invoice, amountAeth: formatAeth(this.price), expiresAt: new Date(expiryMs).toISOString().replace(".000Z", "Z"), instructions: MEMO_INSTRUCTIONS } as PaymentRequirements["extra"],
+      extra: { invoice, ...this.priced(), expiresAt: new Date(expiryMs).toISOString().replace(".000Z", "Z"), instructions: this.text(MEMO_INSTRUCTIONS) } as PaymentRequirements["extra"],
     };
     const body: PaymentRequired = { x402Version: 1, error: code, message, accepts: [memo] };
     if (this.ledger) {
       const extra: Record<string, string> = {
-        amountAeth: formatAeth(this.price), depositMemo: DEPOSIT_MEMO_PREFIX + "<address>", minDeposit: this.minDeposit.toString(), instructions: PREPAID_INSTRUCTIONS,
+        ...this.priced(), depositMemo: DEPOSIT_MEMO_PREFIX + "<address>", minDeposit: this.minDeposit.toString(), instructions: this.text(PREPAID_INSTRUCTIONS),
       };
       if (account) extra.balance = this.ledger.balance(account).toString();
       if (this.payout) extra.withdrawPath = WITHDRAW_PATH;
@@ -388,7 +426,7 @@ export class Paywall {
     }
     if (this.pullLedger) {
       const extra: Record<string, string> = {
-        amountAeth: formatAeth(this.price), grantee: this.collector!.address, credit: this.credit.toString(), instructions: PULL_INSTRUCTIONS,
+        ...this.priced(), grantee: this.collector!.address, credit: this.credit.toString(), instructions: this.text(PULL_INSTRUCTIONS),
       };
       if (account) extra.owed = owedOf(this.pullLedger.pullAccount(account)).toString();
       body.accepts.push({ ...memo, scheme: SCHEME_PULL, extra: extra as PaymentRequirements["extra"] });
@@ -446,7 +484,7 @@ export class Paywall {
     if ("code" in v) return this.paymentRequired(req, v.code, v.message);
     const { pay, maxPrice } = v;
     const refuse = (code: string, msg: string, headers: Record<string, string> = {}) => this.paymentRequired(req, code, msg, "", pay.account, headers);
-    if (maxPrice < this.price) return refuse("price_above_signed_max", `the price is ${this.price} uaeth; the request allows at most ${maxPrice}`);
+    if (maxPrice < this.price) return refuse("price_above_signed_max", `the price is ${this.both(this.price)} (${this.price}); the request allows at most ${maxPrice}`);
 
     if (pay.depositTx) {
       const refused = await this.creditDeposit(req, pay.depositTx.trim().toUpperCase(), pay.account);
@@ -455,7 +493,7 @@ export class Paywall {
     const c = ledger.charge(pay.account, pay.requestId, this.price, this.now() + REQUEST_ID_RETENTION_MS);
     if (!c.fresh) return refuse("invoice_already_redeemed", "this requestId was already charged and served");
     if (!c.ok) {
-      return refuse("insufficient_balance", `balance ${c.balance} uaeth is less than the price ${this.price} uaeth: deposit to ${this.cfg.payTo} with memo ${DEPOSIT_MEMO_PREFIX}${pay.account}`);
+      return refuse("insufficient_balance", `balance ${this.both(c.balance)} is less than the price ${this.both(this.price)}: deposit to ${this.cfg.payTo} with memo ${DEPOSIT_MEMO_PREFIX}${pay.account}`);
     }
     const settlement = encodeHeader({ success: true, network: this.network, payer: pay.account, balance: c.balance.toString() });
     return {
@@ -477,7 +515,7 @@ export class Paywall {
   private async grant(buyer: string, fresh: boolean): Promise<{ g?: SendGrant; cached: boolean }> {
     const c = this.grants.get(buyer);
     if (!fresh && c && this.now() - c.at < GRANT_CACHE_MS) return { g: c.g, cached: true };
-    const g = await this.cfg.client.sendGrant(buyer, this.collector!.address);
+    const g = await this.cfg.client.sendGrant(buyer, this.collector!.address, this.asset.denom);
     // Only allowances found are cached: a buyer who just granted one must not be told it has none.
     if (g) this.grants.set(buyer, { g, at: this.now() });
     else this.grants.delete(buyer);
@@ -492,7 +530,7 @@ export class Paywall {
     const buyer = pay.account;
     const refuse = (code: string, msg: string, headers: Record<string, string> = {}) => this.paymentRequired(req, code, msg, "", buyer, headers);
     if (pay.depositTx) return this.paymentRequired(req, "invalid_payment", "aether-pull requests carry no deposit");
-    if (maxPrice < this.price) return refuse("price_above_signed_max", `the price is ${this.price} uaeth; the request allows at most ${maxPrice}`);
+    if (maxPrice < this.price) return refuse("price_above_signed_max", `the price is ${this.both(this.price)} (${this.price}); the request allows at most ${maxPrice}`);
     const acct = ledger.pullAccount(buyer);
     const grantee = this.collector!.address;
     const check = (g: SendGrant): [string, string] | undefined => {
@@ -501,9 +539,9 @@ export class Paywall {
       }
       if (g.allowList.length && !g.allowList.includes(this.cfg.payTo)) return ["no_grant", "your allowance doesn't allow paying " + this.cfg.payTo];
       const need = owedOf(acct) + this.price;
-      if (!g.unlimited && g.spendLimitUaeth < need) {
-        if (acct.unpaid > 0n) return ["pull_unpaid", `collecting ${acct.unpaid} uaeth you owe failed; grant an allowance covering it plus this request (${need} uaeth) to continue`];
-        return ["grant_too_low", `your allowance has ${g.spendLimitUaeth} uaeth left and you owe ${owedOf(acct)} uaeth not yet collected; this request needs ${this.price} more`];
+      if (!g.unlimited && g.spendLimit < need) {
+        if (acct.unpaid > 0n) return ["pull_unpaid", `collecting ${this.both(acct.unpaid)} you owe failed; grant an allowance covering it plus this request (${this.both(need)}) to continue`];
+        return ["grant_too_low", `your allowance has ${this.both(g.spendLimit)} left and you owe ${this.both(owedOf(acct))} not yet collected; this request needs ${this.both(this.price)} more`];
       }
       return undefined;
     };
@@ -533,12 +571,12 @@ export class Paywall {
     if (!a.fresh) return refuse("invoice_already_redeemed", "this requestId was already charged and served");
     if (!a.ok) {
       this.wake();
-      return refuse("settlement_pending", `you owe ${a.accrued + acct.inFlight} uaeth, this service's limit before collecting; it's being collected -- retry shortly`, { "Retry-After": "10" });
+      return refuse("settlement_pending", `you owe ${this.both(a.accrued + acct.inFlight)}, this service's limit before collecting; it's being collected -- retry shortly`, { "Retry-After": "10" });
     }
     const owed = a.accrued + acct.inFlight;
     if (a.accrued * 2n >= this.credit) this.wake();
     const settle: Record<string, unknown> = { success: true, network: this.network, payer: buyer, owed: owed.toString() };
-    if (!g!.unlimited) settle.allowance = (g!.spendLimitUaeth - owed).toString();
+    if (!g!.unlimited) settle.allowance = (g!.spendLimit - owed).toString();
     return {
       kind: "serve", payment: { payer: buyer, scheme: SCHEME_PULL, owedUaeth: owed }, headers: { "X-PAYMENT-RESPONSE": encodeHeader(settle) },
       receipt: this.receiptFor(req, body, SCHEME_PULL, buyer, pay.requestId),
@@ -606,7 +644,7 @@ export class Paywall {
           return; // checked again next pass
         case "failed":
           // Revoked, expired or exhausted allowance, or an empty account: the buyer owes it, and is refused until an allowance covers it.
-          console.error(`paywall: collecting ${c.amount} uaeth from ${account} failed; refusing it until it grants enough: ${state.log ?? ""}`);
+          console.error(`paywall: collecting ${c.amount}${this.asset.baseUnit} from ${account} failed; refusing it until it grants enough: ${state.log ?? ""}`);
           this.grants.delete(account);
           return ledger.closeCollection(account, false, state.log);
         case "sequence_spent": {
@@ -628,7 +666,7 @@ export class Paywall {
     if (!HASH.test(txHash)) return refuse("invalid_deposit", "depositTx must be a transaction hash");
     let t;
     try {
-      t = await this.cfg.client.getTransaction(txHash);
+      t = await this.cfg.client.getTransaction(txHash, this.asset.denom);
     } catch (e) {
       console.error(`paywall: looking up deposit ${txHash}: ${(e as Error).message}`);
       return { kind: "respond", status: 503, headers: { "Retry-After": "10", "Content-Type": "text/plain" }, body: "could not reach the chain to verify the deposit; retry\n" };
@@ -640,7 +678,7 @@ export class Paywall {
     const beneficiary = memo.slice(DEPOSIT_MEMO_PREFIX.length);
     if (!isAddress(beneficiary)) return refuse("invalid_deposit", "the deposit's memo names an invalid address");
     const { paid } = this.received(t.transfers);
-    if (paid < this.minDeposit) return refuse("insufficient_payment", `deposits must be at least ${this.minDeposit} uaeth to ${this.cfg.payTo}`);
+    if (paid < this.minDeposit) return refuse("insufficient_payment", `deposits must be at least ${this.both(this.minDeposit)} to ${this.cfg.payTo}`);
     // Credit whoever the memo names: presenting someone else's deposit only credits them.
     this.ledger!.credit(txHash, beneficiary, paid);
     return undefined;
@@ -665,15 +703,15 @@ export class Paywall {
       try {
         parsed = JSON.parse(text) as { amount?: unknown };
       } catch {
-        return fail(400, "invalid_payment", 'the body must be {"amount":"all"} or {"amount":"<uaeth>"}');
+        return fail(400, "invalid_payment", `the body must be {"amount":"all"} or {"amount":"<${this.asset.baseUnit}>"}`);
       }
       const a = typeof parsed?.amount === "string" ? parsed.amount.trim() : parsed?.amount === undefined ? "" : null;
-      if (a === null) return fail(400, "invalid_payment", 'amount must be "all" or a positive whole number of uaeth');
+      if (a === null) return fail(400, "invalid_payment", `amount must be "all" or a positive whole number of ${this.asset.baseUnit}`);
       if (a && a !== "all") {
         try {
           amount = parseUaeth(a);
         } catch {
-          return fail(400, "invalid_payment", 'amount must be "all" or a positive whole number of uaeth');
+          return fail(400, "invalid_payment", `amount must be "all" or a positive whole number of ${this.asset.baseUnit}`);
         }
       }
     }
@@ -688,7 +726,7 @@ export class Paywall {
     const payout = this.payout!;
     const respond = (status: number, w: Withdrawal, message: string) =>
       json(status, {
-        x402Version: 1, withdrawalId: w.id, account, amount: w.amount, amountAeth: formatAeth(BigInt(w.amount)), status: w.status,
+        x402Version: 1, withdrawalId: w.id, account, amount: w.amount, ...(this.isAeth() ? { amountAeth: formatAeth(BigInt(w.amount)) } : {}), status: w.status,
         ...(w.txHash ? { txHash: w.txHash } : {}), balance: ledger.balance(account).toString(), message,
       });
     const fail = (status: number, error: string, message: string) =>
@@ -699,7 +737,7 @@ export class Paywall {
       r = ledger.reserveWithdrawal(account, id, amount, this.minDeposit, this.now());
     } catch (e) {
       if (e instanceof LedgerError && e.code === "insufficient") return fail(409, "insufficient_balance", "the balance doesn't cover that withdrawal");
-      if (e instanceof LedgerError) return fail(409, "below_minimum_withdrawal", `withdraw at least ${this.minDeposit} uaeth, or the whole balance`);
+      if (e instanceof LedgerError) return fail(409, "below_minimum_withdrawal", `withdraw at least ${this.both(this.minDeposit)}, or the whole balance`);
       console.error(`paywall: reserving withdrawal ${account}/${id}: ${(e as Error).message}`);
       return fail(500, "payout_unavailable", "failed to record the withdrawal; nothing was taken");
     }
@@ -943,7 +981,8 @@ function resourceKey(method: string, path: string): Uint8Array {
 export class KeyPayout {
   private next = 0n;
 
-  constructor(private readonly client: AetherClient, private readonly key: Key) {}
+  /** denom is what it pays out (and collects): the paywall's asset, uaeth by default. */
+  constructor(private readonly client: AetherClient, private readonly key: Key, private readonly denom: string = DENOM) {}
 
   get address() {
     return this.key.address;
@@ -953,7 +992,7 @@ export class KeyPayout {
     const info = await this.client.accountInfo(this.key.address);
     if (!info) throw new Error(`payout account ${this.key.address} doesn't exist on chain yet: fund it`);
     const sequence = info.sequence < this.next ? this.next : info.sequence; // an earlier payout may still be in the mempool
-    const s = buildSend(this.key, { chainId: this.client.chainId, accountNumber: info.accountNumber, sequence, to, amountUaeth, memo });
+    const s = buildSend(this.key, { chainId: this.client.chainId, accountNumber: info.accountNumber, sequence, to, amountUaeth, denom: this.denom, memo });
     this.next = sequence + 1n;
     return { txBytes: s.txBytes, sequence, hash: s.hash };
   }
@@ -963,7 +1002,7 @@ export class KeyPayout {
     const info = await this.client.accountInfo(this.key.address);
     if (!info) throw new Error(`collector account ${this.key.address} doesn't exist on chain yet: the first allowance granted to it creates it`);
     const sequence = info.sequence < this.next ? this.next : info.sequence;
-    const s = buildTx(this.key, [execSendMsg(this.key.address, from, to, amountUaeth)], { chainId: this.client.chainId, accountNumber: info.accountNumber, sequence, memo });
+    const s = buildTx(this.key, [execSendMsg(this.key.address, from, to, amountUaeth, this.denom)], { chainId: this.client.chainId, accountNumber: info.accountNumber, sequence, memo });
     this.next = sequence + 1n;
     return { txBytes: s.txBytes, sequence, hash: s.hash };
   }

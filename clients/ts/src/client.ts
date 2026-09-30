@@ -223,12 +223,13 @@ export class AetherClient {
     return { hash: signed.hash, status: code === 19 ? "pending" : "failed", code, log, signed };
   }
 
-  async getTransaction(hash: string): Promise<TransactionInfo> {
+  /** A transaction's status, memo and transfers of denom (default uaeth). */
+  async getTransaction(hash: string, denom: string = DENOM): Promise<TransactionInfo> {
     const t = await this.rpc.tx(hash);
     if (!t) return { hash: hash.toUpperCase(), status: "pending", transfers: [] };
     return {
       hash: t.hash, status: t.code === 0 ? "confirmed" : "failed", height: t.height, code: t.code, codespace: t.codespace,
-      log: t.log, memo: memoOf(t.tx), transfers: transfers(t.events),
+      log: t.log, memo: memoOf(t.tx), transfers: transfers(t.events, denom),
     };
   }
 
