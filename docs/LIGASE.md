@@ -6,8 +6,8 @@ never need an Aether key or any AETH. It's how someone holding only USDC
 on Noble (or anything on any IBC chain) hires an Aether agent.
 
 **Status:** built, tested in-process, and proven on a two-chain devnet
-(see [Proof](#proof)). It needs `x/escrow` live and a coordinated
-activation height (see [Activation](#activation)).
+(see [Proof](#proof)). Active on the testnet since block **161,000**,
+with `x/escrow` (see [Activation](#activation)).
 
 ## How it works
 
@@ -95,7 +95,8 @@ processes, with Helicase and `cmd/outbound` relaying everything.
 
 ## Activation
 
-`LigaseActivationHeight` in `app/ligase.go` is **161,000** (see
+`LigaseActivationHeight` in `app/ligase.go` was **161,000**, activated
+2026-09-30 (see
 [CUTOVER-161000.md](CUTOVER-161000.md)). Ligase acts only once `x/escrow` is live and that height is
 reached. Before then, a transfer to the Ligase address is an ordinary
 transfer. It adds no store, so nothing halts at that height. But it

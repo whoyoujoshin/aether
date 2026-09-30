@@ -85,8 +85,8 @@ before step 1 of any phase. This planning session can't reach either chain.
    (`bond_cooldown` 51,840 blocks ≈ 72h) execute after voting ends on
    **2026-10-04 ~15:58 CT**. No long-lived connection before then (see
    `docs/IBC.md`). There's already a check-in scheduled for that.
-2. **Weekend cutover** (escrow and the consensus-key guard) doesn't block IBC, but
-   it's better not to open channels during a coordinated restart.
+2. **The escrow cutover is done** (block 161,000, 2026-09-30): escrow,
+   Helicase, Ligase and the consensus-key guard are live.
 3. **Funding, starting now** (the faucets are slow):
    - an Aether relayer key (ML-DSA), from the Aether faucet;
    - an Osmosis relayer key: ~100 OSMO/day, a few days' worth;
