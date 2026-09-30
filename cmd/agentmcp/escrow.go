@@ -107,7 +107,7 @@ type escrowDTO struct {
 	Payer       string    `json:"payer"`
 	Payee       string    `json:"payee"`
 	Arbiter     string    `json:"arbiter,omitempty"`
-	Amount      amountDTO `json:"amount" jsonschema:"the uaeth locked"`
+	Amount      amountDTO `json:"amount" jsonschema:"what's locked, with its asset (AETH or USDC)"`
 	Coins       string    `json:"coins" jsonschema:"every coin locked, e.g. 5000000uaeth"`
 	ExpiresAt   string    `json:"expiresAt" jsonschema:"the deadline (RFC 3339)"`
 	SecondsLeft int64     `json:"secondsLeft" jsonschema:"until the deadline, by this machine's clock"`
@@ -124,10 +124,22 @@ func onExpiryName(o escrow.OnExpiry) string {
 	return "refund"
 }
 
+// escrowAmountDTO is the asset an escrow holds: the first one this server
+// knows (AETH if it holds any), else its first coin as the chain names it.
+func escrowAmountDTO(coins sdk.Coins) amountDTO {
+	if a, amt, ok := knownAmount(coins); ok {
+		return newAssetAmountDTO(a, amt)
+	}
+	if len(coins) > 0 {
+		return newAssetAmountDTO(assetOfDenom(coins[0].Denom), coins[0].Amount)
+	}
+	return newAmountDTO(math.ZeroInt())
+}
+
 func newEscrowDTO(e escrow.Escrow, agent string) escrowDTO {
 	d := escrowDTO{
 		ID: e.Id, Payer: e.Payer, Payee: e.Payee, Arbiter: e.Arbiter,
-		Amount: newAmountDTO(e.Amount.AmountOf(baseDenom)), Coins: e.Amount.String(),
+		Amount: escrowAmountDTO(e.Amount), Coins: e.Amount.String(),
 		ExpiresAt:   time.Unix(e.ExpiresAt, 0).UTC().Format(time.RFC3339),
 		SecondsLeft: max(e.ExpiresAt-time.Now().Unix(), 0),
 		OnExpiry:    onExpiryName(e.OnExpiry), Terms: e.Terms,
@@ -161,7 +173,7 @@ type escrowTxOutput struct {
 
 type createEscrowInput struct {
 	Payee          string `json:"payee" jsonschema:"who is paid on release: the agent or person doing the work"`
-	Amount         string `json:"amount" jsonschema:"WITH its unit, e.g. \"5 AETH\" or \"5000000uaeth\""`
+	Amount         string `json:"amount" jsonschema:"WITH its unit, which also picks the asset: e.g. \"5 AETH\", \"5000000uaeth\" or \"20 USDC\" (if this agent may spend USDC)"`
 	ExpiresIn      string `json:"expiresIn" jsonschema:"deadline from now, e.g. \"72h\" or \"30m\" (at least 1m, at most 8760h)"`
 	OnExpiry       string `json:"onExpiry" jsonschema:"what happens if nobody settles it by the deadline: refund (it comes back to this agent) or release (the payee gets it)"`
 	Arbiter        string `json:"arbiter,omitempty" jsonschema:"optional third account that may release or refund at any time, to settle disputes"`
@@ -196,7 +208,7 @@ func toolCreateEscrow(ctx context.Context, _ *mcp.CallToolRequest, in createEscr
 			return nil, out, newError(codeInvalidAddress, fmt.Sprintf("arbiter %q: %v", in.Arbiter, err))
 		}
 	}
-	amount, err := parseAmount(in.Amount)
+	asset, amount, err := parseAssetAmount(in.Amount)
 	if err != nil {
 		return nil, out, err
 	}
@@ -232,7 +244,7 @@ func toolCreateEscrow(ctx context.Context, _ *mcp.CallToolRequest, in createEscr
 			return nil, err
 		}
 		if rec, ok := st.Sends[in.IdempotencyKey]; ok {
-			if rec.Kind != sendKindEscrowCreate || rec.To != in.Payee || rec.Amount != amount.String() || rec.Escrow == nil ||
+			if rec.Kind != sendKindEscrowCreate || rec.To != in.Payee || rec.Amount != amount.String() || rec.Denom != recordDenom(asset) || rec.Escrow == nil ||
 				rec.Escrow.Arbiter != params.Arbiter || rec.Escrow.OnExpiry != params.OnExpiry || rec.Escrow.ExpiresIn != params.ExpiresIn || rec.Escrow.Terms != params.Terms {
 				e := newError(codeIdempotencyConflict, fmt.Sprintf("idempotencyKey %q was already used for something else; use a new key for a new escrow", in.IdempotencyKey))
 				e.TxHash = rec.TxHash
@@ -245,11 +257,8 @@ func toolCreateEscrow(ctx context.Context, _ *mcp.CallToolRequest, in createEscr
 		if _, err := ec.escrow(0); errors.Is(err, wallet.ErrEscrowNotActive) {
 			return nil, escrowErr(err)
 		}
-		if amount.Int64() > perTxLimit {
-			return nil, newError(codePerTxLimit, fmt.Sprintf("%s AETH exceeds the per-transaction limit of %s AETH", formatAeth(amount), formatAeth(math.NewInt(perTxLimit))))
-		}
-		if spent := st.spentInWindow(time.Now()); spent+amount.Int64() > dailyLimit {
-			return nil, dailyLimitError(st, time.Now(), amount.Int64())
+		if err := checkLimits(st, asset, amount); err != nil {
+			return nil, err
 		}
 		w, err := newWallet()
 		if err != nil {
@@ -259,22 +268,22 @@ func toolCreateEscrow(ctx context.Context, _ *mcp.CallToolRequest, in createEscr
 		if err != nil {
 			return nil, err
 		}
-		gate := sendAethInput{To: in.Payee, Amount: amount.String() + baseDenom, Memo: "escrow: " + in.Terms, IdempotencyKey: in.IdempotencyKey}
-		if proceed, p, err := approvalGate(st, from.Address, gate, amount); !proceed {
+		gate := sendAethInput{To: in.Payee, Amount: amount.String() + asset.BaseUnit, Memo: "escrow: " + in.Terms, IdempotencyKey: in.IdempotencyKey}
+		if proceed, p, err := approvalGate(st, from.Address, gate, asset, amount); !proceed {
 			if err != nil {
 				return nil, err
 			}
-			out.Status, out.ApprovalID, out.Message = statusPendingApproval, p.ApprovalID, "locking "+formatAeth(amount)+" AETH in escrow needs the owner's approval: "+p.Message
+			out.Status, out.ApprovalID, out.Message = statusPendingApproval, p.ApprovalID, "locking "+asset.Format(amount)+" in escrow needs the owner's approval: "+p.Message
 			return nil, nil
 		}
 		msg := &escrow.MsgCreateEscrow{
 			Payer: from.Address, Payee: in.Payee, Arbiter: in.Arbiter,
-			Amount:    sdk.NewCoins(sdk.NewCoin(baseDenom, amount)),
+			Amount:    sdk.NewCoins(sdk.NewCoin(asset.Denom, amount)),
 			ExpiresAt: time.Now().Add(dur).Unix(), OnExpiry: onExpiry, Terms: in.Terms,
 		}
 		params.ExpiresAt = msg.ExpiresAt
 		rec, err := signAndRecord(st, c, w, from.Address, in.IdempotencyKey, msg, &sendRecord{
-			Kind: sendKindEscrowCreate, To: in.Payee, Amount: amount.String(), Escrow: &params,
+			Kind: sendKindEscrowCreate, To: in.Payee, Amount: amount.String(), Denom: recordDenom(asset), Escrow: &params,
 		}, true)
 		if err != nil {
 			return nil, err
@@ -294,7 +303,7 @@ func toolCreateEscrow(ctx context.Context, _ *mcp.CallToolRequest, in createEscr
 		return nil, out, err
 	}
 
-	amt := newAmountDTO(amount)
+	amt := newAssetAmountDTO(asset, amount)
 	out.TxHash, out.Amount = rec.TxHash, &amt
 	tx, err := awaitTransaction(ctx, c, rec.TxHash, deadline)
 	if err != nil {
@@ -350,7 +359,7 @@ func signAndRecord(st *agentState, c chain, w *wallet.Wallet, agent, key string,
 	st.Sends[key] = rec
 	if spend {
 		amount, _ := math.NewIntFromString(rec.Amount)
-		st.Events = append(st.Events, spendEvent{Time: now, Amount: amount.Int64(), TxHash: rec.TxHash})
+		st.Events = append(st.Events, newSpend(now, assetOfDenom(rec.Denom), amount.Int64(), rec.TxHash))
 	}
 	if err := st.save(); err != nil {
 		return nil, fmt.Errorf("failed to record the transaction before sending (nothing was sent): %w", err)
@@ -424,7 +433,7 @@ func settledOutput(o *wallet.EscrowOutcome) escrowTxOutput {
 		out.Status = statusReleased
 	}
 	if coins, err := sdk.ParseCoinsNormalized(o.Amount); err == nil {
-		a := newAmountDTO(coins.AmountOf(baseDenom))
+		a := escrowAmountDTO(coins)
 		out.Amount = &a
 	}
 	return out
@@ -496,8 +505,9 @@ func settleEscrow(ctx context.Context, in settleEscrowInput, release bool) (escr
 		if release {
 			msg = &escrow.MsgReleaseEscrow{Sender: from.Address, Id: e.Id}
 		}
+		held := escrowAmountDTO(e.Amount)
 		rec, err := signAndRecord(st, c, w, from.Address, key, msg, &sendRecord{
-			Kind: sendKindEscrowSettle, To: e.Payee, Amount: e.Amount.AmountOf(baseDenom).String(),
+			Kind: sendKindEscrowSettle, To: e.Payee, Amount: held.Base, Denom: recordDenom(assetOfDenom(held.Denom)),
 			Escrow: &escrowParams{ID: e.Id, Release: release},
 		}, false)
 		if err != nil {
@@ -511,7 +521,7 @@ func settleEscrow(ctx context.Context, in settleEscrowInput, release bool) (escr
 
 	out.EscrowID, out.TxHash = in.ID, rec.TxHash
 	amount, _ := math.NewIntFromString(rec.Amount)
-	a := newAmountDTO(amount)
+	a := newAssetAmountDTO(assetOfDenom(rec.Denom), amount)
 	out.Amount = &a
 	tx, err := awaitTransaction(ctx, c, rec.TxHash, deadline)
 	if err != nil {

@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from .amount import DENOM, receipt_amount
 from .keys import Key, address_of
 
 RECEIPT_HEADER = "X-PAYMENT-RECEIPT"
@@ -121,14 +122,14 @@ def verify_receipt(r: dict) -> Optional[str]:
 
 
 def check_receipt(r: dict, *, network, pay_to, payer, scheme, payment, amount: int, method, host, path,
-                  request_body: bytes, status: int, response_body: Optional[bytes] = None) -> Optional[str]:
-    """verify_receipt, and that it describes exactly this purchase: the problem, or None."""
+                  request_body: bytes, status: int, response_body: Optional[bytes] = None, denom: str = DENOM) -> Optional[str]:
+    """verify_receipt, and that it describes exactly this purchase (amount in denom's base units): the problem, or None."""
     bad = verify_receipt(r)
     if bad:
         return bad
     checks = [("network", r["network"], network), ("payTo", r["payTo"], pay_to), ("payer", r["payer"], payer),
               ("scheme", r["scheme"], scheme), ("payment", str(r["payment"]).upper(), payment.upper()),
-              ("amount", r["amount"], str(amount)), ("method", r["method"], method), ("host", r["host"], host),
+              ("amount", r["amount"], receipt_amount(amount, denom)), ("method", r["method"], method), ("host", r["host"], host),
               ("path", r["path"], path), ("requestHash", r["requestHash"], hashlib.sha256(request_body).hexdigest()),
               ("status", str(r["status"]), str(status))]
     for name, got, want in checks:

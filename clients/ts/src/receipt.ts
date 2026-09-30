@@ -1,6 +1,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { base64 } from "@scure/base";
+import { receiptAmount } from "./amount.js";
 import { Key, addressOf } from "./keys.js";
 
 // Receipts: a seller's signed statement about one paid response -- who
@@ -29,7 +30,7 @@ export interface Receipt {
   scheme: string;
   /** Transaction hash (aether-memo) or request ID (aether-prepaid). */
   payment: string;
-  amount: string; // uaeth
+  amount: string; // uaeth, or the amount followed by the denom for any other asset ("50000ibc/...")
   method: string;
   host: string;
   path: string;
@@ -125,7 +126,10 @@ export interface ReceiptExpectation {
   payer: string;
   scheme: string;
   payment: string;
+  /** In the base units of denom. */
   amount: bigint;
+  /** The asset paid; default uaeth. */
+  denom?: string;
   method: string;
   host: string;
   path: string;
@@ -142,7 +146,7 @@ export function checkReceipt(r: Receipt, want: ReceiptExpectation): string | und
   const checks: [string, string, string][] = [
     ["network", r.network, want.network], ["payTo", r.payTo, want.payTo], ["payer", r.payer, want.payer],
     ["scheme", r.scheme, want.scheme], ["payment", r.payment.toUpperCase(), want.payment.toUpperCase()],
-    ["amount", r.amount, want.amount.toString()], ["method", r.method, want.method], ["host", r.host, want.host],
+    ["amount", r.amount, receiptAmount(want.amount, want.denom)], ["method", r.method, want.method], ["host", r.host, want.host],
     ["path", r.path, want.path], ["requestHash", r.requestHash, hex(want.requestBody)], ["status", String(r.status), String(want.status)],
   ];
   for (const [name, got, exp] of checks) if (got !== exp) return `${name} is "${got}", not "${exp}"`;

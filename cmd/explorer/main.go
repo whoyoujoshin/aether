@@ -334,8 +334,11 @@ func handleRecentTransactions(w http.ResponseWriter, r *http.Request) {
 // --- GET /api/address?addr= ---
 
 type addressResponse struct {
-	Address      string           `json:"address"`
-	Balance      string           `json:"balance"`
+	Address string `json:"address"`
+	Balance string `json:"balance"` // uaeth
+	// Balances is every token the address holds, AETH first, each with
+	// its asset when the explorer knows it.
+	Balances     []coinDTO        `json:"balances"`
 	Transactions []transactionDTO `json:"transactions"`
 	addressExtrasDTO
 }
@@ -369,6 +372,7 @@ func handleAddress(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, addressResponse{
 		Address:          addr,
 		Balance:          balance.AmountOf("uaeth").String(),
+		Balances:         coinDTOs(balance),
 		Transactions:     toTransactionDTOs(txs),
 		addressExtrasDTO: addressExtras(r.Context(), addr),
 	})
@@ -501,7 +505,12 @@ func main() {
 	flag.StringVar(&publicGRPC, "public-grpc", "", "gRPC endpoint to advertise to agents (default: the public testnet's on aether-testnet-1)")
 	flag.StringVar(&publicFaucet, "public-faucet", "", "faucet URL to advertise to agents (default: the public testnet's on aether-testnet-1)")
 	flag.StringVar(&publicSeed, "public-seed", "", "seed node (id@host:port) to advertise (default: the public testnet's on aether-testnet-1)")
+	usdcChannel := flag.String("usdc-channel", "", "Aether's end of its channel to Noble (e.g. channel-3): labels Noble USDC over exactly that channel; empty: other tokens show by denom")
 	flag.Parse()
+	var err error
+	if assets, err = wallet.NewAssets(*usdcChannel); err != nil {
+		log.Fatal(err)
+	}
 	resolvePublicEndpoints()
 
 	// Deliberately use our own dedicated mux, never the shared global

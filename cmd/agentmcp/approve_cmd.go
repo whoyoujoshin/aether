@@ -64,7 +64,7 @@ func runApprovalCommand(args []string) error {
 			if d := readDecisionUnverified(r.ID); d != "" {
 				state = d + "d (not yet picked up)"
 			}
-			fmt.Printf("%s  %s AETH to %s  memo=%q  requested %s  [%s]\n", r.ID, wallet.FormatAeth(amt), r.To, r.Memo, r.CreatedAt.Format(time.RFC3339), state)
+			fmt.Printf("%s  %s to %s  memo=%q  requested %s  [%s]\n", r.ID, assetOfDenom(r.Denom).Format(amt), r.To, r.Memo, r.CreatedAt.Format(time.RFC3339), state)
 		}
 		return nil
 	}
@@ -112,8 +112,8 @@ func runApprovalCommand(args []string) error {
 		return err
 	}
 	amt, _ := math.NewIntFromString(req.Amount)
-	fmt.Printf("%sd: %s AETH to %s. The agent's next send_aeth with that idempotencyKey will %s.\n",
-		decision, wallet.FormatAeth(amt), req.To, map[string]string{decisionApprove: "send it", decisionReject: "be refused"}[decision])
+	fmt.Printf("%sd: %s to %s. The agent's next send_aeth with that idempotencyKey will %s.\n",
+		decision, assetOfDenom(req.Denom).Format(amt), req.To, map[string]string{decisionApprove: "send it", decisionReject: "be refused"}[decision])
 	return nil
 }
 

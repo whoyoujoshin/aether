@@ -4,7 +4,7 @@ import { useApi } from "../hooks";
 import { CopyButton, TxHash } from "../components/Hash";
 import { GrantsPanel } from "../components/Grants";
 import { ErrorBanner } from "../components/ui";
-import { aeth, aethNumber, int, timeAgo, uaethOf, utc } from "../format";
+import { aeth, aethNumber, amountIn, assetLabel, assetOf, int, shortDenom, timeAgo, uaethOf, utc } from "../format";
 
 function kindOf(tx: Transaction): { icon: string; label: string; k: "in" | "out" } {
   return tx.direction === "received" ? { icon: "↓", label: "Received", k: "in" } : { icon: "↑", label: "Sent", k: "out" };
@@ -25,6 +25,13 @@ function downloadCSV(page: AddressPage) {
 
 const HIST_COLS = "36px minmax(0,1fr) 120px 170px 90px";
 
+/** A non-AETH transfer amount ("5000000ibc/…") in its own asset, or as given. */
+function otherAmount(amount: string, k: "in" | "out"): string {
+  const m = /^(\d+)([^,]+)$/.exec(amount || "");
+  if (!m) return amount || "—";
+  return `${k === "in" ? "+" : "−"}${amountIn(m[1], m[2])}`;
+}
+
 export default function Address() {
   const { address = "" } = useParams();
   const page = useApi(() => api.address(address), [address]);
@@ -37,6 +44,8 @@ export default function Address() {
   const hasEscrow = BigInt(escrowed) > 0n;
   const share = (v: string) => (BigInt(total) > 0n ? Number((BigInt(v) * 10000n) / BigInt(total)) / 100 : 0);
   const latest = p?.transactions[0];
+  // Tokens other than AETH (USDC, or anything else that arrived over IBC).
+  const others = (p?.balances ?? []).filter((c) => c.denom !== "uaeth");
 
   return (
     <div className="page">
@@ -109,6 +118,21 @@ export default function Address() {
                   </div>
                 </div>
               </div>
+              {others.length > 0 && (
+                <div style={{ marginTop: 18, borderTop: "1px solid var(--rule)", paddingTop: 14 }}>
+                  <div className="eyebrow">Other tokens</div>
+                  {others.map((c) => {
+                    const known = c.symbol ? assetOf(c.denom) : undefined;
+                    return (
+                      <div key={c.denom} className="mono" style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13, marginTop: 8 }}
+                        title={known ? `${known.origin} · ${c.denom}` : `${c.denom} · not a token this explorer names: it may look like one but arrived another way`}>
+                        <span className={known ? "" : "muted"}>{known ? assetLabel(known) : `${shortDenom(c.denom)} · not recognized`}</span>
+                        <span>{known ? amountIn(c.amount, c.denom) : int(c.amount)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="stack">
@@ -190,7 +214,7 @@ export default function Address() {
                           </Link>
                         </span>
                         <span className="right mono" style={{ fontSize: 14, fontWeight: 600, color: k.k === "in" ? "var(--green)" : "var(--bone)" }}>
-                          {u ? `${k.k === "in" ? "+" : "−"}${aeth(u)}` : t.amount || "—"}
+                          {u ? `${k.k === "in" ? "+" : "−"}${aeth(u)}` : otherAmount(t.amount, k.k)}
                         </span>
                         <span className="right muted" style={{ fontSize: 12 }} title={utc(t.timestamp)}>
                           {timeAgo(t.timestamp)}

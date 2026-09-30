@@ -27,8 +27,11 @@ type serviceDTO struct {
 	Name        string       `json:"name"`
 	Description string       `json:"description"`
 	URL         string       `json:"url"`
-	Price       string       `json:"price"` // uaeth per request
-	PriceAeth   string       `json:"priceAeth"`
+	Price       string       `json:"price"` // per request, in the asset's base unit
+	PriceAeth   string       `json:"priceAeth,omitempty"`
+	Asset       string       `json:"asset"` // denom the price is in
+	Symbol      string       `json:"symbol,omitempty"`
+	PriceAmount string       `json:"priceAmount,omitempty"`
 	Schemes     []string     `json:"schemes"`
 	MinDeposit  string       `json:"minDeposit,omitempty"`
 	PayTo       string       `json:"payTo"`
@@ -41,10 +44,13 @@ type serviceDTO struct {
 // pay itself from other accounts for free, so it's a hint, not proof;
 // agents weigh ratings by accounts they trust.
 type activityDTO struct {
-	WindowBlocks int64   `json:"windowBlocks"`
-	Payments     int     `json:"payments"`
-	Payers       int     `json:"payers"`
-	VolumeAeth   string  `json:"volumeAeth"`
+	WindowBlocks int64 `json:"windowBlocks"`
+	Payments     int   `json:"payments"`
+	Payers       int   `json:"payers"`
+	// Volume is what was paid, in the service's asset (as a decimal of
+	// its symbol); VolumeAeth is the same, set only for an AETH service.
+	Volume       string  `json:"volume"`
+	VolumeAeth   string  `json:"volumeAeth,omitempty"`
 	Ratings      int     `json:"ratings"`
 	AverageScore float64 `json:"averageScore,omitempty"`
 }
@@ -94,12 +100,19 @@ func handleServices(w http.ResponseWriter, r *http.Request) {
 		s := serviceDTO{
 			Name: l.Manifest.Name, Description: l.Manifest.Description, URL: l.URL,
 			Price: l.Manifest.Price, PriceAeth: l.Manifest.PriceAeth, Schemes: l.Manifest.Schemes,
+			Asset: l.Manifest.Denom(), Symbol: l.Manifest.Symbol, PriceAmount: l.Manifest.PriceAmount,
 			MinDeposit: l.Manifest.MinDeposit, PayTo: l.Announcer, Height: l.Height, TxHash: l.TxHash,
 		}
 		if r := l.Reputation; r != nil {
 			sum := directory.Summarize(r.Ratings, nil)
 			s.Activity = &activityDTO{WindowBlocks: directory.DefaultWindow, Payments: r.Stats.Payments, Payers: r.Stats.Payers,
-				VolumeAeth: wallet.FormatAeth(r.Stats.Volume), Ratings: sum.Count, AverageScore: sum.Average}
+				Volume: r.Stats.Volume.String(), Ratings: sum.Count, AverageScore: sum.Average}
+			if a, ok := assets.ByDenom(s.Asset); ok {
+				s.Activity.Volume = a.Decimal(r.Stats.Volume)
+			}
+			if s.Asset == wallet.BaseDenom {
+				s.Activity.VolumeAeth = wallet.FormatAeth(r.Stats.Volume)
+			}
 		}
 		out = append(out, s)
 	}

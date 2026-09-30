@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Iterable, List, Optional
 
 from . import bech32
-from .amount import parse_amount, parse_uaeth
+from .amount import DENOM, parse_uaeth
 from .client import AetherClient
 from .keys import PREFIX
 from .paywall import _NoRedirect
@@ -51,10 +51,12 @@ class Reputation:
     window_blocks: int
     payments: int
     payers: int
-    volume_uaeth: int
+    volume_uaeth: int  # volume, when the service charges AETH; 0 otherwise
     ratings: RatingSummary  # from accounts that paid the service before rating it
     trusted_ratings: RatingSummary
     raters: List[Rating] = field(default_factory=list)
+    volume: int = 0  # paid to the service in its asset (denom), in base units
+    denom: str = DENOM
 
 
 @dataclass
@@ -119,7 +121,8 @@ def find_services(client: AetherClient, query: str = "", max_price: Optional[str
                   window_blocks: int = DEFAULT_WINDOW) -> List[Service]:
     """Verified paid services from the on-chain directory, newest first. With
     reputation (one more scan per service), each carries what the chain says
-    about it; trusted are the accounts whose ratings you trust."""
+    about it; trusted are the accounts whose ratings you trust. max_price carries
+    its unit: only services charging that asset, at most this much, are listed."""
     current = {}
     directory_payments = client.incoming_payments(DIRECTORY_ADDRESS)
     for p in directory_payments:
@@ -140,7 +143,7 @@ def find_services(client: AetherClient, query: str = "", max_price: Optional[str
             current.pop(k, None)
         else:
             current[k] = (url, p.sender, p.height)
-    maximum = parse_amount(max_price) if max_price else None
+    maximum = client.assets.parse(max_price) if max_price else None
     words = query.lower().split()
     out = []
     for url, announcer, height in current.values():
@@ -151,7 +154,7 @@ def find_services(client: AetherClient, query: str = "", max_price: Optional[str
             price = parse_uaeth(m.get("price", ""))
         except Exception:
             continue
-        if maximum is not None and price > maximum:
+        if maximum is not None and ((m.get("asset") or DENOM) != maximum[0].denom or price > maximum[1]):
             continue
         hay = f"{m.get('name', '')} {m.get('description', '')} {url}".lower()
         if all(w in hay for w in words):
@@ -178,8 +181,9 @@ def _assess(client, services, directory_payments, trusted, window):
         latest[(p.sender, url)] = Rating(p.sender, url, int(rest[0]), p.height, p.hash)
     for s in services:
         pay_to = s.manifest["payTo"]
+        denom = s.manifest.get("asset") or DENOM
         try:
-            paid = client.incoming_payments(pay_to, since)
+            paid = client.incoming_payments(pay_to, since, denom=denom)
         except Exception:
             continue
         first_paid, payments, volume = {}, 0, 0
@@ -187,10 +191,10 @@ def _assess(client, services, directory_payments, trusted, window):
             if p.code != 0 or not p.sender or p.sender == pay_to or p.height < since:
                 continue
             payments += 1
-            volume += p.amount_uaeth
+            volume += p.amount
             if p.sender not in first_paid or p.height < first_paid[p.sender]:
                 first_paid[p.sender] = p.height
         raters = [r for r in latest.values()
                   if r.url == s.url and r.rater != pay_to and first_paid.get(r.rater, float("inf")) <= r.height]
-        s.reputation = Reputation(window, payments, len(first_paid), volume, _summarize(raters),
-                                  _summarize(raters, lambda a: a in trusted), raters)
+        s.reputation = Reputation(window, payments, len(first_paid), volume if denom == DENOM else 0, _summarize(raters),
+                                  _summarize(raters, lambda a: a in trusted), raters, volume, denom)

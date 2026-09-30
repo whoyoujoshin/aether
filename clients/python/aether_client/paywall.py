@@ -20,7 +20,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Optional
 
-from .amount import parse_amount, parse_uaeth
+from .amount import DENOM, Asset, format_amount, parse_uaeth
 from .client import AetherClient
 from .tx import grant_send_msg
 from .keys import Key
@@ -103,6 +103,25 @@ class FetchPaidResult:
     owed_uaeth: Optional[int] = None  # pull: owed to the seller, not yet collected
     allowance_uaeth: Optional[int] = None  # pull: what the allowance still covers beyond that (None if unlimited)
     grant_tx_hash: Optional[str] = None  # pull: an allowance granted by this call
+    # The asset paid in; amount, balance, owed and allowance are in its base units. The *_uaeth
+    # fields above are the same amounts, set only when the asset is AETH.
+    asset: Optional[Asset] = None
+    amount: Optional[int] = None
+    balance: Optional[int] = None
+    owed: Optional[int] = None
+    allowance: Optional[int] = None
+
+
+def _amounts(asset: Asset, **amounts) -> dict:
+    """A result's amounts in asset, with the uaeth-named copies for AETH."""
+    out = {"asset": asset}
+    for k, v in amounts.items():
+        if v is None:
+            continue
+        out[k] = v
+        if asset.denom == DENOM:
+            out[f"{k}_uaeth"] = v
+    return out
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -161,11 +180,24 @@ def fetch_paid(client: AetherClient, key: Key, url: str, *, max_amount: str, pre
     returns the response. If this returns payment_pending (or raises with a
     tx_hash), the payment was made: finish with present_payment, don't pay again.
 
+    max_amount is in the asset the service charges: "0.05 AETH", or "0.10 USDC"
+    with a client that has a usdc_channel. A higher quote, or one in another
+    asset, is refused unpaid. prepay and pull_allowance are in the same asset.
+
     pull_allowance ("1 AETH"), preferred over prepay: if the seller offers
     aether-pull, grant it an on-chain allowance of this much (payable only to
     it, for 7 days, revocable) when it has none or it runs low, then pay each
     request instantly by signature. The seller collects what you owe later."""
-    maximum = parse_amount(max_amount)
+    asset, maximum = client.assets.parse(max_amount)
+
+    def same(field: str, s: str) -> int:
+        a, v = client.assets.parse(s)
+        if a.denom != asset.denom:
+            raise PaymentError("ASSET_MISMATCH", f"{field} is in {a.symbol} but max_amount is in {asset.symbol}: give both in the asset the service charges")
+        return v
+
+    allowance = same("pull_allowance", pull_allowance) if pull_allowance else None
+    deposit = same("prepay", prepay) if prepay else None
     method = method.upper()
     hdrs = dict(headers or {})
     if body and "Content-Type" not in hdrs:
@@ -182,39 +214,47 @@ def fetch_paid(client: AetherClient, key: Key, url: str, *, max_amount: str, pre
         return FetchPaidResult("ok", first)
     quote = json.loads(first.body)
 
-    def pick(scheme):
+    def pick(scheme, denom=asset.denom):
+        # Only an offer in max_amount's asset is taken (denom None: any asset).
         for a in quote.get("accepts", []):
-            if a.get("scheme") == scheme and a.get("network") == client.chain_id and a.get("asset") == "uaeth":
+            if a.get("scheme") == scheme and a.get("network") == client.chain_id and (denom is None or a.get("asset") == denom):
                 return a
         return None
 
     pull = pick(SCHEME_PULL)
-    if pull_allowance and pull:
-        return _fetch_pull(client, key, url, method, body, pull, maximum, parse_amount(pull_allowance), send, request_id, confirm_timeout)
+    if allowance is not None and pull:
+        return _fetch_pull(client, key, url, method, body, pull, asset, maximum, allowance, send, request_id, confirm_timeout)
     prepaid = pick(SCHEME_PREPAID)
-    if prepay and prepaid:
-        return _fetch_prepaid(client, key, url, method, body, prepaid, maximum, parse_amount(prepay), send, request_id, confirm_timeout)
+    if deposit is not None and prepaid:
+        return _fetch_prepaid(client, key, url, method, body, prepaid, asset, maximum, deposit, send, request_id, confirm_timeout)
 
     memo = pick(SCHEME_MEMO)
     if not memo or not memo.get("extra", {}).get("invoice"):
+        other = pick(SCHEME_MEMO, None)
+        known = other and client.assets.by_denom(other.get("asset", ""))
+        if known and str(other.get("maxAmountRequired", "")).isdigit():
+            raise PaymentError("ASSET_MISMATCH", f"the server charges {format_amount(known, int(other['maxAmountRequired']))}; max_amount is in "
+                                                 f"{asset.symbol}. Nothing was paid: give max_amount in {known.symbol}")
+        if other:
+            raise PaymentError("PAYMENT_UNSUPPORTED", f"the server charges in {other.get('asset')}, an asset this client doesn't know. Nothing was paid")
         raise PaymentError("PAYMENT_UNSUPPORTED", f"the server doesn't accept {SCHEME_MEMO} payments on {client.chain_id}")
     price = parse_uaeth(memo["maxAmountRequired"])
     if price > maximum:
-        raise PaymentError("PRICE_EXCEEDS_MAX", f"the server asks {price} uaeth; max_amount is {maximum}. Nothing was paid")
+        raise PaymentError("PRICE_EXCEEDS_MAX", f"the server asks {format_amount(asset, price)}; max_amount is {format_amount(asset, maximum)}. Nothing was paid")
     invoice = memo["extra"]["invoice"]
-    sent = client.send(key, memo["payTo"], f"{price}uaeth", memo=invoice)
+    sent = client.send(key, memo["payTo"], f"{price}{asset.base_unit}", memo=invoice)
     if sent.status == "failed":
         raise PaymentError("TX_REJECTED", f"the payment was rejected: {sent.log}", sent.hash)
     conf = client.wait_for_transaction(sent.hash, timeout=confirm_timeout)
     if conf.status == "failed":
         raise PaymentError("TX_FAILED", f"the payment failed on chain: {conf.log}", sent.hash)
-    base = dict(scheme=SCHEME_MEMO, tx_hash=sent.hash, invoice=invoice, amount_uaeth=price)
+    base = dict(scheme=SCHEME_MEMO, tx_hash=sent.hash, invoice=invoice, **_amounts(asset, amount=price))
     if conf.status == "pending":
         return FetchPaidResult("payment_pending", **base)
     r = present_payment(client, url, invoice, sent.hash, send=send)
     parts = urllib.parse.urlsplit(url)
     return _with_receipt(FetchPaidResult(r.status, r.response, **base), network=client.chain_id, pay_to=memo["payTo"],
-                         payer=key.address, scheme=SCHEME_MEMO, payment=sent.hash, amount=price, method=method,
+                         payer=key.address, scheme=SCHEME_MEMO, payment=sent.hash, amount=price, denom=asset.denom, method=method,
                          host=_signing_host(url), path=urllib.parse.unquote(parts.path or "/"), request_body=body)
 
 
@@ -234,13 +274,13 @@ def present_payment(client: AetherClient, url: str, invoice: str, tx_hash: str, 
         raise PaymentError(code, f"the server refused the payment ({pr.get('error')}): {pr.get('message', '')}", tx_hash)
 
 
-def _fetch_prepaid(client, key, url, method, body, req, maximum, prepay, send, request_id, confirm_timeout):
+def _fetch_prepaid(client, key, url, method, body, req, asset, maximum, prepay, send, request_id, confirm_timeout):
     price = parse_uaeth(req["maxAmountRequired"])
     if price > maximum:
-        raise PaymentError("PRICE_EXCEEDS_MAX", f"the server asks {price} uaeth per request; max_amount is {maximum}. Nothing was paid")
+        raise PaymentError("PRICE_EXCEEDS_MAX", f"the server asks {format_amount(asset, price)} per request; max_amount is {format_amount(asset, maximum)}. Nothing was paid")
     min_dep = req.get("extra", {}).get("minDeposit")
     if min_dep and prepay < parse_uaeth(min_dep):
-        raise PaymentError("PAYMENT_UNSUPPORTED", f"the minimum deposit is {min_dep} uaeth")
+        raise PaymentError("PAYMENT_UNSUPPORTED", f"the minimum deposit is {format_amount(asset, parse_uaeth(min_dep))}")
     parts = urllib.parse.urlsplit(url)
     request_id = request_id or os.urandom(16).hex()
 
@@ -255,9 +295,9 @@ def _fetch_prepaid(client, key, url, method, body, req, maximum, prepay, send, r
         s = resp.headers.get("X-Payment-Response") or resp.headers.get("X-PAYMENT-RESPONSE")
         if s:
             balance = int(json.loads(base64.b64decode(s)).get("balance") or 0)
-        return _with_receipt(FetchPaidResult("paid", resp, SCHEME_PREPAID, deposit_tx, None, price, balance),
+        return _with_receipt(FetchPaidResult("paid", resp, SCHEME_PREPAID, deposit_tx, **_amounts(asset, amount=price, balance=balance)),
                              network=client.chain_id, pay_to=req["payTo"], payer=key.address, scheme=SCHEME_PREPAID,
-                             payment=request_id, amount=price, method=method, host=_signing_host(url),
+                             payment=request_id, amount=price, denom=asset.denom, method=method, host=_signing_host(url),
                              path=urllib.parse.unquote(parts.path or "/"), request_body=body)
 
     resp = attempt()
@@ -267,14 +307,14 @@ def _fetch_prepaid(client, key, url, method, body, req, maximum, prepay, send, r
     if pr.get("error") != "insufficient_balance":
         code = "PAYMENT_ALREADY_REDEEMED" if pr.get("error") == "invoice_already_redeemed" else "PAYMENT_REJECTED"
         raise PaymentError(code, f"{pr.get('error')}: {pr.get('message', '')}")
-    dep = client.send(key, req["payTo"], f"{prepay}uaeth", memo=DEPOSIT_MEMO_PREFIX + key.address)
+    dep = client.send(key, req["payTo"], f"{prepay}{asset.base_unit}", memo=DEPOSIT_MEMO_PREFIX + key.address)
     if dep.status == "failed":
         raise PaymentError("TX_REJECTED", f"the deposit was rejected: {dep.log}", dep.hash)
     conf = client.wait_for_transaction(dep.hash, timeout=confirm_timeout)
     if conf.status == "failed":
         raise PaymentError("TX_FAILED", f"the deposit failed on chain: {conf.log}", dep.hash)
     if conf.status == "pending":
-        return FetchPaidResult("payment_pending", scheme=SCHEME_PREPAID, tx_hash=dep.hash, amount_uaeth=prepay)
+        return FetchPaidResult("payment_pending", scheme=SCHEME_PREPAID, tx_hash=dep.hash, **_amounts(asset, amount=prepay))
     for i in range(5):
         resp = attempt(dep.hash)
         if resp.status != 402:
@@ -289,15 +329,15 @@ def _fetch_prepaid(client, key, url, method, body, req, maximum, prepay, send, r
 _PULL_GRANT_ERRORS = {"no_grant", "grant_too_low", "pull_unpaid"}
 
 
-def _fetch_pull(client, key, url, method, body, req, maximum, allowance, send, request_id, confirm_timeout):
+def _fetch_pull(client, key, url, method, body, req, asset, maximum, allowance, send, request_id, confirm_timeout):
     price = parse_uaeth(req["maxAmountRequired"])
     if price > maximum:
-        raise PaymentError("PRICE_EXCEEDS_MAX", f"the server asks {price} uaeth per request; max_amount is {maximum}. Nothing was paid")
+        raise PaymentError("PRICE_EXCEEDS_MAX", f"the server asks {format_amount(asset, price)} per request; max_amount is {format_amount(asset, maximum)}. Nothing was paid")
     grantee = req.get("extra", {}).get("grantee")
     if not grantee:
         raise PaymentError("PAYMENT_UNSUPPORTED", "the server's aether-pull offer names no grantee")
     if allowance < price:
-        raise PaymentError("INVALID_ARGUMENT", f"pull_allowance {allowance} uaeth doesn't cover one request ({price} uaeth)")
+        raise PaymentError("INVALID_ARGUMENT", f"pull_allowance {format_amount(asset, allowance)} doesn't cover one request ({format_amount(asset, price)})")
     parts = urllib.parse.urlsplit(url)
     path = urllib.parse.unquote(parts.path or "/")
     request_id = request_id or os.urandom(16).hex()
@@ -310,11 +350,11 @@ def _fetch_pull(client, key, url, method, body, req, maximum, allowance, send, r
     def done(resp):
         s = resp.headers.get("X-Payment-Response") or resp.headers.get("X-PAYMENT-RESPONSE")
         settle = json.loads(base64.b64decode(s)) if s else {}
-        r = FetchPaidResult("paid", resp, SCHEME_PULL, None, None, price, grant_tx_hash=grant_tx,
-                            owed_uaeth=int(settle["owed"]) if settle.get("owed") else None,
-                            allowance_uaeth=int(settle["allowance"]) if settle.get("allowance") else None)
+        r = FetchPaidResult("paid", resp, SCHEME_PULL, grant_tx_hash=grant_tx,
+                            **_amounts(asset, amount=price, owed=int(settle["owed"]) if settle.get("owed") else None,
+                                       allowance=int(settle["allowance"]) if settle.get("allowance") else None))
         return _with_receipt(r, network=client.chain_id, pay_to=req["payTo"], payer=key.address, scheme=SCHEME_PULL,
-                             payment=request_id, amount=price, method=method, host=_signing_host(url), path=path, request_body=body)
+                             payment=request_id, amount=price, denom=asset.denom, method=method, host=_signing_host(url), path=path, request_body=body)
 
     resp = attempt()
     if resp.status != 402:
@@ -324,12 +364,13 @@ def _fetch_pull(client, key, url, method, body, req, maximum, allowance, send, r
         code = "PAYMENT_ALREADY_REDEEMED" if pr.get("error") == "invoice_already_redeemed" else "PAYMENT_REJECTED"
         raise PaymentError(code, f"{pr.get('error')}: {pr.get('message', '')}")
     # The new allowance replaces the old one, so it must cover what's owed plus this request.
-    offer = next((a for a in pr.get("accepts", []) if a.get("scheme") == SCHEME_PULL), {})
+    offer = next((a for a in pr.get("accepts", []) if a.get("scheme") == SCHEME_PULL and a.get("asset") == asset.denom), {})
     owed = int(offer.get("extra", {}).get("owed") or 0)
     if allowance < owed + price:
-        raise PaymentError("INVALID_ARGUMENT", f"you owe this service {owed} uaeth not yet collected; pull_allowance must be at least {owed + price} uaeth")
+        raise PaymentError("INVALID_ARGUMENT", f"you owe this service {format_amount(asset, owed)} not yet collected; pull_allowance must be at least "
+                                               f"{format_amount(asset, owed + price)} ({owed + price}{asset.base_unit})")
     # Granting again is harmless: a grant replaces the previous one.
-    g = client.sign_and_broadcast(key, [grant_send_msg(key.address, grantee, allowance, [req["payTo"]], int(time.time()) + PULL_GRANT_SECONDS)])
+    g = client.sign_and_broadcast(key, [grant_send_msg(key.address, grantee, allowance, [req["payTo"]], int(time.time()) + PULL_GRANT_SECONDS, asset.denom)])
     if g.status == "failed":
         raise PaymentError("TX_REJECTED", f"the allowance was rejected: {g.log}", g.hash)
     grant_tx = g.hash
@@ -337,7 +378,7 @@ def _fetch_pull(client, key, url, method, body, req, maximum, allowance, send, r
     if conf.status == "failed":
         raise PaymentError("TX_FAILED", f"the allowance failed on chain: {conf.log}", g.hash)
     if conf.status == "pending":
-        return FetchPaidResult("payment_pending", scheme=SCHEME_PULL, tx_hash=g.hash, amount_uaeth=allowance, grant_tx_hash=g.hash)
+        return FetchPaidResult("payment_pending", scheme=SCHEME_PULL, tx_hash=g.hash, grant_tx_hash=g.hash, **_amounts(asset, amount=allowance))
     resp = attempt()
     if resp.status != 402:
         return done(resp)

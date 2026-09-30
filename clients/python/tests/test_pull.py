@@ -160,7 +160,7 @@ class PullTest(unittest.TestCase):
         with self.assertRaises(PaymentError) as e:
             self.buy(buyer, "c", "0.02 AETH")
         self.assertEqual(e.exception.code, "INVALID_ARGUMENT")
-        self.assertIn("at least 30000", str(e.exception))
+        self.assertIn("at least 0.03 AETH (30000uaeth)", str(e.exception))
         r = self.buy(buyer, "c")
         self.assertEqual((r.status, r.owed_uaeth), ("paid", 30_000), "the old debt is owed again, with this request")
         self.collect()

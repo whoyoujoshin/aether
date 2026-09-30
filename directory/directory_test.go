@@ -156,7 +156,7 @@ func TestPaywallManifest(t *testing.T) {
 	m, err := SafeFetcher(true)(context.Background(), srv.URL)
 	require.NoError(t, err)
 	require.Equal(t, paywall.Manifest{X402Version: 1, Name: "Weather", Description: "forecasts", Network: "n", PayTo: seller,
-		Price: "20000", PriceAeth: "0.02", Schemes: []string{paywall.Scheme}}, *m)
+		Price: "20000", PriceAeth: "0.02", Asset: "uaeth", Symbol: "AETH", PriceAmount: "0.02", Schemes: []string{paywall.Scheme}}, *m)
 	require.NoError(t, Verify(Announcement{Announcer: seller}, m, "n"))
 }
 

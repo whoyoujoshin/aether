@@ -29,7 +29,8 @@ func collectorAddr() string { return sdk.AccAddress("pull_collector______").Stri
 type chainGrants struct {
 	f         *fakeChain
 	mu        sync.Mutex
-	collected map[string]int64 // granter -> uaeth, under its latest grant
+	denom     string           // what the seller collects
+	collected map[string]int64 // granter -> base units, under its latest grant
 	grantAt   map[string]int64 // granter -> height of that grant
 }
 
@@ -67,11 +68,11 @@ func (g *chainGrants) get(granter, grantee string) (*wallet.SendGrant, error) {
 	}
 	used := g.collected[granter]
 	g.mu.Unlock()
-	left := found.SpendLimit.AmountOf("uaeth").SubRaw(used)
+	left := found.SpendLimit.AmountOf(g.denom).SubRaw(used)
 	if !left.IsPositive() {
 		return nil, fmt.Errorf("%w from %s to %s", wallet.ErrGrantNotFound, granter, grantee)
 	}
-	found.SpendLimit = sdk.NewCoins(sdk.NewCoin("uaeth", left))
+	found.SpendLimit = sdk.NewCoins(sdk.NewCoin(g.denom, left))
 	return found, nil
 }
 
@@ -95,7 +96,7 @@ func pullSeller(t *testing.T, f *fakeChain) (*httptest.Server, *atomic.Int32, *p
 	t.Helper()
 	ledger, err := paywall.NewFileLedger("")
 	require.NoError(t, err)
-	g := &chainGrants{f: f, collected: map[string]int64{}, grantAt: map[string]int64{}}
+	g := &chainGrants{f: f, denom: "uaeth", collected: map[string]int64{}, grantAt: map[string]int64{}}
 	pw, err := paywall.New(paywall.Config{
 		PayTo: sellerAddr(), Price: math.NewInt(20_000), Network: chainID, Lookup: f.lookup,
 		Prepaid: &paywall.PrepaidConfig{Ledger: ledger, MinDeposit: math.NewInt(50_000)},

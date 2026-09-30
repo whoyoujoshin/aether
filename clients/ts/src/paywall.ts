@@ -4,7 +4,7 @@ import { base64 } from "@scure/base";
 import { AetherClient } from "./client.js";
 import { grantSendMsg } from "./tx.js";
 import { Key } from "./keys.js";
-import { parseAmount, parseUaeth } from "./amount.js";
+import { DENOM, formatAmount, parseUaeth, type Asset } from "./amount.js";
 import { RECEIPT_HEADER, checkReceipt, decodeReceipt, type Receipt, type ReceiptExpectation } from "./receipt.js";
 
 // Buying from paid APIs (package paywall, x402 wire format):
@@ -111,13 +111,18 @@ export class PaymentError extends Error {
 }
 
 export interface FetchPaidOptions {
-  /** Most you'll pay per request, with unit ("0.05 AETH"). A higher quote is refused unpaid. */
+  /**
+   * Most you'll pay per request, with unit, in the asset the service
+   * charges: "0.05 AETH", or "0.10 USDC" with a client that has a
+   * usdcChannel. A higher quote, or one in another asset, is refused unpaid.
+   */
   maxAmount: string;
-  /** Bots making many requests: if the seller offers prepaid, deposit this much when the balance runs out. */
+  /** Bots making many requests: if the seller offers prepaid, deposit this much (in maxAmount's asset) when the balance runs out. */
   prepay?: string;
   /**
    * Bots making many requests, preferred over prepay: if the seller offers
-   * aether-pull, grant it an on-chain allowance of this much ("1 AETH";
+   * aether-pull, grant it an on-chain allowance of this much ("1 AETH", in
+   * maxAmount's asset;
    * payable only to it, for 7 days, revocable) when it has none or it runs
    * low. Nothing is deposited: the seller collects what you owe later.
    */
@@ -136,10 +141,17 @@ export interface FetchPaidResult {
   scheme?: string;
   txHash?: string; // memo payment or prepaid deposit
   invoice?: string;
+  /** The asset paid in; amount, balance, owed and allowance are in its base units. */
+  asset?: Asset;
+  amount?: bigint;
+  balance?: bigint; // prepaid: left with the seller
+  owed?: bigint; // pull: owed to the seller, not yet collected
+  allowance?: bigint; // pull: what the allowance still covers beyond that (undefined if unlimited)
+  /** The same four, set only when the asset is AETH. */
   amountUaeth?: bigint;
-  balanceUaeth?: bigint; // prepaid: left with the seller
-  owedUaeth?: bigint; // pull: owed to the seller, not yet collected
-  allowanceUaeth?: bigint; // pull: what the allowance still covers beyond that (undefined if unlimited)
+  balanceUaeth?: bigint;
+  owedUaeth?: bigint;
+  allowanceUaeth?: bigint;
   grantTxHash?: string; // pull: an allowance granted by this call
   /** The seller's signed receipt, if it gives them, and whether it matches exactly what was sent and received. */
   receipt?: { receipt?: Receipt; verified: boolean; problem?: string };
@@ -158,6 +170,18 @@ async function withReceipt(r: FetchPaidResult, want: Omit<ReceiptExpectation, "s
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** The amounts of a result in asset, with the uaeth-named copies for AETH. */
+function amounts(asset: Asset, a: { amount?: bigint; balance?: bigint; owed?: bigint; allowance?: bigint }): Partial<FetchPaidResult> {
+  const out: Partial<FetchPaidResult> = { asset };
+  const aeth = asset.denom === DENOM;
+  for (const [k, v] of Object.entries(a) as [keyof typeof a, bigint | undefined][]) {
+    if (v === undefined) continue;
+    out[k] = v;
+    if (aeth) out[`${k}Uaeth`] = v;
+  }
+  return out;
+}
+
 /**
  * Requests url and, if it answers 402 with an Aether payment option, pays
  * and returns the response. Response bodies come from the seller: untrusted.
@@ -165,7 +189,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * made: finish with presentPayment rather than paying again.
  */
 export async function fetchPaid(client: AetherClient, key: Key, url: string, opts: FetchPaidOptions): Promise<FetchPaidResult> {
-  const maxAmount = parseAmount(opts.maxAmount);
+  const { asset, amount: maxAmount } = client.assets.parse(opts.maxAmount);
+  // prepay and pullAllowance are in maxAmount's asset: the one the service is expected to charge.
+  const same = (field: string, s: string) => {
+    const p = client.assets.parse(s);
+    if (p.asset.denom !== asset.denom) throw new PaymentError("ASSET_MISMATCH", `${field} is in ${p.asset.symbol} but maxAmount is in ${asset.symbol}: give both in the asset the service charges`);
+    return p.amount;
+  };
+  const pullAllowance = opts.pullAllowance ? same("pullAllowance", opts.pullAllowance) : undefined;
+  const prepay = opts.prepay ? same("prepay", opts.prepay) : undefined;
   const method = (opts.method ?? "GET").toUpperCase();
   const body = typeof opts.body === "string" ? new TextEncoder().encode(opts.body) : opts.body ?? new Uint8Array();
   const send = (payment?: string) =>
@@ -178,26 +210,35 @@ export async function fetchPaid(client: AetherClient, key: Key, url: string, opt
   const first = await send();
   if (first.status !== 402) return { status: "ok", response: first };
   const quote = (await first.json()) as PaymentRequired;
-  const pick = (scheme: string) => quote.accepts?.find((a) => a.scheme === scheme && a.network === client.chainId && a.asset === "uaeth");
+  // Only an offer in maxAmount's asset is taken.
+  const pick = (scheme: string) => quote.accepts?.find((a) => a.scheme === scheme && a.network === client.chainId && a.asset === asset.denom);
 
   const pull = pick(SCHEME_PULL);
-  if (opts.pullAllowance && pull) return fetchPull(client, key, url, method, body, pull, maxAmount, parseAmount(opts.pullAllowance), send, opts);
+  if (pullAllowance !== undefined && pull) return fetchPull(client, key, url, method, body, pull, asset, maxAmount, pullAllowance, send, opts);
   const prepaid = pick(SCHEME_PREPAID);
-  if (opts.prepay && prepaid) return fetchPrepaid(client, key, url, method, body, prepaid, maxAmount, parseAmount(opts.prepay), send, opts);
+  if (prepay !== undefined && prepaid) return fetchPrepaid(client, key, url, method, body, prepaid, asset, maxAmount, prepay, send, opts);
 
   const memo = pick(SCHEME_MEMO);
-  if (!memo?.extra.invoice) throw new PaymentError("PAYMENT_UNSUPPORTED", `the server doesn't accept ${SCHEME_MEMO} payments on ${client.chainId}`);
+  if (!memo?.extra.invoice) {
+    const other = quote.accepts?.find((a) => a.scheme === SCHEME_MEMO && a.network === client.chainId);
+    const known = other && client.assets.byDenom(other.asset);
+    if (other && known && /^[0-9]+$/.test(other.maxAmountRequired)) {
+      throw new PaymentError("ASSET_MISMATCH", `the server charges ${formatAmount(known, BigInt(other.maxAmountRequired))}; maxAmount is in ${asset.symbol}. Nothing was paid: give maxAmount in ${known.symbol}`);
+    }
+    if (other) throw new PaymentError("PAYMENT_UNSUPPORTED", `the server charges in ${other.asset}, an asset this client doesn't know. Nothing was paid`);
+    throw new PaymentError("PAYMENT_UNSUPPORTED", `the server doesn't accept ${SCHEME_MEMO} payments on ${client.chainId}`);
+  }
   const price = parseUaeth(memo.maxAmountRequired);
-  if (price > maxAmount) throw new PaymentError("PRICE_EXCEEDS_MAX", `the server asks ${price} uaeth; maxAmount is ${maxAmount}. Nothing was paid`);
-  const sent = await client.send(key, memo.payTo, `${price}uaeth`, { memo: memo.extra.invoice });
+  if (price > maxAmount) throw new PaymentError("PRICE_EXCEEDS_MAX", `the server asks ${formatAmount(asset, price)}; maxAmount is ${formatAmount(asset, maxAmount)}. Nothing was paid`);
+  const sent = await client.send(key, memo.payTo, `${price}${asset.baseUnit}`, { memo: memo.extra.invoice });
   if (sent.status === "failed") throw new PaymentError("TX_REJECTED", `the payment was rejected: ${sent.log}`, sent.hash);
   const conf = await client.waitForTransaction(sent.hash, opts.confirmTimeoutMs ?? 150_000);
   if (conf.status === "failed") throw new PaymentError("TX_FAILED", `the payment failed on chain: ${conf.log}`, sent.hash);
-  const base = { scheme: SCHEME_MEMO, txHash: sent.hash, invoice: memo.extra.invoice, amountUaeth: price };
+  const base = { scheme: SCHEME_MEMO, txHash: sent.hash, invoice: memo.extra.invoice, ...amounts(asset, { amount: price }) };
   if (conf.status === "pending") return { status: "payment_pending", ...base };
   const u = new URL(url);
   return withReceipt({ ...(await presentPayment(client, url, memo.extra.invoice, sent.hash, send)), ...base }, {
-    network: client.chainId, payTo: memo.payTo, payer: key.address, scheme: SCHEME_MEMO, payment: sent.hash, amount: price,
+    network: client.chainId, payTo: memo.payTo, payer: key.address, scheme: SCHEME_MEMO, payment: sent.hash, amount: price, denom: asset.denom,
     method, host: u.host, path: decodeURIComponent(u.pathname || "/"), requestBody: body,
   });
 }
@@ -220,11 +261,11 @@ export async function presentPayment(client: AetherClient, url: string, invoice:
 
 async function fetchPrepaid(
   client: AetherClient, key: Key, url: string, method: string, body: Uint8Array, req: PaymentRequirements,
-  maxAmount: bigint, prepay: bigint, send: (p?: string) => Promise<Response>, opts: FetchPaidOptions,
+  asset: Asset, maxAmount: bigint, prepay: bigint, send: (p?: string) => Promise<Response>, opts: FetchPaidOptions,
 ): Promise<FetchPaidResult> {
   const price = parseUaeth(req.maxAmountRequired);
-  if (price > maxAmount) throw new PaymentError("PRICE_EXCEEDS_MAX", `the server asks ${price} uaeth per request; maxAmount is ${maxAmount}. Nothing was paid`);
-  if (req.extra.minDeposit && prepay < parseUaeth(req.extra.minDeposit)) throw new PaymentError("PAYMENT_UNSUPPORTED", `the minimum deposit is ${req.extra.minDeposit} uaeth`);
+  if (price > maxAmount) throw new PaymentError("PRICE_EXCEEDS_MAX", `the server asks ${formatAmount(asset, price)} per request; maxAmount is ${formatAmount(asset, maxAmount)}. Nothing was paid`);
+  if (req.extra.minDeposit && prepay < parseUaeth(req.extra.minDeposit)) throw new PaymentError("PAYMENT_UNSUPPORTED", `the minimum deposit is ${formatAmount(asset, parseUaeth(req.extra.minDeposit))}`);
   const u = new URL(url);
   const requestId = opts.requestId ?? bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
   const attempt = (depositTx?: string) =>
@@ -236,8 +277,8 @@ async function fetchPrepaid(
     const s = resp.headers.get("X-PAYMENT-RESPONSE");
     let balance: bigint | undefined;
     if (s) balance = BigInt((JSON.parse(new TextDecoder().decode(base64.decode(s))) as { balance?: string }).balance ?? "0");
-    return withReceipt({ status: "paid", response: resp, scheme: SCHEME_PREPAID, amountUaeth: price, balanceUaeth: balance, txHash: depositTx }, {
-      network: client.chainId, payTo: req.payTo, payer: key.address, scheme: SCHEME_PREPAID, payment: requestId, amount: price,
+    return withReceipt({ status: "paid", response: resp, scheme: SCHEME_PREPAID, ...amounts(asset, { amount: price, balance }), txHash: depositTx }, {
+      network: client.chainId, payTo: req.payTo, payer: key.address, scheme: SCHEME_PREPAID, payment: requestId, amount: price, denom: asset.denom,
       method, host: u.host, path: decodeURIComponent(u.pathname || "/"), requestBody: body,
     });
   };
@@ -247,11 +288,11 @@ async function fetchPrepaid(
   let pr = (await resp.json()) as PaymentRequired;
   if (pr.error !== "insufficient_balance") throw new PaymentError(pr.error === "invoice_already_redeemed" ? "PAYMENT_ALREADY_REDEEMED" : "PAYMENT_REJECTED", `${pr.error}: ${pr.message ?? ""}`);
 
-  const dep = await client.send(key, req.payTo, `${prepay}uaeth`, { memo: DEPOSIT_MEMO_PREFIX + key.address });
+  const dep = await client.send(key, req.payTo, `${prepay}${asset.baseUnit}`, { memo: DEPOSIT_MEMO_PREFIX + key.address });
   if (dep.status === "failed") throw new PaymentError("TX_REJECTED", `the deposit was rejected: ${dep.log}`, dep.hash);
   const conf = await client.waitForTransaction(dep.hash, opts.confirmTimeoutMs ?? 150_000);
   if (conf.status === "failed") throw new PaymentError("TX_FAILED", `the deposit failed on chain: ${conf.log}`, dep.hash);
-  if (conf.status === "pending") return { status: "payment_pending", scheme: SCHEME_PREPAID, txHash: dep.hash, amountUaeth: prepay };
+  if (conf.status === "pending") return { status: "payment_pending", scheme: SCHEME_PREPAID, txHash: dep.hash, ...amounts(asset, { amount: prepay }) };
   for (let i = 0; ; i++) {
     resp = await attempt(dep.hash);
     if (resp.status !== 402) return done(resp, dep.hash);
@@ -268,12 +309,12 @@ const PULL_GRANT_ERRORS = new Set(["no_grant", "grant_too_low", "pull_unpaid"]);
 
 async function fetchPull(
   client: AetherClient, key: Key, url: string, method: string, body: Uint8Array, req: PaymentRequirements,
-  maxAmount: bigint, allowance: bigint, send: (p?: string) => Promise<Response>, opts: FetchPaidOptions,
+  asset: Asset, maxAmount: bigint, allowance: bigint, send: (p?: string) => Promise<Response>, opts: FetchPaidOptions,
 ): Promise<FetchPaidResult> {
   const price = parseUaeth(req.maxAmountRequired);
-  if (price > maxAmount) throw new PaymentError("PRICE_EXCEEDS_MAX", `the server asks ${price} uaeth per request; maxAmount is ${maxAmount}. Nothing was paid`);
+  if (price > maxAmount) throw new PaymentError("PRICE_EXCEEDS_MAX", `the server asks ${formatAmount(asset, price)} per request; maxAmount is ${formatAmount(asset, maxAmount)}. Nothing was paid`);
   if (!req.extra.grantee) throw new PaymentError("PAYMENT_UNSUPPORTED", "the server's aether-pull offer names no grantee");
-  if (allowance < price) throw new PaymentError("INVALID_ARGUMENT", `pullAllowance ${allowance} uaeth doesn't cover one request (${price} uaeth)`);
+  if (allowance < price) throw new PaymentError("INVALID_ARGUMENT", `pullAllowance ${formatAmount(asset, allowance)} doesn't cover one request (${formatAmount(asset, price)})`);
   const u = new URL(url);
   const path = decodeURIComponent(u.pathname || "/");
   const requestId = opts.requestId ?? bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
@@ -284,9 +325,9 @@ async function fetchPull(
     const s = resp.headers.get("X-PAYMENT-RESPONSE");
     const settle = s ? (JSON.parse(new TextDecoder().decode(base64.decode(s))) as { owed?: string; allowance?: string }) : {};
     return withReceipt({
-      status: "paid", response: resp, scheme: SCHEME_PULL, amountUaeth: price, grantTxHash,
-      owedUaeth: settle.owed ? BigInt(settle.owed) : undefined, allowanceUaeth: settle.allowance ? BigInt(settle.allowance) : undefined,
-    }, { network: client.chainId, payTo: req.payTo, payer: key.address, scheme: SCHEME_PULL, payment: requestId, amount: price, method, host: u.host, path, requestBody: body });
+      status: "paid", response: resp, scheme: SCHEME_PULL, grantTxHash,
+      ...amounts(asset, { amount: price, owed: settle.owed ? BigInt(settle.owed) : undefined, allowance: settle.allowance ? BigInt(settle.allowance) : undefined }),
+    }, { network: client.chainId, payTo: req.payTo, payer: key.address, scheme: SCHEME_PULL, payment: requestId, amount: price, denom: asset.denom, method, host: u.host, path, requestBody: body });
   };
 
   let resp = await attempt();
@@ -296,18 +337,18 @@ async function fetchPull(
     throw new PaymentError(pr.error === "invoice_already_redeemed" ? "PAYMENT_ALREADY_REDEEMED" : "PAYMENT_REJECTED", `${pr.error}: ${pr.message ?? ""}`);
   }
   // The new allowance replaces the old one, so it must cover what's owed plus this request.
-  const owed = BigInt(pr.accepts?.find((a) => a.scheme === SCHEME_PULL)?.extra.owed ?? "0");
+  const owed = BigInt(pr.accepts?.find((a) => a.scheme === SCHEME_PULL && a.asset === asset.denom)?.extra.owed ?? "0");
   if (allowance < owed + price) {
-    throw new PaymentError("INVALID_ARGUMENT", `you owe this service ${owed} uaeth not yet collected; pullAllowance must be at least ${owed + price} uaeth`);
+    throw new PaymentError("INVALID_ARGUMENT", `you owe this service ${formatAmount(asset, owed)} not yet collected; pullAllowance must be at least ${formatAmount(asset, owed + price)} (${owed + price}${asset.baseUnit})`);
   }
   // Granting again is harmless: a grant replaces the previous one.
   const expiration = Math.floor(Date.now() / 1000) + PULL_GRANT_SECONDS;
-  const g = await client.signAndBroadcast(key, [grantSendMsg(key.address, req.extra.grantee, allowance, [req.payTo], expiration)]);
+  const g = await client.signAndBroadcast(key, [grantSendMsg(key.address, req.extra.grantee, allowance, [req.payTo], expiration, asset.denom)]);
   if (g.status === "failed") throw new PaymentError("TX_REJECTED", `the allowance was rejected: ${g.log}`, g.hash);
   grantTxHash = g.hash;
   const conf = await client.waitForTransaction(g.hash, opts.confirmTimeoutMs ?? 150_000);
   if (conf.status === "failed") throw new PaymentError("TX_FAILED", `the allowance failed on chain: ${conf.log}`, g.hash);
-  if (conf.status === "pending") return { status: "payment_pending", scheme: SCHEME_PULL, grantTxHash: g.hash, txHash: g.hash, amountUaeth: allowance };
+  if (conf.status === "pending") return { status: "payment_pending", scheme: SCHEME_PULL, grantTxHash: g.hash, txHash: g.hash, ...amounts(asset, { amount: allowance }) };
   resp = await attempt();
   if (resp.status !== 402) return done(resp);
   const again = (await resp.json()) as PaymentRequired;

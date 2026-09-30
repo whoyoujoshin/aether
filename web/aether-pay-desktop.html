@@ -199,13 +199,32 @@
       return m ? BigInt(m[1]) : 0n;
     }
     function aeth(u, dp = 4) {
-      u = typeof u === "bigint" ? u : uaethOf(u);
-      const whole = u / 1000000n;
-      let frac = (u % 1000000n).toString().padStart(6, "0");
-      frac = frac.slice(0, 6).replace(/0+$/, "");
+      return units(typeof u === "bigint" ? u : uaethOf(u), 6, dp);
+    }
+    // Base units as a decimal amount of an asset with `decimals`, at least dp places.
+    function units(u, decimals, dp = 2) {
+      const one = 10n ** BigInt(decimals);
+      const whole = u / one;
+      let frac = decimals ? (u % one).toString().padStart(decimals, "0").replace(/0+$/, "") : "";
       if (frac.length < dp) frac = frac.padEnd(dp, "0");
       return whole.toLocaleString("en-US") + (frac ? "." + frac : "");
     }
+    // A coin as the chain writes it ("1500000uaeth", "5000000ibc/…"); the first, if several.
+    function coinOf(s) {
+      const m = /^(\d+)([a-zA-Z][a-zA-Z0-9/:._-]*)?/.exec(String(s || "0"));
+      return m ? { amount: BigInt(m[1]), denom: m[2] || "uaeth" } : { amount: 0n, denom: "uaeth" };
+    }
+    const AETH_ASSET = { symbol: "AETH", denom: "uaeth", baseUnit: "uaeth", decimals: 6, origin: "Aether" };
+    function shortDenom(d) { return d.startsWith("ibc/") ? d.slice(0, 10) + "…" : d; }
+    // How to show amount of denom: in a known asset's own unit, or as a bare
+    // number of an unrecognized token (never as AETH).
+    function money(amount, denom, assets, dp = 2) {
+      const a = (assets || [AETH_ASSET]).find((x) => x.denom === denom);
+      if (a) return { text: units(amount, a.decimals, dp), unit: a.symbol, title: a.origin + " · " + a.denom };
+      return { text: amount.toLocaleString("en-US"), unit: shortDenom(denom), title: denom + " · a token this wallet doesn't recognize" };
+    }
+    // "USDC (Noble)" from its origin "Noble over transfer/channel-3".
+    function assetLabel(a) { return a.denom === "uaeth" ? a.symbol : a.symbol + " (" + a.origin.split(" ")[0] + ")"; }
     function int(n) { return Number(n).toLocaleString("en-US"); }
     function short(a) { return a ? a.slice(0, 12) + "…" + a.slice(-6) : ""; }
     function initials(name) { return (name || "?").replace(/[^A-Za-z0-9]/g, "").slice(0, 2) || "?"; }
@@ -262,6 +281,7 @@
       const [view, setView] = useState(null); // {kind:"own", name, address} | {kind:"agent", address, perm}
       const [screen, setScreen] = useState("home");
       const [balance, setBalance] = useState(null);
+      const [holdings, setHoldings] = useState(null); // {assets: [{symbol, denom, decimals, origin, amount}], others: [{denom, amount}]}
       const [activity, setActivity] = useState(null);
       const [perms, setPerms] = useState(null);
       const [chain, setChain] = useState(null);
@@ -306,7 +326,7 @@
         if (!address) return;
         try {
           const d = await api("/api/balance?address=" + encodeURIComponent(address));
-          setBalance(d.balance); setErr("");
+          setBalance(d.balance); setHoldings({ assets: d.assets || [{ ...AETH_ASSET, amount: d.balance }], others: d.others || [] }); setErr("");
         } catch (e) { setErr(e.message); }
       }, [address]);
       const loadActivity = useCallback(async () => {
@@ -321,7 +341,7 @@
       }, [owner && owner.name]);
 
       useEffect(() => {
-        setBalance(null); setActivity(null);
+        setBalance(null); setHoldings(null); setActivity(null);
         loadBalance(); loadActivity();
         const t = setInterval(() => { loadBalance(); loadActivity(); }, 20000);
         return () => clearInterval(t);
@@ -419,6 +439,16 @@
                         <button className="btn sm ghost" style={{ marginTop: 12 }} onClick={refresh}>RE-QUERY</button>
                       </div>
                     </div>
+                    {holdings && (holdings.assets.length > 1 || holdings.others.length > 0) && (
+                      <div style={{ marginTop: 14 }}>
+                        {holdings.assets.slice(1).map((a) => (
+                          <div className="kv" key={a.denom} title={a.origin + " · " + a.denom}><span>{assetLabel(a)}</span><span className="mono">{units(BigInt(a.amount || "0"), a.decimals, 2)} {a.symbol}</span></div>
+                        ))}
+                        {holdings.others.map((c) => (
+                          <div className="kv" key={c.denom} title={c.denom + " · not recognized: it may look like an asset above but arrived another way"}><span className="faint">{shortDenom(c.denom)} · not recognized</span><span className="mono">{BigInt(c.amount).toLocaleString("en-US")}</span></div>
+                        ))}
+                      </div>
+                    )}
                     <div className="actions">
                       {isAgent ? (
                         <>
@@ -436,7 +466,7 @@
                     </div>
                   </div>
                   <div className="feedhead"><h3>Recent activity</h3><span>memos are public on-chain, and written by the sender</span></div>
-                  <Feed txs={activity} limit={6} me={isAgent ? "this agent" : "you"} />
+                  <Feed txs={activity} limit={6} me={isAgent ? "this agent" : "you"} assets={holdings && holdings.assets} />
                 </div>
                 <div className="col">
                   {!isAgent && <Recipients txs={activity} onPay={pay} />}
@@ -456,7 +486,7 @@
             {screen === "send" && (
               <div className="content single">
                 {isAgent ? <div className="card"><h2>Send</h2><p className="note">Agents sign their own payments. Switch to your wallet in the account menu to send from it.</p></div>
-                  : <Send owner={owner} balance={balance} to={sendTo} setTo={setSendTo} onSent={() => setTimeout(refresh, 4000)} />}
+                  : <Send owner={owner} holdings={holdings} to={sendTo} setTo={setSendTo} onSent={() => setTimeout(refresh, 4000)} />}
               </div>
             )}
             {screen === "receive" && (
@@ -528,18 +558,20 @@
       );
     }
 
-    function Feed({ txs, limit, me }) {
+    function Feed({ txs, limit, me, assets }) {
       if (txs === null) return <div className="card empty">Loading real chain data…</div>;
       const list = limit ? txs.slice(0, limit) : txs;
       if (!list.length) return <div className="card empty">No transactions yet.</div>;
-      return list.map((t) => <TxCard key={t.Hash} t={t} me={me} />);
+      return list.map((t) => <TxCard key={t.Hash} t={t} me={me} assets={assets} />);
     }
 
-    function TxCard({ t, me }) {
+    function TxCard({ t, me, assets }) {
       const sent = t.Direction === "sent";
+      const coin = coinOf(t.Amount);
+      const m = money(coin.amount, coin.denom, assets);
       const failed = t.Code !== 0;
       const other = t.CounterpartyModule ? MODULES[t.CounterpartyModule] || t.CounterpartyModule : (t.Counterparty ? short(t.Counterparty) : "someone");
-      if (sent && !t.Counterparty && uaethOf(t.Amount) === 0n) {
+      if (sent && !t.Counterparty && coin.amount === 0n) {
         return (
           <div className="card tx">
             <div className={"av" + (failed ? " bad" : "")}>✎</div>
@@ -565,7 +597,7 @@
             <div className={"memo" + (t.Memo ? "" : " none")}>{t.Memo || "no memo"}</div>
           </div>
           <div>
-            <div className={"amt" + (failed ? " fail" : sent ? "" : " in")}>{(sent ? "−" : "+") + aeth(t.Amount, 2)} AETH</div>
+            <div className={"amt" + (failed ? " fail" : sent ? "" : " in")} title={m.title}>{(sent ? "−" : "+") + m.text} {m.unit}</div>
             <div className="meta">{(ago(t.Timestamp) + " · ").toUpperCase()}<a href={EXPLORER + "/tx/" + t.Hash} target="_blank" rel="noreferrer">HEIGHT {int(t.Height)}</a></div>
           </div>
         </div>
@@ -597,21 +629,25 @@
       );
     }
 
-    function Send({ owner, balance, to, setTo, onSent }) {
+    function Send({ owner, holdings, to, setTo, onSent }) {
       const [amt, setAmt] = useState("");
+      const [denom, setDenom] = useState("uaeth");
       const [busy, setBusy] = useState(false);
       const [result, setResult] = useState(null);
       const validTo = ADDR_RE.test(to) && to !== owner.address;
-      let uaeth = 0n, amtOk = false;
-      if (/^\d+(\.\d{0,6})?$/.test(amt)) {
+      const list = holdings ? holdings.assets : null;
+      const asset = (list || []).find((a) => a.denom === denom) || { ...AETH_ASSET, amount: null };
+      const available = asset.amount == null ? null : BigInt(asset.amount);
+      let base = 0n, amtOk = false;
+      if (new RegExp("^\\d+(\\.\\d{0," + asset.decimals + "})?$").test(amt)) {
         const [w, f = ""] = amt.split(".");
-        uaeth = BigInt(w) * 1000000n + BigInt(f.padEnd(6, "0"));
-        amtOk = uaeth > 0n && balance !== null && uaeth <= uaethOf(balance);
+        base = BigInt(w) * 10n ** BigInt(asset.decimals) + BigInt(f.padEnd(asset.decimals, "0") || "0");
+        amtOk = base > 0n && available !== null && base <= available;
       }
       async function send() {
         setBusy(true);
         try {
-          const d = await api("/api/send", { from: owner.name, to, amount: uaeth.toString() });
+          const d = await api("/api/send", { from: owner.name, to, amount: base.toString(), ...(denom === "uaeth" ? {} : { denom }) });
           setResult(d);
           if (d.success) onSent();
         } catch (e) { setResult({ success: false, message: e.message }); }
@@ -621,7 +657,7 @@
         return (
           <div className="card">
             <h2>Sent <span className="tag ok">BROADCAST</span></h2>
-            <p className="note">{aeth(uaeth)} AETH to <span className="mono">{short(to)}</span>. It's final once it's in a block, usually within a minute.</p>
+            <p className="note">{units(base, asset.decimals, 2)} {asset.symbol} to <span className="mono">{short(to)}</span>. It's final once it's in a block, usually within a minute.</p>
             <div className="addr">{result.tx_hash}</div>
             <div className="actions">
               <a className="btn" style={{ textAlign: "center" }} href={EXPLORER + "/tx/" + result.tx_hash} target="_blank" rel="noreferrer">View on explorer</a>
@@ -632,13 +668,18 @@
       }
       return (
         <div className="card">
-          <h2>Send AETH</h2>
+          <h2>Send {asset.symbol}</h2>
+          {list && list.length > 1 && (
+            <div className="actions" style={{ marginTop: 0 }}>
+              {list.map((a) => <button key={a.denom} className={"btn sm" + (a.denom === denom ? " primary" : "")} title={a.origin + " · " + a.denom} onClick={() => { setDenom(a.denom); setAmt(""); }}>{assetLabel(a)}</button>)}
+            </div>
+          )}
           <label className="f">Recipient</label>
           <input className="field" value={to} onChange={(e) => setTo(e.target.value.trim())} placeholder="aether1…" />
           <div className={"hint " + (to === "" ? "" : validTo ? "ok" : "bad")}>{to === "" ? "" : validTo ? "✓ valid aether1 address" : to === owner.address ? "✕ that's this account" : "✕ not an aether1 address"}</div>
           <label className="f">Amount</label>
-          <input className="field" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.00  AETH" />
-          <div className={"hint" + (amt && !amtOk ? " bad" : "")}>available {balance === null ? "—" : aeth(balance)} AETH · fee 0 · gas 400,000</div>
+          <input className="field" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} placeholder={"0.00  " + asset.symbol} />
+          <div className={"hint" + (amt && !amtOk ? " bad" : "")}>available {available === null ? "—" : units(available, asset.decimals, 2)} {asset.symbol} · fee 0 · gas 400,000</div>
           {result && !result.success && <div className="banner" style={{ margin: "14px 0 0" }}>{result.message || result.error}</div>}
           <div className="actions">
             <button className="btn primary" disabled={!validTo || !amtOk || busy} onClick={send}>{busy ? "Signing with ML-DSA-44…" : "Sign & send"}</button>

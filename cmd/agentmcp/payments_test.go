@@ -377,7 +377,7 @@ func TestWaitForPayment_MatchesOnlyConfirmedExactMemoAndEnoughAmount(t *testing.
 		{Hash: "FAILED", Height: 103, Memo: "invoice-7", Amount: coins("500000uaeth"), Code: 5},
 	}
 	min := math.NewInt(100_000)
-	found, err := findPayment(f, "addr", "invoice-7", min, 100)
+	found, err := findPayment(f, "addr", "invoice-7", wallet.AETH, min, 100)
 	require.NoError(t, err)
 	require.Nil(t, found)
 
@@ -387,7 +387,7 @@ func TestWaitForPayment_MatchesOnlyConfirmedExactMemoAndEnoughAmount(t *testing.
 	require.True(t, out.Paid)
 	require.Equal(t, "PAID", out.TxHash)
 	require.Equal(t, "payer", out.From)
-	require.Equal(t, amountDTO{Uaeth: "150000", Aeth: "0.15"}, *out.Amount)
+	require.Equal(t, amountDTO{Asset: "AETH", Amount: "0.15", Base: "150000", Denom: "uaeth", Uaeth: "150000", Aeth: "0.15"}, *out.Amount)
 
 	_, _, err = toolWaitForPayment(context.Background(), nil, waitForPaymentInput{Memo: "invoice-7", MinAmount: "100000", TimeoutSeconds: 1})
 	requireCode(t, err, codeInvalidAmount)

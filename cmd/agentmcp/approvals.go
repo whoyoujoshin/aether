@@ -19,6 +19,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	"github.com/whoyoujoshin/aether/wallet"
 )
 
 // Owner approvals: a payment above --approval-threshold isn't signed or
@@ -50,15 +51,21 @@ type approvalRequest struct {
 	ID        string    `json:"id"`
 	From      string    `json:"from"` // the agent
 	To        string    `json:"to"`
-	Amount    string    `json:"amountUaeth"`
+	Amount    string    `json:"amountUaeth"`     // in Denom's base unit
+	Denom     string    `json:"denom,omitempty"` // "" for AETH
 	Memo      string    `json:"memo,omitempty"`
 	Key       string    `json:"idempotencyKey"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// paramsHash pins a decision to exactly this payment.
+// paramsHash pins a decision to exactly this payment, asset included.
+// An AETH payment hashes as it did before other assets existed.
 func (a *approvalRequest) paramsHash() string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{a.ID, a.From, a.To, a.Amount, a.Memo, a.Key}, "\n")))
+	fields := []string{a.ID, a.From, a.To, a.Amount, a.Memo, a.Key}
+	if a.Denom != "" {
+		fields = append(fields, a.Denom)
+	}
+	sum := sha256.Sum256([]byte(strings.Join(fields, "\n")))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -125,12 +132,18 @@ func verifyDecision(req *approvalRequest, d decisionFile) error {
 // approvalGate runs for a new payment of amount. It returns proceed=true
 // if the payment may be signed and sent now; otherwise out (pending) or
 // err (rejected) says why not. Caller holds stateMu.
-func approvalGate(st *agentState, agent string, in sendAethInput, amount math.Int) (proceed bool, out sendAethOutput, err error) {
-	if approvalThreshold.IsNil() || amount.LTE(approvalThreshold) {
+func approvalGate(st *agentState, agent string, in sendAethInput, asset wallet.Asset, amount math.Int) (proceed bool, out sendAethOutput, err error) {
+	l, err := limitsFor(asset)
+	if err != nil {
+		return false, out, err
+	}
+	threshold := l.approval
+	if threshold.IsNil() || amount.LTE(threshold) {
 		return true, sendAethOutput{}, nil
 	}
+	denom := recordDenom(asset)
 	req := st.Approvals[in.IdempotencyKey]
-	if req != nil && (req.To != in.To || req.Amount != amount.String() || req.Memo != in.Memo || req.From != agent) {
+	if req != nil && (req.To != in.To || req.Amount != amount.String() || req.Denom != denom || req.Memo != in.Memo || req.From != agent) {
 		return false, out, newError(codeIdempotencyConflict, fmt.Sprintf("idempotencyKey %q is awaiting approval for a different payment", in.IdempotencyKey))
 	}
 	if req != nil && time.Since(req.CreatedAt) > approvalTTL && readDecision(req) == "" {
@@ -142,13 +155,13 @@ func approvalGate(st *agentState, agent string, in sendAethInput, amount math.In
 		if _, err := rand.Read(id); err != nil {
 			return false, out, err
 		}
-		req = &approvalRequest{ID: hex.EncodeToString(id), From: agent, To: in.To, Amount: amount.String(), Memo: in.Memo, Key: in.IdempotencyKey, CreatedAt: time.Now().UTC()}
+		req = &approvalRequest{ID: hex.EncodeToString(id), From: agent, To: in.To, Amount: amount.String(), Denom: denom, Memo: in.Memo, Key: in.IdempotencyKey, CreatedAt: time.Now().UTC()}
 		st.Approvals[in.IdempotencyKey] = req
 		if err := st.save(); err != nil {
 			return false, out, err
 		}
 		notify("approval_requested", map[string]any{
-			"approvalId": req.ID, "to": req.To, "amount": newAmountDTO(amount), "memo": req.Memo,
+			"approvalId": req.ID, "to": req.To, "amount": newAssetAmountDTO(asset, amount), "memo": req.Memo,
 			"approve": "agentmcp approve " + req.ID, "reject": "agentmcp reject " + req.ID,
 		})
 	}
@@ -163,9 +176,9 @@ func approvalGate(st *agentState, agent string, in sendAethInput, amount math.In
 	}
 	return false, sendAethOutput{
 		Status: statusPendingApproval, ApprovalID: req.ID,
-		Amount: newAmountDTO(amount), From: payer(agent), To: in.To,
-		Message: fmt.Sprintf("%s AETH is above the owner's approval threshold of %s AETH. Nothing was signed or sent. The owner approves with `agentmcp approve %s`; then call send_aeth again with the same idempotencyKey",
-			formatAeth(amount), formatAeth(approvalThreshold), req.ID),
+		Amount: newAssetAmountDTO(asset, amount), From: payer(agent), To: in.To,
+		Message: fmt.Sprintf("%s is above the owner's approval threshold of %s. Nothing was signed or sent. The owner approves with `agentmcp approve %s`; then call send_aeth again with the same idempotencyKey",
+			asset.Format(amount), asset.Format(threshold), req.ID),
 	}, nil
 }
 

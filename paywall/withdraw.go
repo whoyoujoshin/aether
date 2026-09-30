@@ -292,6 +292,9 @@ type ChainPayout struct {
 	Chain    PayoutChain
 	ChainID  string
 	GasLimit uint64 // default 400000
+	// Denom is what it pays out (and a ChainCollector collects): the
+	// paywall's asset. Default uaeth.
+	Denom string
 
 	mu   sync.Mutex
 	next uint64 // lowest sequence not yet signed by this process
@@ -305,10 +308,17 @@ const (
 
 func (c *ChainPayout) Sign(to string, amount math.Int, memo string) ([]byte, uint64, error) {
 	return c.sign(func(accNum, seq, gas uint64) (wallet.SignedTx, error) {
-		return c.Wallet.BuildAndSignSendTx(c.KeyName, c.Address, to, sdk.NewCoins(sdk.NewCoin(Asset, amount)), wallet.TxParams{
+		return c.Wallet.BuildAndSignSendTx(c.KeyName, c.Address, to, sdk.NewCoins(sdk.NewCoin(c.denom(), amount)), wallet.TxParams{
 			ChainID: c.ChainID, AccountNumber: accNum, Sequence: seq, GasLimit: gas, Memo: memo,
 		})
 	})
+}
+
+func (c *ChainPayout) denom() string {
+	if c.Denom == "" {
+		return Asset
+	}
+	return c.Denom
 }
 
 // sign signs the transaction build makes at the account's next sequence.

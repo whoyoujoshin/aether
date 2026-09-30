@@ -226,7 +226,7 @@ func (p *Paywall) servePull(w http.ResponseWriter, r *http.Request, raw json.Raw
 		return
 	}
 	if req.maxPrice.LT(p.cfg.Price) {
-		refuse(ErrPriceAboveMax, fmt.Sprintf("the price is %s uaeth; the request allows at most %s", p.cfg.Price, req.maxPrice), pay.Account)
+		refuse(ErrPriceAboveMax, fmt.Sprintf("the price is %s (%s); the request allows at most %s", p.both(p.cfg.Price), p.cfg.Price, req.maxPrice), pay.Account)
 		return
 	}
 	buyer := pay.Account
@@ -243,13 +243,13 @@ func (p *Paywall) servePull(w http.ResponseWriter, r *http.Request, raw json.Raw
 			return ErrNoGrant, why
 		}
 		covers := func(amount math.Int) bool {
-			return grant.Unlimited || grant.SpendLimit.AmountOf(Asset).GTE(amount)
+			return grant.Unlimited || grant.SpendLimit.AmountOf(p.cfg.Asset.Denom).GTE(amount)
 		}
 		if !covers(acct.Owed().Add(p.cfg.Price)) {
 			if acct.Unpaid.IsPositive() {
-				return ErrPullUnpaid, fmt.Sprintf("collecting %s uaeth you owe failed; grant an allowance covering it plus this request (%s uaeth) to continue", acct.Unpaid, acct.Owed().Add(p.cfg.Price))
+				return ErrPullUnpaid, fmt.Sprintf("collecting %s you owe failed; grant an allowance covering it plus this request (%s) to continue", p.both(acct.Unpaid), p.both(acct.Owed().Add(p.cfg.Price)))
 			}
-			return ErrGrantTooLow, fmt.Sprintf("your allowance has %s uaeth left and you owe %s uaeth not yet collected; this request needs %s more", grant.SpendLimit.AmountOf(Asset), acct.Owed(), p.cfg.Price)
+			return ErrGrantTooLow, fmt.Sprintf("your allowance has %s left and you owe %s not yet collected; this request needs %s more", p.both(grant.SpendLimit.AmountOf(p.cfg.Asset.Denom)), p.both(acct.Owed()), p.both(p.cfg.Price))
 		}
 		return "", ""
 	}
@@ -301,7 +301,7 @@ func (p *Paywall) servePull(w http.ResponseWriter, r *http.Request, raw json.Raw
 	if !ok {
 		p.wakeCollector()
 		w.Header().Set("Retry-After", "10")
-		refuse(ErrSettling, fmt.Sprintf("you owe %s uaeth, this service's limit before collecting; it's being collected -- retry shortly", owed.Add(acct.InFlight)), buyer)
+		refuse(ErrSettling, fmt.Sprintf("you owe %s, this service's limit before collecting; it's being collected -- retry shortly", p.both(owed.Add(acct.InFlight))), buyer)
 		return
 	}
 	owedAll := owed.Add(acct.InFlight)
@@ -310,7 +310,7 @@ func (p *Paywall) servePull(w http.ResponseWriter, r *http.Request, raw json.Raw
 	}
 	settle := SettlementResponse{Success: true, Network: p.cfg.Network, Payer: buyer, Owed: owedAll.String()}
 	if !grant.Unlimited {
-		settle.Allowance = grant.SpendLimit.AmountOf(Asset).Sub(owedAll).String()
+		settle.Allowance = grant.SpendLimit.AmountOf(p.cfg.Asset.Denom).Sub(owedAll).String()
 	}
 	header, _ := EncodeHeader(settle)
 	w.Header().Set(HeaderPaymentResponse, header)
@@ -400,7 +400,7 @@ func (p *Paywall) collect(account string) error {
 			// Revoked, expired or exhausted allowance, or an empty
 			// account: the buyer owes it, and is refused until an
 			// allowance covers it.
-			log.Printf("paywall: collecting %s uaeth from %s failed; refusing it until it grants enough: %s", c.Amount, account, state.Log)
+			log.Printf("paywall: collecting %s%s from %s failed; refusing it until it grants enough: %s", c.Amount, p.cfg.Asset.Denom, account, state.Log)
 			p.forgetGrant(account)
 			return cfg.Ledger.CloseCollection(account, false)
 		case PayoutSequenceSpent:
@@ -436,14 +436,14 @@ type ChainCollector struct {
 }
 
 func (c *ChainCollector) SignCollect(from string, amount math.Int, memo string) ([]byte, uint64, error) {
-	msg, err := wallet.ExecSendMsg(c.Address, from, c.PayTo, sdk.NewCoins(sdk.NewCoin(Asset, amount)))
+	msg, err := wallet.ExecSendMsg(c.Address, from, c.PayTo, sdk.NewCoins(sdk.NewCoin(c.denom(), amount)))
 	if err != nil {
 		return nil, 0, err
 	}
 	return c.sign(func(accNum, seq, gas uint64) (wallet.SignedTx, error) {
 		return c.Wallet.BuildAndSignMsgTx(c.KeyName, msg, wallet.TxParams{
 			ChainID: c.ChainID, AccountNumber: accNum, Sequence: seq, GasLimit: gas, Memo: memo,
-			Fees: sdk.NewCoins(sdk.NewCoin(Asset, math.ZeroInt())),
+			Fees: sdk.NewCoins(sdk.NewCoin(wallet.BaseDenom, math.ZeroInt())),
 		})
 	})
 }

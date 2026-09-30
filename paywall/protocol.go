@@ -46,7 +46,8 @@ const (
 	SchemePull = "aether-pull"
 	// DepositMemoPrefix + the account to credit is a deposit's memo.
 	DepositMemoPrefix = "prepaid:"
-	// Asset is the denom prices are stated in.
+	// Asset is the denom prices are stated in unless Config.Asset says
+	// otherwise: AETH's.
 	Asset = "uaeth"
 
 	HeaderPayment         = "X-PAYMENT"
@@ -108,8 +109,13 @@ type PaymentRequirements struct {
 type Extra struct {
 	// aether-memo: Invoice is the memo the payment must carry, and what
 	// X-PAYMENT must name.
-	Invoice    string `json:"invoice,omitempty"`
-	AmountAeth string `json:"amountAeth"`
+	Invoice string `json:"invoice,omitempty"`
+	// Symbol and Amount state the price in the asset's own unit ("USDC",
+	// "0.05"). AmountAeth is the same for an AETH price, and absent for
+	// any other asset.
+	Symbol     string `json:"symbol,omitempty"`
+	Amount     string `json:"amount,omitempty"`
+	AmountAeth string `json:"amountAeth,omitempty"`
 	ExpiresAt  string `json:"expiresAt,omitempty"` // present the payment by then
 
 	// aether-prepaid

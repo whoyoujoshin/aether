@@ -95,6 +95,9 @@ func apiRoutes() []apiRoute {
 			"The on-chain service directory: each service's price, payment schemes and recent payment activity and ratings.",
 			nil, typeOf[servicesResponse]()},
 		{"/api/ibc", handleIBC, "ibc", "IBC clients, connections and channels", "", nil, typeOf[ibcSummaryDTO]()},
+		{"/api/assets", handleAssets, "chain", "The tokens this explorer names",
+			"AETH, and Noble USDC over the one channel the explorer was told about. Any other denom is shown as is.",
+			nil, typeOf[assetsResponse]()},
 	}
 }
 

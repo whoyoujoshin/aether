@@ -42,7 +42,7 @@ class Reputation(unittest.TestCase):
             def latest_height(self):
                 return 100
 
-            def incoming_payments(self, address, since_height=1, max_results=5000):
+            def incoming_payments(self, address, since_height=1, max_results=5000, denom="uaeth"):
                 return [x for x in by.get(address, []) if x.height >= since_height]
         try:
             s, = find_services(Client(), allow_private=True, trusted=[me, friend])

@@ -1,3 +1,4 @@
+import type { AssetInfo } from "./format";
 // Typed fetch wrappers for cmd/explorer's JSON API. Field names here
 // match the Go backend's json tags exactly (camelCase) -- see
 // cmd/explorer/main.go for the source of truth.
@@ -91,7 +92,9 @@ export interface Transaction {
 
 export interface AddressPage {
   address: string;
-  balance: string;
+  balance: string; // uaeth
+  /** Every token held, AETH first; symbol/decimals/origin only for a known asset. Absent from older explorers. */
+  balances?: { denom: string; amount: string; symbol?: string; decimals?: number; origin?: string }[];
   transactions: Transaction[];
   escrow: { balance: string; unlockHeight: number; pending: boolean };
   banned: boolean;
@@ -239,8 +242,11 @@ export interface ServiceListing {
   name: string;
   description: string;
   url: string;
-  price: string;
-  priceAeth: string;
+  price: string; // base units of asset
+  priceAeth?: string; // AETH prices only
+  asset?: string; // the denom the price is in; absent means uaeth
+  symbol?: string; // as the service states it: untrusted, so shown only for a denom the explorer knows
+  priceAmount?: string;
   schemes: string[];
   minDeposit?: string;
   payTo: string;
@@ -250,7 +256,8 @@ export interface ServiceListing {
     windowBlocks: number;
     payments: number;
     payers: number;
-    volumeAeth: string;
+    volume?: string; // in the service's asset: a decimal if the explorer knows it, else base units
+    volumeAeth?: string;
     ratings: number;
     averageScore?: number;
   };
@@ -356,4 +363,5 @@ export const api = {
   services: () => getJSON<ServiceDirectory>("/api/services"),
   ibc: () => getJSON<IBCSummary>("/api/ibc"),
   agents: () => getJSON<AgentCard>("/api/agents"),
+  assets: () => getJSON<{ assets: AssetInfo[] }>("/api/assets"),
 };

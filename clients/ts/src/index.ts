@@ -1,5 +1,6 @@
 export { Key, addressOf, addressBytes, isAddress, PREFIX, PUBKEY_TYPE_URL } from "./keys.js";
-export { parseAmount, parseUaeth, formatAeth, DENOM } from "./amount.js";
+export { parseAmount, parseUaeth, formatAeth, DENOM, AETH, Assets, usdc, formatAmount, decimalOf, receiptAmount } from "./amount.js";
+export type { Asset } from "./amount.js";
 export { buildSend, buildTx, grantSendMsg, execSendMsg, memoOf, DEFAULT_GAS_LIMIT, MSG_SEND_TYPE_URL, MSG_GRANT_TYPE_URL, MSG_EXEC_TYPE_URL } from "./tx.js";
 export type { SendParams, SignedTx, TxParams, AnyMsg } from "./tx.js";
 export { Rpc, RpcError } from "./rpc.js";

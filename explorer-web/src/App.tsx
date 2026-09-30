@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation } from "react-router-dom";
+import { api } from "./api";
+import { setAssets } from "./format";
 import { TopBar } from "./components/TopBar";
 import Dashboard from "./pages/Dashboard";
 import Validators from "./pages/Validators";
@@ -25,6 +28,11 @@ function NotFound() {
 export default function App() {
   // The overview draws its own top bar inside its hero glow.
   const home = useLocation().pathname === "/";
+  // Which denoms have names (USDC over the explorer's one channel); redraw once known.
+  const [, setAssetsLoaded] = useState(false);
+  useEffect(() => {
+    api.assets().then((r) => { setAssets(r.assets); setAssetsLoaded(true); }).catch(() => {});
+  }, []);
 
   return (
     <div className="layout">

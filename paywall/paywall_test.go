@@ -47,11 +47,16 @@ func (l *fakeLedger) lookup(hash string) (*wallet.TransactionDetail, error) {
 }
 
 func (l *fakeLedger) pay(hash, memo, to string, uaeth int64, at time.Time, code uint32) {
+	l.payIn(hash, memo, to, fmt.Sprintf("%duaeth", uaeth), at, code)
+}
+
+// payIn records a transfer of coins (a coin string like 10000uaeth).
+func (l *fakeLedger) payIn(hash, memo, to, coins string, at time.Time, code uint32) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.txs[hash] = &wallet.TransactionDetail{
 		Hash: hash, Code: code, Memo: memo, Timestamp: at.UTC().Format(time.RFC3339),
-		Transfers: []wallet.Transfer{{From: buyer(), To: to, Amount: fmt.Sprintf("%duaeth", uaeth)}},
+		Transfers: []wallet.Transfer{{From: buyer(), To: to, Amount: coins}},
 	}
 }
 
@@ -65,9 +70,14 @@ type harness struct {
 }
 
 func newHarness(t *testing.T) *harness {
+	return newHarnessIn(t, wallet.Asset{})
+}
+
+// newHarnessIn charges in asset (AETH if zero).
+func newHarnessIn(t *testing.T, asset wallet.Asset) *harness {
 	h := &harness{t: t, ledger: &fakeLedger{txs: map[string]*wallet.TransactionDetail{}}, now: time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)}
 	p, err := New(Config{
-		PayTo: seller(), Price: math.NewInt(10_000), Network: "aether-testnet-1",
+		PayTo: seller(), Price: math.NewInt(10_000), Asset: asset, Network: "aether-testnet-1",
 		Description: "weather", Lookup: h.ledger.lookup, Now: func() time.Time { return h.now },
 	})
 	require.NoError(t, err)

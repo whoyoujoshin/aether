@@ -5,7 +5,7 @@ import { bech32 } from "@scure/base";
 import { AetherClient } from "./client.js";
 import { Key } from "./keys.js";
 import { PREFIX } from "./keys.js";
-import { parseAmount, parseUaeth } from "./amount.js";
+import { DENOM, parseUaeth } from "./amount.js";
 import { trimEnd } from "./util.js";
 
 // The on-chain service directory (package directory): services announce
@@ -26,8 +26,14 @@ export interface Manifest {
   description: string; // set by the service: untrusted
   network: string;
   payTo: string;
+  /** In the base units of asset. */
   price: string;
-  priceAeth: string;
+  /** Set only for AETH prices. */
+  priceAeth?: string;
+  /** The denom prices are in; absent means uaeth. symbol and priceAmount state the price in its own unit. */
+  asset?: string;
+  symbol?: string;
+  priceAmount?: string;
   schemes: string[];
   minDeposit?: string;
   withdrawPath?: string; // set if unspent prepaid balance can be withdrawn
@@ -68,6 +74,10 @@ export interface Reputation {
   windowBlocks: number;
   payments: number;
   payers: number;
+  /** Paid to the service in its asset (denom), in base units. */
+  volume: bigint;
+  denom: string;
+  /** volume, when the asset is AETH; 0n otherwise. */
   volumeUaeth: bigint;
   /** Ratings from accounts that paid the service before rating it. */
   ratings: RatingSummary;
@@ -136,6 +146,7 @@ export async function fetchManifest(baseURL: string, opts: { allowPrivate?: bool
 
 export interface FindServicesOptions {
   query?: string;
+  /** With its unit; only services charging that asset, at most this much, are listed. */
   maxPrice?: string;
   allowPrivate?: boolean;
   /** Add each service's reputation (one more scan per service). Default true. */
@@ -163,7 +174,7 @@ export async function findServices(client: AetherClient, opts: FindServicesOptio
     if (delist) current.delete(k);
     else current.set(k, { url, announcer: p.from, height: p.height });
   }
-  const max = opts.maxPrice ? parseAmount(opts.maxPrice) : undefined;
+  const max = opts.maxPrice ? client.assets.parse(opts.maxPrice) : undefined;
   const words = (opts.query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
   const results = await Promise.all(
     [...current.values()].map(async (a) => {
@@ -171,7 +182,7 @@ export async function findServices(client: AetherClient, opts: FindServicesOptio
         const m = await fetchManifest(a.url, { allowPrivate: opts.allowPrivate });
         if (m.x402Version !== 1 || m.network !== client.chainId || m.payTo !== a.announcer) return undefined;
         const price = parseUaeth(m.price);
-        if (max !== undefined && price > max) return undefined;
+        if (max !== undefined && ((m.asset || DENOM) !== max.asset.denom || price > max.amount)) return undefined;
         const hay = `${m.name} ${m.description} ${a.url}`.toLowerCase();
         if (!words.every((w) => hay.includes(w))) return undefined;
         return { ...a, manifest: m };
@@ -199,9 +210,10 @@ export async function findServices(client: AetherClient, opts: FindServicesOptio
   }
   const trusted = new Set(opts.trusted ?? []);
   await Promise.all(services.map(async (s) => {
+    const denom = s.manifest.asset || DENOM;
     let paid;
     try {
-      paid = await client.incomingPayments(s.manifest.payTo, since);
+      paid = await client.incomingPayments(s.manifest.payTo, since, 5000, denom);
     } catch {
       return;
     }
@@ -211,13 +223,13 @@ export async function findServices(client: AetherClient, opts: FindServicesOptio
     for (const p of paid) {
       if (p.code !== 0 || !p.from || p.from === s.manifest.payTo || p.height < since) continue;
       payments++;
-      volume += p.amountUaeth;
+      volume += p.amount;
       const h = firstPaid.get(p.from);
       if (h === undefined || p.height < h) firstPaid.set(p.from, p.height);
     }
     const raters = [...latest.values()].filter((r) => r.url === s.url && r.rater !== s.manifest.payTo && (firstPaid.get(r.rater) ?? Infinity) <= r.height);
     s.reputation = {
-      windowBlocks: window, payments, payers: firstPaid.size, volumeUaeth: volume,
+      windowBlocks: window, payments, payers: firstPaid.size, volume, denom, volumeUaeth: denom === DENOM ? volume : 0n,
       ratings: summarize(raters), trustedRatings: summarize(raters, (r) => trusted.has(r)), raters,
     };
   }));

@@ -5,7 +5,7 @@ import { useApi } from "../hooks";
 import { AddressLink, BlockLink, CopyButton } from "../components/Hash";
 import { TxStatusBadge } from "../components/StatusBadge";
 import { ErrorBanner, KV, MiniBar, MsgTag, Tabs, TypeUrl } from "../components/ui";
-import { aeth, aethNumber, coins, int, shortHash, splitTypeUrl, timeAgo, utc } from "../format";
+import { aeth, aethNumber, amountIn, coins, int, shortHash, splitTypeUrl, timeAgo, utc } from "../format";
 
 type Coin = { denom: string; amount: string };
 
@@ -14,7 +14,7 @@ function isCoinList(v: unknown): v is Coin[] {
 }
 
 function coinListText(v: Coin[]): string {
-  return v.map((c) => (c.denom === "uaeth" ? aeth(c.amount) : `${c.amount} ${c.denom}`)).join(" + ");
+  return v.map((c) => (c.denom === "uaeth" ? aeth(c.amount) : amountIn(c.amount, c.denom))).join(" + ");
 }
 
 function uaethIn(v: unknown): string {
