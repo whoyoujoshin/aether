@@ -15,9 +15,9 @@ import (
 // restart-driven activation): an un-restarted node halts at it rather
 // than run it without the store.
 //
-// PLACEHOLDER: replace with a height agreed with the operators and
-// confirmed against the live tip immediately before the cutover.
-const EscrowActivationHeight int64 = 1_000_000
+// Set to 161,000 with the operator, sharing one cutover with Helicase,
+// Ligase and pow.ConsensusKeyGuardActivationHeight (docs/CUTOVER-161000.md).
+const EscrowActivationHeight int64 = 161_000
 
 // escrowActivationHeight is what New() reads, so tests can cross the
 // activation at a small height.

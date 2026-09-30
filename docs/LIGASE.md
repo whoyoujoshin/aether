@@ -95,8 +95,8 @@ processes, with Helicase and `cmd/outbound` relaying everything.
 
 ## Activation
 
-`LigaseActivationHeight` in `app/ligase.go` is `1,000,000`: a
-placeholder. Ligase acts only once `x/escrow` is live and that height is
+`LigaseActivationHeight` in `app/ligase.go` is **161,000** (see
+[CUTOVER-161000.md](CUTOVER-161000.md)). Ligase acts only once `x/escrow` is live and that height is
 reached. Before then, a transfer to the Ligase address is an ordinary
 transfer. It adds no store, so nothing halts at that height. But it
 changes what such a transfer does, so every validator needs the binary

@@ -130,8 +130,7 @@ Adding a store to a running chain needs a coordinated restart, the same way
 authz/feegrant (109,000), IBC and `x/accountauth` (122,000) activated:
 
 1. Every node runs a binary with `EscrowActivationHeight` set to the agreed
-   height. It's `1,000,000` in the code until then: a placeholder, to be set
-   against the live tip right before the cutover.
+   height: **161,000** (see [CUTOVER-161000.md](CUTOVER-161000.md)).
 2. At that height a node halts with "x/escrow activates at height N: restart
    this node". Restarting adds the store, and the chain continues from that
    block.
