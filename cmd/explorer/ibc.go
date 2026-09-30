@@ -10,6 +10,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -21,6 +22,7 @@ import (
 	channeltypes "github.com/cosmos/ibc-go/v8/modules/core/04-channel/types"
 	ibcexported "github.com/cosmos/ibc-go/v8/modules/core/exported"
 	ibctm "github.com/cosmos/ibc-go/v8/modules/light-clients/07-tendermint"
+	"google.golang.org/grpc"
 )
 
 type ibcCoinDTO struct {
@@ -61,26 +63,31 @@ func handleIBC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
-	ctx := r.Context()
+	summary, err := readIBC(r.Context(), conn)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, summary)
+}
 
+// readIBC reads every IBC client, connection and channel this chain holds.
+func readIBC(ctx context.Context, conn *grpc.ClientConn) (ibcSummaryDTO, error) {
 	clientQ := clienttypes.NewQueryClient(conn)
 	connQ := connectiontypes.NewQueryClient(conn)
 	chanQ := channeltypes.NewQueryClient(conn)
 
 	clientsResp, err := clientQ.ClientStates(ctx, &clienttypes.QueryClientStatesRequest{})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, fmt.Errorf("querying ibc clients: %w", err))
-		return
+		return ibcSummaryDTO{}, fmt.Errorf("querying ibc clients: %w", err)
 	}
 	connsResp, err := connQ.Connections(ctx, &connectiontypes.QueryConnectionsRequest{})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, fmt.Errorf("querying ibc connections: %w", err))
-		return
+		return ibcSummaryDTO{}, fmt.Errorf("querying ibc connections: %w", err)
 	}
 	chansResp, err := chanQ.Channels(ctx, &channeltypes.QueryChannelsRequest{})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, fmt.Errorf("querying ibc channels: %w", err))
-		return
+		return ibcSummaryDTO{}, fmt.Errorf("querying ibc channels: %w", err)
 	}
 
 	// client_id -> its counterparty chain-id and periods, unpacked from
@@ -165,9 +172,9 @@ func handleIBC(w http.ResponseWriter, r *http.Request) {
 		channels = append(channels, dto)
 	}
 
-	writeJSON(w, http.StatusOK, ibcSummaryDTO{
+	return ibcSummaryDTO{
 		Clients:     realClients,
 		Connections: realConnections,
 		Channels:    channels,
-	})
+	}, nil
 }

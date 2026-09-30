@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { ChainSelector, useChain } from "../chain";
 
 /** The shared search box logic: the backend decides whether it's an address, tx or block. */
 export function useSearch() {
@@ -48,9 +49,12 @@ const links: [string, string][] = [
 /** home: the overview's variant, with the search in the hero instead of the bar. */
 export function TopBar({ home = false }: { home?: boolean }) {
   const search = useSearch();
+  // The Both / Aether / IBC switch, on the two pages that draw the helix.
+  const path = useLocation().pathname;
+  const withSwitch = !!useChain().ibcName && (path === "/" || path === "/blocks");
 
   return (
-    <div className={`topbar${home ? " home" : ""}`}>
+    <div className={`topbar${home ? " home" : ""}${withSwitch ? " has-switch" : ""}`}>
       <Link to="/" className="brand" aria-label="Aether Explorer home">
         <img src="/aether-mark-reversed.svg" alt="" />
         <span className="brand-word">AETHER</span>
@@ -63,11 +67,12 @@ export function TopBar({ home = false }: { home?: boolean }) {
           </NavLink>
         ))}
       </nav>
+      {withSwitch && <ChainSelector />}
       {!home && (
         <form className="search-form" onSubmit={search.submit} role="search">
           <input
             type="text"
-            placeholder="Search address, hash or height"
+            placeholder={withSwitch ? "Search Aether" : "Search address, hash or height"}
             aria-label="Search address, hash or height"
             value={search.query}
             onChange={(e) => search.setQuery(e.target.value)}
