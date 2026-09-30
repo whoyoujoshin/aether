@@ -50,12 +50,11 @@ import (
 // or signatures, and every transaction a person or agent signs still has
 // to be ML-DSA-44.
 //
-// PLACEHOLDER: replace with a height agreed with the operators and
-// confirmed against the live tip immediately before the cutover. No store
-// is added, so there is no halt at this height; nodes simply start
+// Set to 161,000 with the operator, the same cutover as x/escrow
+// (docs/CUTOVER-161000.md). No store is added, so there is no halt at this height; nodes simply start
 // accepting relay transactions from it, which is why every node has to be
 // on a binary carrying it before then.
-const HelicaseActivationHeight int64 = 1_000_000
+const HelicaseActivationHeight int64 = 161_000
 
 // helicaseActivationHeight is what the handlers read, so tests can cross
 // the activation at a small height.

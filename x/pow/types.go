@@ -347,10 +347,9 @@ const (
 //
 // Both change what a message does, so, like every gate here, they must
 // reach every node before this height, and a fresh replay must see the
-// old behavior below it. PLACEHOLDER: replace with a height agreed with
-// the operators and confirmed against the live tip immediately before
-// the cutover, never an estimate.
-const ConsensusKeyGuardActivationHeight int64 = 1_000_000
+// old behavior below it. Set to 161,000 with the operator, the same
+// cutover as x/escrow (docs/CUTOVER-161000.md).
+const ConsensusKeyGuardActivationHeight int64 = 161_000
 
 // RandomnessBeaconActivationHeight gates Phase 3 of
 // aether-randomness-beacon-design.md (see beacon.go): the

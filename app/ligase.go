@@ -17,9 +17,9 @@ import (
 // such a transfer changes, so every validator needs a binary carrying
 // the height before it.
 //
-// PLACEHOLDER: replace with a height agreed with the operators and
-// confirmed against the live tip immediately before the cutover.
-const LigaseActivationHeight int64 = 1_000_000
+// Set to 161,000 with the operator, the same cutover as x/escrow
+// (docs/CUTOVER-161000.md).
+const LigaseActivationHeight int64 = 161_000
 
 // ligaseActivationHeight is what the host reads, so tests can cross the
 // activation at a small height.

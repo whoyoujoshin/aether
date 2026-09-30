@@ -155,8 +155,8 @@ To reproduce:
 
 ## Activation
 
-`HelicaseActivationHeight` in `app/helicase.go` is `1,000,000`: a
-placeholder, to be set against the live tip before a cutover. It adds no
+`HelicaseActivationHeight` in `app/helicase.go` is **161,000**, the same
+cutover as `x/escrow` (see [CUTOVER-161000.md](CUTOVER-161000.md)). It adds no
 store, so nothing halts at it: from that height, nodes accept relay
 transactions. That still changes consensus.
 
