@@ -10,6 +10,7 @@ import (
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/require"
 
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
@@ -243,4 +244,118 @@ func TestUSDC_UnknownAssetIsNotPaid(t *testing.T) {
 	ae := requireCode(t, err, codePaymentUnsupported)
 	require.Contains(t, ae.Message, usdc.Denom)
 	require.Empty(t, f.broadcasts)
+}
+
+// usdcSchemesSeller prices at 0.02 USDC and offers prepaid balances (with
+// withdrawals) and pull allowances as well.
+func usdcSchemesSeller(t *testing.T, f *fakeChain, usdc wallet.Asset, payout paywall.Payout) (*httptest.Server, *chainGrants) {
+	t.Helper()
+	ledger, err := paywall.NewFileLedger("")
+	require.NoError(t, err)
+	g := &chainGrants{f: f, denom: usdc.Denom, collected: map[string]int64{}, grantAt: map[string]int64{}}
+	pw, err := paywall.New(paywall.Config{
+		PayTo: sellerAddr(), Price: math.NewInt(20_000), Asset: usdc, Network: chainID, Lookup: f.lookup,
+		Prepaid: &paywall.PrepaidConfig{Ledger: ledger, MinDeposit: math.NewInt(50_000), Payout: payout},
+		Pull:    &paywall.PullConfig{Ledger: ledger, Collector: g, Grantee: collectorAddr(), Grants: g.get},
+	})
+	require.NoError(t, err)
+	mux := http.NewServeMux()
+	mux.Handle(paywall.ManifestPath, pw.ManifestHandler("svc", ""))
+	mux.Handle(paywall.WithdrawPath, pw.WithdrawHandler())
+	mux.Handle("/", pw.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "answer") })))
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv, g
+}
+
+func fetchUSDC(t *testing.T, url, key, prepay, allowance string) (fetchPaidOutput, error) {
+	t.Helper()
+	_, out, err := toolFetchPaid(context.Background(), nil, fetchPaidInput{URL: url, MaxAmount: "0.05 USDC", IdempotencyKey: key,
+		Prepay: prepay, PullAllowance: allowance, TimeoutSeconds: 5})
+	return out, err
+}
+
+func usdcSpent(t *testing.T) (aeth, usdc string) {
+	t.Helper()
+	_, status, err := toolGetSpendingStatus(context.Background(), nil, getSpendingStatusInput{})
+	require.NoError(t, err)
+	return status.SpentLast24h.Aeth, status.Assets[1].SpentLast24h.Amount
+}
+
+func TestUSDC_PrepaidDepositsDrawsAndWithdrawsInUSDC(t *testing.T) {
+	f := setupAgent(t)
+	f.autoInclude = true
+	usdc := useUSDC(t, "1 USDC", "2 USDC", "")
+	payout := &recordingPayout{}
+	srv, _ := usdcSchemesSeller(t, f, usdc, payout)
+
+	// The deposit has to be in the asset the service charges.
+	_, err := fetchUSDC(t, srv.URL+"/q", "k0", "0.1 AETH", "")
+	requireCode(t, err, codeAssetMismatch)
+	require.Empty(t, f.broadcasts)
+
+	out, err := fetchUSDC(t, srv.URL+"/q", "k1", "0.1 USDC", "")
+	require.NoError(t, err)
+	require.Equal(t, "paid", out.Status, out.Message)
+	require.Equal(t, paywall.SchemePrepaid, out.Payment.Scheme)
+	require.NotEmpty(t, out.Payment.DepositTxHash)
+	require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin(usdc.Denom, 100_000)), sentCoins(t, f), "the deposit moves USDC")
+	require.Equal(t, amountDTO{Asset: "USDC", Amount: "0.08", Base: "80000", Denom: usdc.Denom}, *out.Payment.Balance)
+	aeth, spentUSDC := usdcSpent(t)
+	require.Equal(t, "0", aeth)
+	require.Equal(t, "0.1", spentUSDC, "the deposit counts against USDC's budget")
+
+	out, err = fetchUSDC(t, srv.URL+"/q", "k2", "0.1 USDC", "")
+	require.NoError(t, err)
+	require.Empty(t, out.Payment.DepositTxHash, "drawn from the balance")
+	require.Equal(t, "0.06", out.Payment.Balance.Amount)
+	require.Len(t, f.broadcasts, 1)
+
+	got := balances(t)
+	require.Len(t, got, 1)
+	require.Equal(t, "USDC", got[0].Balance.Asset)
+	require.Equal(t, "0.06", got[0].Balance.Amount)
+
+	// Withdrawals are in the service's asset too.
+	_, err = withdraw(t, srv.URL, "0.06 AETH", "w0")
+	requireCode(t, err, codeAssetMismatch)
+	wo, err := withdraw(t, srv.URL, "all", "w1")
+	require.NoError(t, err)
+	require.Equal(t, amountDTO{Asset: "USDC", Amount: "0.06", Base: "60000", Denom: usdc.Denom}, *wo.Amount)
+	require.Equal(t, "0", wo.Balance.Base)
+	require.Len(t, payout.signed, 1)
+	require.Contains(t, payout.signed[0], " 60000 prepaid-withdrawal:")
+	require.Empty(t, balances(t))
+}
+
+func TestUSDC_PullGrantsAUSDCAllowance(t *testing.T) {
+	f := setupAgent(t)
+	f.autoInclude = true
+	usdc := useUSDC(t, "1 USDC", "2 USDC", "")
+	srv, _ := usdcSchemesSeller(t, f, usdc, nil)
+
+	_, err := fetchUSDC(t, srv.URL+"/q", "k0", "", "0.1 AETH")
+	requireCode(t, err, codeAssetMismatch)
+	require.Empty(t, f.broadcasts)
+
+	out, err := fetchUSDC(t, srv.URL+"/q", "k1", "", "0.1 USDC")
+	require.NoError(t, err)
+	require.Equal(t, "paid", out.Status, out.Message)
+	require.Equal(t, paywall.SchemePull, out.Payment.Scheme)
+	require.Equal(t, amountDTO{Asset: "USDC", Amount: "0.02", Base: "20000", Denom: usdc.Denom}, *out.Payment.Owed)
+	require.Equal(t, "0.08", out.Payment.Allowance.Amount)
+
+	require.Len(t, f.broadcasts, 1)
+	var a banktypes.SendAuthorization
+	require.NoError(t, proto.Unmarshal(grantIn(t, f.broadcasts[0]).Grant.Authorization.Value, &a))
+	require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin(usdc.Denom, 100_000)), sdk.Coins(a.SpendLimit), "an allowance in USDC only: the seller can't collect AETH under it")
+	require.Equal(t, []string{sellerAddr()}, a.AllowList)
+
+	out, err = fetchUSDC(t, srv.URL+"/q", "k2", "", "0.1 USDC")
+	require.NoError(t, err)
+	require.Equal(t, "0.04", out.Payment.Owed.Amount)
+	require.Len(t, f.broadcasts, 1, "no transaction per request")
+	aeth, spentUSDC := usdcSpent(t)
+	require.Equal(t, "0", aeth)
+	require.Equal(t, "0.04", spentUSDC, "each request counts against USDC's budget")
 }

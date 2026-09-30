@@ -57,8 +57,8 @@ type fetchPaidInput struct {
 	MaxAmount      string `json:"maxAmount" jsonschema:"the most you'll pay for this request, WITH its unit, in the asset the service charges: e.g. \"0.05 AETH\", or \"0.10 USDC\" for a service priced in USDC. A higher price, or one in another asset, is refused without paying"`
 	IdempotencyKey string `json:"idempotencyKey" jsonschema:"unique ID for this purchase. Retrying with the same key never pays twice: it resumes the same payment"`
 	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"how long to wait for the payment to confirm (default 150, max 300); blocks are ~60s apart"`
-	Prepay         string `json:"prepay,omitempty" jsonschema:"for making many requests to one service: if it offers prepaid, deposit this much (with unit, e.g. \"1 AETH\") whenever the balance there runs out, then pay each request instantly by signature instead of one transaction per request. The seller holds the unspent balance"`
-	PullAllowance  string `json:"pullAllowance,omitempty" jsonschema:"for making many requests to one service, preferred over prepay: if it offers aether-pull, grant it an on-chain allowance of this much (with unit, e.g. \"1 AETH\"; payable only to it, for 7 days, revocable) when it has none or it runs low, then pay each request instantly by signature. Nothing is deposited: the seller collects what you owe from your account in batches. Needs the agent's own funds (not grant mode); granting counts as a payment of the allowance for the owner's approval threshold"`
+	Prepay         string `json:"prepay,omitempty" jsonschema:"for making many requests to one service: if it offers prepaid, deposit this much (with unit, in the same asset as maxAmount, e.g. \"1 AETH\" or \"5 USDC\") whenever the balance there runs out, then pay each request instantly by signature instead of one transaction per request. The seller holds the unspent balance"`
+	PullAllowance  string `json:"pullAllowance,omitempty" jsonschema:"for making many requests to one service, preferred over prepay: if it offers aether-pull, grant it an on-chain allowance of this much (with unit, in the same asset as maxAmount, e.g. \"1 AETH\" or \"5 USDC\"; payable only to it, for 7 days, revocable) when it has none or it runs low, then pay each request instantly by signature. Nothing is deposited: the seller collects what you owe from your account in batches. Needs the agent's own funds (not grant mode); granting counts as a payment of the allowance for the owner's approval threshold"`
 }
 
 type fetchPaymentDTO struct {
@@ -208,15 +208,27 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 	if err != nil {
 		return nil, fetchPaidOutput{}, err
 	}
+	// prepay and pullAllowance are in the same asset as maxAmount: the
+	// asset the service is expected to charge.
+	sameAsset := func(field, s string) (math.Int, error) {
+		a, v, err := parseAssetAmount(s)
+		if err != nil {
+			return math.Int{}, err
+		}
+		if a.Denom != maxAsset.Denom {
+			return math.Int{}, newError(codeAssetMismatch, fmt.Sprintf("%s is in %s but maxAmount is in %s: give both in the asset the service charges", field, a.Symbol, maxAsset.Symbol))
+		}
+		return v, nil
+	}
 	var pullAllowance math.Int
 	if in.PullAllowance != "" {
-		if pullAllowance, err = parseAmount(in.PullAllowance); err != nil {
+		if pullAllowance, err = sameAsset("pullAllowance", in.PullAllowance); err != nil {
 			return nil, fetchPaidOutput{}, err
 		}
 	}
 	var prepay math.Int
 	if in.Prepay != "" {
-		if prepay, err = parseAmount(in.Prepay); err != nil {
+		if prepay, err = sameAsset("prepay", in.Prepay); err != nil {
 			return nil, fetchPaidOutput{}, err
 		}
 	}
@@ -248,17 +260,17 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 		if first.status != http.StatusPaymentRequired {
 			return nil, first.output("ok"), nil
 		}
-		// Pull and prepaid are AETH-only for now: a service charging
-		// another asset is paid per request.
-		if !pullAllowance.IsNil() && granter == "" && maxAsset.Denom == baseDenom {
-			if req, ok := quoteScheme(first, paywall.SchemePull); ok {
-				out, err := fetchPull(ctx, in, method, req, maxAmount, pullAllowance)
+		// An offer in another asset than maxAmount's isn't taken; the
+		// per-request quote below then says why.
+		if !pullAllowance.IsNil() && granter == "" {
+			if req, ok := quoteScheme(first, paywall.SchemePull, maxAsset); ok {
+				out, err := fetchPull(ctx, in, method, req, maxAsset, maxAmount, pullAllowance)
 				return nil, out, err
 			}
 		}
-		if !prepay.IsNil() && maxAsset.Denom == baseDenom {
-			if req, ok := quoteScheme(first, paywall.SchemePrepaid); ok {
-				out, err := fetchPrepaid(ctx, in, method, req, maxAmount, prepay)
+		if !prepay.IsNil() {
+			if req, ok := quoteScheme(first, paywall.SchemePrepaid, maxAsset); ok {
+				out, err := fetchPrepaid(ctx, in, method, req, maxAsset, maxAmount, prepay)
 				return nil, out, err
 			}
 		}

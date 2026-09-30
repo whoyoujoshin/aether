@@ -174,11 +174,11 @@ explorer shows the channel.
 >
 > Also built: the paywall and `cmd/paywall` charge one asset each, USDC
 > included, for every scheme, and state it in the 402, the manifest and
-> the receipts. `fetch_paid` pays a USDC price per request, and
-> `find_services` shows each service's asset.
+> the receipts. `fetch_paid` pays a USDC price per request, by prepaid
+> deposit or by pull allowance, and `withdraw_prepaid` takes a USDC
+> balance back. `find_services` shows each service's asset.
 >
 > Still to do:
-> - agentmcp's buying side of prepaid and pull in USDC;
 > - the TypeScript and Python clients;
 > - the desktop wallet and explorer;
 > - `--usdc-channel` in the Claude Desktop bundle once the Noble channel

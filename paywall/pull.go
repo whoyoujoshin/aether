@@ -400,7 +400,7 @@ func (p *Paywall) collect(account string) error {
 			// Revoked, expired or exhausted allowance, or an empty
 			// account: the buyer owes it, and is refused until an
 			// allowance covers it.
-			log.Printf("paywall: collecting %s uaeth from %s failed; refusing it until it grants enough: %s", c.Amount, account, state.Log)
+			log.Printf("paywall: collecting %s%s from %s failed; refusing it until it grants enough: %s", c.Amount, p.cfg.Asset.Denom, account, state.Log)
 			p.forgetGrant(account)
 			return cfg.Ledger.CloseCollection(account, false)
 		case PayoutSequenceSpent:

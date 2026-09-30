@@ -25,7 +25,8 @@ import (
 type prepaidDeposit struct {
 	SendKey   string    `json:"sendKey"`
 	TxHash    string    `json:"txHash,omitempty"`
-	Amount    string    `json:"amountUaeth"`
+	Amount    string    `json:"amountUaeth"`     // in Denom's base unit
+	Denom     string    `json:"denom,omitempty"` // "" for AETH
 	CreatedAt time.Time `json:"createdAt"`
 }
 
@@ -36,29 +37,30 @@ func requestIDFor(key string) string {
 	return hex.EncodeToString(sum[:16])
 }
 
-func quoteScheme(r *httpResult, scheme string) (paywall.PaymentRequirements, bool) {
+// quoteScheme finds the 402's offer of scheme in asset.
+func quoteScheme(r *httpResult, scheme string, asset wallet.Asset) (paywall.PaymentRequirements, bool) {
 	var pr paywall.PaymentRequired
 	if jsonUnmarshal(r.body, &pr) != nil {
 		return paywall.PaymentRequirements{}, false
 	}
 	for _, req := range pr.Accepts {
-		if req.Scheme == scheme && req.Network == chainID && req.Asset == paywall.Asset {
+		if req.Scheme == scheme && req.Network == chainID && req.Asset == asset.Denom {
 			return req, true
 		}
 	}
 	return paywall.PaymentRequirements{}, false
 }
 
-func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req paywall.PaymentRequirements, maxAmount, prepay math.Int) (fetchPaidOutput, error) {
+func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req paywall.PaymentRequirements, asset wallet.Asset, maxAmount, prepay math.Int) (fetchPaidOutput, error) {
 	price, err := wallet.ParseUaeth(req.MaxAmountRequired)
 	if err != nil {
 		return fetchPaidOutput{}, newError(codePaymentUnsupported, "the server's price is invalid: "+err.Error())
 	}
 	if price.GT(maxAmount) {
-		return fetchPaidOutput{}, newError(codePriceExceedsMax, fmt.Sprintf("the server asks %s AETH (%s uaeth) per request; your maxAmount is %s AETH. Nothing was paid", formatAeth(price), price, formatAeth(maxAmount)))
+		return fetchPaidOutput{}, newError(codePriceExceedsMax, fmt.Sprintf("the server asks %s (%s%s) per request; your maxAmount is %s. Nothing was paid", asset.Format(price), price, asset.BaseUnit, asset.Format(maxAmount)))
 	}
 	if minDep, err := wallet.ParseUaeth(req.Extra.MinDeposit); err == nil && prepay.LT(minDep) {
-		return fetchPaidOutput{}, newError(codePaymentUnsupported, fmt.Sprintf("the server's minimum deposit is %s AETH; prepay is %s AETH", formatAeth(minDep), formatAeth(prepay)))
+		return fetchPaidOutput{}, newError(codePaymentUnsupported, fmt.Sprintf("the server's minimum deposit is %s; prepay is %s", asset.Format(minDep), asset.Format(prepay)))
 	}
 	w, err := newWallet()
 	if err != nil {
@@ -85,19 +87,19 @@ func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req pay
 	}
 	paid := func(res *httpResult, depositTx string) fetchPaidOutput {
 		out := res.output("paid")
-		out.Payment = &fetchPaymentDTO{Scheme: paywall.SchemePrepaid, Amount: newAmountDTO(price), PayTo: req.PayTo, DepositTxHash: depositTx}
+		out.Payment = &fetchPaymentDTO{Scheme: paywall.SchemePrepaid, Amount: newAssetAmountDTO(asset, price), PayTo: req.PayTo, DepositTxHash: depositTx}
 		out.Receipt = recordPurchase(purchase{u: u, method: method, payTo: req.PayTo, scheme: paywall.SchemePrepaid, payer: agent.Address,
-			payment: requestIDFor(in.IdempotencyKey), amount: price, reqBody: []byte(in.Body), res: res})
+			payment: requestIDFor(in.IdempotencyKey), amount: price, asset: asset, reqBody: []byte(in.Body), res: res})
 		var s paywall.SettlementResponse
 		if paywall.DecodeHeader(res.header.Get(paywall.HeaderPaymentResponse), &s) == nil {
 			if bal, err := wallet.ParseUaeth(s.Balance); err == nil {
-				b := newAmountDTO(bal)
+				b := newAssetAmountDTO(asset, bal)
 				out.Payment.Balance = &b
-				notePrepaidBalance(req.PayTo, serviceBase(u), bal)
+				notePrepaidBalance(req.PayTo, serviceBase(u), asset, bal)
 			} else if s.Balance == "0" {
-				b := newAmountDTO(math.ZeroInt())
+				b := newAssetAmountDTO(asset, math.ZeroInt())
 				out.Payment.Balance = &b
-				notePrepaidBalance(req.PayTo, serviceBase(u), math.ZeroInt())
+				notePrepaidBalance(req.PayTo, serviceBase(u), asset, math.ZeroInt())
 			}
 		}
 		return out
@@ -129,7 +131,7 @@ func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req pay
 		st, err = loadState()
 		if err == nil {
 			if dep = st.Prepaid[req.PayTo]; dep == nil {
-				dep = &prepaidDeposit{SendKey: fmt.Sprintf("prepay/%s/%d", req.PayTo, time.Now().UnixNano()), Amount: prepay.String(), CreatedAt: time.Now()}
+				dep = &prepaidDeposit{SendKey: fmt.Sprintf("prepay/%s/%d", req.PayTo, time.Now().UnixNano()), Amount: prepay.String(), Denom: recordDenom(asset), CreatedAt: time.Now()}
 				st.Prepaid[req.PayTo] = dep
 				err = st.save()
 			}
@@ -141,8 +143,9 @@ func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req pay
 	}
 
 	depAmount, _ := math.NewIntFromString(dep.Amount)
+	depAsset := assetOfDenom(dep.Denom)
 	_, sent, err := toolSendAeth(ctx, nil, sendAethInput{
-		To: req.PayTo, Amount: dep.Amount + baseDenom, Memo: paywall.DepositMemoPrefix + agent.Address, IdempotencyKey: dep.SendKey,
+		To: req.PayTo, Amount: dep.Amount + depAsset.BaseUnit, Memo: paywall.DepositMemoPrefix + agent.Address, IdempotencyKey: dep.SendKey,
 	})
 	if err != nil {
 		return fetchPaidOutput{}, err
@@ -157,7 +160,7 @@ func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req pay
 	}
 	if sent.Status == statusPendingApproval {
 		return fetchPaidOutput{Status: "approval_pending", ApprovalID: sent.ApprovalID, Message: sent.Message,
-			Payment: &fetchPaymentDTO{Scheme: paywall.SchemePrepaid, Amount: newAmountDTO(depAmount), PayTo: req.PayTo}}, nil
+			Payment: &fetchPaymentDTO{Scheme: paywall.SchemePrepaid, Amount: newAssetAmountDTO(depAsset, depAmount), PayTo: req.PayTo}}, nil
 	}
 	if sent.Status == statusFailed {
 		forget()
@@ -181,8 +184,8 @@ func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req pay
 	switch confirmed.Status {
 	case statusPending:
 		return fetchPaidOutput{Status: "payment_pending",
-			Payment: &fetchPaymentDTO{Scheme: paywall.SchemePrepaid, Amount: newAmountDTO(depAmount), PayTo: req.PayTo, DepositTxHash: sent.TxHash},
-			Message: fmt.Sprintf("deposited %s AETH, not in a block yet. Call fetch_paid again with the same idempotencyKey to continue -- it won't deposit again", formatAeth(depAmount))}, nil
+			Payment: &fetchPaymentDTO{Scheme: paywall.SchemePrepaid, Amount: newAssetAmountDTO(depAsset, depAmount), PayTo: req.PayTo, DepositTxHash: sent.TxHash},
+			Message: fmt.Sprintf("deposited %s, not in a block yet. Call fetch_paid again with the same idempotencyKey to continue -- it won't deposit again", depAsset.Format(depAmount))}, nil
 	case statusFailed:
 		forget()
 		e := newError(confirmed.ErrorCode, "the deposit failed on chain: "+confirmed.RawLog)

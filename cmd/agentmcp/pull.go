@@ -37,13 +37,13 @@ func pullGrantKey(grantee string) string { return "pull-grant/" + grantee }
 // pullGrantMemo describes an allowance in the owner's approval request.
 func pullGrantMemo(payTo string) string { return "aether-pull allowance, payable only to " + payTo }
 
-func fetchPull(ctx context.Context, in fetchPaidInput, method string, req paywall.PaymentRequirements, maxAmount, allowance math.Int) (fetchPaidOutput, error) {
+func fetchPull(ctx context.Context, in fetchPaidInput, method string, req paywall.PaymentRequirements, asset wallet.Asset, maxAmount, allowance math.Int) (fetchPaidOutput, error) {
 	price, err := wallet.ParseUaeth(req.MaxAmountRequired)
 	if err != nil {
 		return fetchPaidOutput{}, newError(codePaymentUnsupported, "the server's price is invalid: "+err.Error())
 	}
 	if price.GT(maxAmount) {
-		return fetchPaidOutput{}, newError(codePriceExceedsMax, fmt.Sprintf("the server asks %s AETH (%s uaeth) per request; your maxAmount is %s AETH. Nothing was paid", formatAeth(price), price, formatAeth(maxAmount)))
+		return fetchPaidOutput{}, newError(codePriceExceedsMax, fmt.Sprintf("the server asks %s (%s%s) per request; your maxAmount is %s. Nothing was paid", asset.Format(price), price, asset.BaseUnit, asset.Format(maxAmount)))
 	}
 	if _, err := sdk.AccAddressFromBech32(req.Extra.Grantee); err != nil {
 		return fetchPaidOutput{}, newError(codePaymentUnsupported, fmt.Sprintf("the server's pull grantee %q is not a valid address", req.Extra.Grantee))
@@ -52,7 +52,7 @@ func fetchPull(ctx context.Context, in fetchPaidInput, method string, req paywal
 		return fetchPaidOutput{}, newError(codePaymentUnsupported, fmt.Sprintf("the server's payTo %q is not a valid address", req.PayTo))
 	}
 	if allowance.LT(price) {
-		return fetchPaidOutput{}, newError(codeInvalidArgument, fmt.Sprintf("pullAllowance %s AETH doesn't cover one request (%s AETH)", formatAeth(allowance), formatAeth(price)))
+		return fetchPaidOutput{}, newError(codeInvalidArgument, fmt.Sprintf("pullAllowance %s doesn't cover one request (%s)", asset.Format(allowance), asset.Format(price)))
 	}
 	w, err := newWallet()
 	if err != nil {
@@ -77,7 +77,7 @@ func fetchPull(ctx context.Context, in fetchPaidInput, method string, req paywal
 		stateMu.Lock()
 		st, err := loadState()
 		if err == nil && !st.hasSpend(spendTag) {
-			err = checkLimits(st, wallet.AETH, price)
+			err = checkLimits(st, asset, price)
 		}
 		stateMu.Unlock()
 		if err != nil {
@@ -97,7 +97,7 @@ func fetchPull(ctx context.Context, in fetchPaidInput, method string, req paywal
 			stateMu.Lock()
 			st, err := loadState()
 			if err == nil && !st.hasSpend(spendTag) {
-				st.Events = append(st.Events, newSpend(time.Now(), wallet.AETH, price.Int64(), spendTag))
+				st.Events = append(st.Events, newSpend(time.Now(), asset, price.Int64(), spendTag))
 				err = st.save()
 			}
 			stateMu.Unlock()
@@ -106,20 +106,20 @@ func fetchPull(ctx context.Context, in fetchPaidInput, method string, req paywal
 			}
 		}
 		out := res.output("paid")
-		out.Payment = &fetchPaymentDTO{Scheme: paywall.SchemePull, Amount: newAmountDTO(price), PayTo: req.PayTo, GrantTxHash: grantTx}
+		out.Payment = &fetchPaymentDTO{Scheme: paywall.SchemePull, Amount: newAssetAmountDTO(asset, price), PayTo: req.PayTo, GrantTxHash: grantTx}
 		var s paywall.SettlementResponse
 		if paywall.DecodeHeader(res.header.Get(paywall.HeaderPaymentResponse), &s) == nil {
 			if owed, ok := math.NewIntFromString(s.Owed); ok {
-				o := newAmountDTO(owed)
+				o := newAssetAmountDTO(asset, owed)
 				out.Payment.Owed = &o
 			}
 			if left, ok := math.NewIntFromString(s.Allowance); ok {
-				a := newAmountDTO(left)
+				a := newAssetAmountDTO(asset, left)
 				out.Payment.Allowance = &a
 			}
 		}
 		out.Receipt = recordPurchase(purchase{u: u, method: method, payTo: req.PayTo, scheme: paywall.SchemePull, payer: agent.Address,
-			payment: requestID, amount: price, reqBody: []byte(in.Body), res: res})
+			payment: requestID, amount: price, asset: asset, reqBody: []byte(in.Body), res: res})
 		return out, nil
 	}
 
@@ -142,12 +142,12 @@ func fetchPull(ctx context.Context, in fetchPaidInput, method string, req paywal
 		}
 		// The server says what's owed but not yet collected; the new
 		// allowance must cover that and this request.
-		if offer, ok := quoteScheme(res, paywall.SchemePull); ok {
+		if offer, ok := quoteScheme(res, paywall.SchemePull, asset); ok {
 			if owed, ok := math.NewIntFromString(offer.Extra.Owed); ok && allowance.LT(owed.Add(price)) {
-				return fetchPaidOutput{}, newError(codeInvalidArgument, fmt.Sprintf("you owe this service %s AETH not yet collected; pullAllowance must be at least %s AETH", formatAeth(owed), formatAeth(owed.Add(price))))
+				return fetchPaidOutput{}, newError(codeInvalidArgument, fmt.Sprintf("you owe this service %s not yet collected; pullAllowance must be at least %s", asset.Format(owed), asset.Format(owed.Add(price))))
 			}
 		}
-		out, hash, done, err := ensurePullGrant(ctx, w, agent.Address, req, allowance, in.TimeoutSeconds)
+		out, hash, done, err := ensurePullGrant(ctx, w, agent.Address, req, asset, allowance, in.TimeoutSeconds)
 		if err != nil || done {
 			return out, err
 		}
@@ -158,16 +158,16 @@ func fetchPull(ctx context.Context, in fetchPaidInput, method string, req paywal
 // ensurePullGrant makes sure an allowance of `allowance` to the seller's
 // grantee is on chain, granting one if needed. done is true when the
 // caller should return out as is (approval or confirmation pending).
-func ensurePullGrant(ctx context.Context, w *wallet.Wallet, agent string, req paywall.PaymentRequirements, allowance math.Int, timeoutSeconds int) (out fetchPaidOutput, hash string, done bool, err error) {
-	out, done, err = ensurePullGrantTx(ctx, w, agent, req, allowance, timeoutSeconds, &hash)
+func ensurePullGrant(ctx context.Context, w *wallet.Wallet, agent string, req paywall.PaymentRequirements, asset wallet.Asset, allowance math.Int, timeoutSeconds int) (out fetchPaidOutput, hash string, done bool, err error) {
+	out, done, err = ensurePullGrantTx(ctx, w, agent, req, asset, allowance, timeoutSeconds, &hash)
 	return out, hash, done, err
 }
 
-func ensurePullGrantTx(ctx context.Context, w *wallet.Wallet, agent string, req paywall.PaymentRequirements, allowance math.Int, timeoutSeconds int, hash *string) (out fetchPaidOutput, done bool, err error) {
+func ensurePullGrantTx(ctx context.Context, w *wallet.Wallet, agent string, req paywall.PaymentRequirements, asset wallet.Asset, allowance math.Int, timeoutSeconds int, hash *string) (out fetchPaidOutput, done bool, err error) {
 	grantee, key := req.Extra.Grantee, pullGrantKey(req.Extra.Grantee)
 	pending := func(hash, msg string) (fetchPaidOutput, bool, error) {
 		return fetchPaidOutput{Status: "payment_pending", Message: msg,
-			Payment: &fetchPaymentDTO{Scheme: paywall.SchemePull, Amount: newAmountDTO(allowance), PayTo: req.PayTo, GrantTxHash: hash}}, true, nil
+			Payment: &fetchPaymentDTO{Scheme: paywall.SchemePull, Amount: newAssetAmountDTO(asset, allowance), PayTo: req.PayTo, GrantTxHash: hash}}, true, nil
 	}
 	c, err := dialChain()
 	if err != nil {
@@ -204,31 +204,42 @@ func ensurePullGrantTx(ctx context.Context, w *wallet.Wallet, agent string, req 
 		// a new allowance may be granted.
 		delete(st.Sends, key)
 	}
-	if allowance.Int64() > perTxLimit {
+	l, err := limitsFor(asset)
+	if err != nil {
 		stateMu.Unlock()
-		return out, false, newError(codePerTxLimit, fmt.Sprintf("a %s AETH allowance exceeds the per-transaction limit of %s AETH; ask for a smaller pullAllowance", formatAeth(allowance), formatAeth(math.NewInt(perTxLimit))))
+		return out, false, err
+	}
+	if allowance.Int64() > l.perTx {
+		stateMu.Unlock()
+		return out, false, newError(codePerTxLimit, fmt.Sprintf("a %s allowance exceeds the per-transaction limit of %s; ask for a smaller pullAllowance", asset.Format(allowance), asset.Format(math.NewInt(l.perTx))))
 	}
 	// Granting an allowance commits up to its amount: the owner approves
 	// it like a payment of that much.
-	gate := sendAethInput{To: grantee, Amount: allowance.String() + baseDenom, Memo: pullGrantMemo(req.PayTo), IdempotencyKey: key + "/" + allowance.String()}
-	if proceed, p, err := approvalGate(st, agent, gate, wallet.AETH, allowance); !proceed {
+	// The approval is bound to the asset; AETH keeps its original key so
+	// approvals made before USDC existed still match.
+	gateKey := key + "/" + allowance.String()
+	if recordDenom(asset) != "" {
+		gateKey += asset.BaseUnit
+	}
+	gate := sendAethInput{To: grantee, Amount: allowance.String() + asset.BaseUnit, Memo: pullGrantMemo(req.PayTo), IdempotencyKey: gateKey}
+	if proceed, p, err := approvalGate(st, agent, gate, asset, allowance); !proceed {
 		stateMu.Unlock()
 		if err != nil {
 			return out, false, err
 		}
-		return fetchPaidOutput{Status: "approval_pending", ApprovalID: p.ApprovalID, Message: "granting this service a " + formatAeth(allowance) + " AETH allowance needs the owner's approval: " + p.Message,
-			Payment: &fetchPaymentDTO{Scheme: paywall.SchemePull, Amount: newAmountDTO(allowance), PayTo: req.PayTo}}, true, nil
+		return fetchPaidOutput{Status: "approval_pending", ApprovalID: p.ApprovalID, Message: "granting this service a " + asset.Format(allowance) + " allowance needs the owner's approval: " + p.Message,
+			Payment: &fetchPaymentDTO{Scheme: paywall.SchemePull, Amount: newAssetAmountDTO(asset, allowance), PayTo: req.PayTo}}, true, nil
 	}
 	accNum, chainSeq, err := c.accountInfo(agent)
 	if status.Code(err) == codes.NotFound {
 		stateMu.Unlock()
-		return out, false, newError(codeAccountNotFound, fmt.Sprintf("the agent account %s doesn't exist on chain yet: send it some AETH first", agent))
+		return out, false, newError(codeAccountNotFound, fmt.Sprintf("the agent account %s doesn't exist on chain yet: send it some %s first", agent, asset.Symbol))
 	}
 	if err != nil {
 		stateMu.Unlock()
 		return out, false, err
 	}
-	msg, err := wallet.SendGrantMsg(agent, grantee, sdk.NewCoins(sdk.NewCoin(baseDenom, allowance)), []string{req.PayTo}, time.Now().Add(pullGrantDays*24*time.Hour))
+	msg, err := wallet.SendGrantMsg(agent, grantee, sdk.NewCoins(sdk.NewCoin(asset.Denom, allowance)), []string{req.PayTo}, time.Now().Add(pullGrantDays*24*time.Hour))
 	if err != nil {
 		stateMu.Unlock()
 		return out, false, newError(codePaymentUnsupported, err.Error())
@@ -242,7 +253,7 @@ func ensurePullGrantTx(ctx context.Context, w *wallet.Wallet, agent string, req 
 		stateMu.Unlock()
 		return out, false, fmt.Errorf("failed to sign the allowance: %w", err)
 	}
-	rec = &sendRecord{Kind: sendKindPullGrant, From: agent, To: grantee, Amount: allowance.String(), Memo: pullGrantMemo(req.PayTo),
+	rec = &sendRecord{Kind: sendKindPullGrant, From: agent, To: grantee, Amount: allowance.String(), Denom: recordDenom(asset), Memo: pullGrantMemo(req.PayTo),
 		TxHash: wallet.TxHash(signed), TxBase64: base64.StdEncoding.EncodeToString(signed.Bytes), Sequence: seq, CreatedAt: time.Now()}
 	st.Sends[key] = rec
 	consumeApproval(st, gate.IdempotencyKey)
@@ -268,7 +279,7 @@ func ensurePullGrantTx(ctx context.Context, w *wallet.Wallet, agent string, req 
 		e.TxHash = rec.TxHash
 		return out, false, e
 	}
-	notify("pull_allowance_granted", map[string]any{"grantee": grantee, "payTo": req.PayTo, "allowance": newAmountDTO(allowance), "txHash": rec.TxHash})
+	notify("pull_allowance_granted", map[string]any{"grantee": grantee, "payTo": req.PayTo, "allowance": newAssetAmountDTO(asset, allowance), "txHash": rec.TxHash})
 	*hash = rec.TxHash
 	return awaitPullGrant(ctx, c, rec.TxHash, timeoutSeconds, pending)
 }

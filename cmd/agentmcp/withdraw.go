@@ -25,20 +25,21 @@ import (
 
 // prepaidBalance is a seller's last report of this agent's balance.
 type prepaidBalance struct {
-	Service   string    `json:"service"` // scheme://host
-	Balance   string    `json:"balanceUaeth"`
+	Service   string    `json:"service"`         // scheme://host
+	Balance   string    `json:"balanceUaeth"`    // in Denom's base unit
+	Denom     string    `json:"denom,omitempty"` // "" for AETH
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // notePrepaidBalance records what payTo last said this agent has left.
-func notePrepaidBalance(payTo, service string, balance math.Int) {
+func notePrepaidBalance(payTo, service string, asset wallet.Asset, balance math.Int) {
 	stateMu.Lock()
 	defer stateMu.Unlock()
 	st, err := loadState()
 	if err != nil {
 		return
 	}
-	st.PrepaidBalances[payTo] = &prepaidBalance{Service: service, Balance: balance.String(), UpdatedAt: time.Now().UTC()}
+	st.PrepaidBalances[payTo] = &prepaidBalance{Service: service, Balance: balance.String(), Denom: recordDenom(asset), UpdatedAt: time.Now().UTC()}
 	_ = st.save()
 }
 
@@ -70,7 +71,7 @@ func toolListPrepaidBalances(_ context.Context, _ *mcp.CallToolRequest, _ listPr
 		if !ok || !bal.IsPositive() {
 			continue
 		}
-		out.Balances = append(out.Balances, prepaidBalanceDTO{Service: b.Service, PayTo: payTo, Balance: newAmountDTO(bal), UpdatedAt: b.UpdatedAt})
+		out.Balances = append(out.Balances, prepaidBalanceDTO{Service: b.Service, PayTo: payTo, Balance: newAssetAmountDTO(assetOfDenom(b.Denom), bal), UpdatedAt: b.UpdatedAt})
 	}
 	sort.Slice(out.Balances, func(i, j int) bool { return out.Balances[i].Service < out.Balances[j].Service })
 	return nil, out, nil
@@ -78,7 +79,7 @@ func toolListPrepaidBalances(_ context.Context, _ *mcp.CallToolRequest, _ listPr
 
 type withdrawPrepaidInput struct {
 	Service        string `json:"service" jsonschema:"the service holding the balance: its URL, e.g. https://api.example.com (any URL on it works)"`
-	Amount         string `json:"amount,omitempty" jsonschema:"how much, WITH its unit (e.g. \"0.5 AETH\"), or \"all\" (the default)"`
+	Amount         string `json:"amount,omitempty" jsonschema:"how much, WITH its unit in the asset the service holds it in (e.g. \"0.5 AETH\" or \"2 USDC\"), or \"all\" (the default)"`
 	IdempotencyKey string `json:"idempotencyKey" jsonschema:"unique ID for this withdrawal. Asking again with the same key never withdraws twice: it reports the same payout"`
 }
 
@@ -105,12 +106,13 @@ func toolWithdrawPrepaid(ctx context.Context, _ *mcp.CallToolRequest, in withdra
 		return nil, withdrawPrepaidOutput{}, newError(codeInvalidArgument, fmt.Sprintf("idempotencyKey is required (1-%d characters) so a retried call can't withdraw twice", maxIdempotencyKeyLength))
 	}
 	body := paywall.WithdrawalRequest{Amount: "all"}
+	var wantAsset wallet.Asset
 	if a := strings.TrimSpace(in.Amount); a != "" && !strings.EqualFold(a, "all") {
-		amt, err := parseAmount(a)
+		asset, amt, err := parseAssetAmount(a)
 		if err != nil {
 			return nil, withdrawPrepaidOutput{}, err
 		}
-		body.Amount = amt.String()
+		wantAsset, body.Amount = asset, amt.String()
 	}
 	base := serviceBase(u)
 
@@ -124,6 +126,10 @@ func toolWithdrawPrepaid(ctx context.Context, _ *mcp.CallToolRequest, in withdra
 	}
 	if m.WithdrawPath == "" {
 		return nil, withdrawPrepaidOutput{}, newError(codeWithdrawalsUnavailable, "this service doesn't offer withdrawals: its operator holds the balance")
+	}
+	asset := assetOfDenom(m.Denom())
+	if wantAsset.Denom != "" && wantAsset.Denom != asset.Denom {
+		return nil, withdrawPrepaidOutput{}, newError(codeAssetMismatch, fmt.Sprintf("this service holds balances in %s; amount is in %s", asset.Symbol, wantAsset.Symbol))
 	}
 	// A path, never something that would change the host when appended ("@evil.example/").
 	if !strings.HasPrefix(m.WithdrawPath, "/") || strings.HasPrefix(m.WithdrawPath, "//") {
@@ -165,18 +171,18 @@ func toolWithdrawPrepaid(ctx context.Context, _ *mcp.CallToolRequest, in withdra
 
 	balance := func() *amountDTO {
 		if res.Balance == "0" {
-			d := newAmountDTO(math.ZeroInt())
+			d := newAssetAmountDTO(asset, math.ZeroInt())
 			return &d
 		}
 		if b, err := wallet.ParseUaeth(res.Balance); err == nil {
-			d := newAmountDTO(b)
+			d := newAssetAmountDTO(asset, b)
 			return &d
 		}
 		return nil
 	}()
 	if balance != nil {
-		bal, _ := math.NewIntFromString(balance.Uaeth)
-		notePrepaidBalance(m.PayTo, base, bal)
+		bal, _ := math.NewIntFromString(balance.Base)
+		notePrepaidBalance(m.PayTo, base, asset, bal)
 	}
 
 	if res.Error != "" {
@@ -196,7 +202,7 @@ func toolWithdrawPrepaid(ctx context.Context, _ *mcp.CallToolRequest, in withdra
 	}
 	out := withdrawPrepaidOutput{Status: res.Status, TxHash: res.TxHash, Balance: balance, Message: res.Message}
 	if a, err := wallet.ParseUaeth(res.Amount); err == nil {
-		d := newAmountDTO(a)
+		d := newAssetAmountDTO(asset, a)
 		out.Amount = &d
 	}
 	switch res.Status {
