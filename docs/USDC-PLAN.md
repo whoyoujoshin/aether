@@ -185,8 +185,10 @@ explorer shows the channel.
 > and both show any other token by its bare denom, never as USDC,
 > whatever it calls itself.
 >
+> The clients' seller kits charge USDC as `cmd/paywall` does (a price
+> in USDC with `usdcChannel` / `usdc_channel`).
+>
 > Still to do:
-> - the clients' seller kits charging USDC (`cmd/paywall` does);
 > - setting `--usdc-channel` for the desktop wallet, the public explorer
 >   and the Claude Desktop bundle once the Noble channel exists (the
 >   bundle's settings can't be blank, so it waits for a real channel

@@ -95,7 +95,7 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
 - **Reward (decision 1: fixed total, split).** The schedule issues one
   block reward per target interval, and it still does:
   - while both tracks are mining, a native submission earns 75% and an
-    AuxPoW submission earns 25% (`MergedMiningRewardShareBps`), so a pair
+    AuxPoW submission earns 25% (the default; governance can change it), so a pair
     earns exactly one reward;
   - a track mining alone earns the full reward, so native miners lose
     nothing until pools actually arrive;
@@ -171,8 +171,12 @@ A small service that each pool runs beside its Litecoin node.
 1. **Reward split for merged work: decided.** Fixed total, split 75/25
    while both tracks are mining; a track mining alone earns the full
    reward (change C). Issuance stays on the published schedule. The share
-   is a constant for now. Making it a governance parameter means adding
-   a field to `MsgUpdateParams`.
+   is a governance parameter: `merged_mining_reward_share_bps` in x/pow's
+   `MsgUpdateParams` (`aetherd tx pow draft-update-params
+   --merged-mining-reward-share-bps 1500`), 1 to 10,000 basis points,
+   2,500 until changed. It can be set only from
+   `MergedMiningActivationHeight`, and a proposal that leaves it out keeps
+   the current share.
 2. **Who runs the bridge.**
    - Ship `auxpowd` for each pool to run next to its own node: standard
      practice, and the least trust.

@@ -35,16 +35,6 @@ const (
 var _ types.PubKey = &PubKey{}
 var _ types.PrivKey = &PrivKey{}
 
-// Address derives an account address from the raw public key bytes.
-// Uses the same tmhash-based scheme as the SDK's other non-secp256k1
-// key types -- a plain hash of the public key, truncated to 20 bytes.
-// NOTE: this is a placeholder pending explicit confirmation this
-// matches the address scheme this project wants for real user
-// accounts (ed25519's own SDK implementation explicitly warns its own
-// address scheme is NOT valid outside a consensus-key context -- this
-// needs its own deliberate confirmation before being relied upon for
-// real account addresses, tracked as an open question for this
-// component).
 // Address derives an account address per ADR-028 -- the SDK's own
 // documented, recommended scheme for any new public key type. Mixing
 // the proto type name into the hash (not just the raw key bytes)

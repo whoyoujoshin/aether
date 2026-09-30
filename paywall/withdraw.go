@@ -160,7 +160,8 @@ func (p *Paywall) withdraw(w http.ResponseWriter, account, id string, amount *ma
 	respond := func(status int, wd Withdrawal, msg string) {
 		out := WithdrawalResponse{X402Version: X402Version, WithdrawalID: wd.ID, Account: account, Amount: wd.Amount,
 			Status: wd.Status, TxHash: wd.TxHash, Message: msg}
-		if a, ok := math.NewIntFromString(wd.Amount); ok {
+		// amountAeth is for AETH only: a USDC withdrawal's amount isn't AETH.
+		if a, ok := math.NewIntFromString(wd.Amount); ok && p.cfg.Asset.Denom == Asset {
 			out.AmountAeth = wallet.FormatAeth(a)
 		}
 		if bal, err := ledger.Balance(account); err == nil {

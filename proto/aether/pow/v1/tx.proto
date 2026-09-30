@@ -82,6 +82,14 @@ message MsgUpdateParams {
   int64 bond_cooldown = 4;
   int64 recency_window_k = 5;
   int64 beacon_rounds_per_block = 6;
+  // The share of the block reward, in basis points (1..10000), a merged-
+  // mining (AuxPoW) submission earns while native mining is active, and
+  // that a native submission gives up while merged mining is active
+  // (x/pow/merged_mining.go). An exception to full-replace: 0 (or leaving
+  // it out) keeps the current share, so a proposal drafted before this
+  // field existed can't zero it. Setting it is refused below
+  // MergedMiningActivationHeight, where the share isn't used.
+  uint32 merged_mining_reward_share_bps = 7;
 }
 
 message MsgUpdateParamsResponse {}

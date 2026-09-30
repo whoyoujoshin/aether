@@ -47,9 +47,9 @@ class FakeChain {
   }) as unknown as typeof fetch;
 
   /** Puts a payment in a block; returns its hash. */
-  pay(to: string, uaeth: bigint, memo: string, code = 0, from = Key.random()): string {
-    const s = buildSend(from, { chainId: CHAIN, accountNumber: 1, sequence: 0, to, amountUaeth: uaeth, memo });
-    this.include(s.txBytes, s.hash, code, [{ sender: from.address, recipient: to, amount: `${uaeth}uaeth` }]);
+  pay(to: string, uaeth: bigint, memo: string, code = 0, from = Key.random(), denom = "uaeth"): string {
+    const s = buildSend(from, { chainId: CHAIN, accountNumber: 1, sequence: 0, to, amountUaeth: uaeth, denom, memo });
+    this.include(s.txBytes, s.hash, code, [{ sender: from.address, recipient: to, amount: `${uaeth}${denom}` }]);
     return s.hash;
   }
 
@@ -76,14 +76,17 @@ interface Setup {
   close(): void;
 }
 
-async function setup(opts: { payout?: boolean; ledgerPath?: string; failWith?: number; receipts?: boolean; respond?: (res: import("node:http").ServerResponse, req: unknown) => void } = {}): Promise<Setup> {
+async function setup(opts: {
+  payout?: boolean; ledgerPath?: string; failWith?: number; receipts?: boolean; respond?: (res: import("node:http").ServerResponse, req: unknown) => void;
+  price?: string; minDeposit?: string; usdcChannel?: string;
+} = {}): Promise<Setup> {
   const chain = new FakeChain();
   const client = new AetherClient({ rpc: "http://node", chainId: CHAIN, fetch: chain.fetch });
   const seller = Key.random();
   const now = { t: Date.now() };
   const pw = new Paywall({
-    client, payTo: seller.address, price: "0.01 AETH", name: "Weather", description: "forecasts",
-    prepaid: { ledger: opts.ledgerPath ?? "", minDeposit: "0.03 AETH", payoutKey: opts.payout ? Key.random() : undefined },
+    client, payTo: seller.address, price: opts.price ?? "0.01 AETH", usdcChannel: opts.usdcChannel, name: "Weather", description: "forecasts",
+    prepaid: { ledger: opts.ledgerPath ?? "", minDeposit: opts.minDeposit ?? "0.03 AETH", payoutKey: opts.payout ? Key.random() : undefined },
     receipts: opts.receipts ? { key: seller } : undefined,
     now: () => now.t,
   });
@@ -126,8 +129,11 @@ test("unpaid requests get a 402 offering both schemes; free paths and the manife
     const m = await (await fetch(s.url + "/.well-known/x402")).json();
     assert.deepEqual(m, {
       x402Version: 1, name: "Weather", description: "forecasts", network: CHAIN, payTo: s.seller.address, price: "10000", priceAeth: "0.01",
+      asset: "uaeth", symbol: "AETH", priceAmount: "0.01",
       schemes: ["aether-memo", "aether-prepaid"], minDeposit: "30000", withdrawPath: WITHDRAW_PATH,
     });
+    assert.equal(q.accepts[0].extra.amountAeth, "0.01");
+    assert.equal(q.accepts[0].extra.symbol, "AETH");
   } finally {
     s.close();
   }
@@ -453,4 +459,63 @@ test("receipts: a response changed after signing is caught; a wrong key is refus
   assert.throws(() => new Paywall({ client: s.client, payTo: s.seller.address, price: "0.01 AETH", receipts: { key: other } }), /receipts wouldn't verify/);
   const d = createReceiptDelegation(s.seller, other.address, Math.floor(Date.now() / 1000) + 3600);
   assert.doesNotThrow(() => new Paywall({ client: s.client, payTo: s.seller.address, price: "0.01 AETH", receipts: { key: other, delegation: d } }));
+});
+
+test("USDC: priced in USDC, the paywall charges only USDC, as cmd/paywall does", async () => {
+  assert.throws(
+    () => new Paywall({ client: new AetherClient({ rpc: "http://node", chainId: CHAIN }), payTo: Key.random().address, price: "0.05 USDC", usdcChannel: "channel-3", prepaid: { ledger: "", minDeposit: "0.1 AETH" } }),
+    /minDeposit is in AETH but the price is in USDC/,
+  );
+  assert.throws(() => new Paywall({ client: new AetherClient({ rpc: "http://node", chainId: CHAIN }), payTo: Key.random().address, price: "0.05 USDC" }), /unknown unit "USDC"/);
+
+  const s = await setup({ price: "0.05 USDC", minDeposit: "0.1 USDC", usdcChannel: "channel-3", receipts: true });
+  try {
+    const denom = s.pw.asset.denom;
+    assert.match(denom, /^ibc\/[0-9A-F]{64}$/);
+    const q = await quote(s.url + "/forecast");
+    const a = q.accepts[0] as (typeof q.accepts)[0] & { asset: string };
+    assert.equal(a.asset, denom);
+    assert.equal(a.maxAmountRequired, "50000");
+    assert.equal(a.extra.symbol, "USDC");
+    assert.equal(a.extra.amount, "0.05");
+    assert.equal(a.extra.amountAeth, undefined, "no AETH figure for a USDC price");
+    assert.match(a.extra.instructions, /50000|uusdc \(of the asset field's denom\)/);
+    assert.doesNotMatch(a.extra.instructions, / uaeth/);
+    assert.equal(q.accepts[1].extra.minDeposit, "100000");
+    assert.match((q as { message?: string }).message ?? "", /50000uusdc \(0\.05 USDC\)/);
+
+    const m = await (await fetch(s.url + "/.well-known/x402")).json();
+    assert.equal(m.asset, denom);
+    assert.equal(m.symbol, "USDC");
+    assert.equal(m.priceAmount, "0.05");
+    assert.equal(m.price, "50000");
+    assert.equal(m.priceAeth, undefined);
+
+    const invoice = q.accepts[0].extra.invoice;
+    const present = (hash: string) => fetch(s.url + "/forecast", { headers: { "X-PAYMENT": memoPaymentHeader(CHAIN, invoice, hash) } });
+    // The same number of uaeth is not a USDC payment.
+    const inAeth = s.chain.pay(s.seller.address, 50_000n, invoice);
+    assert.equal(((await (await present(inAeth)).json()) as { error: string }).error, "insufficient_payment");
+
+    const hash = s.chain.pay(s.seller.address, 50_000n, invoice, 0, Key.random(), denom);
+    const r = await present(hash);
+    assert.equal(r.status, 200);
+    const receipt = JSON.parse(Buffer.from(r.headers.get("x-payment-receipt")!, "base64").toString());
+    assert.equal(receipt.amount, `50000${denom}`, "a USDC receipt can't be read as uaeth");
+
+    // Prepaid deposits count USDC only.
+    const agent = Key.random();
+    const post = (h: string) => fetch(s.url + "/forecast", { method: "POST", headers: { "X-PAYMENT": h }, body: "" });
+    const aethDeposit = s.chain.pay(s.seller.address, 200_000n, "prepaid:" + agent.address);
+    let p = (await (await post(signed(s, agent, { requestId: "r1", body: "", depositTx: aethDeposit, maxPrice: 50_000n }))).json()) as { error: string };
+    assert.equal(p.error, "insufficient_payment");
+    const deposit = s.chain.pay(s.seller.address, 200_000n, "prepaid:" + agent.address, 0, Key.random(), denom);
+    const ok = await post(signed(s, agent, { requestId: "r1", body: "", depositTx: deposit, maxPrice: 50_000n }));
+    assert.equal(ok.status, 200);
+    assert.equal(s.served.at(-1)!.balanceUaeth, 150_000n, "balances are in uusdc");
+    p = (await (await post(signed(s, agent, { requestId: "r2", body: "", maxPrice: 49_999n }))).json()) as { error: string };
+    assert.equal(p.error, "price_above_signed_max");
+  } finally {
+    s.close();
+  }
 });

@@ -51,15 +51,15 @@ class FakeChain:
         c.rpc.call = self.call
         return c
 
-    def pay(self, to, uaeth, memo, code=0, sender=None):
+    def pay(self, to, uaeth, memo, code=0, sender=None, denom="uaeth"):
         sender = sender or Key.random()
-        s = build_send(sender, chain_id=CHAIN, account_number=1, sequence=0, to=to, amount_uaeth=uaeth, memo=memo)
-        self.include(s.tx_bytes, s.hash, code, [(sender.address, to, uaeth)])
+        s = build_send(sender, chain_id=CHAIN, account_number=1, sequence=0, to=to, amount_uaeth=uaeth, memo=memo, denom=denom)
+        self.include(s.tx_bytes, s.hash, code, [(sender.address, to, uaeth)], denom)
         return s.hash
 
-    def include(self, tx_bytes, h, code=0, transfers=()):
+    def include(self, tx_bytes, h, code=0, transfers=(), denom="uaeth"):
         events = [{"type": "transfer", "attributes": [{"key": "sender", "value": a}, {"key": "recipient", "value": b},
-                                                      {"key": "amount", "value": f"{n}uaeth"}]} for a, b, n in transfers]
+                                                      {"key": "amount", "value": f"{n}{denom}"}]} for a, b, n in transfers]
         self.txs[h] = {"hash": h, "height": "7", "tx": base64.b64encode(tx_bytes).decode(),
                        "tx_result": {"code": code, "log": "failed" if code else "", "events": events}}
 
@@ -70,14 +70,15 @@ class _Quiet(WSGIRequestHandler):
 
 
 class Seller:
-    def __init__(self, payout=False, ledger="", fail_with=None, receipts=False, response=None):
+    def __init__(self, payout=False, ledger="", fail_with=None, receipts=False, response=None,
+                 price="0.01 AETH", min_deposit="0.03 AETH", usdc_channel=None):
         self.chain = FakeChain()
         self.client = self.chain.client()
         self.seller = Key.random()
         self.t = time.time()
-        self.pw = Paywall(self.client, self.seller.address, "0.01 AETH", name="Weather", description="forecasts",
-                          prepaid_ledger=ledger, min_deposit="0.03 AETH", payout_key=Key.random() if payout else None,
-                          receipt_key=self.seller if receipts else None, now=lambda: self.t)
+        self.pw = Paywall(self.client, self.seller.address, price, name="Weather", description="forecasts",
+                          prepaid_ledger=ledger, min_deposit=min_deposit, payout_key=Key.random() if payout else None,
+                          receipt_key=self.seller if receipts else None, usdc_channel=usdc_channel, now=lambda: self.t)
         self.served = []
 
         def app(environ, start_response):
@@ -135,7 +136,62 @@ class SellerTest(unittest.TestCase):
         m = json.loads(s.request("/.well-known/x402")[2])
         self.assertEqual(m, {"x402Version": 1, "name": "Weather", "description": "forecasts", "network": CHAIN,
                              "payTo": s.seller.address, "price": "10000", "priceAeth": "0.01",
+                             "asset": "uaeth", "symbol": "AETH", "priceAmount": "0.01",
                              "schemes": ["aether-memo", "aether-prepaid"], "minDeposit": "30000", "withdrawPath": WITHDRAW_PATH})
+        self.assertEqual(q["accepts"][0]["extra"]["amountAeth"], "0.01")
+        self.assertEqual(q["accepts"][0]["extra"]["symbol"], "AETH")
+
+    def test_usdc_priced_paywall_charges_only_usdc(self):
+        with self.assertRaisesRegex(ValueError, "min_deposit is in AETH but the price is in USDC"):
+            Paywall(FakeChain().client(), Key.random().address, "0.05 USDC", usdc_channel="channel-3",
+                    prepaid_ledger="", min_deposit="0.1 AETH")
+        with self.assertRaisesRegex(ValueError, 'unknown unit "USDC"'):
+            Paywall(FakeChain().client(), Key.random().address, "0.05 USDC")
+
+        s = self.s = Seller(price="0.05 USDC", min_deposit="0.1 USDC", usdc_channel="channel-3", receipts=True)
+        denom = s.pw.asset.denom
+        self.assertRegex(denom, r"^ibc/[0-9A-F]{64}$")
+        status, _, body = s.request("/forecast")
+        self.assertEqual(status, 402)
+        q = json.loads(body)
+        a = q["accepts"][0]
+        self.assertEqual(a["asset"], denom)
+        self.assertEqual(a["maxAmountRequired"], "50000")
+        self.assertEqual(a["extra"]["symbol"], "USDC")
+        self.assertEqual(a["extra"]["amount"], "0.05")
+        self.assertNotIn("amountAeth", a["extra"])
+        self.assertNotIn(" uaeth", a["extra"]["instructions"])
+        self.assertEqual(q["accepts"][1]["extra"]["minDeposit"], "100000")
+        self.assertIn("50000uusdc (0.05 USDC)", q["message"])
+
+        m = json.loads(s.request("/.well-known/x402")[2])
+        self.assertEqual((m["asset"], m["symbol"], m["priceAmount"], m["price"]), (denom, "USDC", "0.05", "50000"))
+        self.assertNotIn("priceAeth", m)
+
+        invoice = a["extra"]["invoice"]
+
+        def present(h):
+            return s.request("/forecast", headers={"X-PAYMENT": memo_payment_header(CHAIN, invoice, h)})
+        # The same number of uaeth is not a USDC payment.
+        in_aeth = s.chain.pay(s.seller.address, 50_000, invoice)
+        self.assertEqual(json.loads(present(in_aeth)[2])["error"], "insufficient_payment")
+        h = s.chain.pay(s.seller.address, 50_000, invoice, denom=denom)
+        status, headers, _ = present(h)
+        self.assertEqual(status, 200)
+        receipt = json.loads(base64.b64decode(headers["X-PAYMENT-RECEIPT"]))
+        self.assertEqual(receipt["amount"], f"50000{denom}", "a USDC receipt can't be read as uaeth")
+
+        # Prepaid deposits count USDC only.
+        agent = Key.random()
+
+        def post(header):
+            return s.request("/forecast", headers={"X-PAYMENT": header}, method="POST", body=b"")
+        aeth_deposit = s.chain.pay(s.seller.address, 200_000, "prepaid:" + agent.address)
+        self.assertEqual(json.loads(post(s.signed(agent, "r1", deposit=aeth_deposit, max_price=50_000))[2])["error"], "insufficient_payment")
+        deposit = s.chain.pay(s.seller.address, 200_000, "prepaid:" + agent.address, denom=denom)
+        self.assertEqual(post(s.signed(agent, "r1", deposit=deposit, max_price=50_000))[0], 200)
+        self.assertEqual(s.served[-1].balance_uaeth, 150_000, "balances are in uusdc")
+        self.assertEqual(json.loads(post(s.signed(agent, "r2", max_price=49_999))[2])["error"], "price_above_signed_max")
 
     def test_memo_payment_served_once(self):
         s = self.s = Seller()

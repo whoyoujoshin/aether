@@ -172,3 +172,62 @@ func TestMergedMining_DifficultyQuery(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, resp.AuxDifficulty)
 }
+
+func shareMsg(bps uint32) *pow.MsgUpdateParams {
+	return &pow.MsgUpdateParams{
+		Authority: testAuthority, EpochLength: 1440, TopKSize: 21, BondCooldown: 4320, RecencyWindowK: 60, BeaconRoundsPerBlock: 5000,
+		MergedMiningRewardShareBps: bps,
+	}
+}
+
+// Governance sets the merged share from the activation height, and the
+// rewards follow it: the pair still adds up to one reward.
+func TestMergedMining_ShareIsAGovernanceParameter(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	ctx = ctx.WithBlockHeight(pow.MergedMiningActivationHeight).WithBlockTime(time.Unix(1_900_000_000, 0))
+	srv := pow.NewMsgServerImpl(k)
+	k.SetBlockReward(ctx, math.NewInt(testReward))
+	k.SetLastBlockTime(ctx, ctx.BlockTime().Unix())
+	k.SetAuxLastBlockTime(ctx, ctx.BlockTime().Unix())
+	require.Equal(t, pow.MergedMiningRewardShareBps, k.GetMergedMiningRewardShareBps(ctx), "the default until governance sets one")
+
+	_, err := srv.UpdateParams(ctx, shareMsg(1_000))
+	require.NoError(t, err)
+	require.Equal(t, int64(1_000), k.GetMergedMiningRewardShareBps(ctx))
+	require.Equal(t, "500000", k.AuxReward(ctx).String())
+	require.Equal(t, "4500000", k.NativeReward(ctx).String())
+
+	// 0 keeps it: a proposal drafted without the field doesn't zero it.
+	_, err = srv.UpdateParams(ctx, shareMsg(0))
+	require.NoError(t, err)
+	require.Equal(t, int64(1_000), k.GetMergedMiningRewardShareBps(ctx))
+
+	// The whole reward is the most it can be.
+	_, err = srv.UpdateParams(ctx, shareMsg(10_000))
+	require.NoError(t, err)
+	require.Equal(t, "0", k.NativeReward(ctx).String())
+	_, err = srv.UpdateParams(ctx, shareMsg(10_001))
+	require.True(t, errors.Is(err, types.ErrInvalidParamValue), "got %v", err)
+
+	resp, err := pow.NewQueryServerImpl(k).Params(ctx, &pow.QueryParamsRequest{})
+	require.NoError(t, err)
+	require.Equal(t, uint32(10_000), resp.MergedMiningRewardShareBps)
+}
+
+// Below the activation height the share can't be set, and a proposal that
+// leaves it out (every one so far, like the live bond_cooldown proposal)
+// writes nothing new: history replays the same.
+func TestMergedMining_ShareCantBeSetBeforeActivation(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	ctx = ctx.WithBlockHeight(pow.MergedMiningActivationHeight - 1)
+	srv := pow.NewMsgServerImpl(k)
+
+	k.SetEpochLength(ctx, 7)
+	_, err := srv.UpdateParams(ctx, shareMsg(1_000))
+	require.True(t, errors.Is(err, types.ErrInvalidParamValue), "got %v", err)
+	require.Equal(t, int64(7), k.GetEpochLength(ctx), "a refused proposal applies nothing")
+
+	_, err = srv.UpdateParams(ctx, shareMsg(0))
+	require.NoError(t, err)
+	require.Nil(t, ctx.KVStore(k.StoreKeyForTest()).Get(pow.KeyMergedMiningRewardShareBps), "no merged-mining key written below the height")
+}

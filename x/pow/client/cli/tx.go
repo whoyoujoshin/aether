@@ -98,12 +98,24 @@ then:
 
 			authority := authtypes.NewModuleAddress(governance.ModuleName).String()
 
+			// Left out unless asked for: 0 (absent) keeps the merged share
+			// as it is, and setting it is refused before merged mining's
+			// activation height, so carrying it over would only make a
+			// draft made before then fail.
+			var mergedShare uint32
+			if cmd.Flags().Changed("merged-mining-reward-share-bps") {
+				mergedShare, _ = cmd.Flags().GetUint32("merged-mining-reward-share-bps")
+				if mergedShare == 0 || mergedShare > 10_000 {
+					return fmt.Errorf("--merged-mining-reward-share-bps must be 1 to 10000 basis points, got %d", mergedShare)
+				}
+			}
+
 			// int64 fields are written as JSON strings, matching the
 			// proto3 canonical JSON mapping that
 			// UnmarshalInterfaceJSON expects (the same convention used
 			// for the x/consensus MsgUpdateParams example this
 			// mechanism was originally built against).
-			doc := map[string]string{
+			doc := map[string]any{
 				"@type":                   "/aether.pow.v1.MsgUpdateParams",
 				"authority":               authority,
 				"epoch_length":            strconv.FormatInt(epochLength, 10),
@@ -111,6 +123,9 @@ then:
 				"bond_cooldown":           strconv.FormatInt(bondCooldown, 10),
 				"recency_window_k":        strconv.FormatInt(recencyWindowK, 10),
 				"beacon_rounds_per_block": strconv.FormatInt(beaconRoundsPerBlock, 10),
+			}
+			if mergedShare != 0 {
+				doc["merged_mining_reward_share_bps"] = mergedShare // uint32: a JSON number
 			}
 
 			bz, err := json.MarshalIndent(doc, "", "  ")
@@ -130,6 +145,7 @@ then:
 	cmd.Flags().Int64("bond-cooldown", 0, "override BondCooldown (default: current live value)")
 	cmd.Flags().Int64("recency-window-k", 0, "override RecencyWindowK (default: current live value)")
 	cmd.Flags().Int64("beacon-rounds-per-block", 0, "override BeaconRoundsPerBlock (default: current live value)")
+	cmd.Flags().Uint32("merged-mining-reward-share-bps", 0, "set the merged-mining reward share, 1 to 10000 basis points (default: leave it as it is; only accepted from MergedMiningActivationHeight)")
 	flags.AddQueryFlagsToCmd(cmd)
 	return cmd
 }

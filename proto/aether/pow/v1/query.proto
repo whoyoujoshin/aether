@@ -84,6 +84,9 @@ message QueryParamsResponse {
   int64 bond_cooldown = 7;
   int64 recency_window_k = 8;
   int64 beacon_rounds_per_block = 9;
+  // The merged-mining reward share in effect, in basis points (see
+  // MsgUpdateParams).
+  uint32 merged_mining_reward_share_bps = 10;
 }
 
 // ValidatorInfo enriches ActiveValidators (a bare address list) with

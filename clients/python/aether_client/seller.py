@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, Dict, Iterable, Optional, Union
 
-from .amount import format_aeth, parse_amount, parse_uaeth
+from .amount import AETH, DENOM, Assets, decimal_of, format_aeth, format_amount, parse_uaeth, receipt_amount
 from .client import AetherClient
 from .directory import MANIFEST_PATH
 from .keys import Key, address_of, is_address
@@ -84,6 +84,7 @@ class Payment:
     payer: str
     scheme: str
     tx_hash: Optional[str] = None  # aether-memo
+    # Both in the paywall's asset's base units (uaeth unless it charges another asset).
     balance_uaeth: Optional[int] = None  # aether-prepaid: left with this seller
     owed_uaeth: Optional[int] = None  # aether-pull: owed, not yet collected
 
@@ -145,8 +146,9 @@ class KeyPayout:
     """Pays withdrawals from a key's account: signs first (so the payout is
     saved before it's sent), then (re)submits the same bytes."""
 
-    def __init__(self, client: AetherClient, key: Key):
-        self.client, self.key = client, key
+    def __init__(self, client: AetherClient, key: Key, denom: str = DENOM):
+        """denom is what it pays out (and collects): the paywall's asset, uaeth by default."""
+        self.client, self.key, self.denom = client, key, denom
         self._next = 0
         self._lock = threading.Lock()
 
@@ -158,7 +160,7 @@ class KeyPayout:
             account_number, seq = info
             seq = max(seq, self._next)  # an earlier payout may still be in the mempool
             s = build_send(self.key, chain_id=self.client.chain_id, account_number=account_number, sequence=seq, to=to,
-                           amount_uaeth=amount_uaeth, memo=memo)
+                           amount_uaeth=amount_uaeth, memo=memo, denom=self.denom)
             self._next = seq + 1
             return s.tx_bytes, seq, s.hash
 
@@ -170,7 +172,7 @@ class KeyPayout:
                 raise RuntimeError(f"collector account {self.key.address} doesn't exist on chain yet: the first allowance granted to it creates it")
             account_number, seq = info
             seq = max(seq, self._next)
-            s = build_tx(self.key, [exec_send_msg(self.key.address, frm, to, amount_uaeth)], chain_id=self.client.chain_id,
+            s = build_tx(self.key, [exec_send_msg(self.key.address, frm, to, amount_uaeth, self.denom)], chain_id=self.client.chain_id,
                          account_number=account_number, sequence=seq, memo=memo)
             self._next = seq + 1
             return s.tx_bytes, seq, s.hash
@@ -210,8 +212,13 @@ class Paywall:
                  payout_key: Optional[Key] = None, receipt_key: Optional[Key] = None,
                  receipt_delegation: Optional[dict] = None, pull_collector_key: Optional[Key] = None,
                  pull_ledger: Union[None, str, FileLedger] = None, pull_credit: Optional[str] = None,
-                 pull_collect_every: float = 60, now: Callable[[], float] = time.time):
-        """price and min_deposit carry their unit ("0.01 AETH"). prepaid_ledger (a
+                 pull_collect_every: float = 60, usdc_channel: Optional[str] = None,
+                 now: Callable[[], float] = time.time):
+        """price and min_deposit carry their unit ("0.01 AETH"). The price's asset is what everything
+        is charged in: "0.05 USDC" with usdc_channel (Aether's end of its channel to Noble, e.g.
+        channel-3) charges Noble's USDC over exactly that channel, for payments, deposits and
+        balances, pull allowances and collections, and withdrawals; min_deposit and pull_credit
+        must then be in USDC too. prepaid_ledger (a
         FileLedger or a path) offers aether-prepaid: it holds customers'
         balances, so back it up. payout_key pays back unspent balances on
         request: keep only a small float in that account. receipt_key signs a
@@ -227,15 +234,23 @@ class Paywall:
         if not is_address(pay_to):
             raise ValueError(f'invalid pay_to address "{pay_to}"')
         self.client, self.pay_to = client, pay_to
-        self.price = parse_amount(price)
+        assets = Assets(usdc_channel)
+        self.asset, self.price = assets.parse(price)
+
+        def same(what: str, s: str) -> int:
+            # Every other amount must be in the price's asset: one paywall charges one asset.
+            a, v = assets.parse(s)
+            if a.denom != self.asset.denom:
+                raise ValueError(f"{what} is in {a.symbol} but the price is in {self.asset.symbol}: one paywall charges one asset")
+            return v
         self.network = client.chain_id
         self.name, self.description, self.mime_type = name, description, mime_type
         self.ttl = invoice_ttl
         self.secret = secret or os.urandom(32)
         self.now = now
         self.ledger = FileLedger(prepaid_ledger) if isinstance(prepaid_ledger, str) else prepaid_ledger
-        self.min_deposit = max(parse_amount(min_deposit) if min_deposit else self.price, self.price)
-        self.payout = KeyPayout(client, payout_key) if payout_key and self.ledger is not None else None
+        self.min_deposit = max(same("min_deposit", min_deposit) if min_deposit else self.price, self.price)
+        self.payout = KeyPayout(client, payout_key, self.asset.denom) if payout_key and self.ledger is not None else None
         self._redeemed: Dict[str, float] = {}
         self._redeemed_lock = threading.Lock()
         self._last_prune = 0.0
@@ -249,8 +264,8 @@ class Paywall:
             if isinstance(ledger, str):
                 ledger = self.ledger if ledger == prepaid_ledger and self.ledger is not None else FileLedger(ledger)
             self.pull_ledger = ledger
-            self.collector = KeyPayout(client, pull_collector_key)
-            self.credit = parse_amount(pull_credit) if pull_credit else self.price * 100
+            self.collector = KeyPayout(client, pull_collector_key, self.asset.denom)
+            self.credit = same("pull_credit", pull_credit) if pull_credit else self.price * 100
             if self.credit < self.price:
                 raise ValueError("pull credit must be at least the price")
             self.collect_every = pull_collect_every
@@ -276,7 +291,7 @@ class Paywall:
         def make(status: int, response_body: Optional[bytes]) -> str:
             fields = {
                 "network": self.network, "payTo": self.pay_to, "payer": payer, "scheme": scheme, "payment": payment,
-                "amount": str(self.price), "method": req.method, "host": req.host, "path": req.path,
+                "amount": receipt_amount(self.price, self.asset.denom), "method": req.method, "host": req.host, "path": req.path,
                 "requestHash": hashlib.sha256(body).hexdigest(), "status": status,
                 "responseHash": hashlib.sha256(response_body).hexdigest() if response_body is not None else None,
                 "at": int(self.now())}
@@ -285,13 +300,35 @@ class Paywall:
             return encode_receipt(sign_receipt(self.receipt_key, fields, self.receipt_delegation))
         return make
 
+    def _is_aeth(self) -> bool:
+        return self.asset.denom == AETH.denom
+
+    def _both(self, amount: int) -> str:
+        """An amount in the asset's base unit and in the asset: "20000uaeth (0.02 AETH)", like the Go paywall."""
+        return f"{amount}{self.asset.base_unit} ({format_amount(self.asset, amount)})"
+
+    def _priced(self) -> dict:
+        """The price fields of a 402's extra: symbol and amount always, amountAeth only for AETH."""
+        out = {"symbol": self.asset.symbol, "amount": decimal_of(self.asset, self.price)}
+        if self._is_aeth():
+            out["amountAeth"] = format_aeth(self.price)
+        return out
+
+    def _text(self, s: str) -> str:
+        """Instructions written for AETH, adapted to this paywall's asset."""
+        return s if self._is_aeth() else s.replace(" uaeth", f" {self.asset.base_unit} (of the asset field's denom)")
+
     def _schemes(self):
         return [SCHEME_MEMO] + ([SCHEME_PREPAID] if self.ledger is not None else []) + ([SCHEME_PULL] if self.pull_ledger is not None else [])
 
     def manifest(self) -> dict:
         """The service's self-description, served (free) at MANIFEST_PATH."""
         m = {"x402Version": 1, "name": self.name, "description": self.description, "network": self.network,
-             "payTo": self.pay_to, "price": str(self.price), "priceAeth": format_aeth(self.price), "schemes": self._schemes()}
+             "payTo": self.pay_to, "price": str(self.price)}
+        if self._is_aeth():
+            m["priceAeth"] = format_aeth(self.price)
+        m.update({"asset": self.asset.denom, "symbol": self.asset.symbol, "priceAmount": decimal_of(self.asset, self.price),
+                  "schemes": self._schemes()})
         if self.ledger is not None:
             m["minDeposit"] = str(self.min_deposit)
         if self.payout:
@@ -314,7 +351,7 @@ class Paywall:
         the response status) or Respond. Blocking: looks payments up on chain."""
         header = req.header("x-payment")
         if not header:
-            return self.payment_required(req, "payment_required", f"this resource costs {format_aeth(self.price)} AETH per request")
+            return self.payment_required(req, "payment_required", f"this resource costs {self._both(self.price)} per request")
         pay = _decode_header(header)
         if pay is None:
             return self.payment_required(req, "invalid_payment", "X-PAYMENT must be base64-encoded JSON")
@@ -340,7 +377,7 @@ class Paywall:
         if not _HASH.fullmatch(tx_hash):
             return self.payment_required(req, "invalid_payment", "txHash must be a transaction hash")
         try:
-            t = self.client.get_transaction(tx_hash)
+            t = self.client.get_transaction(tx_hash, self.asset.denom)
         except Exception as e:
             print(f"paywall: looking up {tx_hash}: {e}")
             return Respond(503, {"Retry-After": "10", "Content-Type": "text/plain"},
@@ -356,7 +393,7 @@ class Paywall:
         paid, payer = self._received(t.transfers)
         if paid < price:
             return self.payment_required(req, "insufficient_payment",
-                                         f"paid {paid} uaeth to {self.pay_to}; the invoice is for {price} uaeth")
+                                         f"paid {self._both(paid)} to {self.pay_to}; the invoice is for {self._both(price)}")
         if not self._redeem(invoice, expiry):
             return self.payment_required(req, "invoice_already_redeemed", "this invoice has already been used for a response")
         settlement = _encode_header({"success": True, "transaction": tx_hash, "network": self.network, "payer": payer})
@@ -371,8 +408,8 @@ class Paywall:
     def _received(self, transfers):
         paid, payer = 0, ""
         for t in transfers:
-            if t.recipient == self.pay_to:
-                paid += t.amount_uaeth
+            if t.recipient == self.pay_to and t.denom == self.asset.denom:
+                paid += t.amount
                 payer = payer or t.sender
         return paid, payer
 
@@ -424,24 +461,24 @@ class Paywall:
         else:
             invoice = self._new_invoice(expiry, _resource_key(req.method, req.path))
         memo = {
-            "scheme": SCHEME_MEMO, "network": self.network, "maxAmountRequired": str(self.price), "asset": "uaeth",
+            "scheme": SCHEME_MEMO, "network": self.network, "maxAmountRequired": str(self.price), "asset": self.asset.denom,
             "payTo": self.pay_to, "resource": f"{'https' if req.https else 'http'}://{req.host}{req.path}",
             "description": self.description, "mimeType": self.mime_type, "maxTimeoutSeconds": self.ttl,
-            "extra": {"invoice": invoice, "amountAeth": format_aeth(self.price), "expiresAt": _rfc3339(expiry),
-                      "instructions": _MEMO_INSTRUCTIONS},
+            "extra": {"invoice": invoice, **self._priced(), "expiresAt": _rfc3339(expiry),
+                      "instructions": self._text(_MEMO_INSTRUCTIONS)},
         }
         body = {"x402Version": 1, "error": code, "message": message, "accepts": [memo]}
         if self.ledger is not None:
-            extra = {"amountAeth": format_aeth(self.price), "depositMemo": DEPOSIT_MEMO_PREFIX + "<address>",
-                     "minDeposit": str(self.min_deposit), "instructions": _PREPAID_INSTRUCTIONS}
+            extra = {**self._priced(), "depositMemo": DEPOSIT_MEMO_PREFIX + "<address>",
+                     "minDeposit": str(self.min_deposit), "instructions": self._text(_PREPAID_INSTRUCTIONS)}
             if account:
                 extra["balance"] = str(self.ledger.balance(account))
             if self.payout:
                 extra["withdrawPath"] = WITHDRAW_PATH
             body["accepts"].append({**memo, "scheme": SCHEME_PREPAID, "extra": extra})
         if self.pull_ledger is not None:
-            extra = {"amountAeth": format_aeth(self.price), "grantee": self.collector.key.address, "credit": str(self.credit),
-                     "instructions": _PULL_INSTRUCTIONS}
+            extra = {**self._priced(), "grantee": self.collector.key.address, "credit": str(self.credit),
+                     "instructions": self._text(_PULL_INSTRUCTIONS)}
             if account:
                 extra["owed"] = str(self.pull_ledger.pull_account(account).owed)
             body["accepts"].append({**memo, "scheme": SCHEME_PULL, "extra": extra})
@@ -500,7 +537,7 @@ class Paywall:
         def refuse(code, msg, headers=None):
             return self.payment_required(req, code, msg, account=account, headers=headers)
         if max_price < self.price:
-            return refuse("price_above_signed_max", f"the price is {self.price} uaeth; the request allows at most {max_price}")
+            return refuse("price_above_signed_max", f"the price is {self._both(self.price)} ({self.price}); the request allows at most {max_price}")
         if pay.get("depositTx"):
             refused = self._credit_deposit(req, pay["depositTx"].strip().upper(), account)
             if refused:
@@ -509,7 +546,7 @@ class Paywall:
         if not fresh:
             return refuse("invoice_already_redeemed", "this requestId was already charged and served")
         if not charged:
-            return refuse("insufficient_balance", f"balance {bal} uaeth is less than the price {self.price} uaeth: "
+            return refuse("insufficient_balance", f"balance {self._both(bal)} is less than the price {self._both(self.price)}: "
                                                   f"deposit to {self.pay_to} with memo {DEPOSIT_MEMO_PREFIX}{account}")
         settlement = _encode_header({"success": True, "network": self.network, "payer": account, "balance": str(bal)})
 
@@ -531,7 +568,7 @@ class Paywall:
             c = self._grants.get(buyer)
         if not fresh and c and self.now() - c[1] < _GRANT_CACHE:
             return c[0], True
-        g = self.client.send_grant(buyer, self.collector.key.address)
+        g = self.client.send_grant(buyer, self.collector.key.address, self.asset.denom)
         with self._grants_lock:
             if g:
                 self._grants[buyer] = (g, self.now())
@@ -552,7 +589,7 @@ class Paywall:
         if pay.get("depositTx"):
             return self.payment_required(req, "invalid_payment", "aether-pull requests carry no deposit")
         if max_price < self.price:
-            return refuse("price_above_signed_max", f"the price is {self.price} uaeth; the request allows at most {max_price}")
+            return refuse("price_above_signed_max", f"the price is {self._both(self.price)} ({self.price}); the request allows at most {max_price}")
         acct = ledger.pull_account(buyer)
 
         def check(g):
@@ -561,10 +598,10 @@ class Paywall:
             if g.allow_list and self.pay_to not in g.allow_list:
                 return ("no_grant", "your allowance doesn't allow paying " + self.pay_to)
             need = acct.owed + self.price
-            if not g.unlimited and g.spend_limit_uaeth < need:
+            if not g.unlimited and g.spend_limit < need:
                 if acct.unpaid:
-                    return ("pull_unpaid", f"collecting {acct.unpaid} uaeth you owe failed; grant an allowance covering it plus this request ({need} uaeth) to continue")
-                return ("grant_too_low", f"your allowance has {g.spend_limit_uaeth} uaeth left and you owe {acct.owed} uaeth not yet collected; this request needs {self.price} more")
+                    return ("pull_unpaid", f"collecting {self._both(acct.unpaid)} you owe failed; grant an allowance covering it plus this request ({self._both(need)}) to continue")
+                return ("grant_too_low", f"your allowance has {self._both(g.spend_limit)} left and you owe {self._both(acct.owed)} not yet collected; this request needs {self._both(self.price)} more")
             return None
         fresh = False
         while True:
@@ -590,14 +627,14 @@ class Paywall:
             return refuse("invoice_already_redeemed", "this requestId was already charged and served")
         if not charged:
             self._wake.set()
-            return refuse("settlement_pending", f"you owe {accrued + acct.in_flight} uaeth, this service's limit before collecting; it's being collected -- retry shortly",
+            return refuse("settlement_pending", f"you owe {self._both(accrued + acct.in_flight)}, this service's limit before collecting; it's being collected -- retry shortly",
                           {"Retry-After": "10"})
         owed = accrued + acct.in_flight
         if accrued * 2 >= self.credit:
             self._wake.set()
         settle = {"success": True, "network": self.network, "payer": buyer, "owed": str(owed)}
         if not g.unlimited:
-            settle["allowance"] = str(g.spend_limit_uaeth - owed)
+            settle["allowance"] = str(g.spend_limit - owed)
 
         def finish(status: int):
             if status >= 500:
@@ -652,7 +689,7 @@ class Paywall:
                 return  # checked again next pass
             if status == "failed":
                 # Revoked, expired or exhausted allowance, or an empty account: the buyer owes it, and is refused until an allowance covers it.
-                print(f"paywall: collecting {c['amount']} uaeth from {account} failed; refusing it until it grants enough: {log}")
+                print(f"paywall: collecting {c['amount']}{self.asset.base_unit} from {account} failed; refusing it until it grants enough: {log}")
                 with self._grants_lock:
                     self._grants.pop(account, None)
                 return ledger.close_collection(account, False, log)
@@ -671,7 +708,7 @@ class Paywall:
         if not _HASH.fullmatch(tx_hash):
             return refuse("invalid_deposit", "depositTx must be a transaction hash")
         try:
-            t = self.client.get_transaction(tx_hash)
+            t = self.client.get_transaction(tx_hash, self.asset.denom)
         except Exception as e:
             print(f"paywall: looking up deposit {tx_hash}: {e}")
             return Respond(503, {"Retry-After": "10", "Content-Type": "text/plain"},
@@ -687,7 +724,7 @@ class Paywall:
             return refuse("invalid_deposit", "the deposit's memo names an invalid address")
         paid, _ = self._received(t.transfers)
         if paid < self.min_deposit:
-            return refuse("insufficient_payment", f"deposits must be at least {self.min_deposit} uaeth to {self.pay_to}")
+            return refuse("insufficient_payment", f"deposits must be at least {self._both(self.min_deposit)} to {self.pay_to}")
         # Credit whoever the memo names: presenting someone else's deposit only credits them.
         self.ledger.credit(tx_hash, beneficiary, paid)
         return None
@@ -717,18 +754,18 @@ class Paywall:
             try:
                 parsed = json.loads(text)
             except ValueError:
-                return fail(400, "invalid_payment", 'the body must be {"amount":"all"} or {"amount":"<uaeth>"}')
+                return fail(400, "invalid_payment", 'the body must be {"amount":"all"} or {"amount":"<' + self.asset.base_unit + '>"}')
             a = parsed.get("amount", "") if isinstance(parsed, dict) else None
             if not isinstance(a, str):
-                return fail(400, "invalid_payment", 'amount must be "all" or a positive whole number of uaeth')
+                return fail(400, "invalid_payment", 'amount must be "all" or a positive whole number of ' + self.asset.base_unit)
             a = a.strip()
             if a and a != "all":
                 try:
                     amount = parse_uaeth(a)
                 except ValueError:
-                    return fail(400, "invalid_payment", 'amount must be "all" or a positive whole number of uaeth')
+                    return fail(400, "invalid_payment", 'amount must be "all" or a positive whole number of ' + self.asset.base_unit)
                 if amount <= 0:
-                    return fail(400, "invalid_payment", 'amount must be "all" or a positive whole number of uaeth')
+                    return fail(400, "invalid_payment", 'amount must be "all" or a positive whole number of ' + self.asset.base_unit)
         # One at a time: payouts come from one account, and an ID must never be worked on twice at once.
         with self._withdraw_lock:
             return self._do_withdraw(signed_pay["account"], signed_pay["requestId"], amount)
@@ -737,8 +774,10 @@ class Paywall:
         ledger, payout = self.ledger, self.payout
 
         def respond(status, w, message):
-            out = {"x402Version": 1, "withdrawalId": w["id"], "account": account, "amount": w["amount"],
-                   "amountAeth": format_aeth(int(w["amount"])), "status": w["status"]}
+            out = {"x402Version": 1, "withdrawalId": w["id"], "account": account, "amount": w["amount"]}
+            if self._is_aeth():
+                out["amountAeth"] = format_aeth(int(w["amount"]))
+            out["status"] = w["status"]
             if w.get("txHash"):
                 out["txHash"] = w["txHash"]
             out.update(balance=str(ledger.balance(account)), message=message)
@@ -752,7 +791,7 @@ class Paywall:
         except LedgerError as e:
             if e.code == "insufficient":
                 return fail(409, "insufficient_balance", "the balance doesn't cover that withdrawal")
-            return fail(409, "below_minimum_withdrawal", f"withdraw at least {self.min_deposit} uaeth, or the whole balance")
+            return fail(409, "below_minimum_withdrawal", f"withdraw at least {self._both(self.min_deposit)}, or the whole balance")
         except Exception as e:
             print(f"paywall: reserving withdrawal {account}/{wid}: {e}")
             return fail(500, "payout_unavailable", "failed to record the withdrawal; nothing was taken")

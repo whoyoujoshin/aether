@@ -67,7 +67,7 @@ type withdrawHarness struct {
 	path   string
 }
 
-func newWithdrawHarness(t *testing.T, ledgerPath string, payout Payout) *withdrawHarness {
+func newWithdrawHarness(t *testing.T, ledgerPath string, payout Payout, asset ...wallet.Asset) *withdrawHarness {
 	h := &withdrawHarness{t: t, now: time.Now(), path: ledgerPath}
 	if fp, ok := payout.(*fakePayout); ok {
 		h.payout = fp
@@ -75,11 +75,15 @@ func newWithdrawHarness(t *testing.T, ledgerPath string, payout Payout) *withdra
 	led, err := NewFileLedger(ledgerPath)
 	require.NoError(t, err)
 	h.ledger = led
-	p, err := New(Config{
+	cfg := Config{
 		PayTo: seller(), Price: math.NewInt(10_000), Network: "aether-testnet-1",
 		Lookup: (&fakeLedger{txs: map[string]*wallet.TransactionDetail{}}).lookup, Now: func() time.Time { return h.now },
 		Prepaid: &PrepaidConfig{Ledger: led, MinDeposit: math.NewInt(30_000), Payout: payout},
-	})
+	}
+	if len(asset) > 0 {
+		cfg.Asset = asset[0]
+	}
+	p, err := New(cfg)
 	require.NoError(t, err)
 	mux := http.NewServeMux()
 	mux.Handle(WithdrawPath, p.WithdrawHandler())
@@ -447,4 +451,18 @@ func TestChainPayout(t *testing.T) {
 	chain.lookupErr = errors.New("unreachable")
 	_, err = c.Submit(tx1, seq1)
 	require.Error(t, err, "unknown is an error, never failed")
+}
+
+// A USDC withdrawal states its amount in uusdc only: amountAeth is for AETH.
+func TestWithdraw_USDCHasNoAETHFigure(t *testing.T) {
+	usdc, err := wallet.USDC("channel-3")
+	require.NoError(t, err)
+	h := newWithdrawHarness(t, "", &fakePayout{}, usdc)
+	k := newAgentKey(t)
+	h.fund(k.address, 50_000)
+
+	status, out := h.withdraw(withdrawCall{key: k, id: "w1"})
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "50000", out.Amount)
+	require.Empty(t, out.AmountAeth)
 }
