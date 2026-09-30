@@ -18,9 +18,13 @@ func NewQueryServerImpl(keeper Keeper) QueryServer {
 
 func (q queryServer) Difficulty(goCtx context.Context, req *QueryDifficultyRequest) (*QueryDifficultyResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
-	return &QueryDifficultyResponse{
+	resp := &QueryDifficultyResponse{
 		Difficulty: q.Keeper.GetDifficulty(ctx).String(),
-	}, nil
+	}
+	if ctx.BlockHeight() >= MergedMiningActivationHeight {
+		resp.AuxDifficulty = q.Keeper.GetAuxDifficulty(ctx).String()
+	}
+	return resp, nil
 }
 
 func (q queryServer) BlockReward(goCtx context.Context, req *QueryBlockRewardRequest) (*QueryBlockRewardResponse, error) {

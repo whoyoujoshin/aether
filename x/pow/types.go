@@ -353,8 +353,9 @@ const ConsensusKeyGuardActivationHeight int64 = 161_000
 
 // MergedMiningActivationHeight is the first height at which AuxPoW
 // (merged-mining) submissions follow the rules real pool work needs,
-// changes A, B and D of docs/MERGED-MINING-PLAN.md. Native submissions are
-// unaffected.
+// changes A to D of docs/MERGED-MINING-PLAN.md. Native submissions keep
+// their own rules, apart from giving up a share of the reward while merged
+// mining is active (C).
 //
 //   - A: the parent header's scrypt hash is compared against Aether's
 //     difficulty the way Litecoin compares it, as a little-endian 256-bit
@@ -367,6 +368,12 @@ const ConsensusKeyGuardActivationHeight int64 = 161_000
 //     address, whoever submits. Below this height aux_block_hash is
 //     anything the submitter likes and the reward goes to the signer, so a
 //     proof seen in the mempool could be resubmitted by anyone.
+//   - C: native and merged work run on separate tracks: separate
+//     difficulties, one slot each per block, and one reward per target
+//     interval between them, 75% native and 25% merged while both are
+//     mining (merged_mining.go). Below this height they share one
+//     difficulty and one slot, so pool hash power would starve native
+//     miners, the only ones who pick validators.
 //   - D: a parent block carrying Aether's own AuxPoW chain ID is refused.
 //
 // It changes which submissions are accepted, so every node needs a

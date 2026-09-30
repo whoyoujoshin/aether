@@ -20,6 +20,10 @@ service Query {
 message QueryDifficultyRequest {}
 message QueryDifficultyResponse {
   string difficulty = 1;
+  // The merged-mining (AuxPoW) track's own difficulty, retargeted only on
+  // AuxPoW submissions from MergedMiningActivationHeight. Below that
+  // height AuxPoW is checked against `difficulty`, and this is empty.
+  string aux_difficulty = 2;
 }
 
 message QueryBlockRewardRequest {}

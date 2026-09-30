@@ -12,9 +12,10 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
     `cmd/auxpowtest`, which grinds a made-up parent header.
 - **Three problems in the chain's rules would stop a real pool** even
   with a bridge. They are listed below.
-- **Changes A (byte order), B (template binding) and D (parent chain
-  ID) are built.** They share one placeholder activation height,
-  `MergedMiningActivationHeight`. Change C remains.
+- **All four chain changes are built:** A (byte order), B (template
+  binding), C (separate tracks) and D (parent chain ID). They share one
+  placeholder activation height, `MergedMiningActivationHeight`. The
+  bridge is next.
 
 ## What the code shows
 
@@ -82,12 +83,27 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
   --reward-address aether1…` builds a bound proof. It computes the hash
   independently, and a test checks it against the chain's.
 
-**C. Separate tracks for native and merged work.**
-- AuxPoW gets its own difficulty, retargeted only on AuxPoW submissions.
-- Each block accepts one native and one AuxPoW submission.
-- Merged work earns a set share of the block reward (decision 1).
-- Native mining stays viable at native difficulty and keeps driving
-  validator selection.
+**C. Separate tracks for native and merged work: built** (`x/pow/merged_mining.go`).
+- **Difficulty.** AuxPoW gets its own difficulty, retargeted only on
+  AuxPoW submissions toward the same `TargetBlockTime` (60 s).
+  - It starts from the native difficulty.
+  - It's capped at `AuxMaxDifficulty` (2^62) rather than the native
+    `MaxDifficulty`. That way pool hash power retargets to one proof per
+    interval instead of landing every block at the cap.
+  - `aetherd q pow difficulty` reports it as `aux_difficulty`.
+- **Slots.** Each block accepts one native and one AuxPoW submission.
+- **Reward (decision 1: fixed total, split).** The schedule issues one
+  block reward per target interval, and it still does:
+  - while both tracks are mining, a native submission earns 75% and an
+    AuxPoW submission earns 25% (`MergedMiningRewardShareBps`), so a pair
+    earns exactly one reward;
+  - a track mining alone earns the full reward, so native miners lose
+    nothing until pools actually arrive;
+  - a track counts as mining if it had a submission accepted in the last
+    five target intervals (5 minutes).
+- **Why.** Native mining stays viable at native difficulty and keeps
+  driving validator selection, and total issuance stays on the published
+  schedule.
 
 **D. Reject a parent whose chain ID is 17776: built.** From
 `MergedMiningActivationHeight`, `CheckAuxPow` refuses a parent header
@@ -132,7 +148,8 @@ A small service that each pool runs beside its Litecoin node.
   - the byte-order regression (done, for change A);
   - rejection of stolen, replayed and stale-template proofs (done, for
     change B);
-  - separate difficulty tracks;
+  - separate difficulty tracks, slots and reward shares (done, for
+    change C);
   - the chain-ID check (done, for change D).
 - **End to end on regtest:**
   - Setup: `litecoind -regtest`, plus a stratum pool with merged mining
@@ -143,7 +160,7 @@ A small service that each pool runs beside its Litecoin node.
 
 ## Milestones
 
-1. **M1: chain changes A–D, with tests.** A, B and D are done; C remains.
+1. **M1: chain changes A–D, with tests.** Done.
    This is the consensus-critical part.
 2. **M2: `cmd/auxpowd`.**
 3. **M3: regtest end to end** with a real Litecoin node and pool.
@@ -151,10 +168,11 @@ A small service that each pool runs beside its Litecoin node.
 
 ## Decisions
 
-1. **Reward split for merged work.** The suggested start is 50% of a
-   block reward per accepted AuxPoW submission, with native keeping the
-   full reward. Pools still earn meaningfully, and dedicated miners stay
-   ahead.
+1. **Reward split for merged work: decided.** Fixed total, split 75/25
+   while both tracks are mining; a track mining alone earns the full
+   reward (change C). Issuance stays on the published schedule. The share
+   is a constant for now. Making it a governance parameter means adding
+   a field to `MsgUpdateParams`.
 2. **Who runs the bridge.**
    - Ship `auxpowd` for each pool to run next to its own node: standard
      practice, and the least trust.
