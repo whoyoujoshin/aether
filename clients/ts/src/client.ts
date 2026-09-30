@@ -2,13 +2,17 @@ import { Writer, readFields, first, text } from "./proto.js";
 import { Rpc, RpcError, TxEvent, TxResult } from "./rpc.js";
 import { Key, isAddress } from "./keys.js";
 import { buildSend, buildTx, memoOf, MSG_SEND_TYPE_URL, SEND_AUTHORIZATION_TYPE_URL, type AnyMsg, SignedTx } from "./tx.js";
-import { DENOM, parseAmount } from "./amount.js";
+import { AETH, Assets, DENOM, type Asset } from "./amount.js";
 
 export type TxStatus = "pending" | "confirmed" | "failed";
 
 export interface Transfer {
   from: string;
   to: string;
+  /** In denom's base units. */
+  amount: bigint;
+  denom: string;
+  /** amount, when denom is uaeth; 0n otherwise. */
   amountUaeth: bigint;
 }
 
@@ -28,7 +32,11 @@ export interface IncomingPayment {
   height: number;
   code: number;
   from: string;
-  amountUaeth: bigint; // everything this transaction moved to the address
+  /** Everything this transaction moved to the address in denom, in its base units. */
+  amount: bigint;
+  denom: string;
+  /** amount, when denom is uaeth; 0n otherwise. */
+  amountUaeth: bigint;
   memo: string; // set by the sender: untrusted
 }
 
@@ -46,8 +54,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** An x/authz permission to send from one account, as the chain stores it. */
 export interface SendGrant {
-  /** true for unlimited sending (a GenericAuthorization); otherwise spendLimitUaeth is what's left. */
+  /** true for unlimited sending (a GenericAuthorization); otherwise spendLimit is what's left. */
   unlimited: boolean;
+  /** What's left in the denom asked about, in its base units. */
+  spendLimit: bigint;
+  denom: string;
+  /** spendLimit, when denom is uaeth; 0n otherwise. */
   spendLimitUaeth: bigint;
   /** If non-empty, the only recipients allowed. */
   allowList: string[];
@@ -57,8 +69,8 @@ export interface SendGrant {
 
 const GENERIC_AUTHORIZATION_TYPE_URL = "/cosmos.authz.v1beta1.GenericAuthorization";
 
-/** Decodes a Query/Grants response for MsgSend; undefined if it holds none. */
-export function decodeSendGrant(resp: Uint8Array): SendGrant | undefined {
+/** Decodes a Query/Grants response for MsgSend, reading its limit in denom; undefined if it holds none. */
+export function decodeSendGrant(resp: Uint8Array, denom: string = DENOM): SendGrant | undefined {
   const grant = first(readFields(resp), 1)?.bytes;
   if (!grant) return undefined;
   const gf = readFields(grant);
@@ -69,15 +81,15 @@ export function decodeSendGrant(resp: Uint8Array): SendGrant | undefined {
   const value = first(af, 2)?.bytes ?? new Uint8Array();
   const ts = first(gf, 2)?.bytes;
   const expiration = ts ? Number(first(readFields(ts), 1)?.varint ?? 0n) : undefined;
-  if (typeUrl === GENERIC_AUTHORIZATION_TYPE_URL) return { unlimited: true, spendLimitUaeth: 0n, allowList: [], expiration };
+  if (typeUrl === GENERIC_AUTHORIZATION_TYPE_URL) return { unlimited: true, spendLimit: 0n, denom, spendLimitUaeth: 0n, allowList: [], expiration };
   if (typeUrl !== SEND_AUTHORIZATION_TYPE_URL) throw new Error(`unsupported authorization type ${typeUrl}`);
   const sf = readFields(value);
   let limit = 0n;
   for (const c of sf.filter((f) => f.field === 1)) {
     const cf = readFields(c.bytes!);
-    if (text(first(cf, 1)?.bytes) === DENOM) limit += BigInt(text(first(cf, 2)?.bytes) || "0");
+    if (text(first(cf, 1)?.bytes) === denom) limit += BigInt(text(first(cf, 2)?.bytes) || "0");
   }
-  return { unlimited: false, spendLimitUaeth: limit, allowList: sf.filter((f) => f.field === 2).map((f) => text(f.bytes)), expiration };
+  return { unlimited: false, spendLimit: limit, denom, spendLimitUaeth: denom === DENOM ? limit : 0n, allowList: sf.filter((f) => f.field === 2).map((f) => text(f.bytes)), expiration };
 }
 
 export class AetherClient {
@@ -85,9 +97,17 @@ export class AetherClient {
   // Sequences this client has used but the chain may not report yet
   // (a second send within one block would otherwise reuse one).
   private nextSeq = new Map<string, bigint>();
+  /** The assets amounts may name: AETH, and USDC when usdcChannel is set. */
+  readonly assets: Assets;
 
-  constructor(readonly opts: { rpc: string; chainId?: string; fetch?: typeof fetch }) {
+  /**
+   * usdcChannel: Aether's end of its channel to Noble (e.g. "channel-3").
+   * With it, amounts may be in USDC ("5 USDC"); without it, USDC is an
+   * unknown unit, never guessed at.
+   */
+  constructor(readonly opts: { rpc: string; chainId?: string; fetch?: typeof fetch; usdcChannel?: string }) {
     this.rpc = new Rpc(opts.rpc, opts.fetch);
+    this.assets = new Assets({ usdcChannel: opts.usdcChannel });
   }
 
   get chainId(): string {
@@ -98,12 +118,18 @@ export class AetherClient {
     return this.rpc.latestHeight();
   }
 
-  /** Balance in uaeth. */
-  async balance(address: string): Promise<bigint> {
-    const req = new Writer().string(1, address).string(2, DENOM).finish();
+  /** Balance in the base units of asset (an Asset or a denom): uaeth by default. */
+  async balance(address: string, asset: Asset | string = AETH): Promise<bigint> {
+    const denom = typeof asset === "string" ? asset : asset.denom;
+    const req = new Writer().string(1, address).string(2, denom).finish();
     const resp = await this.rpc.abciQuery("/cosmos.bank.v1beta1.Query/Balance", req);
     const c = first(readFields(resp), 1)?.bytes;
     return c ? BigInt(text(first(readFields(c), 2)?.bytes) || "0") : 0n;
+  }
+
+  /** The balance of every asset this client knows, AETH first. */
+  async balances(address: string): Promise<{ asset: Asset; amount: bigint }[]> {
+    return Promise.all(this.assets.list().map(async (asset) => ({ asset, amount: await this.balance(address, asset) })));
   }
 
   /** Account number and next sequence; undefined if the account doesn't exist yet (never received funds). */
@@ -120,20 +146,21 @@ export class AetherClient {
   }
 
   /**
-   * Signs and broadcasts a payment. `amount` must carry its unit ("1.5 AETH").
+   * Signs and broadcasts a payment. `amount` must carry its unit ("1.5 AETH",
+   * or "5 USDC" when the client has a usdcChannel): it sends that asset.
    * Returns once the node accepts it -- call waitForTransaction to confirm.
    * To retry after an error without risking a second payment, re-broadcast
    * result.signed.txBytes (rebroadcast) rather than calling send again.
    */
   async send(key: Key, to: string, amount: string, opts: { memo?: string; gasLimit?: bigint | number } = {}): Promise<SendResult> {
     if (!isAddress(to)) throw new Error(`invalid recipient address "${to}"`);
-    const amountUaeth = parseAmount(amount);
+    const { asset, amount: base } = this.assets.parse(amount);
     if ((opts.memo ?? "").length > 256) throw new Error("memo is limited to 256 characters");
     const info = await this.accountInfo(key.address);
     if (!info) throw new Error(`account ${key.address} doesn't exist on chain yet: fund it first`);
     const known = this.nextSeq.get(key.address) ?? 0n;
     const sequence = info.sequence > known ? info.sequence : known;
-    const signed = buildSend(key, { chainId: this.chainId, accountNumber: info.accountNumber, sequence, to, amountUaeth, memo: opts.memo, gasLimit: opts.gasLimit });
+    const signed = buildSend(key, { chainId: this.chainId, accountNumber: info.accountNumber, sequence, to, amountUaeth: base, denom: asset.denom, memo: opts.memo, gasLimit: opts.gasLimit });
     const r = await this.rebroadcast(signed);
     if (r.status !== "failed") this.nextSeq.set(key.address, sequence + 1n);
     return r;
@@ -141,9 +168,10 @@ export class AetherClient {
 
   /**
    * The permission granter gave grantee to send from its account (x/authz),
-   * or undefined if there's none (never granted, revoked, used up or expired).
+   * with its limit in denom, or undefined if there's none (never granted,
+   * revoked, used up or expired).
    */
-  async sendGrant(granter: string, grantee: string): Promise<SendGrant | undefined> {
+  async sendGrant(granter: string, grantee: string, denom: string = DENOM): Promise<SendGrant | undefined> {
     const req = new Writer().string(1, granter).string(2, grantee).string(3, MSG_SEND_TYPE_URL).finish();
     let resp: Uint8Array;
     try {
@@ -152,7 +180,7 @@ export class AetherClient {
       if (e instanceof RpcError && /authorization not found|not found/i.test(e.message)) return undefined;
       throw e;
     }
-    return decodeSendGrant(resp);
+    return decodeSendGrant(resp, denom);
   }
 
   /** Signs and broadcasts a transaction carrying msgs from key's account. Like send, but for any messages. */
@@ -214,44 +242,47 @@ export class AetherClient {
     }
   }
 
-  /** Every payment to address at or above sinceHeight, oldest first (reads all pages). */
-  async incomingPayments(address: string, sinceHeight = 1, maxResults = 5000): Promise<IncomingPayment[]> {
+  /** Every payment of denom (default uaeth) to address at or above sinceHeight, oldest first (reads all pages). */
+  async incomingPayments(address: string, sinceHeight = 1, maxResults = 5000, denom: string = DENOM): Promise<IncomingPayment[]> {
     if (!isAddress(address)) throw new Error(`invalid address "${address}"`); // it goes into a query string
     const query = `transfer.recipient='${address}' AND tx.height>=${Math.max(1, sinceHeight)}`;
     const out: IncomingPayment[] = [];
     for (let page = 1; ; page++) {
       const { txs, total } = await this.rpc.txSearch(query, page, 100);
       for (const t of txs) {
-        const to = transfers(t.events).filter((x) => x.to === address);
+        const to = transfers(t.events, denom).filter((x) => x.to === address);
         if (to.length === 0) continue;
-        out.push({ hash: t.hash, height: t.height, code: t.code, from: to[0].from, amountUaeth: to.reduce((s, x) => s + x.amountUaeth, 0n), memo: memoOf(t.tx) });
+        const amount = to.reduce((s, x) => s + x.amount, 0n);
+        out.push({ hash: t.hash, height: t.height, code: t.code, from: to[0].from, amount, denom, amountUaeth: denom === DENOM ? amount : 0n, memo: memoOf(t.tx) });
       }
       if (out.length >= maxResults) throw new Error(`more than ${maxResults} incoming transactions since height ${sinceHeight}: pass a later sinceHeight`);
       if (txs.length < 100 || page * 100 >= total) return out;
     }
   }
 
-  /** Waits for a confirmed payment to address with exactly memo and at least minAmount. */
+  /** Waits for a confirmed payment to address with exactly memo and at least minAmount, in minAmount's asset. */
   async waitForPayment(opts: { address: string; memo: string; minAmount: string; sinceHeight?: number; timeoutMs?: number; pollMs?: number }): Promise<IncomingPayment | undefined> {
-    const min = parseAmount(opts.minAmount);
+    const { asset, amount: min } = this.assets.parse(opts.minAmount);
     const deadline = Date.now() + (opts.timeoutMs ?? 90_000);
     for (;;) {
-      const found = (await this.incomingPayments(opts.address, opts.sinceHeight ?? 1)).find((p) => p.code === 0 && p.memo === opts.memo && p.amountUaeth >= min);
+      const found = (await this.incomingPayments(opts.address, opts.sinceHeight ?? 1, 5000, asset.denom)).find((p) => p.code === 0 && p.memo === opts.memo && p.amount >= min);
       if (found || Date.now() >= deadline) return found;
       await sleep(Math.min(opts.pollMs ?? 3_000, Math.max(0, deadline - Date.now())));
     }
   }
 }
 
-/** The transfers in a transaction's events. */
-export function transfers(events: TxEvent[]): Transfer[] {
+/** The transfers of denom (default uaeth) in a transaction's events. */
+export function transfers(events: TxEvent[], denom: string = DENOM): Transfer[] {
   const out: Transfer[] = [];
   for (const e of events) {
     if (e.type !== "transfer") continue;
     const a = Object.fromEntries(e.attributes.map((x) => [x.key, x.value]));
     for (const part of (a.amount ?? "").split(",")) {
-      const m = /^([0-9]+)uaeth$/.exec(part.trim());
-      if (m) out.push({ from: a.sender ?? "", to: a.recipient ?? "", amountUaeth: BigInt(m[1]) });
+      const m = /^([0-9]+)(.+)$/.exec(part.trim());
+      if (!m || m[2] !== denom) continue;
+      const amount = BigInt(m[1]);
+      out.push({ from: a.sender ?? "", to: a.recipient ?? "", amount, denom, amountUaeth: denom === DENOM ? amount : 0n });
     }
   }
   return out;

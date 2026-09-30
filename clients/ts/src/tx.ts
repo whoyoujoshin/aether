@@ -19,7 +19,10 @@ export interface SendParams {
   accountNumber: bigint | number;
   sequence: bigint | number;
   to: string;
+  /** In the base units of denom (uaeth unless denom says otherwise). */
   amountUaeth: bigint;
+  /** What to send; default "uaeth". */
+  denom?: string;
   memo?: string;
   gasLimit?: bigint | number;
 }
@@ -37,7 +40,7 @@ export interface SignedTx {
 export function buildSend(key: Key, p: SendParams, opts: { deterministic?: boolean } = {}): SignedTx {
   addressBytes(p.to); // validates the recipient
   if (p.amountUaeth <= 0n) throw new Error("amount must be positive");
-  return buildTx(key, [msgSend(key.address, p.to, p.amountUaeth)], p, opts);
+  return buildTx(key, [msgSend(key.address, p.to, p.amountUaeth, p.denom)], p, opts);
 }
 
 export interface TxParams {
@@ -54,8 +57,8 @@ export interface AnyMsg {
   value: Uint8Array;
 }
 
-function msgSend(from: string, to: string, amountUaeth: bigint): AnyMsg {
-  return { typeUrl: MSG_SEND_TYPE_URL, value: new Writer().string(1, from).string(2, to).message(3, coin(DENOM, amountUaeth)).finish() };
+function msgSend(from: string, to: string, amount: bigint, denom = DENOM): AnyMsg {
+  return { typeUrl: MSG_SEND_TYPE_URL, value: new Writer().string(1, from).string(2, to).message(3, coin(denom, amount)).finish() };
 }
 
 /** Signs a transaction carrying msgs, which the chain executes all-or-nothing. */
@@ -86,14 +89,15 @@ export const SEND_AUTHORIZATION_TYPE_URL = "/cosmos.bank.v1beta1.SendAuthorizati
 /**
  * An x/authz grant letting grantee send up to limitUaeth from granter,
  * only to allowList if it's non-empty, until expiration (Unix seconds).
+ * The limit is in denom (default uaeth), and the grant moves only that.
  * Granting again to the same grantee replaces the grant and its limit.
  */
-export function grantSendMsg(granter: string, grantee: string, limitUaeth: bigint, allowList: string[], expiration: number): AnyMsg {
+export function grantSendMsg(granter: string, grantee: string, limitUaeth: bigint, allowList: string[], expiration: number, denom = DENOM): AnyMsg {
   addressBytes(granter);
   addressBytes(grantee);
   if (granter === grantee) throw new Error("granter and grantee must be different accounts");
   if (limitUaeth <= 0n) throw new Error("a send grant needs a positive spend limit");
-  const auth = new Writer().message(1, coin(DENOM, limitUaeth));
+  const auth = new Writer().message(1, coin(denom, limitUaeth));
   for (const a of allowList) {
     addressBytes(a);
     auth.string(2, a);
@@ -103,11 +107,11 @@ export function grantSendMsg(granter: string, grantee: string, limitUaeth: bigin
   return { typeUrl: MSG_GRANT_TYPE_URL, value: new Writer().string(1, granter).string(2, grantee).message(3, grant).finish() };
 }
 
-/** grantee sends amountUaeth from granter to `to`, under a send grant granter gave it. */
-export function execSendMsg(grantee: string, granter: string, to: string, amountUaeth: bigint): AnyMsg {
+/** grantee sends amountUaeth (of denom, default uaeth) from granter to `to`, under a send grant granter gave it. */
+export function execSendMsg(grantee: string, granter: string, to: string, amountUaeth: bigint, denom = DENOM): AnyMsg {
   addressBytes(to);
   if (grantee === granter) throw new Error("granter and grantee must be different accounts");
-  const send = msgSend(granter, to, amountUaeth);
+  const send = msgSend(granter, to, amountUaeth, denom);
   return { typeUrl: MSG_EXEC_TYPE_URL, value: new Writer().string(1, grantee).message(2, any(send.typeUrl, send.value)).finish() };
 }
 

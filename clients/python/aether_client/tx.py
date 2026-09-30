@@ -24,8 +24,8 @@ class SignedTx:
     hash: str  # uppercase hex SHA-256 of tx_bytes: what the chain indexes it by
 
 
-def _coin(amount: int) -> bytes:
-    return Writer().string(1, DENOM).string(2, str(amount)).finish()
+def _coin(amount: int, denom: str = DENOM) -> bytes:
+    return Writer().string(1, denom).string(2, str(amount)).finish()
 
 
 def _any(type_url: str, value: bytes) -> bytes:
@@ -33,16 +33,17 @@ def _any(type_url: str, value: bytes) -> bytes:
 
 
 def build_send(key: Key, *, chain_id: str, account_number: int, sequence: int, to: str, amount_uaeth: int,
-               memo: str = "", gas_limit: int = DEFAULT_GAS_LIMIT, deterministic: bool = False) -> SignedTx:
+               memo: str = "", gas_limit: int = DEFAULT_GAS_LIMIT, deterministic: bool = False, denom: str = DENOM) -> SignedTx:
+    """Signs a send of amount_uaeth base units of denom (uaeth unless denom says otherwise)."""
     address_bytes(to)  # validates the recipient
     if amount_uaeth <= 0:
         raise ValueError("amount must be positive")
-    return build_tx(key, [_msg_send(key.address, to, amount_uaeth)], chain_id=chain_id, account_number=account_number,
+    return build_tx(key, [_msg_send(key.address, to, amount_uaeth, denom)], chain_id=chain_id, account_number=account_number,
                     sequence=sequence, memo=memo, gas_limit=gas_limit, deterministic=deterministic)
 
 
-def _msg_send(frm: str, to: str, amount_uaeth: int) -> Tuple[str, bytes]:
-    return MSG_SEND_TYPE_URL, Writer().string(1, frm).string(2, to).message(3, _coin(amount_uaeth)).finish()
+def _msg_send(frm: str, to: str, amount: int, denom: str = DENOM) -> Tuple[str, bytes]:
+    return MSG_SEND_TYPE_URL, Writer().string(1, frm).string(2, to).message(3, _coin(amount, denom)).finish()
 
 
 def build_tx(key: Key, msgs: List[Tuple[str, bytes]], *, chain_id: str, account_number: int, sequence: int,
@@ -68,16 +69,18 @@ MSG_EXEC_TYPE_URL = "/cosmos.authz.v1beta1.MsgExec"
 SEND_AUTHORIZATION_TYPE_URL = "/cosmos.bank.v1beta1.SendAuthorization"
 
 
-def grant_send_msg(granter: str, grantee: str, limit_uaeth: int, allow_list: List[str], expiration: int) -> Tuple[str, bytes]:
+def grant_send_msg(granter: str, grantee: str, limit_uaeth: int, allow_list: List[str], expiration: int,
+                   denom: str = DENOM) -> Tuple[str, bytes]:
     """An x/authz grant letting grantee send up to limit_uaeth from granter, only to allow_list if
-    it's non-empty, until expiration (Unix seconds). Granting again replaces the grant and its limit."""
+    it's non-empty, until expiration (Unix seconds). The limit is in denom (default uaeth), and the
+    grant moves only that. Granting again replaces the grant and its limit."""
     address_bytes(granter)
     address_bytes(grantee)
     if granter == grantee:
         raise ValueError("granter and grantee must be different accounts")
     if limit_uaeth <= 0:
         raise ValueError("a send grant needs a positive spend limit")
-    auth = Writer().message(1, _coin(limit_uaeth))
+    auth = Writer().message(1, _coin(limit_uaeth, denom))
     for a in allow_list:
         address_bytes(a)
         auth.string(2, a)
@@ -86,12 +89,12 @@ def grant_send_msg(granter: str, grantee: str, limit_uaeth: int, allow_list: Lis
     return MSG_GRANT_TYPE_URL, Writer().string(1, granter).string(2, grantee).message(3, grant).finish()
 
 
-def exec_send_msg(grantee: str, granter: str, to: str, amount_uaeth: int) -> Tuple[str, bytes]:
-    """grantee sends amount_uaeth from granter to `to`, under a send grant granter gave it."""
+def exec_send_msg(grantee: str, granter: str, to: str, amount_uaeth: int, denom: str = DENOM) -> Tuple[str, bytes]:
+    """grantee sends amount_uaeth (of denom, default uaeth) from granter to `to`, under a send grant granter gave it."""
     address_bytes(to)
     if grantee == granter:
         raise ValueError("granter and grantee must be different accounts")
-    type_url, send = _msg_send(granter, to, amount_uaeth)
+    type_url, send = _msg_send(granter, to, amount_uaeth, denom)
     return MSG_EXEC_TYPE_URL, Writer().string(1, grantee).message(2, _any(type_url, send)).finish()
 
 

@@ -11,7 +11,7 @@ test("findServices: reputation counts only paying raters, and splits out trusted
   });
   await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
-  const p = (height: number, from: string, memo: string, amount = 1n, code = 0): IncomingPayment => ({ hash: `H${height}`, height, code, from, amountUaeth: amount, memo });
+  const p = (height: number, from: string, memo: string, amount = 1n, code = 0): IncomingPayment => ({ hash: `H${height}`, height, code, from, amount, denom: "uaeth", amountUaeth: amount, memo });
   const byAddress: Record<string, IncomingPayment[]> = {
     [DIRECTORY_ADDRESS]: [
       p(10, payee, "x402-service:" + url),

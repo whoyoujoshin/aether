@@ -66,7 +66,9 @@ test("aether-pull: signing message, allowance and collection transactions and gr
   assert.equal(exec.hash, e.txHash);
 
   assert.equal(bytesToHex(new Writer().string(1, key.address).string(2, g.grantee).string(3, MSG_SEND_TYPE_URL).finish()), v.pull.grantsRequest);
-  assert.deepEqual(decodeSendGrant(hexToBytes(v.pull.grantsResponse)), { unlimited: false, spendLimitUaeth: 750_000n, allowList: g.allowList, expiration: g.expiration });
+  assert.deepEqual(decodeSendGrant(hexToBytes(v.pull.grantsResponse)), { unlimited: false, spendLimit: 750_000n, denom: "uaeth", spendLimitUaeth: 750_000n, allowList: g.allowList, expiration: g.expiration });
+  // The same grant read for another asset has nothing to spend in it.
+  assert.equal(decodeSendGrant(hexToBytes(v.pull.grantsResponse), "ibc/ABC")?.spendLimit, 0n);
   assert.equal(decodeSendGrant(new Uint8Array()), undefined);
 });
 
@@ -94,11 +96,13 @@ test("addresses are checked", () => {
 });
 
 test("transfers are read from events", () => {
-  const t = transfers([
+  const events = [
     { type: "coin_spent", attributes: [] },
-    { type: "transfer", attributes: [{ key: "recipient", value: "B" }, { key: "sender", value: "A" }, { key: "amount", value: "150uaeth" }] },
-  ]);
-  assert.deepEqual(t, [{ from: "A", to: "B", amountUaeth: 150n }]);
+    { type: "transfer", attributes: [{ key: "recipient", value: "B" }, { key: "sender", value: "A" }, { key: "amount", value: "150uaeth,7ibc/ABC" }] },
+  ];
+  const t = transfers(events);
+  assert.deepEqual(t, [{ from: "A", to: "B", amount: 150n, denom: "uaeth", amountUaeth: 150n }]);
+  assert.deepEqual(transfers(events, "ibc/ABC"), [{ from: "A", to: "B", amount: 7n, denom: "ibc/ABC", amountUaeth: 0n }], "each asset on its own, never added together");
 });
 
 test("a recovery phrase is validated", () => {

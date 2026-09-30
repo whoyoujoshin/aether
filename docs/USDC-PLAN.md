@@ -176,10 +176,12 @@ explorer shows the channel.
 > included, for every scheme, and state it in the 402, the manifest and
 > the receipts. `fetch_paid` pays a USDC price per request, by prepaid
 > deposit or by pull allowance, and `withdraw_prepaid` takes a USDC
-> balance back. `find_services` shows each service's asset.
+> balance back. `find_services` shows each service's asset. The
+> TypeScript and Python clients send, receive and buy in USDC the same
+> way (`usdcChannel` / `usdc_channel`).
 >
 > Still to do:
-> - the TypeScript and Python clients;
+> - the clients' seller kits charging USDC (`cmd/paywall` does);
 > - the desktop wallet and explorer;
 > - `--usdc-channel` in the Claude Desktop bundle once the Noble channel
 >   exists. Its settings can't be blank, so it waits for a real channel

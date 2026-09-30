@@ -113,6 +113,13 @@ type vectors struct {
 		GrantsResponse string `json:"grantsResponse"` // one SendAuthorization: 750000uaeth, allow list [payTo], expiring then
 	} `json:"pull"`
 	DirectoryAddress string `json:"directoryAddress"`
+	// USDC is Noble's USDC over one channel, as wallet.USDC pins it, and
+	// how a receipt states an amount of it.
+	USDC struct {
+		Channel       string `json:"channel"`
+		Denom         string `json:"denom"`
+		ReceiptAmount string `json:"receiptAmount"`
+	} `json:"usdc"`
 	Receipts         struct {
 		Direct            paywall.Receipt `json:"direct"` // signed by the payee's own key
 		DirectMessage     string          `json:"directMessage"`
@@ -187,6 +194,10 @@ func build(t *testing.T) vectors {
 	require.NoError(t, err)
 	v.Queries.AccountInfoRequest, v.Queries.BalanceRequest = hex.EncodeToString(ai), hex.EncodeToString(bal)
 	v.DirectoryAddress = directory.Address()
+	usdc, err := wallet.USDC("channel-3")
+	require.NoError(t, err)
+	v.USDC.Channel, v.USDC.Denom = "channel-3", usdc.Denom
+	v.USDC.ReceiptAmount = paywall.ReceiptAmount(math.NewInt(50_000), usdc.Denom)
 
 	// Pull.
 	f.DepositTx = ""

@@ -1,9 +1,9 @@
 import re
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple, Union
 
-from .amount import DENOM, parse_amount
+from .amount import AETH, DENOM, Asset, Assets
 from .keys import Key, is_address
 from .proto import Writer, first, read_fields
 from .rpc import Rpc, RpcError
@@ -14,7 +14,13 @@ from .tx import MSG_SEND_TYPE_URL, SEND_AUTHORIZATION_TYPE_URL, SignedTx, build_
 class Transfer:
     sender: str
     recipient: str
-    amount_uaeth: int
+    amount_uaeth: int  # amount, when denom is uaeth; 0 otherwise
+    amount: int = 0  # in denom's base units
+    denom: str = DENOM
+
+    def __post_init__(self):
+        if self.denom == DENOM and not self.amount:
+            self.amount = self.amount_uaeth
 
 
 @dataclass
@@ -35,8 +41,14 @@ class IncomingPayment:
     height: int
     code: int
     sender: str
-    amount_uaeth: int  # everything this transaction moved to the address
+    amount_uaeth: int  # amount, when denom is uaeth; 0 otherwise
     memo: str  # set by the sender: untrusted
+    amount: int = 0  # everything this transaction moved to the address in denom, in its base units
+    denom: str = DENOM
+
+    def __post_init__(self):
+        if self.denom == DENOM and not self.amount:
+            self.amount = self.amount_uaeth
 
 
 @dataclass
@@ -48,33 +60,42 @@ class SendResult:
     signed: SignedTx  # re-broadcast these exact bytes to retry without paying twice
 
 
-def transfers(events) -> List[Transfer]:
+def transfers(events, denom: str = DENOM) -> List[Transfer]:
+    """The transfers of denom (default uaeth) in a transaction's events."""
     out = []
     for e in events:
         if e.get("type") != "transfer":
             continue
         a = {x["key"]: x["value"] for x in e.get("attributes", [])}
         for part in (a.get("amount") or "").split(","):
-            m = re.fullmatch(r"([0-9]+)uaeth", part.strip())
-            if m:
-                out.append(Transfer(a.get("sender", ""), a.get("recipient", ""), int(m.group(1))))
+            m = re.fullmatch(r"([0-9]+)(.+)", part.strip())
+            if not m or m.group(2) != denom:
+                continue
+            amount = int(m.group(1))
+            out.append(Transfer(a.get("sender", ""), a.get("recipient", ""), amount if denom == DENOM else 0, amount, denom))
     return out
 
 
 @dataclass
 class SendGrant:
     """An x/authz permission to send from one account, as the chain stores it."""
-    unlimited: bool  # a GenericAuthorization; otherwise spend_limit_uaeth is what's left
-    spend_limit_uaeth: int
+    unlimited: bool  # a GenericAuthorization; otherwise spend_limit is what's left
+    spend_limit_uaeth: int  # spend_limit, when denom is uaeth; 0 otherwise
     allow_list: List[str]  # if non-empty, the only recipients allowed
     expiration: Optional[int] = None  # Unix seconds; None if it never expires
+    spend_limit: int = 0  # what's left in denom, in its base units
+    denom: str = DENOM
+
+    def __post_init__(self):
+        if self.denom == DENOM and not self.spend_limit:
+            self.spend_limit = self.spend_limit_uaeth
 
 
 _GENERIC_AUTHORIZATION_TYPE_URL = "/cosmos.authz.v1beta1.GenericAuthorization"
 
 
-def decode_send_grant(resp: bytes) -> Optional[SendGrant]:
-    """Decodes a Query/Grants response for MsgSend; None if it holds none."""
+def decode_send_grant(resp: bytes, denom: str = DENOM) -> Optional[SendGrant]:
+    """Decodes a Query/Grants response for MsgSend, reading its limit in denom; None if it holds none."""
     grant = first(resp, 1)
     if not grant:
         return None
@@ -86,22 +107,25 @@ def decode_send_grant(resp: bytes) -> Optional[SendGrant]:
     ts = first(grant, 2)
     expiration = first(ts, 1, 0) if ts is not None else None
     if type_url == _GENERIC_AUTHORIZATION_TYPE_URL:
-        return SendGrant(True, 0, [], expiration)
+        return SendGrant(True, 0, [], expiration, 0, denom)
     if type_url != SEND_AUTHORIZATION_TYPE_URL:
         raise ValueError(f"unsupported authorization type {type_url}")
     limit, allow = 0, []
     for f, _, v in read_fields(value):
-        if f == 1 and first(v, 1, b"").decode() == DENOM:
+        if f == 1 and first(v, 1, b"").decode() == denom:
             limit += int(first(v, 2, b"0").decode() or "0")
         elif f == 2:
             allow.append(v.decode())
-    return SendGrant(False, limit, allow, expiration)
+    return SendGrant(False, limit if denom == DENOM else 0, allow, expiration, limit, denom)
 
 
 class AetherClient:
-    def __init__(self, rpc: str, chain_id: str = "aether-testnet-1"):
+    def __init__(self, rpc: str, chain_id: str = "aether-testnet-1", usdc_channel: Optional[str] = None):
+        """usdc_channel: Aether's end of its channel to Noble (e.g. "channel-3"). With it, amounts may be
+        in USDC ("5 USDC"); without it, USDC is an unknown unit, never guessed at."""
         self.rpc = Rpc(rpc)
         self.chain_id = chain_id
+        self.assets = Assets(usdc_channel)
         # Sequences used but maybe not reported by the chain yet (a second
         # send within one block would otherwise reuse one).
         self._next_seq = {}
@@ -109,11 +133,16 @@ class AetherClient:
     def latest_height(self) -> int:
         return self.rpc.latest_height()
 
-    def balance(self, address: str) -> int:
-        """Balance in uaeth."""
-        resp = self.rpc.abci_query("/cosmos.bank.v1beta1.Query/Balance", Writer().string(1, address).string(2, DENOM).finish())
+    def balance(self, address: str, asset: Union[Asset, str] = AETH) -> int:
+        """Balance in the base units of asset (an Asset or a denom): uaeth by default."""
+        denom = asset if isinstance(asset, str) else asset.denom
+        resp = self.rpc.abci_query("/cosmos.bank.v1beta1.Query/Balance", Writer().string(1, address).string(2, denom).finish())
         coin = first(resp, 1, b"")
         return int(first(coin, 2, b"0").decode() or "0") if coin else 0
+
+    def balances(self, address: str) -> List[Tuple[Asset, int]]:
+        """The balance of every asset this client knows, AETH first."""
+        return [(a, self.balance(address, a)) for a in self.assets.list()]
 
     def account_info(self, address: str):
         """(account_number, sequence), or None if the account doesn't exist yet."""
@@ -127,12 +156,13 @@ class AetherClient:
         return first(info, 3, 0), first(info, 4, 0)
 
     def send(self, key: Key, to: str, amount: str, memo: str = "", gas_limit: Optional[int] = None) -> SendResult:
-        """Signs and broadcasts a payment; `amount` carries its unit ("1.5 AETH").
+        """Signs and broadcasts a payment; `amount` carries its unit ("1.5 AETH", or "5 USDC" when the
+        client has a usdc_channel), and it sends that asset.
         Returns once the node accepts it -- call wait_for_transaction to confirm.
         To retry after an error without paying twice, rebroadcast(result.signed)."""
         if not is_address(to):
             raise ValueError(f'invalid recipient address "{to}"')
-        amount_uaeth = parse_amount(amount)
+        asset, base = self.assets.parse(amount)
         if len(memo) > 256:
             raise ValueError("memo is limited to 256 characters")
         info = self.account_info(key.address)
@@ -141,15 +171,15 @@ class AetherClient:
         account_number, chain_seq = info
         sequence = max(chain_seq, self._next_seq.get(key.address, 0))
         signed = build_send(key, chain_id=self.chain_id, account_number=account_number, sequence=sequence, to=to,
-                            amount_uaeth=amount_uaeth, memo=memo, **({"gas_limit": gas_limit} if gas_limit else {}))
+                            amount_uaeth=base, denom=asset.denom, memo=memo, **({"gas_limit": gas_limit} if gas_limit else {}))
         r = self.rebroadcast(signed)
         if r.status != "failed":
             self._next_seq[key.address] = sequence + 1
         return r
 
-    def send_grant(self, granter: str, grantee: str) -> Optional["SendGrant"]:
-        """The permission granter gave grantee to send from its account (x/authz), or None if
-        there's none (never granted, revoked, used up or expired)."""
+    def send_grant(self, granter: str, grantee: str, denom: str = DENOM) -> Optional["SendGrant"]:
+        """The permission granter gave grantee to send from its account (x/authz), with its limit in
+        denom, or None if there's none (never granted, revoked, used up or expired)."""
         req = Writer().string(1, granter).string(2, grantee).string(3, MSG_SEND_TYPE_URL).finish()
         try:
             resp = self.rpc.abci_query("/cosmos.authz.v1beta1.Query/Grants", req)
@@ -157,7 +187,7 @@ class AetherClient:
             if "not found" in str(e).lower():
                 return None
             raise
-        return decode_send_grant(resp)
+        return decode_send_grant(resp, denom)
 
     def sign_and_broadcast(self, key: Key, msgs, memo: str = "", gas_limit: Optional[int] = None) -> SendResult:
         """Signs and broadcasts a transaction carrying msgs from key's account. Like send, for any messages."""
@@ -214,8 +244,9 @@ class AetherClient:
                 return info
             time.sleep(min(poll, max(0.0, deadline - time.monotonic())))
 
-    def incoming_payments(self, address: str, since_height: int = 1, max_results: int = 5000) -> List[IncomingPayment]:
-        """Every payment to address at or above since_height, oldest first (reads all pages)."""
+    def incoming_payments(self, address: str, since_height: int = 1, max_results: int = 5000,
+                          denom: str = DENOM) -> List[IncomingPayment]:
+        """Every payment of denom (default uaeth) to address at or above since_height, oldest first (reads all pages)."""
         if not is_address(address):
             raise ValueError(f'invalid address "{address}"')  # it goes into a query string
         query = f"transfer.recipient='{address}' AND tx.height>={max(1, since_height)}"
@@ -223,9 +254,11 @@ class AetherClient:
         while True:
             txs, total = self.rpc.tx_search(query, page, 100)
             for t in txs:
-                mine = [x for x in transfers(t.events) if x.recipient == address]
+                mine = [x for x in transfers(t.events, denom) if x.recipient == address]
                 if mine:
-                    out.append(IncomingPayment(t.hash, t.height, t.code, mine[0].sender, sum(x.amount_uaeth for x in mine), memo_of(t.tx)))
+                    amount = sum(x.amount for x in mine)
+                    out.append(IncomingPayment(t.hash, t.height, t.code, mine[0].sender, amount if denom == DENOM else 0,
+                                               memo_of(t.tx), amount, denom))
             if len(out) >= max_results:
                 raise ValueError(f"more than {max_results} incoming transactions since height {since_height}: pass a later since_height")
             if len(txs) < 100 or page * 100 >= total:
@@ -234,12 +267,13 @@ class AetherClient:
 
     def wait_for_payment(self, address: str, memo: str, min_amount: str, since_height: int = 1,
                          timeout: float = 90, poll: float = 3) -> Optional[IncomingPayment]:
-        """A confirmed payment to address with exactly memo and at least min_amount, or None on timeout."""
-        minimum = parse_amount(min_amount)
+        """A confirmed payment to address with exactly memo and at least min_amount, in min_amount's
+        asset, or None on timeout."""
+        asset, minimum = self.assets.parse(min_amount)
         deadline = time.monotonic() + timeout
         while True:
-            for p in self.incoming_payments(address, since_height):
-                if p.code == 0 and p.memo == memo and p.amount_uaeth >= minimum:
+            for p in self.incoming_payments(address, since_height, denom=asset.denom):
+                if p.code == 0 and p.memo == memo and p.amount >= minimum:
                     return p
             if time.monotonic() >= deadline:
                 return None

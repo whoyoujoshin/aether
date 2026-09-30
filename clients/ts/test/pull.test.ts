@@ -174,7 +174,7 @@ test("aether-pull: a revoked allowance's debt blocks the buyer until a new one c
     await s.pw.collectAll();
     assert.equal(s.ledger.pullAccount(buyer.address).unpaid, 20_000n);
 
-    await assert.rejects(fetchPaid(s.client, buyer, s.url, opts("c", "0.02 AETH")), (e: PaymentError) => e.code === "INVALID_ARGUMENT" && /at least 30000/.test(e.message));
+    await assert.rejects(fetchPaid(s.client, buyer, s.url, opts("c", "0.02 AETH")), (e: PaymentError) => e.code === "INVALID_ARGUMENT" && /at least 0\.03 AETH \(30000uaeth\)/.test(e.message));
     const r = await fetchPaid(s.client, buyer, s.url, opts("c"));
     assert.equal(r.status, "paid");
     assert.equal(r.owedUaeth, 30_000n, "the old debt is owed again, with this request");
