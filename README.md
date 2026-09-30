@@ -41,7 +41,7 @@ Let an agent spend from your account with a chain-enforced cap instead of holdin
 | Validator bonding, equivocation slashing, escrow release | Built, tested, live-verified |
 | Downtime / liveness detection (distinct from equivocation) | Built, tested, live-verified |
 | Ancestor validation | Built, tested, live-verified |
-| AuxPoW (LTC/DOGE-family merged mining) | Built, tested, live-verified |
+| AuxPoW (LTC/DOGE-family merged mining) | Built and tested; verified live only with synthetic proofs. Real pool work needs the chain changes and bridge in [docs/MERGED-MINING-PLAN.md](docs/MERGED-MINING-PLAN.md) |
 | Post-quantum account signatures (ML-DSA-44), mandatory from genesis | Built, tested, live-verified |
 | Governance (deposit, tenure-weighted voting, treasury execution) | Built, tested, live-verified |
 | `uaeth` / `aether` bech32 prefix | Built, migrated, live-verified |

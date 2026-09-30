@@ -234,7 +234,7 @@ func (k msgServer) submitNativePoW(ctx sdk.Context, minerAddr sdk.AccAddress, na
 // native, dedicated work does.
 func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPow *AuxPowData) (*MsgSubmitPoWResponse, error) {
 	currentDifficulty := k.Keeper.GetDifficulty(ctx).Uint64()
-	if err := CheckAuxPow(auxPow, currentDifficulty); err != nil {
+	if err := CheckAuxPow(auxPow, currentDifficulty, ctx.BlockHeight()); err != nil {
 		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "AuxPoW verification failed: %s", err)
 	}
 

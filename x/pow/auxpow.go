@@ -179,8 +179,9 @@ const maxChainMerkleBranchLength = 30
 // auxBlockHash is Aether's own block hash being committed via merged
 // mining. currentDifficulty is Aether's live difficulty target (from
 // GetDifficulty), the same value native submissions are checked
-// against.
-func CheckAuxPow(data *AuxPowData, currentDifficulty uint64) error {
+// against. height is the block the submission executes in: it decides
+// how the parent's hash is read (see parentPoWHash).
+func CheckAuxPow(data *AuxPowData, currentDifficulty uint64, height int64) error {
 	auxBlockHash := data.AuxBlockHash
 	if len(data.ChainBranch.Hashes) > maxChainMerkleBranchLength {
 		return fmt.Errorf("chain merkle branch too long: %d exceeds maximum of %d", len(data.ChainBranch.Hashes), maxChainMerkleBranchLength)
@@ -248,7 +249,7 @@ if !bytes.Equal(reconstructedChainRoot, commitment.RootHash) {
 	if err != nil {
 		return fmt.Errorf("failed to compute parent header scrypt hash: %w", err)
 	}
-	if !meetsdifficulty(scryptHash, currentDifficulty) {
+	if !meetsdifficulty(parentPoWHash(scryptHash, height), currentDifficulty) {
 		return errors.New("parent header's proof of work does not meet Aether's current difficulty")
 	}
 
@@ -320,10 +321,29 @@ func extractCoinbaseScriptSig(tx []byte) ([]byte, error) {
 	return tx[offset : offset+int(scriptSigLen)], nil
 }
 
+// parentPoWHash returns a parent header's scrypt hash in the byte order
+// meetsdifficulty compares. Litecoin reads the raw scrypt output as a
+// little-endian number (UintToArith256), so real parent-chain work has
+// its zero bytes at the END of the raw hash; from
+// AuxPoWByteOrderActivationHeight the bytes are reversed so that work
+// counts exactly as Litecoin counts it. Below that height the raw bytes
+// are used as they always were, so history replays unchanged.
+func parentPoWHash(scryptHash []byte, height int64) []byte {
+	if height < AuxPoWByteOrderActivationHeight {
+		return scryptHash
+	}
+	reversed := make([]byte, len(scryptHash))
+	for i, b := range scryptHash {
+		reversed[len(scryptHash)-1-i] = b
+	}
+	return reversed
+}
+
 // meetsdifficulty checks whether hash, interpreted as a big-endian
 // 256-bit number, is below the target implied by difficulty. Shared
 // by both native (VerifyMiningHeader) and AuxPoW (CheckAuxPow)
-// verification paths -- identical math, one implementation.
+// verification paths -- identical math, one implementation. AuxPoW
+// passes the parent's hash through parentPoWHash first.
 func meetsdifficulty(hash []byte, difficulty uint64) bool {
 	if difficulty == 0 {
 		return false
