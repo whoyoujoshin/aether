@@ -11,6 +11,13 @@
 //
 // Usage:
 //   go run ./cmd/auxpowtest --difficulty 4 --output auxpow.json
+//
+// --byte-order picks how the parent's scrypt hash is read against the
+// difficulty, and must match the rule the chain applies at the height
+// the submission lands: "legacy" (the raw bytes big-endian, the default,
+// for chains below x/pow.AuxPoWByteOrderActivationHeight) or "litecoin"
+// (little-endian, as real parent-chain work is counted from that height).
+// Switch the default to "litecoin" once the height is live.
 package main
 
 import (
@@ -145,7 +152,12 @@ func main() {
 	difficulty := flag.Uint64("difficulty", 4, "difficulty to mine the fake parent header against (keep low for fast testing)")
 	output := flag.String("output", "auxpow.json", "output JSON file path")
 	auxChainID := flag.Uint("chain-id", 17776, "Aether's AuxPoW chain ID (must match x/pow.AuxPoWChainID)")
+	byteOrder := flag.String("byte-order", "legacy", `how the parent hash is read: "legacy" (big-endian, below x/pow.AuxPoWByteOrderActivationHeight) or "litecoin" (little-endian, from it)`)
 	flag.Parse()
+	if *byteOrder != "litecoin" && *byteOrder != "legacy" {
+		fmt.Fprintf(os.Stderr, "--byte-order must be litecoin or legacy, not %q\n", *byteOrder)
+		os.Exit(2)
+	}
 
 	auxBlockHash := make([]byte, 32)
 	for i := range auxBlockHash {
@@ -175,6 +187,9 @@ func main() {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "scrypt error: %v\n", err)
 			os.Exit(1)
+		}
+		if *byteOrder == "litecoin" {
+			hash = reverse(hash)
 		}
 		if meetsDifficulty(hash, *difficulty) {
 			parentHeader = candidate
