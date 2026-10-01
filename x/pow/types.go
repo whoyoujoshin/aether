@@ -391,20 +391,17 @@ const MergedMiningActivationHeight int64 = 1_000_000
 // validators each epoch, not just an accept/reject rule on individual
 // messages -- so it gets the same discipline plus extra margin.
 //
-// DELIBERATELY set far beyond 90000 (the height every other pending
-// gate in this codebase, plus the governance param-change proposal,
-// is coordinating a fleet-wide cutover toward as of this writing) --
-// piling a brand-new validator-selection algorithm onto that exact
-// same in-flight cutover would conflate two separate upgrade events
-// and add risk to a coordination effort already in progress. This
-// height is a placeholder and MUST be replaced with a real,
-// deliberately-chosen value -- confirmed against live tip, and
-// scheduled comfortably after the 90000 cutover has completed and run
-// stable for a real stretch of time -- before this code is ever
-// deployed to the live network. Following this same project's
-// standing discipline: never guess a height from a rough estimate,
-// always confirm against the seed's actual tip immediately before any
-// coordinated cutover.
+// Deferred, not scheduled: 10,000,000 is about two years out at the
+// testnet's ~6 s blocks, so no validator-selection change happens until
+// a later release sets a real height. Earlier binaries carried 500,000
+// as a placeholder, which the live chain would have reached in late
+// October 2026 with the code below unreviewed. Moving a height the chain
+// hasn't reached changes no committed block, so this needs no halt:
+// every node only has to run a binary carrying the new value before the
+// chain reaches 500,000, since one still carrying the old value would
+// switch selection rules there alone and fall off the chain. When a real
+// height is chosen, confirm it against the seed's actual tip first, as
+// for every other gate.
 //
 // This code has NOT been reviewed by anyone but the author, and
 // aether-randomness-beacon-design.md explicitly requires external
@@ -412,4 +409,4 @@ const MergedMiningActivationHeight int64 = 1_000_000
 // production-readiness -- deploying this to devnet for testing does
 // not satisfy that requirement, and nothing in this codebase should
 // ever claim it does.
-const RandomnessBeaconActivationHeight int64 = 500_000
+const RandomnessBeaconActivationHeight int64 = 10_000_000
