@@ -249,6 +249,23 @@ func CheckAuxPow(data *AuxPowData, currentDifficulty uint64, height int64) error
 	if err != nil {
 		return fmt.Errorf("invalid merge-mining commitment: %w", err)
 	}
+	// From MergedMiningActivationHeight, two rules the reference
+	// implementation applies (change E of docs/MERGED-MINING-PLAN.md).
+	// The commitment must sit in the parent block's coinbase, the leftmost
+	// leaf, so index 0: any other transaction's first input is written by
+	// whoever sends it, so without this anyone could get a commitment of
+	// their own into a parent block and be paid for that block's work. And
+	// chain_nonce must be the nonce the coinbase commits to, which picks
+	// the chain's slot in a multi-chain tree (step 5), rather than a value
+	// the submitter chooses.
+	if height >= MergedMiningActivationHeight {
+		if data.CoinbaseBranch.Index != 0 {
+			return fmt.Errorf("coinbase branch index %d: the merge-mining commitment must be in the parent block's coinbase (index 0)", data.CoinbaseBranch.Index)
+		}
+		if data.ChainNonce != commitment.Nonce {
+			return fmt.Errorf("chain_nonce %d does not match the coinbase's merge-mining nonce %d", data.ChainNonce, commitment.Nonce)
+		}
+	}
 
 	// 3. Aether's own block hash must genuinely be committed via the
 	// chain merkle branch.
@@ -293,6 +310,22 @@ if !bytes.Equal(reconstructedChainRoot, commitment.RootHash) {
 	}
 
 	return nil
+}
+
+// AuxPowCommitmentNonce returns the nonce in a parent coinbase's
+// merge-mining commitment: the value AuxPowData.chain_nonce must carry.
+// It parses exactly as CheckAuxPow does, for a pool bridge building
+// submissions from the standard serialization.
+func AuxPowCommitmentNonce(coinbaseTx []byte) (uint32, error) {
+	scriptSig, err := extractCoinbaseScriptSig(coinbaseTx)
+	if err != nil {
+		return 0, err
+	}
+	commitment, err := extractCommitment(scriptSig)
+	if err != nil {
+		return 0, err
+	}
+	return commitment.Nonce, nil
 }
 
 // readVarInt parses a Bitcoin-family compactSize varint starting at

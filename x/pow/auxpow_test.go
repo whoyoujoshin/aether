@@ -576,3 +576,73 @@ func TestAuxPoWTemplateHash_CommitsToEveryField(t *testing.T) {
 	// the chain ID and the block hash changes the hash.
 	require.NotEqual(t, AuxPoWTemplateHash("a", 1, []byte("bc"), pool), AuxPoWTemplateHash("ab", 1, []byte("c"), pool))
 }
+
+// Change E: from the activation height the commitment must be in the
+// parent's coinbase (coinbase branch index 0), as the reference
+// implementation requires; below it the old rule accepts any leaf.
+func TestCheckAuxPow_CommitmentOutsideTheCoinbaseIsRefusedFromActivation(t *testing.T) {
+	auxBlockHash := bytes.Repeat([]byte{0x42}, 32)
+	difficulty := uint64(4)
+
+	for _, height := range []int64{MergedMiningActivationHeight - 1, MergedMiningActivationHeight} {
+		// A transaction carrying the commitment at index 1 of a two-leaf
+		// parent block: its sibling (the real coinbase) is on the left.
+		scriptSig := buildTestScriptSig([]byte("not-the-coinbase"), auxBlockHash, 1, 0)
+		tx := buildTestCoinbaseTx(scriptSig)
+		sibling := bytes.Repeat([]byte{0x77}, 32)
+		root := doubleSHA256(append(append([]byte{}, sibling...), doubleSHA256(tx)...))
+
+		var parentRaw []byte
+		for n := uint32(0); ; n++ {
+			candidate := buildTestParentHeader(1, 1700000000, 0x1e0ffff0, n, bytes.Repeat([]byte{0x11}, 32), root)
+			h, err := parseParentHeader(candidate)
+			require.NoError(t, err)
+			hash, err := h.scryptHash()
+			require.NoError(t, err)
+			if meetsdifficulty(parentPoWHash(hash, height), difficulty) {
+				parentRaw = candidate
+				break
+			}
+		}
+		auxPow := &AuxPowData{
+			ParentHeader:   parentRaw,
+			CoinbaseTx:     tx,
+			CoinbaseBranch: &MerkleBranch{Hashes: [][]byte{sibling}, Index: 1},
+			ChainBranch:    &MerkleBranch{Hashes: [][]byte{}, Index: getExpectedIndex(0, AuxPoWChainID, 0)},
+			AuxBlockHash:   auxBlockHash,
+		}
+
+		err := CheckAuxPow(auxPow, difficulty, height)
+		if height < MergedMiningActivationHeight {
+			require.NoError(t, err, "below the height the old rule is unchanged")
+		} else {
+			require.ErrorContains(t, err, "must be in the parent block's coinbase")
+		}
+	}
+}
+
+// Change E: from the activation height chain_nonce must be the coinbase's
+// committed nonce.
+func TestCheckAuxPow_ChainNonceMustMatchTheCoinbaseFromActivation(t *testing.T) {
+	auxBlockHash := bytes.Repeat([]byte{0x42}, 32)
+	difficulty := uint64(4)
+
+	before := buildValidAuxPow(t, auxBlockHash, difficulty, MergedMiningActivationHeight-1)
+	before.ChainNonce = 5 // the coinbase commits to 0; an empty chain branch's index is 0 either way
+	require.NoError(t, CheckAuxPow(before, difficulty, MergedMiningActivationHeight-1))
+
+	at := buildValidAuxPow(t, auxBlockHash, difficulty, MergedMiningActivationHeight)
+	require.NoError(t, CheckAuxPow(at, difficulty, MergedMiningActivationHeight))
+	at.ChainNonce = 5
+	require.ErrorContains(t, CheckAuxPow(at, difficulty, MergedMiningActivationHeight), "chain_nonce 5 does not match")
+}
+
+func TestAuxPowCommitmentNonce(t *testing.T) {
+	tx := buildTestCoinbaseTx(buildTestScriptSig([]byte("x"), bytes.Repeat([]byte{0x42}, 32), 1, 0xdeadbeef))
+	nonce, err := AuxPowCommitmentNonce(tx)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0xdeadbeef), nonce)
+
+	_, err = AuxPowCommitmentNonce(buildTestCoinbaseTx([]byte("no commitment here")))
+	require.Error(t, err)
+}
