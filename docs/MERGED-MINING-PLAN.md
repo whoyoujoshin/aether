@@ -8,8 +8,9 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
 **Status (2026-10-01):**
 - **Nothing sends real merged-mining work to Aether yet.**
   - The pool bridge, `cmd/auxpowd`, is built (M2) and proven end to end
-    on a devnet, against `cmd/auxpowtest --auxpowd` acting as the pool.
-    No real Litecoin node or pool has driven it yet (M3).
+    on a devnet with a real Litecoin node (M3): blocks a real `litecoind`
+    accepted were paid on Aether through the bridge. Real pool software
+    hasn't driven it yet.
 - **Three problems in the chain's rules would stop a real pool** even
   with a bridge. They are listed below.
 - **All five chain changes are built:** A (byte order), B (template
@@ -18,7 +19,8 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
   activation height, `MergedMiningActivationHeight`, deferred to
   20,000,000 until a release ships the bridge and sets a real height.
   (It was a 1,000,000 placeholder, which the testnet would have reached
-  in November 2026.) A real Litecoin node and pool are next (M3).
+  in November 2026.) A pool software trial and a testnet height are
+  next (M4).
 
 ## What the code shows
 
@@ -207,11 +209,26 @@ zero by default), so it needs no funds beyond having an account.
     the 25% share (1.0625 AETH after the cut), native submissions kept
     landing, and the two difficulties moved apart (91,912 merged, 589,824
     native).
-- **End to end on regtest (M3):**
-  - Setup: `litecoind -regtest`, plus a stratum pool with merged mining
-    enabled, pointed at `auxpowd` on an Aether devnet.
-  - Pass means rewards land at the pool's address, and a native miner
-    still wins its slot and keeps validator standing.
+- **End to end with a real Litecoin node (M3, done 2026-10-01).** Litecoin
+  Core 0.21.4 (the release from GitHub, checksum matching its
+  `SHA256SUMS.asc`) on regtest, the same Aether devnet and `auxpowd`, and
+  a small pool program (not committed) doing what a pool does:
+  - put a real wallet transaction in `litecoind`'s mempool, then build a
+    block from its `getblocktemplate`: a SegWit coinbase with the BIP34
+    height, the merged-mining commitment to `createauxblock`'s hash with a
+    nonce, the payout and witness-commitment outputs, and the coinbase's
+    merkle branch over the block's real transactions;
+  - mine it until its scrypt hash, read little-endian, met `_target`;
+  - `submitblock` it: `litecoind` accepted all three blocks (heights
+    102 to 104, each two transactions) as its new tip;
+  - send the same block's proof to `submitauxblock`, the coinbase with its
+    witness, which the bridge drops for the txid.
+
+  All three proofs were accepted on Aether and paid 4.25 AETH each to the
+  pool's address.
+  - Still to do: drive it with real pool software (a stratum pool with
+    merged mining enabled) rather than a pool program, and confirm under
+    load that a native miner keeps its slot and validator standing.
 - **Testnet:** one small Scrypt pool trial, before any mainnet date.
 
 ## Milestones
@@ -219,7 +236,8 @@ zero by default), so it needs no funds beyond having an account.
 1. **M1: chain changes A–E, with tests.** Done.
    This is the consensus-critical part.
 2. **M2: `cmd/auxpowd`.** Done, and proven on a devnet.
-3. **M3: regtest end to end** with a real Litecoin node and pool.
+3. **M3: end to end with a real Litecoin node.** Done (regtest), with a
+   pool program; real pool software is still to try.
 4. **M4: testnet cutover and a pool trial.**
 
 ## Decisions
