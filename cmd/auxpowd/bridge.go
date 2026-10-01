@@ -234,6 +234,20 @@ func (b *bridge) getAuxBlock(ctx context.Context, params []string) (any, error) 
 	}
 }
 
+// validateAddress answers as bitcoind does. ismine is true for the address
+// getauxblock pays (--reward-address): the pool's own.
+func (b *bridge) validateAddress(address string) map[string]any {
+	addr, err := sdk.AccAddressFromBech32(strings.TrimSpace(address))
+	if err != nil {
+		return map[string]any{"isvalid": false}
+	}
+	return map[string]any{
+		"isvalid": true,
+		"address": addr.String(),
+		"ismine":  b.defaultReward != nil && addr.Equals(b.defaultReward),
+	}
+}
+
 var errNoMethod = errors.New("method not found")
 
 // call dispatches one JSON-RPC method.
@@ -263,6 +277,36 @@ func (b *bridge) call(ctx context.Context, method string, params []string) (any,
 			return nil, &rpcError{rpcMiscError, err.Error()}
 		}
 		return st.Height, nil
+
+	// Calls pool software makes on every daemon it mines, merged-mined ones
+	// included, answered from the Aether chain in bitcoind's shapes.
+	case "getblocktemplate":
+		st, err := b.state(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return newBlockTemplate(st, time.Now().Unix()), nil
+	case "getdifficulty":
+		st, err := b.chain.State(ctx)
+		if err != nil {
+			return nil, &rpcError{rpcMiscError, err.Error()}
+		}
+		return float64(st.AuxDifficulty), nil
+	case "getmininginfo":
+		st, err := b.chain.State(ctx)
+		if err != nil {
+			return nil, &rpcError{rpcMiscError, err.Error()}
+		}
+		return map[string]any{
+			"blocks":     st.Height,
+			"difficulty": float64(st.AuxDifficulty),
+			"chain":      st.ChainID,
+		}, nil
+	case "validateaddress":
+		if err := need(1); err != nil {
+			return nil, err
+		}
+		return b.validateAddress(params[0]), nil
 	default:
 		return nil, errNoMethod
 	}

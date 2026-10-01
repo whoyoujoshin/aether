@@ -339,3 +339,60 @@ func TestCompact(t *testing.T) {
 	// Litecoin's genesis bits round-trip.
 	require.Equal(t, uint32(0x1e0ffff0), compact(compactTarget(0x1e0ffff0)))
 }
+
+// Calls pool software such as yiimp makes on a merged-mined daemon besides
+// the aux ones.
+func TestBridge_PoolCompatibilityCalls(t *testing.T) {
+	b, fc, srv := newTestBridge(t)
+	b.defaultReward = poolAddr
+
+	// getauxblock's target under Dogecoin's legacy name, same bytes.
+	res, rerr, _ := rpc(t, srv, "getauxblock")
+	require.Nil(t, rerr)
+	var ab auxBlock
+	require.NoError(t, json.Unmarshal(res, &ab))
+	require.Equal(t, ab.Target, ab.LegacyTarget)
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(res, &raw))
+	require.Contains(t, raw, "target")
+
+	res, rerr, _ = rpc(t, srv, "getblocktemplate")
+	require.Nil(t, rerr)
+	var tpl struct {
+		Height            int64          `json:"height"`
+		PreviousBlockHash string         `json:"previousblockhash"`
+		Transactions      []any          `json:"transactions"`
+		CoinbaseAux       map[string]any `json:"coinbaseaux"`
+		Target            string         `json:"target"`
+		Bits              string         `json:"bits"`
+		CoinbaseValue     int64          `json:"coinbasevalue"`
+	}
+	require.NoError(t, json.Unmarshal(res, &tpl))
+	require.Equal(t, fc.st.Height+1, tpl.Height)
+	require.Equal(t, hex.EncodeToString(rev(fc.st.BlockHash)), tpl.PreviousBlockHash)
+	require.NotNil(t, tpl.Transactions)
+	require.Empty(t, tpl.Transactions)
+	require.NotNil(t, tpl.CoinbaseAux)
+	be, _ := hex.DecodeString(tpl.Target)
+	require.Equal(t, auxTarget(testDiff), new(big.Int).SetBytes(be), "big-endian, as bitcoind's getblocktemplate")
+	require.Equal(t, ab.Bits, tpl.Bits)
+	require.Equal(t, ab.CoinbaseValue, tpl.CoinbaseValue)
+
+	res, _, _ = rpc(t, srv, "validateaddress", poolAddr.String())
+	require.JSONEq(t, `{"isvalid":true,"address":"`+poolAddr.String()+`","ismine":true}`, string(res))
+	other := sdk.AccAddress(bytes.Repeat([]byte{0x22}, 32)).String()
+	res, _, _ = rpc(t, srv, "validateaddress", other)
+	require.JSONEq(t, `{"isvalid":true,"address":"`+other+`","ismine":false}`, string(res))
+	res, _, _ = rpc(t, srv, "validateaddress", "Lnotaether")
+	require.JSONEq(t, `{"isvalid":false}`, string(res))
+
+	res, _, _ = rpc(t, srv, "getdifficulty")
+	require.Equal(t, "16", string(res))
+	res, _, _ = rpc(t, srv, "getmininginfo")
+	require.JSONEq(t, `{"blocks":20000010,"difficulty":16,"chain":"aether-testnet-1"}`, string(res))
+
+	// Below the activation height there's no template either.
+	fc.st.Height = pow.MergedMiningActivationHeight - 2
+	_, rerr, _ = rpc(t, srv, "getblocktemplate")
+	require.Equal(t, rpcNotActive, rerr.Code)
+}
