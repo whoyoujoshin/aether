@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -34,8 +33,6 @@ const maxRequestBytes = 1 << 20 // a proof is a few kilobytes
 // and namecoind do, plus unauthenticated GET /health and /metrics for
 // monitoring on the pool's private network.
 func (b *bridge) handler(user, password string) http.Handler {
-	wantUser := sha256.Sum256([]byte(user))
-	wantPass := sha256.Sum256([]byte(password))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", b.health)
 	mux.HandleFunc("/metrics", b.metrics)
@@ -45,8 +42,8 @@ func (b *bridge) handler(user, password string) http.Handler {
 			return
 		}
 		u, p, ok := r.BasicAuth()
-		gotUser, gotPass := sha256.Sum256([]byte(u)), sha256.Sum256([]byte(p))
-		if !ok || subtle.ConstantTimeCompare(gotUser[:], wantUser[:])&subtle.ConstantTimeCompare(gotPass[:], wantPass[:]) != 1 {
+		// Constant time over the contents; only a length mismatch returns early.
+		if !ok || subtle.ConstantTimeCompare([]byte(u), []byte(user))&subtle.ConstantTimeCompare([]byte(p), []byte(password)) != 1 {
 			w.Header().Set("WWW-Authenticate", `Basic realm="auxpowd"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
