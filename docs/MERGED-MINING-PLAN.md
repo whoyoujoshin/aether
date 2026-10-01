@@ -5,19 +5,20 @@ family under AuxPoW chain ID 17776. It earns the block reward and
 retargets difficulty, but never counts toward validator selection. Only
 native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
 
-**Status (2026-09-30):**
-- **Nothing sends real merged-mining work to Aether.**
-  - No pool integration exists.
-  - The only thing that has ever produced an AuxPoW proof is
-    `cmd/auxpowtest`, which grinds a made-up parent header.
+**Status (2026-10-01):**
+- **Nothing sends real merged-mining work to Aether yet.**
+  - The pool bridge, `cmd/auxpowd`, is built (M2) and proven end to end
+    on a devnet, against `cmd/auxpowtest --auxpowd` acting as the pool.
+    No real Litecoin node or pool has driven it yet (M3).
 - **Three problems in the chain's rules would stop a real pool** even
   with a bridge. They are listed below.
-- **All four chain changes are built:** A (byte order), B (template
-  binding), C (separate tracks) and D (parent chain ID). They share one
+- **All five chain changes are built:** A (byte order), B (template
+  binding), C (separate tracks), D (parent chain ID) and E (coinbase-only
+  commitment, committed nonce). They share one
   activation height, `MergedMiningActivationHeight`, deferred to
   20,000,000 until a release ships the bridge and sets a real height.
   (It was a 1,000,000 placeholder, which the testnet would have reached
-  in November 2026.) The bridge is next.
+  in November 2026.) A real Litecoin node and pool are next (M3).
 
 ## What the code shows
 
@@ -112,12 +113,33 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
 whose version carries Aether's own AuxPoW chain ID, as the reference
 implementation does.
 
-A, B, C and D change which submissions are accepted, so they share one
+**E. Two more reference checks: built.** Found while building the
+bridge. From `MergedMiningActivationHeight`, `CheckAuxPow` also requires,
+as the reference implementation does:
+- **the commitment to be in the parent's coinbase** (coinbase branch
+  index 0). Any other transaction's first input is written by whoever
+  sends it, so without this anyone could get an ordinary parent-chain
+  transaction carrying their own commitment into a block, and be paid
+  for that block's work;
+- **`chain_nonce` to be the nonce the coinbase commits to.** It picks
+  Aether's slot in a multi-chain tree, so it can't be a free choice.
+
+A, B, C, D and E change which submissions are accepted, so they share one
 coordinated activation height, like the earlier cutovers.
 
-## The bridge: `cmd/auxpowd`
+## The bridge: `cmd/auxpowd` (built)
 
-A small service that each pool runs beside its Litecoin node.
+A small service that each pool runs beside its Litecoin node:
+
+```
+auxpowd --from bridge --rpc-user pool --rpc-password-file /etc/auxpowd.pass \
+  --node http://127.0.0.1:26657 --grpc 127.0.0.1:9090 --listen 10.0.0.5:8336
+```
+
+`--from` is an ML-DSA key in the node's keyring (`--home`, default
+`~/.aether`). It signs the submissions and pays only their fee (`--fees`,
+zero by default), so it needs no funds beyond having an account.
+`--reward-address` sets who the legacy argument-less `getauxblock` pays.
 
 - **RPC.** It speaks the merged-mining RPC that Namecoin and Dogecoin
   already use, so pool software needs configuration, not code:
@@ -125,7 +147,12 @@ A small service that each pool runs beside its Litecoin node.
     `previousblockhash`, `coinbasevalue`, `bits`, a little-endian
     `_target` and `height`;
   - `submitauxblock <hash> <auxpow hex>`;
-  - legacy `getauxblock`.
+  - legacy `getauxblock`;
+  - `getblockcount`, the Aether tip;
+  - batches, and bitcoind's HTTP status codes.
+  - `coinbasevalue` is the merged share of the reward (1.25 AETH of 5 at
+    the default 2,500 bps), what a proof earns while native mining is
+    active. A merged track mining alone earns the whole reward.
 - **Templates.**
   - Reads the latest Aether block and the AuxPoW difficulty from a node.
   - Builds one template per Aether block, bound to the requested reward
@@ -137,23 +164,50 @@ A small service that each pool runs beside its Litecoin node.
     coinbase branch, chain branch, parent header) into `AuxPowData`.
   - Runs `CheckAuxPow` locally first.
   - Signs a `MsgSubmitPoW` with its own ML-DSA-44 key and broadcasts it.
-  - Reports "a submission was already accepted this block" as a stale
-    share, not an error.
+  - Sends at most one submission per Aether block, since each block takes
+    one. A later proof for the same block, or one whose slot another
+    submission took on chain, counts as a stale share, not an error.
+  - Follows each transaction into a block and logs it as accepted (with
+    the address paid), stale or refused.
+  - Refuses work below `MergedMiningActivationHeight`, where the chain
+    would pay the bridge's own key rather than the pool.
 - **Operations.** An RPC username and password (the same model as
-  `litecoind`), binding to the pool's private network only, a health
-  endpoint, and metrics for accepted and stale shares.
+  `litecoind`), binding to the pool's private network only, `GET /health`
+  (503 until merged mining is active or while the node is unreachable),
+  and Prometheus counters at `GET /metrics`:
+  `auxpowd_templates_total` and `auxpowd_shares_total` by outcome
+  (invalid, stale, submitted, accepted, rejected, failed).
 
 ## Testing
 
 - **Unit tests:**
-  - parse real Dogecoin and Namecoin AuxPoW test vectors;
+  - the bridge's parser on three real Dogecoin blocks merged-mined with
+    Litecoin (371,337, 748,634 and 894,863): every hash and branch
+    matches libdohj's expected values, the coinbase commits to the
+    Dogecoin block at the slot its nonce picks, and the Litecoin parent's
+    scrypt work meets Dogecoin's target read little-endian (done);
   - the byte-order regression (done, for change A);
   - rejection of stolen, replayed and stale-template proofs (done, for
     change B);
   - separate difficulty tracks, slots and reward shares (done, for
     change C);
-  - the chain-ID check (done, for change D).
-- **End to end on regtest:**
+  - the chain-ID check (done, for change D);
+  - the coinbase-only and committed-nonce checks (done, for change E);
+  - the bridge's RPC against a fake chain: a pool's round trip, refused
+    and stale work, the activation gate, auth, batches and metrics (done).
+- **End to end on a devnet (done, 2026-10-01).** `aetherd` and `auxpowd`
+  built with the activation height at 5 (a local patch, not committed),
+  and `cmd/auxpowtest --auxpowd` as the pool: it asks for work, mines a
+  Litecoin-style parent and submits the standard serialization.
+  - Before height 5 the bridge handed out no work (`/health` 503).
+  - Three proofs were accepted and paid 4.25 AETH each (the 5 AETH reward
+    less the 15% cut) to the pool's address, which had no account before.
+    The bridge's key paid nothing.
+  - With `cmd/powminer` mining natively at the same time, each proof paid
+    the 25% share (1.0625 AETH after the cut), native submissions kept
+    landing, and the two difficulties moved apart (91,912 merged, 589,824
+    native).
+- **End to end on regtest (M3):**
   - Setup: `litecoind -regtest`, plus a stratum pool with merged mining
     enabled, pointed at `auxpowd` on an Aether devnet.
   - Pass means rewards land at the pool's address, and a native miner
@@ -162,9 +216,9 @@ A small service that each pool runs beside its Litecoin node.
 
 ## Milestones
 
-1. **M1: chain changes A–D, with tests.** Done.
+1. **M1: chain changes A–E, with tests.** Done.
    This is the consensus-critical part.
-2. **M2: `cmd/auxpowd`.**
+2. **M2: `cmd/auxpowd`.** Done, and proven on a devnet.
 3. **M3: regtest end to end** with a real Litecoin node and pool.
 4. **M4: testnet cutover and a pool trial.**
 
