@@ -331,10 +331,14 @@ Nodes running this binary halt once at the activation height (`CONSENSUS FAILURE
 
 ## Registering as a validator
 
+Run this on the validator node itself:
+
 ```bash
-go run ./cmd/validatorkeygen --miner <your-bech32-address>
+go run ./cmd/validatorkeygen --miner <your-bech32-address> --home <the node's home>
 # then run the aetherd tx pow register-validator-pubkey command it prints
 ```
+
+It registers the node's own consensus key, read from `<home>/config/priv_validator_key.json`: the key the node signs blocks with. Register any other key and the miner becomes a validator nothing signs for. `--new-key` generates a fresh key instead and prints the `priv_validator_key.json` to install on the node first.
 
 Mine and submit successfully within an epoch to accumulate native work. At the epoch boundary (1440 blocks), Top-K (21) by native work become the active set. Downtime (>50% missed signatures in a 60-block window) causes temporary removal; equivocation causes permanent ban and escrow burn.
 
