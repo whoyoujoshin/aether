@@ -96,7 +96,7 @@ Plus idempotent tx submit helpers with clear application codes for wait-window a
 
 1. **Create and fund** an `aether1...` account (disposable test funds only on testnet).
 2. **Run or sync** `aetherd` (or carefully use public RPC for queries; prefer your own node for validation).
-3. **Register** the node's ed25519 consensus pubkey with PoP (`validatorkeygen`, then the printed `tx pow register-validator-pubkey`).
+3. **Register** the node's ed25519 consensus pubkey with PoP (`validatorkeygen --home <node home>` on the node, which reads its `priv_validator_key.json`, then the printed `tx pow register-validator-pubkey`).
 4. **Mine native PoW** each epoch with `powminer` (auto-submit / loop). Accumulate at least one accepted native submission before the epoch boundary if you intend Top-K eligibility.
 5. **Stay online** if selected: Top-K validators must sign; downtime rules can remove you temporarily.
 

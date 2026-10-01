@@ -14,8 +14,10 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
   with a bridge. They are listed below.
 - **All four chain changes are built:** A (byte order), B (template
   binding), C (separate tracks) and D (parent chain ID). They share one
-  placeholder activation height, `MergedMiningActivationHeight`. The
-  bridge is next.
+  activation height, `MergedMiningActivationHeight`, deferred to
+  20,000,000 until a release ships the bridge and sets a real height.
+  (It was a 1,000,000 placeholder, which the testnet would have reached
+  in November 2026.) The bridge is next.
 
 ## What the code shows
 
@@ -51,8 +53,8 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
 ## Chain changes (one height-gated cutover)
 
 **A. Byte order: built.**
-- From `MergedMiningActivationHeight` (`x/pow/types.go`, a
-  placeholder), the parent's scrypt hash is read little-endian before the
+- From `MergedMiningActivationHeight` (`x/pow/types.go`, deferred
+  for now), the parent's scrypt hash is read little-endian before the
   difficulty comparison (`parentPoWHash` in `x/pow/auxpow.go`).
 - Below that height the old rule applies, so history replays unchanged.
 - Native submissions keep Aether's own convention.
