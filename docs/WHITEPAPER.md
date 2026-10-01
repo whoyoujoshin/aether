@@ -269,7 +269,7 @@ In-repository sources of truth for the parameters in this document:
 4. `crypto/mldsa` — ML-DSA-44, ADR-028 addressing, `PostQuantumDecorator`
 5. `testnet/genesis.json` — live testnet genesis parameters
 6. `go.mod` — Go 1.24; Cosmos SDK v0.50.12; CometBFT v0.38.12; circl v1.6.4
-7. `cmd/powminer`, `cmd/auxpowtest`, `cmd/validatorkeygen`, `cmd/equivocationtest` — operational and verification tooling
+7. `cmd/powminer`, `cmd/auxpowd` (merged-mining pool bridge), `cmd/auxpowtest`, `cmd/validatorkeygen`, `cmd/equivocationtest` — operational and verification tooling
 8. Project wiki — design decision records, known issues, architecture notes
 
 External standards:

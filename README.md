@@ -369,7 +369,7 @@ It checks every `--interval` (30s) and does nothing until a new block. With `--s
 
 ## Merged mining (AuxPoW)
 
-Litecoin/Dogecoin-family AuxPoW (chain ID **17776**) may satisfy PoW and earn the reward + retarget difficulty. **Only native work counts toward Top-K.** See `cmd/auxpowtest` and the whitepaper.
+Litecoin/Dogecoin-family AuxPoW (chain ID **17776**) may satisfy PoW and earn the reward + retarget difficulty. **Only native work counts toward Top-K.** Pools connect through `cmd/auxpowd`, a bridge speaking the merged-mining RPC Namecoin and Dogecoin use (`createauxblock` / `submitauxblock`); it hands out work from `MergedMiningActivationHeight`. Plan and status: [docs/MERGED-MINING-PLAN.md](docs/MERGED-MINING-PLAN.md). See also `cmd/auxpowtest` and the whitepaper.
 
 ## Block reward schedule
 
@@ -424,7 +424,8 @@ aetherd query governance proposal <proposal-id>
 | `clients/vectors` | Generates the shared test vectors both clients are checked against |
 | `cmd/powminer` | Native PoW nonce search against live state |
 | `cmd/minerwatch` | Webhook alerts for a miner or validator: submissions, selection, balance, stalls |
-| `cmd/auxpowtest` | Valid test AuxPoW construction |
+| `cmd/auxpowd` | Merged-mining bridge for Litecoin pools (`createauxblock` / `submitauxblock`) |
+| `cmd/auxpowtest` | Valid test AuxPoW construction; `--auxpowd` acts as a pool against the bridge |
 | `cmd/scryptbench` | Scrypt throughput benchmarks |
 | `cmd/validatorkeygen` | Consensus key + PoP for registration |
 | `cmd/balancecheck` | gRPC bank balance helper |

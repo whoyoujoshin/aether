@@ -12,6 +12,11 @@
 // Usage:
 //   go run ./cmd/auxpowtest --difficulty 4 --output auxpow.json
 //
+// With --auxpowd it acts as a merge-mining pool against cmd/auxpowd
+// instead (pool.go):
+//   go run ./cmd/auxpowtest --auxpowd http://127.0.0.1:8336 --rpc-user pool \
+//     --rpc-password ... --reward-address aether1... --rounds 3
+//
 // --byte-order picks how the parent's scrypt hash is read against the
 // difficulty, and must match the rule the chain applies at the height
 // the submission lands: "legacy" (the raw bytes big-endian, the default,
@@ -36,6 +41,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"time"
 
 	"github.com/cosmos/cosmos-sdk/types/bech32"
 	"golang.org/x/crypto/scrypt"
@@ -188,7 +194,23 @@ func main() {
 	templateBlockHash := flag.String("template-block-hash", "", "hex block hash of the Aether block at --template-height")
 	rewardAddress := flag.String("reward-address", "", "aether1... address the reward goes to, committed in the proof")
 	aetherChainID := flag.String("aether-chain-id", "aether-testnet-1", "Aether chain ID the template commits to")
+	auxpowdURL := flag.String("auxpowd", "", "act as a pool against this cmd/auxpowd JSON-RPC URL instead of writing a file (see pool.go); needs --reward-address")
+	rpcUser := flag.String("rpc-user", "", "auxpowd JSON-RPC username (--auxpowd)")
+	rpcPassword := flag.String("rpc-password", "", "auxpowd JSON-RPC password (--auxpowd)")
+	rounds := flag.Int("rounds", 1, "proofs to mine and submit (--auxpowd)")
+	wait := flag.Duration("wait", 10*time.Second, "pause between rounds, so each lands in its own block (--auxpowd)")
 	flag.Parse()
+	if *auxpowdURL != "" {
+		if *rewardAddress == "" {
+			fmt.Fprintln(os.Stderr, "--auxpowd needs --reward-address")
+			os.Exit(2)
+		}
+		if err := runPool(*auxpowdURL, *rpcUser, *rpcPassword, *rewardAddress, *rounds, *wait); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *byteOrder != "litecoin" && *byteOrder != "legacy" {
 		fmt.Fprintf(os.Stderr, "--byte-order must be litecoin or legacy, not %q\n", *byteOrder)
 		os.Exit(2)
