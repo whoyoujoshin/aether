@@ -378,9 +378,18 @@ const ConsensusKeyGuardActivationHeight int64 = 161_000
 //
 // It changes which submissions are accepted, so every node needs a
 // binary carrying it before this height, and a fresh replay must see the
-// old rule below it. PLACEHOLDER: replace with a height agreed with the
-// operators and confirmed against the live tip before the cutover.
-const MergedMiningActivationHeight int64 = 1_000_000
+// old rule below it.
+//
+// Deferred, not scheduled: 20,000,000 is nearly four years out at the
+// testnet's ~6 s blocks. No pool sends merged work yet and the bridge
+// (cmd/auxpowd) isn't built, so the rules wait for a release that ships
+// it and sets a height agreed with the operators and confirmed against
+// the live tip. Earlier binaries carried 1,000,000 as a placeholder, which
+// the live chain would have reached in November 2026; as with
+// RandomnessBeaconActivationHeight, every node only has to run a binary
+// carrying the new value before then, with no halt. It stays above the
+// beacon's height so the two keep the order their tests assume.
+const MergedMiningActivationHeight int64 = 20_000_000
 
 // RandomnessBeaconActivationHeight gates Phase 3 of
 // aether-randomness-beacon-design.md (see beacon.go): the
