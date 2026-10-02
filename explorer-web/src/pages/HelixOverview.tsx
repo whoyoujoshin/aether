@@ -55,10 +55,10 @@ function cards(helix: Helix, stats: Stats | null, view: ChainView): StrandCard[]
     color: "#f3efe6",
     border: "var(--border)",
     stats: [
-      ["Packets sent", br ? int(br.packetsSent) : "—"],
+      ["Packets 24h", br ? int(br.packetsSent) : "—"],
       ["In flight", br ? int(br.inFlight) : "—"],
       ["Avg relay", br && br.avgRelaySecs ? `${br.avgRelaySecs.toFixed(1)}s` : "—"],
-      ["AETH locked", br ? compact(Number(br.escrowedUaeth) / 1e6) : "—"],
+      ["AETH bridged", br ? compact(Number(br.escrowedUaeth) / 1e6) : "—"],
     ],
   };
   const out: StrandCard[] = [];
@@ -94,7 +94,7 @@ export default function HelixOverview() {
   const h = helix.data;
   const name = h?.ibc?.name ?? ibcName ?? "IBC";
 
-  const title = view === "both" ? "Aether helix" : view === "aether" ? "Aether overview" : `${name} overview`;
+  const title = !h?.ibc || view === "both" ? "Aether helix" : view === "aether" ? "Aether overview" : `${name} overview`;
   const blocks = h ? mergedBlocks(h, view).slice(0, 7) : [];
   const maxTxs = Math.max(1, ...blocks.map((b) => b.numTxs));
 
@@ -120,12 +120,17 @@ export default function HelixOverview() {
               <span className="h" style={{ color: AETHER_COLOR }}>#{h ? int(h.aether.height) : "—"}</span>
               <span className="meta">PoW · {h ? blockTimeLabel(h.aether.blockTimeSecs) : "—"}</span>
             </div>
-            {h?.ibc && (
+            {h?.ibc ? (
               <div className="strand" style={{ opacity: view === "aether" ? 0.3 : 1 }}>
                 <span className="dot" style={{ background: IBC_COLOR, boxShadow: `0 0 10px ${IBC_COLOR}` }} />
                 <span className="name">{name}</span>
                 <span className="h" style={{ color: IBC_COLOR }}>#{int(h.ibc.height)}</span>
                 <span className="meta">BFT · {blockTimeLabel(h.ibc.blockTimeSecs)}</span>
+              </div>
+            ) : (
+              <div className="strand" style={{ opacity: 0.55 }}>
+                <span className="dot" style={{ border: `1.5px dashed ${IBC_COLOR}`, background: "transparent" }} />
+                <span className="meta">no IBC chain connected</span>
               </div>
             )}
             <div className="rung">
