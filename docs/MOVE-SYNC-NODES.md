@@ -94,7 +94,7 @@ sudo apt-get update && sudo apt-get install -y jq rsync build-essential
 # Go 1.25 (same as the seed), then:
 git clone https://github.com/whoyoujoshin/aether /root/aether
 cd /root/aether && go build -o /usr/local/bin/aetherd ./cmd/aetherd
-grep -n "SmoothRetargetActivationHeight int64 = 350_000" x/pow/retarget.go   # must show
+grep -n "October2026UpgradeHeight int64 = 225_000" x/pow/types.go   # must show
 sha256sum /usr/local/bin/aetherd     # same as the rolling-upgrade binary
 sudo ufw allow 22/tcp && sudo ufw allow 26656/tcp && sudo ufw --force enable
 ```

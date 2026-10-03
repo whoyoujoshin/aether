@@ -22,11 +22,10 @@ import (
 //
 // It changes the difficulty every later share is checked against, so
 // every node needs a binary carrying it before this height, and a fresh
-// replay must see the old rule below it. 350,000 was chosen on 3 October
-// at height ~192,500: about nine days at ~5 s blocks, twelve at ~6.7 s,
-// inside the rolling upgrade that already has to finish before 500,000
-// (docs/UPGRADE-2026-10.md).
-const SmoothRetargetActivationHeight int64 = 350_000
+// replay must see the old rule below it. It switches on with the rest
+// of the October 2026 upgrade (October2026UpgradeHeight); PR #78 first
+// set it to 350,000.
+const SmoothRetargetActivationHeight int64 = October2026UpgradeHeight
 
 // DifficultyHalfLife is how far, in seconds, the shares must run behind
 // (or ahead of) one per TargetBlockTime for asertDifficulty to halve (or

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"math/big"
@@ -303,7 +304,7 @@ func TestBridge_HTTP(t *testing.T) {
 	res, rerr, status := rpc(t, srv, "getblockcount")
 	require.Nil(t, rerr)
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, "20000010", string(res))
+	require.Equal(t, fmt.Sprint(pow.MergedMiningActivationHeight+10), string(res))
 
 	_, rerr, status = rpc(t, srv, "sendtoaddress", "x")
 	require.Equal(t, http.StatusNotFound, status)
@@ -407,7 +408,7 @@ func TestBridge_PoolCompatibilityCalls(t *testing.T) {
 	res, _, _ = rpc(t, srv, "getdifficulty")
 	require.Equal(t, "16", string(res))
 	res, _, _ = rpc(t, srv, "getmininginfo")
-	require.JSONEq(t, `{"blocks":20000010,"difficulty":16,"chain":"aether-testnet-1"}`, string(res))
+	require.JSONEq(t, fmt.Sprintf(`{"blocks":%d,"difficulty":16,"chain":"aether-testnet-1"}`, pow.MergedMiningActivationHeight+10), string(res))
 
 	// Below the activation height there's no template either.
 	fc.st.Height = pow.MergedMiningActivationHeight - 2
