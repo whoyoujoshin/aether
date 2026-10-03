@@ -507,6 +507,8 @@ func main() {
 	flag.StringVar(&publicSeed, "public-seed", "", "seed node (id@host:port) to advertise (default: the public testnet's on aether-testnet-1)")
 	flag.StringVar(&ibcRPCEndpoint, "ibc-rpc", "", "CometBFT RPC of the chain on the other end of Aether's IBC transfer channel: draws it as the helix's second strand (empty: Aether only)")
 	flag.StringVar(&ibcName, "ibc-name", "", "display name for that chain (default: its chain ID)")
+	flag.StringVar(&faucetAPI, "faucet-api", "", "faucet the Faucet page uses through /api/faucet/, e.g. http://127.0.0.1:8080 (it must trust this explorer in its --trusted-proxies); empty: shown as unavailable")
+	flag.StringVar(&nodeLocationsPath, "node-locations", "", "JSON file placing validators and miners on the Validators globe (see docs/EXPLORER-LOCATIONS.md); empty: no globe")
 	usdcChannel := flag.String("usdc-channel", "", "Aether's end of its channel to Noble (e.g. channel-3): labels Noble USDC over exactly that channel; empty: other tokens show by denom")
 	flag.Parse()
 	var err error
@@ -528,6 +530,9 @@ func main() {
 		mux.HandleFunc(rt.path, withCORS(rt.handler))
 	}
 	mux.HandleFunc("/api/openapi.json", withCORS(handleOpenAPI))
+	if err := registerFaucetProxy(mux); err != nil {
+		log.Fatalf("--faucet-api: %v", err)
+	}
 	mux.HandleFunc("/llms.txt", handleLLMsTxt)
 
 	// Optional: serve explorer-web's built static assets from the same

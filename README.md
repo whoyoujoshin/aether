@@ -178,6 +178,11 @@ It's built for bots as well as people:
 - Each address is funded once per `--cooldown-minutes` (60), and each caller (client IP) funds at most `--caller-limit` (20) addresses per `--caller-window-minutes` (60). Behind a reverse proxy, list it in `--trusted-proxies` (default: localhost) so `X-Forwarded-For` names the real caller; the header is ignored from anyone else.
 - Every answer has a stable `code` (`sent`, `pending`, `address_cooldown`, `caller_limit`, `invalid_address`, `batch_too_large`, `invalid_request`, `send_failed`) and the caller's quota in `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`; a 429 also has `Retry-After`. A failed send gives back both the cooldown and the quota.
 - `--gas-price` (e.g. `0.0001uaeth`) pays fees for a node with `--minimum-gas-prices`.
+- **Where requests come from.** Each drip is tagged by source and kept in `--drip-log` (JSON lines, default `<keyring dir>/faucet-drips.jsonl`), so the explorer's Faucet page can show who's creating wallets:
+  - `web`: a browser that solved a small proof of work. `GET /challenge?address=` returns a challenge and `bits`; the page finds a nonce where `sha256(challenge + ":" + nonce)` starts with that many zero bits (`--pow-bits`, 18 by default, about a second) and sends `{"address", "pow":{"challenge","nonce"}}`.
+  - `agent`: a request signed with a self-registered agent key. Register an ed25519 public key once with `POST /agents {"name":"my-bot","public_key":"<base64>"}` to get an `agent_id`, then send `X-Aether-Agent: <agent_id>`, `X-Aether-Agent-Timestamp: <unix seconds>` and `X-Aether-Agent-Signature: base64(ed25519(timestamp + "\n" + body))`. Agents get their own quota (`--agent-limit`, 100 per window) instead of their IP's; registry in `--agent-registry`.
+  - `api`: neither, on the per-IP limit as before.
+- A drip to an address the chain had no account for counts as a **new wallet** (single requests answer `"new_wallet": true`). `GET /stats` sums drips, wallets funded and created, sources over 30 days, new wallets per day and the top agents; `GET /drips?limit=` lists the newest. `"strand":"ibc"` answers `ibc_unavailable` until the Osmosis channel opens.
 
 ## Block explorer
 
@@ -191,6 +196,8 @@ Open `http://localhost:8081`.
 
 To redeploy the live explorer from `main`, run `bash scripts/deploy-explorer.sh` as root on the server that hosts it. It builds while the old version keeps serving, keeps backups, restarts `aether-explorer` and rolls back if the new one doesn't answer.
 
+
+The Faucet page talks to the faucet through the explorer: run it with `--faucet-api http://127.0.0.1:8080` (the faucet must trust the explorer's address in `--trusted-proxies`, localhost by default). The Validators globe shows what `--node-locations` publishes; see [docs/EXPLORER-LOCATIONS.md](docs/EXPLORER-LOCATIONS.md).
 ## AI agent wallet (MCP)
 
 An MCP server exposing wallet operations as tool calls, so an AI agent can pay and get paid directly instead of only a human clicking through a UI.

@@ -7,7 +7,7 @@ async function getJSON<T>(path: string): Promise<T> {
   const res = await fetch(path);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `request failed: ${res.status}`);
+    throw new Error(body.error || body.message || `request failed: ${res.status}`);
   }
   return res.json();
 }
@@ -406,6 +406,84 @@ export interface Helix {
   errors?: Record<string, string>;
 }
 
+// --- the faucet, through the explorer's /api/faucet/ (cmd/faucet) ---
+
+export type DripSource = "web" | "agent" | "api";
+
+export interface SourceCounts {
+  agent: number;
+  web: number;
+  api: number;
+}
+
+export interface FaucetStats {
+  drips: number;
+  sent_uaeth: number;
+  unique_wallets: number;
+  new_wallets: number;
+  new_wallets_by_agents: number;
+  since?: string;
+  sources_30d: SourceCounts;
+  new_wallets_daily: (SourceCounts & { date: string })[];
+  top_agents_30d: { agent_id: string; name: string; new_wallets: number; drips: number }[] | null;
+  amount_uaeth: number;
+  address_cooldown_secs: number;
+  ibc_enabled: boolean;
+  pow_bits: number;
+  balance_uaeth?: number;
+}
+
+export interface Drip {
+  time: string;
+  tx_hash: string;
+  address: string;
+  amount_uaeth: number;
+  strand: string;
+  source: DripSource;
+  agent_id?: string;
+  agent_name?: string;
+  new_wallet: boolean;
+}
+
+export interface FaucetChallenge {
+  challenge: string;
+  bits: number;
+  expires_at: string;
+}
+
+export interface FaucetReply {
+  success: boolean;
+  code: string;
+  message: string;
+  tx_hash?: string;
+  retry_after_seconds?: number;
+  new_wallet?: boolean;
+}
+
+async function faucetRequest(body: unknown): Promise<FaucetReply> {
+  const res = await fetch("/api/faucet/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const reply = (await res.json().catch(() => null)) as FaucetReply | null;
+  if (!reply) throw new Error(`faucet answered ${res.status}`);
+  return reply;
+}
+
+// --- where nodes run, from the explorer's --node-locations file ---
+
+export interface NodeLocation {
+  address: string; // miner account
+  label?: string;
+  city?: string;
+  country: string;
+  region: string;
+  lat: number;
+  lon: number;
+  precision: "city" | "country";
+}
+
 export const api = {
   stats: () => getJSON<Stats>("/api/stats"),
   validators: () => getJSON<ValidatorInfo[]>("/api/validators"),
@@ -428,4 +506,10 @@ export const api = {
   agents: () => getJSON<AgentCard>("/api/agents"),
   assets: () => getJSON<{ assets: AssetInfo[] }>("/api/assets"),
   helix: (seconds = 96, min = 0) => getJSON<Helix>(`/api/helix?seconds=${seconds}&min=${min}`),
+  locations: () => getJSON<{ locations: NodeLocation[] }>("/api/locations"),
+  faucetStats: () => getJSON<FaucetStats>("/api/faucet/stats"),
+  faucetDrips: (limit = 20) => getJSON<{ drips: Drip[] | null }>(`/api/faucet/drips?limit=${limit}`),
+  faucetChallenge: (address: string) =>
+    getJSON<FaucetChallenge>(`/api/faucet/challenge?address=${encodeURIComponent(address)}`),
+  faucetRequest,
 };

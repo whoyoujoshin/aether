@@ -43,6 +43,7 @@ const links: [string, string][] = [
   ["/governance", "Governance"],
   ["/services", "Services"],
   ["/agents", "For agents"],
+  ["/faucet", "Faucet"],
 ];
 
 /** home: the overview's variant, with the search in the hero instead of the bar. */

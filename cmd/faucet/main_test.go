@@ -23,6 +23,7 @@ type fakeChain struct {
 	code     uint32 // DeliverTx result
 	unknown  bool   // confirm times out
 	nextHash int
+	accounts map[string]bool // addresses the chain already has an account for
 }
 
 func testServer(t *testing.T, callerLimit int) (*faucetServer, *fakeChain, *time.Time) {
@@ -30,8 +31,24 @@ func testServer(t *testing.T, callerLimit int) (*faucetServer, *fakeChain, *time
 	clock := time.Unix(1_700_000_000, 0)
 	l := newLimiter(time.Hour, callerLimit, time.Hour)
 	l.now = func() time.Time { return clock }
-	chain := &fakeChain{}
+	chain := &fakeChain{accounts: map[string]bool{}}
+	drips, _ := openLedger("")
+	agents, _ := openAgentRegistry("")
+	agents.now = func() time.Time { return clock }
+	pow := newPowIssuer(8)
+	pow.now = func() time.Time { return clock }
 	f := &faucetServer{
+		ledger:    drips,
+		pow:       pow,
+		agents:    agents,
+		regLimits: newLimiter(0, 5, time.Hour),
+		now:       func() time.Time { return clock },
+		accountExists: func(a string) (bool, error) {
+			chain.mu.Lock()
+			defer chain.mu.Unlock()
+			return chain.accounts[a], nil
+		},
+		balance:     func() (int64, error) { return 5_000_000_000, nil },
 		limits:      l,
 		trusted:     parseTrusted("127.0.0.1"),
 		batchMax:    5,

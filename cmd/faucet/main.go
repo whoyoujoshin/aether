@@ -11,6 +11,16 @@
 //	GET  /status?address=   whether an address can be funded now, and when if not
 //	POST /request           {"address":"aether1..."}
 //	POST /request/batch     {"addresses":["aether1...", ...]}: one transaction for all
+//	GET  /challenge?address= a small proof of work a browser solves (pow.go)
+//	POST /agents            {"name","public_key"}: register an agent key (agents.go)
+//	GET  /stats             drips, wallets funded and created, by source
+//	GET  /drips?limit=      the newest drips
+//
+// Each drip is tagged with where its request came from: a browser that
+// solved a /challenge ("web"), a request signed with a registered agent
+// key ("agent", with its own quota), or neither ("api", held to the
+// per-IP limit). A drip to an address the chain had no account for is
+// a new wallet. Drips are kept in --drip-log so /stats survives restarts.
 //
 // Every answer has a stable "code" and carries the caller's quota as
 // RateLimit-* headers; a 429 carries Retry-After.
@@ -24,6 +34,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -40,6 +51,8 @@ import (
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	"github.com/whoyoujoshin/aether/wallet"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func init() {
@@ -59,6 +72,9 @@ const (
 	codeAddressCooldown = "address_cooldown" // funded too recently; see retry_after_seconds
 	codeCallerLimit     = "caller_limit"     // this caller's quota is used up; see retry_after_seconds
 	codeSendFailed      = "send_failed"      // nothing was sent; safe to retry
+	codeInvalidPow      = "invalid_pow"      // the /challenge solution doesn't check out; fetch a new one
+	codeInvalidAgent    = "invalid_agent"    // agent headers present but unknown key, bad signature or clock skew
+	codeIBCUnavailable  = "ibc_unavailable"  // strand "ibc": no IBC drips until the Osmosis channel is open
 )
 
 // Gas for a transaction paying n addresses: one send keeps the 400,000
@@ -92,6 +108,24 @@ type faucetServer struct {
 	// send and confirm are sendCoins and confirmTxOnChain, or fakes in tests.
 	send    func(addresses []string) (string, error)
 	confirm func(txHash string) (*wallet.TransactionDetail, error)
+
+	ledger    *ledger
+	pow       *powIssuer
+	agents    *agentRegistry
+	regLimits *limiter // agent registrations per IP
+	// accountExists reports whether the chain has an account at an
+	// address; a drip to one that doesn't is a new wallet.
+	accountExists func(address string) (bool, error)
+	// balance is the faucet account's uaeth, for /stats.
+	balance func() (int64, error)
+	now     func() time.Time
+}
+
+// origin is who a request is from, for limits and the drip log.
+type origin struct {
+	caller string // limiter identity: client IP, or agentCallerPrefix + key id
+	source string
+	agent  agentKey
 }
 
 type skippedAddress struct {
@@ -109,6 +143,9 @@ type responseBody struct {
 	Sent              []string         `json:"sent,omitempty"`
 	Skipped           []skippedAddress `json:"skipped,omitempty"`
 	Invalid           []string         `json:"invalid,omitempty"`
+	// NewWallet, on a single request's "sent": the chain had no account
+	// at the address before this drip.
+	NewWallet *bool `json:"new_wallet,omitempty"`
 }
 
 // reply writes body with the caller's current quota in the headers,
@@ -123,25 +160,77 @@ func (f *faucetServer) reply(w http.ResponseWriter, caller string, status int, b
 	json.NewEncoder(w).Encode(body)
 }
 
-// POST /request {"address":"aether1..."}
+// POST /request {"address":"aether1...", "strand":"aether",
+// "pow":{"challenge":"...","nonce":"..."}}; strand and pow optional.
 func (f *faucetServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 	caller := clientIP(r, f.trusted)
 	if r.Method != http.MethodPost {
 		f.reply(w, caller, http.StatusMethodNotAllowed, responseBody{Code: codeInvalidRequest, Message: "use POST"})
 		return
 	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<10))
 	var req struct {
 		Address string `json:"address"`
+		Strand  string `json:"strand"`
+		Pow     *struct {
+			Challenge string `json:"challenge"`
+			Nonce     string `json:"nonce"`
+		} `json:"pow"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
+	if err != nil || json.Unmarshal(body, &req) != nil {
 		f.reply(w, caller, http.StatusBadRequest, responseBody{Code: codeInvalidRequest, Message: "invalid request body"})
 		return
 	}
-	if !bech32Pattern.MatchString(req.Address) {
-		f.reply(w, caller, http.StatusBadRequest, responseBody{Code: codeInvalidAddress, Message: "invalid address format"})
+	o, ok := f.originOf(w, r, caller, body)
+	if !ok {
 		return
 	}
-	f.dispense(w, caller, []string{req.Address}, false)
+	if !bech32Pattern.MatchString(req.Address) {
+		f.reply(w, o.caller, http.StatusBadRequest, responseBody{Code: codeInvalidAddress, Message: "invalid address format"})
+		return
+	}
+	if !f.strandOK(w, o.caller, req.Strand) {
+		return
+	}
+	if req.Pow != nil && o.source != sourceAgent {
+		if err := f.pow.redeem(req.Pow.Challenge, req.Pow.Nonce, req.Address); err != nil {
+			f.reply(w, o.caller, http.StatusBadRequest, responseBody{Code: codeInvalidPow, Message: err.Error()})
+			return
+		}
+		o.source = sourceWeb
+	}
+	f.dispense(w, o, []string{req.Address}, false)
+}
+
+// originOf works out who's asking: a verified agent, or the client IP.
+// It answers the request itself, and returns false, when agent headers
+// are present but don't verify.
+func (f *faucetServer) originOf(w http.ResponseWriter, r *http.Request, ip string, body []byte) (origin, bool) {
+	k, claimed, err := f.agents.verify(r.Header, body)
+	if !claimed {
+		return origin{caller: ip, source: sourceAPI}, true
+	}
+	if err != nil {
+		f.reply(w, ip, http.StatusUnauthorized, responseBody{Code: codeInvalidAgent, Message: err.Error()})
+		return origin{}, false
+	}
+	return origin{caller: agentCallerPrefix + k.ID, source: sourceAgent, agent: k}, true
+}
+
+// strandOK accepts the Aether strand. IBC drips (to an address on the
+// counterparty chain) wait for the Osmosis channel; until then they're
+// refused with a code a page can show.
+func (f *faucetServer) strandOK(w http.ResponseWriter, caller, strand string) bool {
+	switch strand {
+	case "", strandAether:
+		return true
+	case "ibc":
+		f.reply(w, caller, http.StatusBadRequest, responseBody{Code: codeIBCUnavailable,
+			Message: "IBC drips open with the Osmosis channel; use strand \"aether\" for now"})
+	default:
+		f.reply(w, caller, http.StatusBadRequest, responseBody{Code: codeInvalidRequest, Message: `strand: "aether" or "ibc"`})
+	}
+	return false
 }
 
 // POST /request/batch {"addresses":["aether1...", ...]}
@@ -159,10 +248,16 @@ func (f *faucetServer) handleBatch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Addresses []string `json:"addresses"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil || len(req.Addresses) == 0 {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+	if err != nil || json.Unmarshal(body, &req) != nil || len(req.Addresses) == 0 {
 		f.reply(w, caller, http.StatusBadRequest, responseBody{Code: codeInvalidRequest, Message: `send {"addresses":["aether1...", ...]}`})
 		return
 	}
+	o, ok := f.originOf(w, r, caller, body)
+	if !ok {
+		return
+	}
+	caller = o.caller
 	var addresses, invalid []string
 	seen := map[string]bool{}
 	for _, a := range req.Addresses {
@@ -183,10 +278,11 @@ func (f *faucetServer) handleBatch(w http.ResponseWriter, r *http.Request) {
 			Message: fmt.Sprintf("at most %d addresses per batch, got %d", f.batchMax, len(addresses))})
 		return
 	}
-	f.dispense(w, caller, addresses, true)
+	f.dispense(w, o, addresses, true)
 }
 
-func (f *faucetServer) dispense(w http.ResponseWriter, caller string, addresses []string, batch bool) {
+func (f *faucetServer) dispense(w http.ResponseWriter, o origin, addresses []string, batch bool) {
+	caller := o.caller
 	res, waiting, q, ok := f.limits.reserve(caller, addresses)
 	var skipped []skippedAddress
 	var soonest time.Duration
@@ -220,6 +316,18 @@ func (f *faucetServer) dispense(w http.ResponseWriter, caller string, addresses 
 		f.reply(w, caller, http.StatusTooManyRequests, responseBody{Code: codeAddressCooldown, Message: msg,
 			RetryAfterSeconds: ceilSeconds(soonest), Skipped: skipped})
 		return
+	}
+
+	// Which of these the chain has never seen: checked before the send,
+	// since after it every one of them has an account.
+	fresh := map[string]bool{}
+	for _, a := range res.addresses {
+		exists, err := f.accountExists(a)
+		if err != nil {
+			log.Printf("faucet couldn't check whether %s is a new wallet: %v", a, err)
+			continue
+		}
+		fresh[a] = !exists
 	}
 
 	// Serialize the actual send -- avoids two concurrent requests
@@ -271,8 +379,22 @@ func (f *faucetServer) dispense(w http.ResponseWriter, caller string, addresses 
 	}
 
 	log.Printf("faucet sent %d uaeth to %v for %s, tx %s (confirmed at height %d)", f.amountUaeth, res.addresses, caller, txHash, detail.Height)
-	f.reply(w, caller, http.StatusOK, responseBody{Success: true, Code: codeSent, Message: "sent", TxHash: txHash,
-		Sent: sentList(batch, res.addresses), Skipped: skipped})
+	now := f.now().UTC()
+	drips := make([]drip, len(res.addresses))
+	for i, a := range res.addresses {
+		drips[i] = drip{Time: now, TxHash: txHash, Address: a, AmountUaeth: f.amountUaeth, Strand: strandAether,
+			Source: o.source, AgentID: o.agent.ID, AgentName: o.agent.Name, NewWallet: fresh[a]}
+	}
+	if err := f.ledger.add(drips); err != nil {
+		log.Printf("faucet couldn't record drips for tx %s: %v", txHash, err)
+	}
+	body := responseBody{Success: true, Code: codeSent, Message: "sent", TxHash: txHash,
+		Sent: sentList(batch, res.addresses), Skipped: skipped}
+	if !batch {
+		nw := fresh[res.addresses[0]]
+		body.NewWallet = &nw
+	}
+	f.reply(w, caller, http.StatusOK, body)
 }
 
 func sentList(batch bool, addresses []string) []string {
@@ -327,10 +449,16 @@ func (f *faucetServer) handleInfo(w http.ResponseWriter, r *http.Request) {
 		"caller_window_secs":    ceilSeconds(f.limits.callerWindow),
 		"batch_max":             f.batchMax,
 		"endpoints": map[string]string{
-			"request": `POST /request {"address":"aether1..."}`,
-			"batch":   `POST /request/batch {"addresses":["aether1...", ...]}`,
-			"status":  "GET /status?address=aether1...",
+			"request":   `POST /request {"address":"aether1..."}`,
+			"batch":     `POST /request/batch {"addresses":["aether1...", ...]}`,
+			"status":    "GET /status?address=aether1...",
+			"challenge": "GET /challenge?address=aether1...",
+			"agents":    `POST /agents {"name":"my-bot","public_key":"<base64 ed25519>"}`,
+			"stats":     "GET /stats",
+			"drips":     "GET /drips?limit=20",
 		},
+		"pow_bits":    f.pow.bits,
+		"agent_limit": f.limits.agentLimit,
 	})
 }
 
@@ -405,6 +533,10 @@ func main() {
 	port := flag.String("port", "8080", "HTTP port to listen on")
 	confirmTimeoutSeconds := flag.Int("confirm-timeout-seconds", 90, "how long to wait for a broadcast tx to actually land on-chain before giving up (comfortably more than one block interval)")
 	confirmPollSeconds := flag.Int("confirm-poll-seconds", 3, "how often to poll for on-chain confirmation while waiting")
+	dripLog := flag.String("drip-log", "", "file keeping every drip for /stats and /drips (default <keyring dir>/faucet-drips.jsonl)")
+	agentRegistryPath := flag.String("agent-registry", "", "file keeping registered agent keys (default <keyring dir>/faucet-agents.json)")
+	agentLimit := flag.Int("agent-limit", 100, "addresses one registered agent key may fund per --caller-window-minutes")
+	powBits := flag.Int("pow-bits", 18, "leading zero bits a browser's /challenge solution needs (18: about a second in a browser)")
 	flag.Parse()
 
 	gasPrice, err := sdk.ParseDecCoin(*gasPriceStr)
@@ -422,6 +554,21 @@ func main() {
 			log.Fatalf("failed to determine home directory: %v", err)
 		}
 		dir = home + "/.aether"
+	}
+
+	if *dripLog == "" {
+		*dripLog = dir + "/faucet-drips.jsonl"
+	}
+	if *agentRegistryPath == "" {
+		*agentRegistryPath = dir + "/faucet-agents.json"
+	}
+	drips, err := openLedger(*dripLog)
+	if err != nil {
+		log.Fatalf("--drip-log %s: %v", *dripLog, err)
+	}
+	agents, err := openAgentRegistry(*agentRegistryPath)
+	if err != nil {
+		log.Fatalf("--agent-registry %s: %v", *agentRegistryPath, err)
 	}
 
 	registry := codectypes.NewInterfaceRegistry()
@@ -448,9 +595,16 @@ func main() {
 		log.Fatalf("failed to fetch initial account info for %s: %v", account.Address, err)
 	}
 
+	limits := newLimiter(time.Duration(*cooldownMinutes)*time.Minute, *callerLimit,
+		time.Duration(*callerWindowMinutes)*time.Minute)
+	limits.agentLimit = *agentLimit
 	server := &faucetServer{
-		limits: newLimiter(time.Duration(*cooldownMinutes)*time.Minute, *callerLimit,
-			time.Duration(*callerWindowMinutes)*time.Minute),
+		limits:              limits,
+		ledger:              drips,
+		pow:                 newPowIssuer(*powBits),
+		agents:              agents,
+		regLimits:           newLimiter(0, 5, time.Hour),
+		now:                 time.Now,
 		trusted:             parseTrusted(*trustedProxies),
 		batchMax:            *batchMax,
 		wal:                 wal,
@@ -467,6 +621,20 @@ func main() {
 	}
 	server.send = server.sendCoins
 	server.confirm = server.confirmTxOnChain
+	server.accountExists = func(address string) (bool, error) {
+		_, _, err := client.GetAccountInfo(address)
+		if status.Code(err) == codes.NotFound {
+			return false, nil
+		}
+		return err == nil, err
+	}
+	server.balance = cachedBalance(30*time.Second, func() (int64, error) {
+		coins, err := client.GetBalance(account.Address)
+		if err != nil {
+			return 0, err
+		}
+		return coins.AmountOf("uaeth").Int64(), nil
+	})
 
 	log.Printf("Aether faucet listening on :%s (dispensing %d uaeth per address, %d-minute cooldown, %d addresses per caller per %d minutes, batches of up to %d, from %s on chain %q, starting sequence %d)",
 		*port, *amount, *cooldownMinutes, *callerLimit, *callerWindowMinutes, *batchMax, account.Address, *chainID, sequence)
@@ -490,6 +658,10 @@ func (f *faucetServer) routes() http.Handler {
 	mux.HandleFunc("/request", f.handleRequest)
 	mux.HandleFunc("/request/batch", f.handleBatch)
 	mux.HandleFunc("/status", f.handleStatus)
+	mux.HandleFunc("/challenge", f.handleChallenge)
+	mux.HandleFunc("/agents", f.handleAgents)
+	mux.HandleFunc("/stats", f.handleStats)
+	mux.HandleFunc("/drips", f.handleDrips)
 	mux.HandleFunc("/", f.handleInfo)
 	return mux
 }

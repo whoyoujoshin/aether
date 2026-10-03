@@ -31,6 +31,7 @@ type limiter struct {
 	cooldown     time.Duration
 	lastRequest  map[string]time.Time // address -> when it was last funded
 	callerLimit  int                  // 0: no per-caller limit
+	agentLimit   int                  // limit for "agent:" callers; 0: callerLimit
 	callerWindow time.Duration
 	callers      map[string]*callerWindow
 	lastPrune    time.Time
@@ -61,6 +62,15 @@ func (l *limiter) addressWaitLocked(address string, now time.Time) time.Duration
 	return 0
 }
 
+// limitFor is caller's quota per window: agents (registered keys) have
+// their own, everyone else shares their IP's.
+func (l *limiter) limitFor(caller string) int {
+	if l.agentLimit > 0 && strings.HasPrefix(caller, agentCallerPrefix) {
+		return l.agentLimit
+	}
+	return l.callerLimit
+}
+
 // quota is a caller's standing in its current window.
 type quota struct {
 	limit     int
@@ -69,14 +79,15 @@ type quota struct {
 }
 
 func (l *limiter) quotaLocked(caller string, now time.Time) quota {
-	if l.callerLimit <= 0 {
+	limit := l.limitFor(caller)
+	if limit <= 0 {
 		return quota{}
 	}
 	w := l.callers[caller]
 	if w == nil || now.Sub(w.start) >= l.callerWindow {
-		return quota{limit: l.callerLimit, remaining: l.callerLimit, reset: l.callerWindow}
+		return quota{limit: limit, remaining: limit, reset: l.callerWindow}
 	}
-	return quota{limit: l.callerLimit, remaining: l.callerLimit - w.used, reset: l.callerWindow - now.Sub(w.start)}
+	return quota{limit: limit, remaining: limit - w.used, reset: l.callerWindow - now.Sub(w.start)}
 }
 
 func (l *limiter) quota(caller string) quota {
@@ -117,7 +128,8 @@ func (l *limiter) reserve(caller string, addresses []string) (r reservation, wai
 	if len(ready) == 0 {
 		return reservation{}, waiting, q, true
 	}
-	if l.callerLimit > 0 && len(ready) > q.remaining {
+	limited := l.limitFor(caller) > 0
+	if limited && len(ready) > q.remaining {
 		return reservation{}, waiting, q, false
 	}
 
@@ -125,7 +137,7 @@ func (l *limiter) reserve(caller string, addresses []string) (r reservation, wai
 	for _, a := range ready {
 		l.lastRequest[a] = now
 	}
-	if l.callerLimit > 0 {
+	if limited {
 		w := l.callers[caller]
 		if w == nil || now.Sub(w.start) >= l.callerWindow {
 			w = &callerWindow{start: now}
