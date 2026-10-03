@@ -42,7 +42,8 @@ func TestKeylessRequestIsAPIAndNewWalletIsDetected(t *testing.T) {
 	f, chain, _ := testServer(t, 10)
 	chain.accounts[addr(2)] = true
 	for _, a := range []string{addr(1), addr(2)} {
-		if r := do(t, f, http.MethodPost, "/request", single(a), "10.0.0.1"); r.status != http.StatusOK {
+		r := do(t, f, http.MethodPost, "/request", single(a), "10.0.0.1")
+		if r.status != http.StatusOK || r.raw["new_wallet"] != (a == addr(1)) {
 			t.Fatalf("%s: %d %v", a, r.status, r.raw)
 		}
 	}

@@ -143,6 +143,9 @@ type responseBody struct {
 	Sent              []string         `json:"sent,omitempty"`
 	Skipped           []skippedAddress `json:"skipped,omitempty"`
 	Invalid           []string         `json:"invalid,omitempty"`
+	// NewWallet, on a single request's "sent": the chain had no account
+	// at the address before this drip.
+	NewWallet *bool `json:"new_wallet,omitempty"`
 }
 
 // reply writes body with the caller's current quota in the headers,
@@ -385,8 +388,13 @@ func (f *faucetServer) dispense(w http.ResponseWriter, o origin, addresses []str
 	if err := f.ledger.add(drips); err != nil {
 		log.Printf("faucet couldn't record drips for tx %s: %v", txHash, err)
 	}
-	f.reply(w, caller, http.StatusOK, responseBody{Success: true, Code: codeSent, Message: "sent", TxHash: txHash,
-		Sent: sentList(batch, res.addresses), Skipped: skipped})
+	body := responseBody{Success: true, Code: codeSent, Message: "sent", TxHash: txHash,
+		Sent: sentList(batch, res.addresses), Skipped: skipped}
+	if !batch {
+		nw := fresh[res.addresses[0]]
+		body.NewWallet = &nw
+	}
+	f.reply(w, caller, http.StatusOK, body)
 }
 
 func sentList(batch bool, addresses []string) []string {
