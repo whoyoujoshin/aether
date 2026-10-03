@@ -26,7 +26,7 @@ Canonical design detail remains in [WHITEPAPER.md](WHITEPAPER.md). Live endpoint
 | Query balances / txs via RPC, gRPC, explorer | Available |
 | Faucet `POST /request` with `{"address":"aether1..."}`; `POST /request/batch` for up to 10 wallets in one transaction; `GET /status?address=` to check first. Stable `code`s, `RateLimit-*` headers, `Retry-After` on 429 | Available (per-address cooldown, per-caller quota) |
 | Miner standing in one call: consensus key registered?, work and rank this epoch, blocks until selection, in the validator set?, escrow (explorer `/api/miner?addr=`, agentmcp `get_miner_status`) | Available |
-| Push alerts for a miner or validator: submission landed or failed, selected or removed (and why), selection at risk, low balance, node down, chain stalled (`cmd/minerwatch`, signed webhooks) | Available |
+| Push alerts for a miner or validator: submission landed or failed, selected or removed (and why), no work halfway through an epoch, selection at risk, low balance, node down, chain stalled (`cmd/minerwatch`, signed webhooks) | Available |
 | Machine-readable discovery: the agent card (`/api/agents`), OpenAPI 3.1 for the explorer (`/api/openapi.json`), `/llms.txt`, MCP Registry entry `io.github.whoyoujoshin/aether-wallet` | Available |
 
 **Public testnet (verify against README if drifted):**
