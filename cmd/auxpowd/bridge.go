@@ -127,8 +127,8 @@ func (b *bridge) submitAuxBlock(ctx context.Context, hashHex, auxPowHex string) 
 	if err != nil || len(hash) != 32 {
 		return false, &rpcError{rpcInvalidParams, "hash must be 32 bytes of hex"}
 	}
-	t := b.templates.lookup(reversed(hash))
-	if t == nil {
+	named := b.templates.lookup(reversed(hash))
+	if named == nil {
 		return false, &rpcError{rpcInvalidParams, "block hash unknown"}
 	}
 	raw, err := hex.DecodeString(strings.TrimSpace(auxPowHex))
@@ -139,6 +139,17 @@ func (b *bridge) submitAuxBlock(ctx context.Context, hashHex, auxPowHex string) 
 	if err != nil {
 		b.m.invalid.Add(1)
 		return false, &rpcError{rpcDeserialization, "auxpow: " + err.Error()}
+	}
+	// Some pools (yiimp) name the work they fetched last rather than the
+	// work the proof was mined against. What the coinbase commits to is
+	// what the chain checks, and pays, so that's the template to use when
+	// it's one this bridge handed out.
+	t := named
+	if !a.committedTo(named.Hash) {
+		if c := b.templates.committedBy(a); c != nil {
+			b.log.Printf("proof names template at height %d but commits to the one at height %d; using that", named.Height, c.Height)
+			t = c
+		}
 	}
 	d, err := a.auxPowData(t)
 	if err != nil {
@@ -172,8 +183,16 @@ func (b *bridge) submitAuxBlock(ctx context.Context, hashHex, auxPowHex string) 
 		b.log.Printf("stale: a submission is already on its way into block %d", next)
 		return false, nil
 	}
+	// The chain pays each template once, so a second proof for the same
+	// work would only be refused.
+	if !b.templates.claim(t) {
+		b.m.stale.Add(1)
+		b.log.Printf("stale: the work at height %d already has a proof on its way", t.Height)
+		return false, nil
+	}
 	txHash, err := b.chain.Submit(ctx, d)
 	if err != nil {
+		b.templates.release(t)
 		b.m.failed.Add(1)
 		b.log.Printf("broadcast failed: %v", err)
 		return false, nil

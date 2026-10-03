@@ -312,20 +312,21 @@ if !bytes.Equal(reconstructedChainRoot, commitment.RootHash) {
 	return nil
 }
 
-// AuxPowCommitmentNonce returns the nonce in a parent coinbase's
-// merge-mining commitment: the value AuxPowData.chain_nonce must carry.
-// It parses exactly as CheckAuxPow does, for a pool bridge building
+// AuxPowCommitment returns a parent coinbase's merge-mining commitment:
+// the chain merkle root (internal byte order, as the chain branch
+// reconstructs it) and the nonce AuxPowData.chain_nonce must carry. It
+// parses exactly as CheckAuxPow does, for a pool bridge building
 // submissions from the standard serialization.
-func AuxPowCommitmentNonce(coinbaseTx []byte) (uint32, error) {
+func AuxPowCommitment(coinbaseTx []byte) (root []byte, nonce uint32, err error) {
 	scriptSig, err := extractCoinbaseScriptSig(coinbaseTx)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	commitment, err := extractCommitment(scriptSig)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
-	return commitment.Nonce, nil
+	return commitment.RootHash, commitment.Nonce, nil
 }
 
 // readVarInt parses a Bitcoin-family compactSize varint starting at

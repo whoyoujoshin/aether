@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -82,7 +84,7 @@ func (r *reader) auxPow() (*cAuxPow, error) {
 // against. chain_nonce comes from the coinbase's own commitment, where
 // x/pow requires it to match.
 func (a *cAuxPow) auxPowData(t *template) (*pow.AuxPowData, error) {
-	nonce, err := pow.AuxPowCommitmentNonce(a.CoinbaseTx)
+	_, nonce, err := pow.AuxPowCommitment(a.CoinbaseTx)
 	if err != nil {
 		return nil, fmt.Errorf("merge-mining commitment: %w", err)
 	}
@@ -96,6 +98,33 @@ func (a *cAuxPow) auxPowData(t *template) (*pow.AuxPowData, error) {
 		TemplateHeight: t.Height,
 		RewardAddress:  sdk.AccAddress(t.Reward).String(),
 	}, nil
+}
+
+// committedTo reports whether the proof's coinbase commits to hash: the
+// chain branch from hash reconstructs the coinbase's committed root, as
+// x/pow checks.
+func (a *cAuxPow) committedTo(hash []byte) bool {
+	root, _, err := pow.AuxPowCommitment(a.CoinbaseTx)
+	if err != nil {
+		return false
+	}
+	h := hash
+	index := a.ChainIndex
+	for _, sibling := range a.ChainBranch {
+		if index&1 == 1 {
+			h = doubleSHA256(append(append([]byte{}, sibling...), h...))
+		} else {
+			h = doubleSHA256(append(append([]byte{}, h...), sibling...))
+		}
+		index >>= 1
+	}
+	return bytes.Equal(h, root)
+}
+
+func doubleSHA256(b []byte) []byte {
+	first := sha256.Sum256(b)
+	second := sha256.Sum256(first[:])
+	return second[:]
 }
 
 func nonNil(b [][]byte) [][]byte {

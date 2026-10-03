@@ -81,6 +81,12 @@ func (b *bridge) handler(user, password string) http.Handler {
 // 404 for an unknown method, 500 for any other error.
 func (b *bridge) serve(ctx context.Context, req rpcRequest) (rpcResponse, int) {
 	resp := rpcResponse{ID: req.ID}
+	if req.Method == "getblocktemplate" {
+		// Pools pass bitcoind's template request object ({"rules": [...]});
+		// there are no transactions or rules to negotiate here, so it's
+		// ignored, as bitcoind ignores fields it doesn't use.
+		req.Params = nil
+	}
 	params := make([]string, len(req.Params))
 	for i, p := range req.Params {
 		s, ok := p.(string)

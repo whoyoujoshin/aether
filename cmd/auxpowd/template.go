@@ -32,6 +32,7 @@ type template struct {
 	Height    int64
 	BlockHash []byte
 	Reward    sdk.AccAddress
+	claimed   bool // a proof for it has been sent; the chain pays a template once
 }
 
 func newTemplate(st chainState, reward sdk.AccAddress) *template {
@@ -46,18 +47,24 @@ func newTemplate(st chainState, reward sdk.AccAddress) *template {
 // templates caches the work handed out, by hash, until it's too old for
 // the chain to accept: submitauxblock names a template only by its hash.
 type templates struct {
-	mu     sync.Mutex
-	byHash map[string]*template
+	mu       sync.Mutex
+	byHash   map[string]*template
+	byReward map[string]*template // the work currently handed out for each reward address
 }
 
 func newTemplates() *templates {
-	return &templates{byHash: map[string]*template{}}
+	return &templates{byHash: map[string]*template{}, byReward: map[string]*template{}}
 }
 
-// get returns the template for the latest block and reward, creating it
-// once, and drops templates the chain would now refuse.
+// get returns the work for a reward address. It hands out the same
+// template until a proof for it is sent or it's half the recency window
+// old, rather than a new one every Aether block: pools such as yiimp
+// commit the aux hash when they build a mining job but submit with the
+// hash they fetched last, so work that changes every few seconds would
+// rarely match. Namecoin and Dogecoin change theirs about as seldom. Half
+// the window leaves the other half for the proof to arrive. Templates the
+// chain would now refuse are dropped.
 func (s *templates) get(st chainState, reward sdk.AccAddress) *template {
-	t := newTemplate(st, reward)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for k, old := range s.byHash {
@@ -65,10 +72,16 @@ func (s *templates) get(st chainState, reward sdk.AccAddress) *template {
 			delete(s.byHash, k)
 		}
 	}
+	if cur, ok := s.byReward[string(reward)]; ok && s.byHash[string(cur.Hash)] == cur && !cur.claimed &&
+		2*(st.Height+1-cur.Height) <= st.RecencyWindow {
+		return cur
+	}
+	t := newTemplate(st, reward)
 	if have, ok := s.byHash[string(t.Hash)]; ok {
-		return have
+		t = have
 	}
 	s.byHash[string(t.Hash)] = t
+	s.byReward[string(reward)] = t
 	return t
 }
 
@@ -76,6 +89,36 @@ func (s *templates) lookup(hash []byte) *template {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.byHash[string(hash)]
+}
+
+// claim marks a template's one proof as sent. It reports false if one
+// already was.
+func (s *templates) claim(t *template) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if t.claimed {
+		return false
+	}
+	t.claimed = true
+	return true
+}
+
+func (s *templates) release(t *template) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t.claimed = false
+}
+
+// committedBy finds the handed-out template a proof's coinbase commits to.
+func (s *templates) committedBy(a *cAuxPow) *template {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, t := range s.byHash {
+		if a.committedTo(t.Hash) {
+			return t
+		}
+	}
+	return nil
 }
 
 // auxBlock is createauxblock's (and getauxblock's) answer, in the fields
