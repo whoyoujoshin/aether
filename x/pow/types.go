@@ -380,16 +380,22 @@ const ConsensusKeyGuardActivationHeight int64 = 161_000
 // binary carrying it before this height, and a fresh replay must see the
 // old rule below it.
 //
-// Deferred, not scheduled: 20,000,000 is nearly four years out at the
-// testnet's ~6 s blocks. No pool sends merged work yet and the bridge
-// (cmd/auxpowd) isn't built, so the rules wait for a release that ships
-// it and sets a height agreed with the operators and confirmed against
-// the live tip. Earlier binaries carried 1,000,000 as a placeholder, which
-// the live chain would have reached in November 2026; as with
-// RandomnessBeaconActivationHeight, every node only has to run a binary
-// carrying the new value before then, with no halt. It stays above the
-// beacon's height so the two keep the order their tests assume.
-const MergedMiningActivationHeight int64 = 20_000_000
+// Scheduled with everything else at October2026UpgradeHeight. Earlier
+// binaries carried 1,000,000 and then 20,000,000 as placeholders.
+const MergedMiningActivationHeight int64 = October2026UpgradeHeight
+
+// October2026UpgradeHeight is where every gated change made since the
+// 161,000 cutover switches on, together: the smooth difficulty retarget
+// (SmoothRetargetActivationHeight, retarget.go), the randomness beacon
+// (RandomnessBeaconActivationHeight) and merged mining
+// (MergedMiningActivationHeight). Chosen on 3 October 2026 at height
+// ~193,000, to fall after governance proposals #3 and #4 close
+// (2026-10-04 15:58 CT, around height 207,000 to 212,000 at 5 to 7 s
+// blocks): 225,000 is about 5 to 6 October. Every node needs a binary
+// carrying it before then (docs/UPGRADE-2026-10.md); one without it
+// computes difficulty, validator selection and AuxPoW acceptance
+// differently from this height and falls off the chain.
+const October2026UpgradeHeight int64 = 225_000
 
 // RandomnessBeaconActivationHeight gates Phase 3 of
 // aether-randomness-beacon-design.md (see beacon.go): the
@@ -400,17 +406,11 @@ const MergedMiningActivationHeight int64 = 20_000_000
 // validators each epoch, not just an accept/reject rule on individual
 // messages -- so it gets the same discipline plus extra margin.
 //
-// Deferred, not scheduled: 10,000,000 is about two years out at the
-// testnet's ~6 s blocks, so no validator-selection change happens until
-// a later release sets a real height. Earlier binaries carried 500,000
-// as a placeholder, which the live chain would have reached in late
-// October 2026 with the code below unreviewed. Moving a height the chain
-// hasn't reached changes no committed block, so this needs no halt:
-// every node only has to run a binary carrying the new value before the
-// chain reaches 500,000, since one still carrying the old value would
-// switch selection rules there alone and fall off the chain. When a real
-// height is chosen, confirm it against the seed's actual tip first, as
-// for every other gate.
+// Scheduled with everything else at October2026UpgradeHeight. Earlier
+// binaries carried 500,000 and then 10,000,000 as placeholders. While
+// the chain has no more qualified candidates than top_k_size (21), the
+// weighted sampling picks every candidate, the same set the old rule
+// picks; it starts to matter only past 21 candidates.
 //
 // This code has NOT been reviewed by anyone but the author, and
 // aether-randomness-beacon-design.md explicitly requires external
@@ -418,4 +418,4 @@ const MergedMiningActivationHeight int64 = 20_000_000
 // production-readiness -- deploying this to devnet for testing does
 // not satisfy that requirement, and nothing in this codebase should
 // ever claim it does.
-const RandomnessBeaconActivationHeight int64 = 10_000_000
+const RandomnessBeaconActivationHeight int64 = October2026UpgradeHeight
