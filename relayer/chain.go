@@ -10,15 +10,19 @@ package relayer
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"os"
+	"strings"
 	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/cosmos/cosmos-sdk/client"
@@ -56,6 +60,29 @@ func (c *Chain) setGlobalPrefix() {
 	cfg.SetBech32PrefixForAccount(c.Bech32Prefix, c.Bech32Prefix+"pub")
 }
 
+// grpcDial turns a gRPC address into a dial target and transport
+// credentials. Public endpoints (Osmosis's, Noble's, the seed's behind
+// Caddy) serve gRPC over TLS on 443, so "https://host[:port]" and any
+// "host:443" use TLS, as wallet.GRPCCredentials does; "http://host:port"
+// and any other "host:port" (a node's own 9090) stay plaintext.
+func grpcDial(addr string) (string, credentials.TransportCredentials) {
+	tlsCreds := credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+	switch {
+	case strings.HasPrefix(addr, "https://"):
+		host := strings.TrimSuffix(strings.TrimPrefix(addr, "https://"), "/")
+		if _, _, err := net.SplitHostPort(host); err != nil {
+			host = net.JoinHostPort(host, "443")
+		}
+		return host, tlsCreds
+	case strings.HasPrefix(addr, "http://"):
+		return strings.TrimSuffix(strings.TrimPrefix(addr, "http://"), "/"), insecure.NewCredentials()
+	case strings.HasSuffix(addr, ":443"):
+		return addr, tlsCreds
+	default:
+		return addr, insecure.NewCredentials()
+	}
+}
+
 // NewChain dials rpcAddr/grpcAddr and builds a client.Context + tx.Factory
 // signing as fromName out of kr. gasPrices is a coin string like
 // "0.0001uaeth" or "" for a chain with no minimum gas price.
@@ -64,7 +91,8 @@ func NewChain(name, rpcAddr, grpcAddr, chainID, bech32Prefix string, cdc codec.C
 	if err != nil {
 		return nil, fmt.Errorf("%s: dialing rpc %s: %w", name, rpcAddr, err)
 	}
-	grpcConn, err := grpc.NewClient(grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	target, creds := grpcDial(grpcAddr)
+	grpcConn, err := grpc.NewClient(target, grpc.WithTransportCredentials(creds))
 	if err != nil {
 		return nil, fmt.Errorf("%s: dialing grpc %s: %w", name, grpcAddr, err)
 	}

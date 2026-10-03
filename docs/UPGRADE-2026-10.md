@@ -124,6 +124,11 @@ curl -s localhost:26657/net_info | jq -r '.result.peers[].node_info.moniker'
 **seed** (last): it also runs the explorer and faucet, which keep working
 across the restart; nothing else to do for them.
 
+**If the Osmosis channel is already open** ([OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md)
+step 6), add its `[helicase]` settings to each node's `app.toml` just
+before that node's swap, so the restart picks them up and no node
+restarts twice.
+
 ## 4. Done
 
 - All four validators signing (step 3a shows four addresses).
