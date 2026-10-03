@@ -194,6 +194,46 @@ func TestAtRiskOncePerEpochAndOnlyForRegistered(t *testing.T) {
 	}
 }
 
+func TestNoWorkHalfwayOncePerEpoch(t *testing.T) {
+	cfg := config{lowBalance: math.ZeroInt(), noWorkAt: 0.5}
+	idle := func(h int64) *wallet.MinerStatus {
+		s := status(h)
+		s.ActiveValidator = true
+		s.WorkThisEpoch, s.Eligible, s.OnTrack, s.Rank = 0, false, false, 0
+		s.NotEligibleBecause = []string{wallet.IneligibleNoWork}
+		return s
+	}
+	var st addrState
+	requireEvents(t, step(cfg, addr, &st, snap(idle(5))))  // 6 of 40 blocks in: too early
+	requireEvents(t, step(cfg, addr, &st, snap(idle(18)))) // 19 of 40
+	evs := step(cfg, addr, &st, snap(idle(19)))            // halfway
+	requireEvents(t, evs, EventNoWorkThisEpoch)
+	if evs[0].Fields["blocksUntilSelection"] != int64(20) || evs[0].Fields["activeValidator"] != true {
+		t.Fatalf("fields = %v", evs[0].Fields)
+	}
+	if msg, _ := evs[0].Fields["message"].(string); !strings.Contains(msg, "leaves the validator set at height 39") {
+		t.Fatalf("message = %q", msg)
+	}
+	requireEvents(t, step(cfg, addr, &st, snap(idle(30)))) // same epoch: once
+	requireEvents(t, step(cfg, addr, &st, snap(idle(60))), EventNoWorkThisEpoch)
+
+	// Work this epoch, no consensus key, or banned: nothing.
+	st = addrState{}
+	requireEvents(t, step(cfg, addr, &st, snap(status(25))))
+	noKey := idle(26)
+	noKey.RegisteredConsensusKey, noKey.ActiveValidator = false, false
+	st = addrState{}
+	requireEvents(t, step(cfg, addr, &st, snap(noKey)))
+	banned := idle(27)
+	banned.Banned = true
+	st = addrState{}
+	requireEvents(t, step(cfg, addr, &st, snap(banned)))
+
+	// Off by default in config{}: the zero value never warns.
+	st = addrState{}
+	requireEvents(t, step(config{lowBalance: math.ZeroInt()}, addr, &st, snap(idle(30))))
+}
+
 func TestBalanceAlertsWithHysteresis(t *testing.T) {
 	cfg := config{lowBalance: math.NewInt(5_000_000)}
 	var st addrState

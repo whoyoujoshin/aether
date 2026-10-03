@@ -360,6 +360,7 @@ Each event is printed to stdout as one JSON object per line and, with `--webhook
 | `validator_selected` | the validator set picked it; `effectiveFrom` is the block its voting power starts |
 | `validator_removed` | it left the set: `reason` is `not_reselected`, `downtime` or `banned` |
 | `miner_banned` | banned for equivocation |
+| `no_work_this_epoch` | `--no-work-warn-at` (0.5) of the way through an epoch, a registered miner has no work yet, so it would leave (or not join) the set at the selection height: `activeValidator`, `blocksUntilSelection`, `message` |
 | `selection_at_risk` | `--at-risk-blocks` (20) before the set is picked, a registered miner isn't eligible or on track: `notEligibleBecause`, `rank` |
 | `balance_low` / `balance_recovered` | the balance crossed `--low-balance` |
 | `node_unreachable` / `node_recovered` | `--unreachable-after` (3) failed polls in a row, then the first success |

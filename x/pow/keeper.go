@@ -421,30 +421,8 @@ func (k Keeper) VerifyMiningHeader(ctx sdk.Context, header MiningHeader) bool {
 }
 
 func (k Keeper) AdjustDifficulty(ctx sdk.Context) math.Int {
-	current := k.GetDifficulty(ctx)
-
 	lastTime, ok := k.GetLastBlockTime(ctx)
-	if !ok {
-		return current
-	}
-
-	elapsed := ctx.BlockTime().Unix() - lastTime
-	if elapsed <= 0 {
-		return current
-	}
-
-	target := k.GetTargetBlockTime(ctx)
-	adjusted := current.MulRaw(target).QuoRaw(elapsed)
-
-	minD := k.GetMinDifficulty(ctx)
-	maxD := k.GetMaxDifficulty(ctx)
-	if adjusted.LT(minD) {
-		adjusted = minD
-	}
-	if adjusted.GT(maxD) {
-		adjusted = maxD
-	}
-	return adjusted
+	return k.retarget(ctx, k.GetDifficulty(ctx), lastTime, ok, k.GetMaxDifficulty(ctx))
 }
 
 func (k Keeper) DistributeBlockReward(ctx sdk.Context, miner sdk.AccAddress) error {

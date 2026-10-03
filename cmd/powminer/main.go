@@ -22,6 +22,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -104,78 +105,110 @@ func verify(h header) bool {
 	return new(big.Int).SetBytes(hash).Cmp(target) < 0
 }
 
-// mineOne queries real chain state, mines a single valid nonce against
-// it, and returns the resulting header along with the real height and
-// difficulty used.
+// tip is the chain state a header is mined against.
+type tip struct {
+	height     int64
+	hash       []byte
+	difficulty uint64
+	recency    int64 // RecencyWindowK: how far behind the tip a header may be
+}
+
+func readTip(rpcClient *cometrpchttp.HTTP, queryClient pow.QueryClient) (tip, error) {
+	status, err := rpcClient.Status(context.Background())
+	if err != nil {
+		return tip{}, fmt.Errorf("querying chain status: %w", err)
+	}
+	height := status.SyncInfo.LatestBlockHeight
+	block, err := rpcClient.Block(context.Background(), &height)
+	if err != nil {
+		return tip{}, fmt.Errorf("querying block at height %d: %w", height, err)
+	}
+	diffResp, err := queryClient.Difficulty(context.Background(), &pow.QueryDifficultyRequest{})
+	if err != nil {
+		return tip{}, fmt.Errorf("querying current difficulty: %w", err)
+	}
+	var difficulty uint64
+	fmt.Sscanf(diffResp.Difficulty, "%d", &difficulty)
+	recency := int64(60)
+	if params, err := queryClient.Params(context.Background(), &pow.QueryParamsRequest{}); err == nil && params.RecencyWindowK > 0 {
+		recency = params.RecencyWindowK
+	}
+	return tip{height: height, hash: block.BlockID.Hash.Bytes(), difficulty: difficulty, recency: recency}, nil
+}
+
+// refreshEvery is how many nonces mineOne tries between looks at the chain
+// tip: about 20 seconds at the ~4,800 hashes/s x/pow is calibrated on.
+const refreshEvery = 100_000
+
+// mineOne mines a valid nonce against real chain state and returns the
+// header and the height it was mined at.
+//
+// The chain refuses a header more than RecencyWindowK blocks behind its
+// tip (about 7 minutes at 60 blocks), so mineOne checks the tip every
+// refreshEvery nonces and starts a fresh header once the current one is
+// half that window old, or when difficulty has dropped below the
+// header's. Mining is memoryless, so a fresh header loses nothing; at a
+// high difficulty, mining one header for the whole round would mostly
+// produce shares the chain refuses as stale.
 func mineOne(rpcAddr, grpcAddr, minerStr string, minerAddr sdk.AccAddress, maxAttempts uint64) (header, int64, error) {
 	rpcClient, err := cometrpchttp.New(rpcAddr, "/websocket")
 	if err != nil {
 		return header{}, 0, fmt.Errorf("creating RPC client: %w", err)
 	}
-
-	status, err := rpcClient.Status(context.Background())
-	if err != nil {
-		return header{}, 0, fmt.Errorf("querying chain status: %w", err)
-	}
-	currentHeight := status.SyncInfo.LatestBlockHeight
-
-	block, err := rpcClient.Block(context.Background(), &currentHeight)
-	if err != nil {
-		return header{}, 0, fmt.Errorf("querying block at height %d: %w", currentHeight, err)
-	}
-	realBlockHash := block.BlockID.Hash
-
-	fmt.Printf("Real chain state: height=%d block_hash=%s\n", currentHeight, realBlockHash.String())
-
 	conn, err := grpc.NewClient(grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return header{}, 0, fmt.Errorf("connecting to gRPC: %w", err)
 	}
 	defer conn.Close()
-
 	queryClient := pow.NewQueryClient(conn)
-	diffResp, err := queryClient.Difficulty(context.Background(), &pow.QueryDifficultyRequest{})
+
+	t, err := readTip(rpcClient, queryClient)
 	if err != nil {
-		return header{}, 0, fmt.Errorf("querying current difficulty: %w", err)
+		return header{}, 0, err
 	}
-
-	var difficulty uint64
-	fmt.Sscanf(diffResp.Difficulty, "%d", &difficulty)
-	fmt.Printf("Real current difficulty: %d\n\n", difficulty)
-
-	timestamp := time.Now().Unix()
-	h := header{
-		Height:       uint64(currentHeight),
-		Timestamp:    timestamp,
-		PrevHash:     realBlockHash.Bytes(),
-		MerkleRoot:   []byte("merkleplaceholder000000000000000000000000000000"[:32]),
-		Difficulty:   difficulty,
-		MinerAddress: minerAddr,
+	newHeader := func(t tip) header {
+		return header{
+			Height:       uint64(t.height),
+			Timestamp:    time.Now().Unix(),
+			PrevHash:     t.hash,
+			MerkleRoot:   []byte("merkleplaceholder000000000000000000000000000000"[:32]),
+			Difficulty:   t.difficulty,
+			MinerAddress: minerAddr,
+		}
 	}
-
-	fmt.Printf("Mining at difficulty %d (expected ~%d hashes on average)...\n", difficulty, difficulty)
+	h := newHeader(t)
+	fmt.Printf("Real chain state: height=%d difficulty=%d (expected ~%d hashes on average)\n\n", t.height, t.difficulty, t.difficulty)
 	start := time.Now()
 
-	var found bool
-	var nonce uint64
-	for nonce = 0; nonce < maxAttempts; nonce++ {
-		h.Nonce = nonce
+	for attempts := uint64(1); attempts <= maxAttempts; attempts++ {
 		if verify(h) {
-			found = true
-			break
+			fmt.Printf("\nFound valid nonce: %d for height %d (%d attempts this round, %s)\n\n", h.Nonce, h.Height, attempts, time.Since(start).Round(time.Millisecond))
+			return h, int64(h.Height), nil
 		}
-		if nonce%500_000 == 0 && nonce > 0 {
-			fmt.Printf("  ...%d attempts so far (%s elapsed)\n", nonce, time.Since(start).Round(time.Millisecond))
+		h.Nonce++
+		if attempts%refreshEvery != 0 {
+			continue
+		}
+		next, err := readTip(rpcClient, queryClient)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  ...%d attempts; can't read the chain (%v), still mining height %d\n", attempts, err, h.Height)
+			continue
+		}
+		switch {
+		case next.height-int64(h.Height) >= next.recency/2:
+			fmt.Printf("  ...%d attempts; height %d is %d blocks old, fresh header at %d (difficulty %d)\n", attempts, h.Height, next.height-int64(h.Height), next.height, next.difficulty)
+			h = newHeader(next)
+		case next.difficulty < h.Difficulty:
+			fmt.Printf("  ...%d attempts; difficulty fell to %d, fresh header at %d\n", attempts, next.difficulty, next.height)
+			h = newHeader(next)
+		default:
+			fmt.Printf("  ...%d attempts (%s elapsed)\n", attempts, time.Since(start).Round(time.Millisecond))
 		}
 	}
-
-	if !found {
-		return header{}, 0, fmt.Errorf("no valid nonce found within %d attempts", maxAttempts)
-	}
-
-	fmt.Printf("\nFound valid nonce: %d (in %d attempts, %s)\n\n", nonce, nonce+1, time.Since(start).Round(time.Millisecond))
-	return h, currentHeight, nil
+	return header{}, 0, fmt.Errorf("%w within %d attempts", errNoNonce, maxAttempts)
 }
+
+var errNoNonce = errors.New("no valid nonce found")
 
 // ML-DSA-44 signatures need more than the SDK's 200,000 default.
 const submitGas = 400_000
@@ -327,7 +360,17 @@ func main() {
 		h, _, err := mineOne(*rpcAddr, *grpcAddr, *minerStr, minerAddr, *maxAttempts)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
+			if !*loop {
+				os.Exit(1)
+			}
+			// A miner that stops costs its validator the seat at the next
+			// epoch boundary, so in --loop nothing here is fatal: an
+			// unreachable node or an unlucky round just starts another.
+			if !errors.Is(err, errNoNonce) {
+				time.Sleep(10 * time.Second)
+			}
+			round++
+			continue
 		}
 
 		if !*autoSubmit {
