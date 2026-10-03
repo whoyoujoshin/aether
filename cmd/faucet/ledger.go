@@ -110,10 +110,8 @@ func (l *ledger) recent(n int) []drip {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if n > len(l.drips) {
-		n = len(l.drips)
-	}
-	out := make([]drip, 0, n)
+	// Sized by the ledger and the constant, never by the request.
+	out := make([]drip, 0, min(len(l.drips), maxRecentDrips))
 	for i := len(l.drips) - 1; i >= 0 && len(out) < n; i-- {
 		out = append(out, l.drips[i])
 	}
