@@ -30,10 +30,39 @@ const SmoothRetargetActivationHeight int64 = 350_000
 
 // DifficultyHalfLife is how far, in seconds, the shares must run behind
 // (or ahead of) one per TargetBlockTime for asertDifficulty to halve (or
-// double) difficulty. One hour is sixty target intervals: a single share,
-// however early, moves difficulty by at most about 1% (60 s of 3600), and
-// a two-hour silence divides it by about four.
-const DifficultyHalfLife int64 = 3600
+// double) difficulty. Thirty minutes is thirty target intervals: one
+// share a block after the last raises difficulty by about 2%, and if
+// half the hash power stops, difficulty halves within about an hour,
+// well inside an epoch. Simulated against the live chain's four miners
+// (retarget_test.go), an hour recovered half as fast from a spike, and
+// shorter half-lives gained little.
+const DifficultyHalfLife int64 = 1800
+
+// SmoothRetargetStartDifficulty caps difficulty once, at
+// SmoothRetargetActivationHeight, so the new rule starts from a sane
+// value rather than wherever the old one left it: from the old rule's
+// 100,000,000 cap the first share alone would take hours, longer than an
+// epoch. It is the genesis difficulty, about 60 s for one miner at
+// x/pow's calibrated rate; asertDifficulty climbs from it within an hour
+// or two if there is more hash power than that.
+const SmoothRetargetStartDifficulty int64 = 285_960
+
+// StartSmoothRetarget applies SmoothRetargetStartDifficulty at
+// SmoothRetargetActivationHeight, from BeginBlock, before any share in
+// that block retargets. A no-op at every other height, and when
+// difficulty is already at or below it.
+func (k Keeper) StartSmoothRetarget(ctx sdk.Context) {
+	if ctx.BlockHeight() != SmoothRetargetActivationHeight {
+		return
+	}
+	start := math.NewInt(SmoothRetargetStartDifficulty)
+	if minD := k.GetMinDifficulty(ctx); start.LT(minD) {
+		start = minD
+	}
+	if k.GetDifficulty(ctx).GT(start) {
+		k.SetDifficulty(ctx, start)
+	}
+}
 
 // retarget is the difficulty after a share accepted now, given the
 // track's current difficulty and its last share's time (ok false if it

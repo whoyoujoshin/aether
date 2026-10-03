@@ -210,6 +210,7 @@ func (am AppModule) endBlockUpdates(sdkCtx sdk.Context) []abci.ValidatorUpdate {
 
 func (am AppModule) BeginBlock(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	am.keeper.StartSmoothRetarget(sdkCtx)
 	am.keeper.ProcessMisbehavior(sdkCtx)
 	am.keeper.CheckValidatorLiveness(sdkCtx)
 	return nil

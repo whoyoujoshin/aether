@@ -31,7 +31,9 @@ func TestAsertDifficulty_MatchesExponential(t *testing.T) {
 			want = 1
 		}
 		gf, _ := got.Float64()
-		require.InEpsilon(t, want, gf, 0.0002, "elapsed %d", elapsed)
+		// The cubic is within 0.013% of 2^x; integer results add up to 1
+		// of rounding.
+		require.InDelta(t, want, gf, stdmath.Max(want*0.00015, 2), "elapsed %d", elapsed)
 	}
 }
 
@@ -122,7 +124,7 @@ func simulateSeats(t *testing.T, next func(d int64, elapsed int64) int64, start 
 			}
 		}
 	}
-	return misses, maxD, minD
+	return misses, minD, maxD
 }
 
 // Four equal miners settle where shares come one per TargetBlockTime:
