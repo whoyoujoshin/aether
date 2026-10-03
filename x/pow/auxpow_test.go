@@ -637,12 +637,15 @@ func TestCheckAuxPow_ChainNonceMustMatchTheCoinbaseFromActivation(t *testing.T) 
 	require.ErrorContains(t, CheckAuxPow(at, difficulty, MergedMiningActivationHeight), "chain_nonce 5 does not match")
 }
 
-func TestAuxPowCommitmentNonce(t *testing.T) {
-	tx := buildTestCoinbaseTx(buildTestScriptSig([]byte("x"), bytes.Repeat([]byte{0x42}, 32), 1, 0xdeadbeef))
-	nonce, err := AuxPowCommitmentNonce(tx)
+func TestAuxPowCommitment(t *testing.T) {
+	root := bytes.Repeat([]byte{0x42}, 31)
+	root = append(root, 0x07)
+	tx := buildTestCoinbaseTx(buildTestScriptSig([]byte("x"), root, 1, 0xdeadbeef))
+	got, nonce, err := AuxPowCommitment(tx)
 	require.NoError(t, err)
+	require.Equal(t, root, got)
 	require.Equal(t, uint32(0xdeadbeef), nonce)
 
-	_, err = AuxPowCommitmentNonce(buildTestCoinbaseTx([]byte("no commitment here")))
+	_, _, err = AuxPowCommitment(buildTestCoinbaseTx([]byte("no commitment here")))
 	require.Error(t, err)
 }

@@ -185,9 +185,16 @@ func TestBridge_PoolRoundTrip(t *testing.T) {
 	require.Len(t, fc.submitted, 1)
 	require.Equal(t, int64(1), b.m.stale.Load())
 
-	// After a block it's sent again: the template is still recent.
+	// The chain pays a template once, so after a block the same work is
+	// still refused, and new work is handed out instead.
 	fc.advance(1)
 	res, _, _ = rpc(t, srv, "submitauxblock", ab.Hash, minePool(t, ab))
+	require.Equal(t, "false", string(res))
+	require.Len(t, fc.submitted, 1)
+	require.Equal(t, int64(2), b.m.stale.Load())
+	fresh := createAuxBlock(t, srv, poolAddr.String())
+	require.NotEqual(t, ab.Hash, fresh.Hash)
+	res, _, _ = rpc(t, srv, "submitauxblock", fresh.Hash, minePool(t, fresh))
 	require.Equal(t, "true", string(res))
 	require.Len(t, fc.submitted, 2)
 }
@@ -216,9 +223,11 @@ func TestBridge_RefusesBadAndLateWork(t *testing.T) {
 	_, rerr, _ = rpc(t, srv, "submitauxblock", ab.Hash, "zz")
 	require.Equal(t, rpcDeserialization, rerr.Code)
 
-	// A proof for different work: it parses, but x/pow's check fails.
-	other := createAuxBlock(t, srv, sdk.AccAddress(bytes.Repeat([]byte{0x22}, 32)).String())
-	res, rerr, _ := rpc(t, srv, "submitauxblock", other.Hash, proof)
+	// A proof committing to work this bridge never handed out: it parses,
+	// but x/pow's check against the named work fails.
+	foreign := ab
+	foreign.Hash = strings.Repeat("ab", 32)
+	res, rerr, _ := rpc(t, srv, "submitauxblock", ab.Hash, minePool(t, foreign))
 	require.Nil(t, rerr)
 	require.Equal(t, "false", string(res))
 	require.Equal(t, int64(1), b.m.invalid.Load())
@@ -338,4 +347,109 @@ func TestCompact(t *testing.T) {
 	}
 	// Litecoin's genesis bits round-trip.
 	require.Equal(t, uint32(0x1e0ffff0), compact(compactTarget(0x1e0ffff0)))
+}
+
+// Calls pool software such as yiimp makes on a merged-mined daemon besides
+// the aux ones.
+func TestBridge_PoolCompatibilityCalls(t *testing.T) {
+	b, fc, srv := newTestBridge(t)
+	b.defaultReward = poolAddr
+
+	// getauxblock's target under Dogecoin's legacy name, same bytes.
+	res, rerr, _ := rpc(t, srv, "getauxblock")
+	require.Nil(t, rerr)
+	var ab auxBlock
+	require.NoError(t, json.Unmarshal(res, &ab))
+	require.Equal(t, ab.Target, ab.LegacyTarget)
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(res, &raw))
+	require.Contains(t, raw, "target")
+
+	// The template request object pools send (yiimp sends the rules it
+	// supports) is accepted and ignored.
+	req, _ := http.NewRequest(http.MethodPost, srv.URL, strings.NewReader(`{"id":1,"method":"getblocktemplate","params":[{"rules":["segwit"]}]}`))
+	req.SetBasicAuth(testUser, testPass)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	res, rerr, _ = rpc(t, srv, "getblocktemplate")
+	require.Nil(t, rerr)
+	var tpl struct {
+		Height            int64          `json:"height"`
+		PreviousBlockHash string         `json:"previousblockhash"`
+		Transactions      []any          `json:"transactions"`
+		CoinbaseAux       map[string]any `json:"coinbaseaux"`
+		Target            string         `json:"target"`
+		Bits              string         `json:"bits"`
+		CoinbaseValue     int64          `json:"coinbasevalue"`
+	}
+	require.NoError(t, json.Unmarshal(res, &tpl))
+	require.Equal(t, fc.st.Height+1, tpl.Height)
+	require.Equal(t, hex.EncodeToString(rev(fc.st.BlockHash)), tpl.PreviousBlockHash)
+	require.NotNil(t, tpl.Transactions)
+	require.Empty(t, tpl.Transactions)
+	require.NotNil(t, tpl.CoinbaseAux)
+	be, _ := hex.DecodeString(tpl.Target)
+	require.Equal(t, auxTarget(testDiff), new(big.Int).SetBytes(be), "big-endian, as bitcoind's getblocktemplate")
+	require.Equal(t, ab.Bits, tpl.Bits)
+	require.Equal(t, ab.CoinbaseValue, tpl.CoinbaseValue)
+
+	res, _, _ = rpc(t, srv, "validateaddress", poolAddr.String())
+	require.JSONEq(t, `{"isvalid":true,"address":"`+poolAddr.String()+`","ismine":true}`, string(res))
+	other := sdk.AccAddress(bytes.Repeat([]byte{0x22}, 32)).String()
+	res, _, _ = rpc(t, srv, "validateaddress", other)
+	require.JSONEq(t, `{"isvalid":true,"address":"`+other+`","ismine":false}`, string(res))
+	res, _, _ = rpc(t, srv, "validateaddress", "Lnotaether")
+	require.JSONEq(t, `{"isvalid":false}`, string(res))
+
+	res, _, _ = rpc(t, srv, "getdifficulty")
+	require.Equal(t, "16", string(res))
+	res, _, _ = rpc(t, srv, "getmininginfo")
+	require.JSONEq(t, `{"blocks":20000010,"difficulty":16,"chain":"aether-testnet-1"}`, string(res))
+
+	// Below the activation height there's no template either.
+	fc.st.Height = pow.MergedMiningActivationHeight - 2
+	_, rerr, _ = rpc(t, srv, "getblocktemplate")
+	require.Equal(t, rpcNotActive, rerr.Code)
+}
+
+// Work stays the same for half the recency window, then moves on.
+func TestBridge_WorkIsStableForHalfTheWindow(t *testing.T) {
+	_, fc, srv := newTestBridge(t)
+	first := createAuxBlock(t, srv, poolAddr.String())
+	fc.advance(fc.st.RecencyWindow/2 - 1)
+	require.Equal(t, first.Hash, createAuxBlock(t, srv, poolAddr.String()).Hash)
+	fc.advance(1)
+	next := createAuxBlock(t, srv, poolAddr.String())
+	require.NotEqual(t, first.Hash, next.Hash)
+	require.Equal(t, fc.st.Height+1, next.Height)
+
+	// Each reward address has its own work.
+	other := createAuxBlock(t, srv, sdk.AccAddress(bytes.Repeat([]byte{0x22}, 32)).String())
+	require.NotEqual(t, next.Hash, other.Hash)
+}
+
+// yiimp commits the work it had when it built a job but submits with the
+// work it fetched last. The bridge uses the work the coinbase commits to,
+// which is what the chain checks and pays.
+func TestBridge_ProofNamingNewerWorkUsesTheCommittedWork(t *testing.T) {
+	_, fc, srv := newTestBridge(t)
+	committed := createAuxBlock(t, srv, poolAddr.String())
+	proof := minePool(t, committed)
+
+	fc.advance(fc.st.RecencyWindow / 2) // the work moves on
+	latest := createAuxBlock(t, srv, poolAddr.String())
+	require.NotEqual(t, committed.Hash, latest.Hash)
+
+	res, rerr, _ := rpc(t, srv, "submitauxblock", latest.Hash, proof)
+	require.Nil(t, rerr)
+	require.Equal(t, "true", string(res))
+	require.Len(t, fc.submitted, 1)
+	d := fc.submitted[0]
+	committedHash, _ := hex.DecodeString(committed.Hash)
+	require.Equal(t, rev(committedHash), d.AuxBlockHash)
+	require.Equal(t, committed.Height-1, d.TemplateHeight)
+	require.NoError(t, pow.CheckAuxPow(d, testDiff, fc.st.Height+1))
 }

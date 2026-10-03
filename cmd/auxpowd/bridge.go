@@ -127,8 +127,8 @@ func (b *bridge) submitAuxBlock(ctx context.Context, hashHex, auxPowHex string) 
 	if err != nil || len(hash) != 32 {
 		return false, &rpcError{rpcInvalidParams, "hash must be 32 bytes of hex"}
 	}
-	t := b.templates.lookup(reversed(hash))
-	if t == nil {
+	named := b.templates.lookup(reversed(hash))
+	if named == nil {
 		return false, &rpcError{rpcInvalidParams, "block hash unknown"}
 	}
 	raw, err := hex.DecodeString(strings.TrimSpace(auxPowHex))
@@ -139,6 +139,17 @@ func (b *bridge) submitAuxBlock(ctx context.Context, hashHex, auxPowHex string) 
 	if err != nil {
 		b.m.invalid.Add(1)
 		return false, &rpcError{rpcDeserialization, "auxpow: " + err.Error()}
+	}
+	// Some pools (yiimp) name the work they fetched last rather than the
+	// work the proof was mined against. What the coinbase commits to is
+	// what the chain checks, and pays, so that's the template to use when
+	// it's one this bridge handed out.
+	t := named
+	if !a.committedTo(named.Hash) {
+		if c := b.templates.committedBy(a); c != nil {
+			b.log.Printf("proof names template at height %d but commits to the one at height %d; using that", named.Height, c.Height)
+			t = c
+		}
 	}
 	d, err := a.auxPowData(t)
 	if err != nil {
@@ -172,8 +183,16 @@ func (b *bridge) submitAuxBlock(ctx context.Context, hashHex, auxPowHex string) 
 		b.log.Printf("stale: a submission is already on its way into block %d", next)
 		return false, nil
 	}
+	// The chain pays each template once, so a second proof for the same
+	// work would only be refused.
+	if !b.templates.claim(t) {
+		b.m.stale.Add(1)
+		b.log.Printf("stale: the work at height %d already has a proof on its way", t.Height)
+		return false, nil
+	}
 	txHash, err := b.chain.Submit(ctx, d)
 	if err != nil {
+		b.templates.release(t)
 		b.m.failed.Add(1)
 		b.log.Printf("broadcast failed: %v", err)
 		return false, nil
@@ -234,6 +253,20 @@ func (b *bridge) getAuxBlock(ctx context.Context, params []string) (any, error) 
 	}
 }
 
+// validateAddress answers as bitcoind does. ismine is true for the address
+// getauxblock pays (--reward-address): the pool's own.
+func (b *bridge) validateAddress(address string) map[string]any {
+	addr, err := sdk.AccAddressFromBech32(strings.TrimSpace(address))
+	if err != nil {
+		return map[string]any{"isvalid": false}
+	}
+	return map[string]any{
+		"isvalid": true,
+		"address": addr.String(),
+		"ismine":  b.defaultReward != nil && addr.Equals(b.defaultReward),
+	}
+}
+
 var errNoMethod = errors.New("method not found")
 
 // call dispatches one JSON-RPC method.
@@ -263,6 +296,36 @@ func (b *bridge) call(ctx context.Context, method string, params []string) (any,
 			return nil, &rpcError{rpcMiscError, err.Error()}
 		}
 		return st.Height, nil
+
+	// Calls pool software makes on every daemon it mines, merged-mined ones
+	// included, answered from the Aether chain in bitcoind's shapes.
+	case "getblocktemplate":
+		st, err := b.state(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return newBlockTemplate(st, time.Now().Unix()), nil
+	case "getdifficulty":
+		st, err := b.chain.State(ctx)
+		if err != nil {
+			return nil, &rpcError{rpcMiscError, err.Error()}
+		}
+		return float64(st.AuxDifficulty), nil
+	case "getmininginfo":
+		st, err := b.chain.State(ctx)
+		if err != nil {
+			return nil, &rpcError{rpcMiscError, err.Error()}
+		}
+		return map[string]any{
+			"blocks":     st.Height,
+			"difficulty": float64(st.AuxDifficulty),
+			"chain":      st.ChainID,
+		}, nil
+	case "validateaddress":
+		if err := need(1); err != nil {
+			return nil, err
+		}
+		return b.validateAddress(params[0]), nil
 	default:
 		return nil, errNoMethod
 	}

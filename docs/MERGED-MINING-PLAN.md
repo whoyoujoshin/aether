@@ -5,12 +5,13 @@ family under AuxPoW chain ID 17776. It earns the block reward and
 retargets difficulty, but never counts toward validator selection. Only
 native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
 
-**Status (2026-10-01):**
+**Status (2026-10-03):**
 - **Nothing sends real merged-mining work to Aether yet.**
   - The pool bridge, `cmd/auxpowd`, is built (M2) and proven end to end
-    on a devnet with a real Litecoin node (M3): blocks a real `litecoind`
-    accepted were paid on Aether through the bridge. Real pool software
-    hasn't driven it yet.
+    on a devnet with a real Litecoin node (M3), both with a pool program
+    and with real pool software: yiimp's stratum server, mined by
+    pooler's `cpuminer`, got Litecoin blocks a real `litecoind` accepted
+    and the same blocks' proofs paid on Aether.
 - **Three problems in the chain's rules would stop a real pool** even
   with a bridge. They are listed below.
 - **All five chain changes are built:** A (byte order), B (template
@@ -19,8 +20,7 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
   activation height, `MergedMiningActivationHeight`, deferred to
   20,000,000 until a release ships the bridge and sets a real height.
   (It was a 1,000,000 placeholder, which the testnet would have reached
-  in November 2026.) A pool software trial and a testnet height are
-  next (M4).
+  in November 2026.) A testnet height and a pool trial are next (M4).
 
 ## What the code shows
 
@@ -151,19 +151,36 @@ zero by default), so it needs no funds beyond having an account.
   - `submitauxblock <hash> <auxpow hex>`;
   - legacy `getauxblock`;
   - `getblockcount`, the Aether tip;
+  - for pool software that treats a merged-mined daemon as a full node
+    (yiimp does): `getblocktemplate`, describing the next Aether block
+    with no transactions (the work still comes from `getauxblock`),
+    `validateaddress`, `getdifficulty` and `getmininginfo`;
   - batches, and bitcoind's HTTP status codes.
+  - The target goes out as both `_target` (Namecoin's name) and `target`
+    (Dogecoin's legacy name, which yiimp reads), the same little-endian
+    bytes.
   - `coinbasevalue` is the merged share of the reward (1.25 AETH of 5 at
     the default 2,500 bps), what a proof earns while native mining is
     active. A merged track mining alone earns the whole reward.
 - **Templates.**
   - Reads the latest Aether block and the AuxPoW difficulty from a node.
-  - Builds one template per Aether block, bound to the requested reward
-    address (change B).
+  - Builds templates bound to the requested reward address (change B),
+    and hands out the same one until a proof for it is sent or it's half
+    the recency window old. Pools such as yiimp commit the aux hash when
+    they build a mining job but submit with the hash they fetched last,
+    so work changing every Aether block (about 6 s) would rarely match;
+    Namecoin and Dogecoin work changes about as seldom as this.
+  - The chain pays a template once, so a sent proof retires its template:
+    the next request gets new work, and a later proof for it counts as
+    stale rather than costing a transaction the chain would refuse.
   - Caches templates by hash, and drops them once they leave the recency
     window.
 - **Submissions.**
   - Parses the standard `CAuxPow` serialization (coinbase transaction,
     coinbase branch, chain branch, parent header) into `AuxPowData`.
+  - Uses the template the coinbase commits to when it's one the bridge
+    handed out, even if the pool named a newer one (yiimp does): that's
+    what the chain checks, and the only address it pays.
   - Runs `CheckAuxPow` locally first.
   - Signs a `MsgSubmitPoW` with its own ML-DSA-44 key and broadcasts it.
   - Sends at most one submission per Aether block, since each block takes
@@ -226,9 +243,24 @@ zero by default), so it needs no funds beyond having an account.
 
   All three proofs were accepted on Aether and paid 4.25 AETH each to the
   pool's address.
-  - Still to do: drive it with real pool software (a stratum pool with
-    merged mining enabled) rather than a pool program, and confirm under
-    load that a native miner keeps its slot and validator standing.
+- **Real pool software (done 2026-10-03).** yiimp's stratum server
+  (tpruvot/yiimp, built from source with MariaDB) with Litecoin as its
+  coin and Aether as an aux coin pointed at `auxpowd`, and pooler's
+  `cpuminer` 2.5.1 mining Scrypt into it over stratum on four threads.
+  - yiimp needed one local patch, unrelated to Aether: Litecoin Core 0.21
+    refuses `getblocktemplate` without the `mweb` rule, which this yiimp
+    predates. Any pool on Litecoin 0.21 carries the same change.
+  - The first run found two things in the bridge, fixed above: it took
+    only string arguments (yiimp passes `getblocktemplate` a request
+    object), and its work changed every Aether block, so yiimp's proofs
+    named newer work than they committed to and all were refused.
+  - Then, over four minutes: yiimp got 8 Litecoin blocks `litecoind`
+    accepted and sent 7 aux proofs. The bridge broadcast 4, all accepted
+    on Aether, paying the pool 17 AETH (4.25 each); 3 were stale, for work
+    already claimed from jobs yiimp built before it fetched new work. No
+    transaction was refused on chain.
+  - Still to do: confirm under load that a native miner keeps its slot
+    and validator standing while a pool is mining.
 - **Testnet:** one small Scrypt pool trial, before any mainnet date.
 
 ## Milestones
@@ -237,7 +269,7 @@ zero by default), so it needs no funds beyond having an account.
    This is the consensus-critical part.
 2. **M2: `cmd/auxpowd`.** Done, and proven on a devnet.
 3. **M3: end to end with a real Litecoin node.** Done (regtest), with a
-   pool program; real pool software is still to try.
+   pool program and with real pool software (yiimp and `cpuminer`).
 4. **M4: testnet cutover and a pool trial.**
 
 ## Decisions

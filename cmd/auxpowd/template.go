@@ -32,6 +32,7 @@ type template struct {
 	Height    int64
 	BlockHash []byte
 	Reward    sdk.AccAddress
+	claimed   bool // a proof for it has been sent; the chain pays a template once
 }
 
 func newTemplate(st chainState, reward sdk.AccAddress) *template {
@@ -46,18 +47,24 @@ func newTemplate(st chainState, reward sdk.AccAddress) *template {
 // templates caches the work handed out, by hash, until it's too old for
 // the chain to accept: submitauxblock names a template only by its hash.
 type templates struct {
-	mu     sync.Mutex
-	byHash map[string]*template
+	mu       sync.Mutex
+	byHash   map[string]*template
+	byReward map[string]*template // the work currently handed out for each reward address
 }
 
 func newTemplates() *templates {
-	return &templates{byHash: map[string]*template{}}
+	return &templates{byHash: map[string]*template{}, byReward: map[string]*template{}}
 }
 
-// get returns the template for the latest block and reward, creating it
-// once, and drops templates the chain would now refuse.
+// get returns the work for a reward address. It hands out the same
+// template until a proof for it is sent or it's half the recency window
+// old, rather than a new one every Aether block: pools such as yiimp
+// commit the aux hash when they build a mining job but submit with the
+// hash they fetched last, so work that changes every few seconds would
+// rarely match. Namecoin and Dogecoin change theirs about as seldom. Half
+// the window leaves the other half for the proof to arrive. Templates the
+// chain would now refuse are dropped.
 func (s *templates) get(st chainState, reward sdk.AccAddress) *template {
-	t := newTemplate(st, reward)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for k, old := range s.byHash {
@@ -65,10 +72,16 @@ func (s *templates) get(st chainState, reward sdk.AccAddress) *template {
 			delete(s.byHash, k)
 		}
 	}
+	if cur, ok := s.byReward[string(reward)]; ok && s.byHash[string(cur.Hash)] == cur && !cur.claimed &&
+		2*(st.Height+1-cur.Height) <= st.RecencyWindow {
+		return cur
+	}
+	t := newTemplate(st, reward)
 	if have, ok := s.byHash[string(t.Hash)]; ok {
-		return have
+		t = have
 	}
 	s.byHash[string(t.Hash)] = t
+	s.byReward[string(reward)] = t
 	return t
 }
 
@@ -78,9 +91,42 @@ func (s *templates) lookup(hash []byte) *template {
 	return s.byHash[string(hash)]
 }
 
+// claim marks a template's one proof as sent. It reports false if one
+// already was.
+func (s *templates) claim(t *template) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if t.claimed {
+		return false
+	}
+	t.claimed = true
+	return true
+}
+
+func (s *templates) release(t *template) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t.claimed = false
+}
+
+// committedBy finds the handed-out template a proof's coinbase commits to.
+func (s *templates) committedBy(a *cAuxPow) *template {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, t := range s.byHash {
+		if a.committedTo(t.Hash) {
+			return t
+		}
+	}
+	return nil
+}
+
 // auxBlock is createauxblock's (and getauxblock's) answer, in the fields
 // and encodings Namecoin and Dogecoin use, so pool software reads it
-// unchanged. Hashes are in display order (reversed), as pools expect.
+// unchanged. Hashes are in display order (reversed), as pools expect. The
+// target is sent twice, in the same little-endian bytes: as _target, the
+// Namecoin API's name, and as target, the name Dogecoin's legacy API uses
+// and pools such as yiimp read.
 type auxBlock struct {
 	Hash              string `json:"hash"`
 	ChainID           uint32 `json:"chainid"`
@@ -89,10 +135,12 @@ type auxBlock struct {
 	Bits              string `json:"bits"`
 	Height            int64  `json:"height"`
 	Target            string `json:"_target"`
+	LegacyTarget      string `json:"target"`
 }
 
 func (t *template) auxBlock(st chainState) auxBlock {
 	target := auxTarget(st.AuxDifficulty)
+	le := hex.EncodeToString(reversed(leftPad32(target.Bytes())))
 	return auxBlock{
 		Hash:              hex.EncodeToString(reversed(t.Hash)),
 		ChainID:           pow.AuxPoWChainID,
@@ -100,7 +148,8 @@ func (t *template) auxBlock(st chainState) auxBlock {
 		CoinbaseValue:     mergedReward(st),
 		Bits:              fmt.Sprintf("%08x", compact(target)),
 		Height:            t.Height + 1,
-		Target:            hex.EncodeToString(reversed(leftPad32(target.Bytes()))),
+		Target:            le,
+		LegacyTarget:      le,
 	}
 }
 
@@ -155,4 +204,41 @@ func reversed(b []byte) []byte {
 		out[len(b)-1-i] = b[i]
 	}
 	return out
+}
+
+// blockTemplate is getblocktemplate's answer, for pool software that polls
+// every daemon it mines with getblocktemplate, merged-mined ones included
+// (yiimp does), before asking for aux work. It describes the next Aether
+// block in bitcoind's fields and carries no transactions: the work itself
+// comes from createauxblock or getauxblock. target is big-endian here, as
+// in bitcoind's getblocktemplate.
+type blockTemplate struct {
+	Version           int32             `json:"version"`
+	PreviousBlockHash string            `json:"previousblockhash"`
+	Transactions      []any             `json:"transactions"`
+	CoinbaseAux       map[string]string `json:"coinbaseaux"`
+	CoinbaseValue     int64             `json:"coinbasevalue"`
+	Target            string            `json:"target"`
+	Mutable           []string          `json:"mutable"`
+	NonceRange        string            `json:"noncerange"`
+	CurTime           int64             `json:"curtime"`
+	Bits              string            `json:"bits"`
+	Height            int64             `json:"height"`
+}
+
+func newBlockTemplate(st chainState, now int64) blockTemplate {
+	target := auxTarget(st.AuxDifficulty)
+	return blockTemplate{
+		Version:           1,
+		PreviousBlockHash: hex.EncodeToString(reversed(st.BlockHash)),
+		Transactions:      []any{},
+		CoinbaseAux:       map[string]string{"flags": ""},
+		CoinbaseValue:     mergedReward(st),
+		Target:            hex.EncodeToString(leftPad32(target.Bytes())),
+		Mutable:           []string{},
+		NonceRange:        "00000000ffffffff",
+		CurTime:           now,
+		Bits:              fmt.Sprintf("%08x", compact(target)),
+		Height:            st.Height + 1,
+	}
 }

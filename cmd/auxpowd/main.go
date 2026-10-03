@@ -8,6 +8,10 @@
 //	getauxblock [<hash> <auxpow>]     the legacy form of both
 //	getblockcount                     the Aether tip
 //
+// It also answers getblocktemplate, validateaddress, getdifficulty and
+// getmininginfo in bitcoind's shapes, for pool software that treats a
+// merged-mined daemon as a full node (yiimp does).
+//
 // Each template commits to a recent Aether block and the reward address
 // (x/pow.AuxPoWTemplateHash), so the reward goes to that address whoever
 // relays the proof. A submission is checked locally with x/pow's own
