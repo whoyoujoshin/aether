@@ -18,7 +18,13 @@ Pick the **first Scrypt stratum / pool stack** to point at `auxpowd` for a small
 ## Also propose
 A **testnet activation height** (or calendar date) far enough ahead for operators to upgrade, close enough that we do not wait weeks. Rough guide from tip ~186k at ~60s target.
 
+## Height: decided
+
+**225,000** (`October2026UpgradeHeight`, 3 October 2026), with the smooth
+retarget and the randomness beacon, after governance proposals #3 and #4
+close. See docs/UPGRADE-2026-10.md. The pool choice is still open.
+
 ## Acceptance
 - [ ] Chosen pool/stratum named
-- [ ] Proposed testnet activation height (or date) written down
+- [x] Proposed testnet activation height (or date) written down: 225,000
 - [ ] Follow-up PR can wire the height into a release

@@ -17,10 +17,10 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
 - **All five chain changes are built:** A (byte order), B (template
   binding), C (separate tracks), D (parent chain ID) and E (coinbase-only
   commitment, committed nonce). They share one
-  activation height, `MergedMiningActivationHeight`, deferred to
-  20,000,000 until a release ships the bridge and sets a real height.
-  (It was a 1,000,000 placeholder, which the testnet would have reached
-  in November 2026.) A testnet height and a pool trial are next (M4).
+  activation height, `MergedMiningActivationHeight`, which is now
+  **225,000** on the testnet (`October2026UpgradeHeight`, with the smooth
+  retarget and the randomness beacon; docs/UPGRADE-2026-10.md). It was a
+  1,000,000 and then a 20,000,000 placeholder. A pool trial is next (M4).
 
 ## What the code shows
 

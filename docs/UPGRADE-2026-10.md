@@ -1,37 +1,45 @@
-# Rolling upgrade before block 350,000
+# October 2026 upgrade: everything on at block 225,000
 
 **For:** the four validators (seed, sync3, sync4, peer-1), plus any other
 node running `aetherd`. **Deadline:** every node on the new binary before
-the chain reaches **block 350,000**, about 12 to 15 October 2026 at
-today's 5 to 7 s blocks. Aim to finish by **10 October**.
+the chain reaches **block 225,000**, about 5 to 6 October 2026 at today's
+5 to 7 s blocks (later blocks are slower: check the tip and the time
+left before each step). Aim to finish by the end of **5 October**.
 
-The deadline was 500,000 until 3 October, when the smooth difficulty
-retarget below was added with its own height, 350,000. A binary built
-from `main` before that change (for example `ece0049`, which sync3 runs
-since its move) is **not** enough: those nodes swap once more.
+Earlier versions of this runbook said 500,000 and then 350,000. A binary
+built before the 225,000 change (for example `ece0049`, which sync3 runs
+since its move, or `f665d22`) is **not** enough: those nodes swap once
+more.
 
-## Why
+## What switches on at 225,000
 
-The binaries running now still carry two placeholder activation heights:
+`October2026UpgradeHeight` (`x/pow/types.go`) turns on every gated change
+made since the 161,000 cutover, together, after governance proposals #3
+and #4 close (2026-10-04 15:58 CT, around block 207,000 to 212,000):
 
-- **500,000:** validator selection would switch to the randomness beacon
-  (`RandomnessBeaconActivationHeight`), code no one but its author has
-  reviewed.
-- **1,000,000:** the merged-mining rules would switch on
-  (`MergedMiningActivationHeight`) before anything uses them.
+- **Smooth difficulty retarget** (`x/pow/retarget.go`). The old rule
+  multiplies difficulty by about ten for a share one block after the
+  last; on 3 October it went from 7,278 to about 21,000,000 in hours, and
+  validators lost their seats for want of a share per epoch. From
+  225,000 each share moves it by `2^((60 s − elapsed) / 1800 s)`, about 2%
+  for a fast one. At 225,000 difficulty is also capped once at 285,960
+  so the new rule starts from a sane value.
+- **Randomness beacon** (`beacon.go`). Validator selection draws from
+  all qualified miners, weighted by work, with a seed built over the
+  previous epoch. While there are no more than 21 qualified miners
+  (`top_k_size`), it picks every one of them, the same set as today. Its
+  design still awaits the external review
+  `aether-randomness-beacon-design.md` requires before any mainnet use.
+- **Merged mining** (`merged_mining.go`, `auxpow.go`): a Litecoin pool
+  running `cmd/auxpowd` can merge-mine Aether. AuxPoW gets its own
+  difficulty and slot, and while both kinds are mining the reward splits
+  75% native, 25% merged (`merged_mining_reward_share_bps`). Merged work
+  pays but never counts toward validator selection. Nothing changes for
+  native miners until a pool actually sends work.
 
-`main` moves them to 10,000,000 and 20,000,000 (PR #71). A node still on
-the old binary at 500,000 switches selection rules on its own and falls
-off the chain; if two of the four validators do, the chain stops.
-
-And from **350,000** difficulty follows a smoothed rule
-(`SmoothRetargetActivationHeight`, `x/pow/retarget.go`). The old rule
-multiplies difficulty by about ten for a share one block after the
-last; on 3 October it went from 7,278 to about 21,000,000 in hours, and
-validators lost their seats for want of a share per epoch. At 350,000
-difficulty is also capped once at 285,960 so the new rule starts from a
-sane value. A node without it computes a different difficulty from
-350,000 and falls off the chain the same way.
+A node without the new binary computes difficulty, selection and AuxPoW
+acceptance differently from 225,000 and falls off the chain; if two of
+the four validators do, the chain stops.
 
 ## Miners: update now, no coordination
 
@@ -48,10 +56,9 @@ epoch stays.
 
 - **No halt and no restart height.** Everything that changed in chain
   code since the 161,000 cutover binary is in `x/pow`, and all of it
-  behaves exactly as before below its activation height (350,000,
-  10,000,000 or 20,000,000). Old and new binaries agree on every block
-  until 350,000, so nodes can be swapped one at a time, whenever, in any
-  order.
+  behaves exactly as before below 225,000. Old and new binaries agree on
+  every block until then, so nodes can be swapped one at a time,
+  whenever, in any order.
 - **One at a time, though.** With four equal validators the chain needs
   three signing. Never have two validators down at once.
 - **The seed goes last** until peer-1 has its own path to sync3 and sync4
@@ -66,11 +73,8 @@ On a machine with Go 1.25, from `main`:
 
 ```bash
 git fetch origin && git checkout origin/main
-grep -n "ActivationHeight int64 = 10_000_000\|ActivationHeight int64 = 20_000_000" x/pow/types.go
-#   RandomnessBeaconActivationHeight int64 = 10_000_000
-#   MergedMiningActivationHeight     int64 = 20_000_000   (both lines must show)
-grep -n "SmoothRetargetActivationHeight int64 = 350_000" x/pow/retarget.go
-#   must show too: a binary without it isn't the upgrade
+grep -n "October2026UpgradeHeight int64 = 225_000" x/pow/types.go
+#   must show: a binary without it isn't the upgrade
 go build -o aetherd ./cmd/aetherd
 sha256sum aetherd          # note it; every node gets this same file
 git log -1 --format='%h %s'
@@ -170,7 +174,7 @@ restarts twice.
 
 Until all four are done, **don't submit governance proposals that use the
 new `merged_mining_reward_share_bps` field** (old binaries don't know
-it). The new binary refuses that field below 20,000,000 anyway.
+it). The new binary refuses that field below 225,000 anyway.
 
 ## If something goes wrong
 
@@ -186,6 +190,8 @@ it). The new binary refuses that field below 20,000,000 anyway.
 - **The chain stalls during the upgrade:** two validators are down.
   Bring back whichever restarted last (old or new binary both work), and
   check the others with step 3a.
-- **Running out of time:** a node must not reach 350,000 on an older
-  binary. If the swap can't reach every validator by about 10 October,
-  tell Claude.
+- **Running out of time:** a node must not reach 225,000 on an older
+  binary. If a validator can't be swapped by then (for example the set
+  isn't back to four in time), tell Claude **before** the chain gets
+  within a day of 225,000: the height can still be moved later with
+  another binary, but not once the chain passes it.
