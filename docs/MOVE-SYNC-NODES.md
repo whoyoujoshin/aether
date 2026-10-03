@@ -3,9 +3,12 @@
 **For:** Gitty. **Why:** sync3 and sync4 run on the same computer, a
 container whose process 1 is `tini`, with no systemd. That computer
 restarts when its own software updates, and every restart takes two of the
-four validators down at once, which stops the chain: 11 hours 48 minutes on
-2 October (no block between 188623 at 10:12 and 188624 at 22:00 CT).
-The 10-minute check that restarts them is a stopgap. The fix
+four validators down at once, which stops the chain. On 2 October it
+stopped twice: no block between 188623 (10:12 CT) and 188624 (22:00),
+then again between 188941 (22:36) and 188942 (06:35 on 3 October),
+about 20 hours in all. The restarts also brought back the nodes but not
+their miners, which nearly cost three validators their seats at the
+next epoch (step 2a). The 10-minute check that restarts them is a stopgap. The fix
 is one server per node, with systemd bringing it back after any crash or
 reboot.
 
@@ -117,6 +120,37 @@ WantedBy=multi-user.target
 ```bash
 sudo systemctl daemon-reload      # don't enable or start yet
 ```
+
+And the node's miner, so it comes back with the node after a reboot
+(also written now, not started):
+
+```bash
+cd /root/aether && go build -o /usr/local/bin/powminer ./cmd/powminer
+```
+
+`/etc/systemd/system/aether-miner.service`:
+
+```ini
+[Unit]
+Description=Aether native PoW miner
+After=aetherd.service
+Wants=aetherd.service
+
+[Service]
+User=root
+ExecStart=/usr/local/bin/powminer --miner <this validator's miner address> \
+  --from <its keyring name> --auto-submit --loop \
+  --rpc http://127.0.0.1:26657 --grpc 127.0.0.1:9090
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`powminer` reads the keyring in `/root/.aether`, the same directory as
+the node. The miner key goes in **after** step 3d's final copy, whose
+`--delete` would remove it.
 
 ## 2. Find what to move (old computer)
 
@@ -237,7 +271,11 @@ curl -s localhost:26657/status | jq '.result.sync_info | {latest_block_height, c
 ```
 
 Wait for `catching_up: false`, then the signing check (UPGRADE-2026-10.md
-step 3c). Start sync3's miner here if it moved. Then reboot the new
+step 3c). Then move the miner: stop it on the old computer, add its key
+to `/root/.aether`'s keyring here (`aetherd keys import` or copy the
+`keyring-test` entry), `sudo systemctl enable --now aether-miner`, and
+check its address shows up in `aetherd query pow miner-leaderboard`
+within a few minutes. Then reboot the new
 server once (`sudo reboot`) and confirm the node comes back and signs on
 its own.
 
