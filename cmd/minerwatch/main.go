@@ -3,8 +3,9 @@
 // Pushes what happens to a miner or validator as it happens, so an
 // agent (or its operator) doesn't poll /api/miner or scrape powminer's
 // logs: a PoW submission lands in a block (or fails there), the address
-// is picked into the validator set or dropped from it (and why), an
-// epoch is about to close without it on track, its balance runs low, or
+// is picked into the validator set or dropped from it (and why), it has
+// no work halfway through an epoch, an epoch is about to close without it
+// on track, its balance runs low, or
 // the node stops answering or its chain stops making blocks.
 //
 // Each event is printed to stdout as one JSON object per line and, with
@@ -236,6 +237,7 @@ func main() {
 	interval := flag.Duration("interval", 30*time.Second, "how often to check for a new block")
 	lowBalance := flag.String("low-balance", "", `alert when an address's balance falls below this, e.g. "5 AETH"; empty: no balance alerts`)
 	atRiskBlocks := flag.Int64("at-risk-blocks", 20, "warn this many blocks before the validator set is picked if a registered miner isn't on track; 0: never")
+	noWorkAt := flag.Float64("no-work-warn-at", 0.5, "warn once per epoch when a registered miner has no work this far through the epoch (0.5: halfway); 0: never")
 	unreachableAfter := flag.Int("unreachable-after", 3, "failed polls in a row before node_unreachable")
 	stallAfter := flag.Duration("stall-after", 5*time.Minute, "chain_stalled when the node answers but has made no new block for this long; 0: never")
 	statePath := flag.String("state", "", "remember what was reported in this file, so a restart catches up instead of starting fresh")
@@ -247,7 +249,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	cfg := config{lowBalance: math.ZeroInt(), atRiskBlocks: *atRiskBlocks}
+	cfg := config{lowBalance: math.ZeroInt(), atRiskBlocks: *atRiskBlocks, noWorkAt: *noWorkAt}
 	if *lowBalance != "" {
 		if cfg.lowBalance, err = wallet.ParseAmount(*lowBalance); err != nil {
 			log.Fatalf("--low-balance: %v", err)

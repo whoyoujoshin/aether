@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"time"
 
 	"cosmossdk.io/math"
 
@@ -20,6 +21,7 @@ const (
 	EventValidatorRemoved    = "validator_removed"
 	EventMinerBanned         = "miner_banned"
 	EventSelectionAtRisk     = "selection_at_risk"
+	EventNoWorkThisEpoch     = "no_work_this_epoch"
 	EventBalanceLow          = "balance_low"
 	EventBalanceRecovered    = "balance_recovered"
 	EventNodeUnreachable     = "node_unreachable"
@@ -69,6 +71,7 @@ func (e Event) Body(now string) map[string]any {
 type config struct {
 	lowBalance   math.Int // uaeth; zero: no balance alerts
 	atRiskBlocks int64    // warn this many blocks before selection; 0: never
+	noWorkAt     float64  // warn once this fraction of an epoch passes with no work; 0: never
 }
 
 // snapshot is everything one poll learns about an address.
@@ -88,6 +91,7 @@ type addrState struct {
 	Banned          bool     `json:"banned"`
 	LowBalance      bool     `json:"lowBalance"`
 	AtRiskEpoch     int64    `json:"atRiskEpoch"`
+	NoWorkEpoch     int64    `json:"noWorkEpoch"`
 	SubHeight       int64    `json:"subHeight"`
 	SubHashes       []string `json:"subHashes,omitempty"`
 }
@@ -104,7 +108,7 @@ func step(cfg config, address string, st *addrState, snap snapshot) []Event {
 	}
 
 	if !st.Initialized {
-		*st = addrState{Initialized: true, AtRiskEpoch: -1, Active: s.ActiveValidator, Banned: s.Banned}
+		*st = addrState{Initialized: true, AtRiskEpoch: -1, NoWorkEpoch: -1, Active: s.ActiveValidator, Banned: s.Banned}
 		st.SubHeight, st.SubHashes = newestSubmissions(snap.subs)
 	} else {
 		for _, sub := range newSubmissions(st, snap.subs) {
@@ -151,6 +155,35 @@ func step(cfg config, address string, st *addrState, snap snapshot) []Event {
 				"epoch":  serving,
 			})
 		}
+	}
+
+	// An address with no work by the end of the epoch leaves the set at
+	// its selection height, so say so while there's still time to get
+	// its miner going: by default halfway through, hours ahead on the
+	// live chain, where selection_at_risk comes minutes ahead.
+	if cfg.noWorkAt > 0 && s.RegisteredConsensusKey && !s.Banned && s.WorkThisEpoch == 0 &&
+		s.Epoch.Length > 0 && st.NoWorkEpoch != s.Epoch.Index &&
+		float64(s.Height-s.Epoch.StartHeight+1) >= cfg.noWorkAt*float64(s.Epoch.Length) {
+		f := map[string]any{
+			"epoch":                    s.Epoch.Index,
+			"activeValidator":          s.ActiveValidator,
+			"selectionHeight":          s.Epoch.SelectionHeight,
+			"blocksUntilSelection":     s.Epoch.BlocksUntilSelection,
+			"estSecondsUntilSelection": s.Epoch.EstSecondsUntilSelection,
+		}
+		when := fmt.Sprintf("%d blocks", s.Epoch.BlocksUntilSelection)
+		if s.Epoch.EstSecondsUntilSelection > 0 {
+			when += fmt.Sprintf(" (about %s)", (time.Duration(s.Epoch.EstSecondsUntilSelection) * time.Second).Round(time.Minute))
+		}
+		if s.ActiveValidator {
+			f["message"] = fmt.Sprintf("%s has no mining work in epoch %d. It leaves the validator set at height %d, in %s, unless its miner lands a share before then.",
+				address, s.Epoch.Index, s.Epoch.SelectionHeight, when)
+		} else {
+			f["message"] = fmt.Sprintf("%s has no mining work in epoch %d, so it won't be picked at height %d, in %s, unless its miner lands a share before then.",
+				address, s.Epoch.Index, s.Epoch.SelectionHeight, when)
+		}
+		ev(EventNoWorkThisEpoch, fmt.Sprint(s.Epoch.Index), f)
+		st.NoWorkEpoch = s.Epoch.Index
 	}
 
 	if cfg.atRiskBlocks > 0 && s.RegisteredConsensusKey && !s.Banned &&
