@@ -3,12 +3,10 @@ import { Routes, Route, Link, useLocation } from "react-router-dom";
 import { api } from "./api";
 import { setAssets } from "./format";
 import { TopBar } from "./components/TopBar";
-import Dashboard from "./pages/Dashboard";
 import Validators from "./pages/Validators";
 import Governance from "./pages/Governance";
 import Address from "./pages/Address";
 import Transaction from "./pages/Transaction";
-import Blocks from "./pages/Blocks";
 import Block from "./pages/Block";
 import Services from "./pages/Services";
 import Agents from "./pages/Agents";
@@ -28,17 +26,17 @@ function NotFound() {
   );
 }
 
-/** The overview: both chains as a helix when there's an IBC chain to draw, else Aether's own. */
+/** Helix overview once chain context is ready (Aether live; IBC ghost without --ibc-rpc). */
 function Overview() {
-  const { ready, ibcName } = useChain();
+  const { ready } = useChain();
   if (!ready) return <TopBar />;
-  return ibcName ? <HelixOverview /> : <Dashboard />;
+  return <HelixOverview />;
 }
 
 function BlocksPage() {
-  const { ready, ibcName } = useChain();
+  const { ready } = useChain();
   if (!ready) return null;
-  return ibcName ? <HelixBlocks /> : <Blocks />;
+  return <HelixBlocks />;
 }
 
 export default function App() {

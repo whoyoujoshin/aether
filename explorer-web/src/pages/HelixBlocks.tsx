@@ -72,8 +72,8 @@ function Timeline({ h }: { h: Helix }) {
         <div className="tl-head">
           <span style={{ textAlign: "right", padding: "0 20px", color: AETHER_COLOR }}>AETHER · POW · {blockTimeLabel(h.aether.blockTimeSecs).toUpperCase()}</span>
           <span style={{ textAlign: "center", color: "var(--faint)" }}>PACKETS</span>
-          <span style={{ padding: "0 20px", color: IBC_COLOR }}>
-            {name.toUpperCase()} · BFT · {blockTimeLabel(h.ibc?.blockTimeSecs ?? 0).toUpperCase()}
+          <span style={{ padding: "0 20px", color: IBC_COLOR, opacity: h.ibc ? 1 : 0.45 }}>
+            {h.ibc ? `${name.toUpperCase()} · BFT · ${blockTimeLabel(h.ibc.blockTimeSecs).toUpperCase()}` : "NO IBC CHAIN CONNECTED"}
           </span>
         </div>
         {rows.length === 0 && <div className="empty">No blocks yet.</div>}

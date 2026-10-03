@@ -42,7 +42,6 @@ const links: [string, string][] = [
   ["/validators", "Validators"],
   ["/governance", "Governance"],
   ["/services", "Services"],
-  ["/ibc", "IBC"],
   ["/agents", "For agents"],
 ];
 
@@ -51,7 +50,9 @@ export function TopBar({ home = false }: { home?: boolean }) {
   const search = useSearch();
   // The Both / Aether / IBC switch, on the two pages that draw the helix.
   const path = useLocation().pathname;
-  const withSwitch = !!useChain().ibcName && (path === "/" || path === "/blocks");
+  const helixPage = path === "/" || path === "/blocks";
+  const withSwitch = !!useChain().ibcName && helixPage;
+  const searchPlaceholder = withSwitch || helixPage ? "Search either chain" : "Search address, hash or height";
 
   return (
     <div className={`topbar${home ? " home" : ""}${withSwitch ? " has-switch" : ""}`}>
@@ -72,8 +73,8 @@ export function TopBar({ home = false }: { home?: boolean }) {
         <form className="search-form" onSubmit={search.submit} role="search">
           <input
             type="text"
-            placeholder={withSwitch ? "Search Aether" : "Search address, hash or height"}
-            aria-label="Search address, hash or height"
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
             value={search.query}
             onChange={(e) => search.setQuery(e.target.value)}
           />

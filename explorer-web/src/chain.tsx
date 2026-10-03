@@ -50,7 +50,8 @@ export function ChainProvider({ children }: { children: ReactNode }) {
       // Not remembered, still applied.
     }
   }
-  return <Ctx.Provider value={{ ready, ibcName, view: ibcName ? view : "aether", setView }}>{children}</Ctx.Provider>;
+  // Without --ibc-rpc still draw both strands: Aether live + faint IBC ghost (README).
+  return <Ctx.Provider value={{ ready, ibcName, view: ibcName ? view : "both", setView }}>{children}</Ctx.Provider>;
 }
 
 export function useChain(): ChainState {

@@ -177,9 +177,21 @@ export function HelixHero({ helix, now, view, width: W, height: H, windowSecs }:
       <text x={nowX + 14} y={cy + A * sn(nowX) + 4} fill={AETHER_COLOR} fontSize={12} fontWeight={600} fontFamily={MONO} style={{ ...fade, opacity: dA }}>
         #{int(helix.aether.height)}
       </text>
-      {helix.ibc && (
+      {helix.ibc ? (
         <text x={nowX + 14} y={cy - A * sn(nowX) + 4} fill={IBC_COLOR} fontSize={12} fontWeight={600} fontFamily={MONO} style={{ ...fade, opacity: dB }}>
           #{int(helix.ibc.height)}
+        </text>
+      ) : (
+        <text
+          x={Math.min(nowX - 8, W - 12)}
+          y={cy - A * sn(nowX) + 4}
+          fill={IBC_COLOR}
+          fontSize={11}
+          fontFamily={MONO}
+          textAnchor="end"
+          style={{ ...fade, opacity: 0.45 }}
+        >
+          no IBC chain connected
         </text>
       )}
     </svg>
