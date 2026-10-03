@@ -3,8 +3,9 @@
 **For:** Gitty. **Why:** sync3 and sync4 run on the same computer, a
 container whose process 1 is `tini`, with no systemd. That computer
 restarts when its own software updates, and every restart takes two of the
-four validators down at once, which stops the chain: about 12 hours on
-2 October. The 10-minute check that restarts them is a stopgap. The fix
+four validators down at once, which stops the chain: 11 hours 48 minutes on
+2 October (no block between 188623 at 10:12 and 188624 at 22:00 CT).
+The 10-minute check that restarts them is a stopgap. The fix
 is one server per node, with systemd bringing it back after any crash or
 reboot.
 
