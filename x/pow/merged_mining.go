@@ -95,23 +95,8 @@ func (k Keeper) SetAuxLastBlockTime(ctx sdk.Context, t int64) {
 // AuxPoW submission, floored at MinDifficulty and capped at
 // AuxMaxDifficulty.
 func (k Keeper) AdjustAuxDifficulty(ctx sdk.Context) math.Int {
-	current := k.GetAuxDifficulty(ctx)
 	lastTime, ok := k.GetAuxLastBlockTime(ctx)
-	if !ok {
-		return current
-	}
-	elapsed := ctx.BlockTime().Unix() - lastTime
-	if elapsed <= 0 {
-		return current
-	}
-	adjusted := current.MulRaw(k.GetTargetBlockTime(ctx)).QuoRaw(elapsed)
-	if minD := k.GetMinDifficulty(ctx); adjusted.LT(minD) {
-		adjusted = minD
-	}
-	if maxD := math.NewInt(AuxMaxDifficulty); adjusted.GT(maxD) {
-		adjusted = maxD
-	}
-	return adjusted
+	return k.retarget(ctx, k.GetAuxDifficulty(ctx), lastTime, ok, math.NewInt(AuxMaxDifficulty))
 }
 
 // submissionSlotTaken reports whether this block has already accepted a

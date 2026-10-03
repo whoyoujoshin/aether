@@ -112,25 +112,27 @@ func TestMergedMining_SeparateDifficulties(t *testing.T) {
 	c, nativeHash := newTracksCase(t)
 	require.Equal(t, c.k.GetDifficulty(c.ctx), c.k.GetAuxDifficulty(c.ctx), "the AuxPoW track starts from native difficulty")
 
-	// An AuxPoW submission 6 seconds after the last one, against a 60s
-	// target, raises AuxPoW difficulty tenfold and leaves native alone.
+	// An AuxPoW submission one half-life behind schedule halves AuxPoW
+	// difficulty (the smooth retarget is in force at this height) and
+	// leaves native alone.
 	c.k.SetDifficulty(c.ctx, math.NewInt(100))
 	native := c.k.GetDifficulty(c.ctx)
-	c.k.SetAuxDifficulty(c.ctx, math.NewInt(1))
-	c.k.SetAuxLastBlockTime(c.ctx, c.ctx.BlockTime().Unix()-6)
+	c.k.SetAuxDifficulty(c.ctx, math.NewInt(auxTestDifficulty))
+	c.k.SetAuxLastBlockTime(c.ctx, c.ctx.BlockTime().Unix()-60-pow.DifficultyHalfLife)
 	c.k.SetMinDifficulty(c.ctx, 1)
 	require.NoError(t, c.submit(c.proof(t, c.pool)))
-	require.Equal(t, "10", c.k.GetAuxDifficulty(c.ctx).String())
+	aux := c.k.GetAuxDifficulty(c.ctx)
+	require.Equal(t, "2", aux.String())
 	require.Equal(t, native, c.k.GetDifficulty(c.ctx))
 	lastAux, _ := c.k.GetAuxLastBlockTime(c.ctx)
 	require.Equal(t, c.ctx.BlockTime().Unix(), lastAux)
 
 	// A native submission retargets native difficulty and leaves AuxPoW
 	// alone.
-	c.k.SetLastBlockTime(c.ctx, c.ctx.BlockTime().Unix()-120)
+	c.k.SetLastBlockTime(c.ctx, c.ctx.BlockTime().Unix()-60-pow.DifficultyHalfLife)
 	require.NoError(t, c.submitNative(nativeHash, 1))
-	require.Equal(t, "10", c.k.GetAuxDifficulty(c.ctx).String())
-	require.Equal(t, "50", c.k.GetDifficulty(c.ctx).String(), "120s against a 60s target halves native difficulty")
+	require.Equal(t, aux, c.k.GetAuxDifficulty(c.ctx))
+	require.Equal(t, "50", c.k.GetDifficulty(c.ctx).String(), "one half-life behind schedule halves native difficulty")
 }
 
 // AuxPoW is checked against the AuxPoW difficulty, not native.
