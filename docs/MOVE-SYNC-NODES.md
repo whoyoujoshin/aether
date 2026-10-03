@@ -125,10 +125,41 @@ ps -eo pid,args | grep [a]etherd      # each node's --home and its restart loop
 du -sh <sync3 home>
 ```
 
-Also find **each validator's miner**. A validator stays in the set only
-while its miner account keeps submitting native work every epoch. If
-sync3's and sync4's miners (`powminer --loop` or similar) run on this
-same computer, they move to the new servers too, in step 3.
+## 2a. Miners, before anything is stopped
+
+Two chain rules (`x/pow`) decide whether a moved validator stays in the
+set:
+
+- **Epoch selection.** At the last block of every epoch
+  (`epoch_length` blocks, 1440 at genesis), the set becomes the
+  addresses with accepted native work (`MsgSubmitPoW`) in that epoch.
+  Any active validator with no work that epoch is **removed**. The one
+  exception: if nobody with a registered consensus key has work, the set
+  is left unchanged.
+- **Liveness.** A validator that misses more than 30 of the last 60
+  blocks is removed at once (no ban, no escrow loss). It comes back only
+  at an epoch boundary where it has work.
+
+So a miner that isn't running is a validator waiting to be dropped, and
+turning miners on for **some** of the four can drop the others at the
+next boundary. Check first, on the seed:
+
+```bash
+aetherd query pow params                       # epoch_length
+aetherd query pow current-epoch
+aetherd query pow active-validators
+aetherd query pow miner-leaderboard            # this epoch's work so far
+aetherd query pow miner-leaderboard <current epoch - 1>
+```
+
+Before the move, **all four validators' miner addresses** should be on
+this epoch's leaderboard, so whichever of them are missing get their
+miners started. A miner is only a client: it signs with its miner
+account key, not the consensus key, and can run anywhere that reaches a
+node's gRPC, so restarting it from its old start script is fine. Run
+each miner account in one place only. If it's unclear which addresses
+belong to which validator, stop and ask Claude rather than starting a
+subset.
 
 ## 3. Move sync3
 
@@ -141,6 +172,13 @@ rsync -a <sync3 home>/ root@<new sync3 IP>:/root/.aether/
 
 **b. Check the other three are signing**, as in UPGRADE-2026-10.md step
 3a (four addresses in the latest block's commit).
+
+**From step c to step g is the downtime, and it has a budget:** under
+30 blocks (about 3 minutes at today's speed), or the liveness rule
+removes sync3 until the next epoch boundary, and the chain runs on the
+other three with all three needed. Have everything ready before c:
+the new server's `config.toml` and `app.toml` edits (step f) prepared
+as files to copy in, the commands typed out.
 
 **c. Stop sync3 for good on the old computer, in this order:**
 
@@ -158,6 +196,10 @@ exactly the state the old node ended with, including
 rsync -a --delete <sync3 home>/ root@<new sync3 IP>:/root/.aether/
 ```
 
+This overwrites `config.toml` and `app.toml` with the old computer's, so
+the step f edits go in **after** it (copy the prepared files over),
+never before.
+
 **e. Make the old copy unstartable:**
 
 ```bash
@@ -171,11 +213,16 @@ in `/root/.aether/config/config.toml`:
 [p2p]
 laddr = "tcp://0.0.0.0:26656"
 external_address = "<new sync3 IP>:26656"
-persistent_peers = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656,<sync4 id>@<sync4's current address>"
+persistent_peers = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656,<sync4 id>@157.245.252.221:26676"
 
 [rpc]
 laddr = "tcp://127.0.0.1:26657"
 ```
+
+In `app.toml`, set `[grpc] address = "127.0.0.1:9090"` (sync4's copy
+says 9092). sync4's address in `persistent_peers` is whatever reaches
+it from outside today (the tunnel on the seed, `157.245.252.221:26676`,
+until sync4 moves), not its `127.0.0.1` entry from the shared computer.
 
 Its node ID doesn't change (it's in the copied `node_key.json`). Check
 that `config/priv_validator_key.json` is there and that
