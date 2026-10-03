@@ -97,8 +97,17 @@ func (l *ledger) add(ds []drip) error {
 	return nil
 }
 
-// recent is the newest n drips, newest first.
+// maxRecentDrips is the most recent ever returns, whatever it's asked.
+const maxRecentDrips = 100
+
+// recent is the newest n drips (at most maxRecentDrips), newest first.
 func (l *ledger) recent(n int) []drip {
+	if n < 0 {
+		n = 0
+	}
+	if n > maxRecentDrips {
+		n = maxRecentDrips
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if n > len(l.drips) {

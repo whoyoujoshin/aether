@@ -216,6 +216,9 @@ func TestLedgerAndRegistrySurviveRestart(t *testing.T) {
 	if err != nil || len(l2.recent(5)) != 1 || l2.recent(1)[0] != d {
 		t.Fatalf("reloaded %v %+v", err, l2.recent(5))
 	}
+	if len(l2.recent(-1)) != 0 || len(l2.recent(1<<40)) != 1 {
+		t.Fatal("recent must clamp its argument")
+	}
 
 	reg, _ := openAgentRegistry(filepath.Join(dir, "agents.json"))
 	pub, _, _ := ed25519.GenerateKey(rand.Reader)

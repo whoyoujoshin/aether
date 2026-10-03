@@ -101,13 +101,13 @@ func (f *faucetServer) handleStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, body)
 }
 
-// GET /drips?limit=20 -- the newest drips, newest first (at most 100).
+// GET /drips?limit=20 -- the newest drips, newest first (at most maxRecentDrips).
 func (f *faucetServer) handleDrips(w http.ResponseWriter, r *http.Request) {
 	n, err := strconv.Atoi(r.URL.Query().Get("limit"))
 	if err != nil || n <= 0 {
 		n = 20
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"drips": f.ledger.recent(min(n, 100))})
+	writeJSON(w, http.StatusOK, map[string]any{"drips": f.ledger.recent(n)})
 }
 
 // cachedBalance asks at most every ttl, so /stats can be polled.
