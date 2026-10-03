@@ -79,7 +79,9 @@ the open item.
 
 ## 3. Swap, one node at a time
 
-Order: **sync3, sync4, peer-1, seed.** For each node:
+Order: **sync3, sync4, peer-1, seed.** sync3 and sync4 get their new
+binary by moving to their own servers ([MOVE-SYNC-NODES.md](MOVE-SYNC-NODES.md)),
+which replaces this section for them. For each other node:
 
 **a. Before touching it,** check the other three are signing. Run this
 anywhere with the RPC (it prints each validator address in the latest
