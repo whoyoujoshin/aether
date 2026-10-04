@@ -33,10 +33,18 @@
 //	aetherd tx authz grant <agent> send --spend-limit 5000000uaeth --expiration <unix-time> --from <you>
 //	aetherd tx authz revoke <agent> /cosmos.bank.v1beta1.MsgSend --from <you>
 //
-// Usage (stdio transport, for a local MCP client):
+// Usage (stdio transport, for a local MCP client; the default):
 //
 //	go run ./cmd/agentmcp --grpc localhost:9090 --chain-id aether-testnet-1 \
 //	    --per-tx-limit 1000000 --daily-limit 5000000 [--granter aether1...]
+//
+// Public read-only HTTP (no keyring, no spend tools), for a URL a bot
+// can connect to without installing a package:
+//
+//	go run ./cmd/agentmcp --http 127.0.0.1:8090 --grpc <node>:9090 --chain-id aether-testnet-1
+//
+// Streamable HTTP is at /mcp. Bind it to loopback and reverse-proxy
+// that path; see scripts/tls/Caddyfile.
 package main
 
 import (
@@ -191,39 +199,52 @@ type getBalanceOutput struct {
 }
 
 func toolGetBalance(_ context.Context, _ *mcp.CallToolRequest, input getBalanceInput) (*mcp.CallToolResult, getBalanceOutput, error) {
-	address := input.Address
-	if address != "" {
-		if _, err := sdk.AccAddressFromBech32(address); err != nil {
-			return nil, getBalanceOutput{}, newError(codeInvalidAddress, "invalid address "+address+": "+err.Error())
-		}
-	}
-	if address == "" {
-		w, err := newWallet()
-		if err != nil {
-			return nil, getBalanceOutput{}, err
-		}
-		acc, err := getOrCreateAgentAccount(w)
-		if err != nil {
-			return nil, getBalanceOutput{}, err
-		}
-		address = acc.Address
-	}
-
-	client, err := wallet.NewClient(grpcEndpoint)
+	address, err := agentOrAddress(input.Address)
 	if err != nil {
 		return nil, getBalanceOutput{}, err
+	}
+	out, err := balanceFor(address)
+	return nil, out, err
+}
+
+// agentOrAddress is the wallet server's address resolution: an omitted
+// address is this agent's account, created on first use. The public
+// server must not call this.
+func agentOrAddress(address string) (string, error) {
+	if address != "" {
+		if _, err := sdk.AccAddressFromBech32(address); err != nil {
+			return "", newError(codeInvalidAddress, "invalid address "+address+": "+err.Error())
+		}
+		return address, nil
+	}
+	w, err := newWallet()
+	if err != nil {
+		return "", err
+	}
+	acc, err := getOrCreateAgentAccount(w)
+	if err != nil {
+		return "", err
+	}
+	return acc.Address, nil
+}
+
+// balanceFor reads an address. It does not open the keyring.
+func balanceFor(address string) (getBalanceOutput, error) {
+	client, err := wallet.NewClient(grpcEndpoint)
+	if err != nil {
+		return getBalanceOutput{}, err
 	}
 	defer client.Close()
 
 	balance, err := client.GetBalance(address)
 	if err != nil {
-		return nil, getBalanceOutput{}, err
+		return getBalanceOutput{}, err
 	}
 	out := getBalanceOutput{Address: address, Balance: newAmountDTO(balance.AmountOf(baseDenom))}
 	for _, a := range assets.List() {
 		out.Balances = append(out.Balances, newAssetAmountDTO(a, balance.AmountOf(a.Denom)))
 	}
-	return nil, out, nil
+	return out, nil
 }
 
 type getSpendingStatusInput struct{}
@@ -432,6 +453,7 @@ func main() {
 	flag.StringVar(&faucetURL, "faucet", "", "testnet faucet URL for request_testnet_funds (default: the public faucet on aether-testnet-1; \"off\" disables)")
 	flag.BoolVar(&directoryAllowPrivate, "directory-allow-private", false, "let find_services/announce_service fetch manifests from private/loopback addresses (local devnets only)")
 	flag.StringVar(&feeGranter, "fee-granter", "", "pay transaction fees from this account's x/feegrant allowance to the agent")
+	httpListen := flag.String("http", "", `listen address for a public read-only Streamable HTTP server at /mcp (for example 127.0.0.1:8090). Empty (default): stdio, with the full wallet. Public mode never opens the keyring`)
 	usdcChannel := flag.String("usdc-channel", "", "Aether's end of its channel to Noble (e.g. channel-3): USDC is Noble's uusdc over exactly this channel. Empty: this agent knows only AETH")
 	usdcPerTx := flag.String("usdc-per-tx-limit", "", `most USDC one payment may spend, with unit (e.g. "5 USDC"); USDC spending stays off until this and --usdc-daily-limit are set`)
 	usdcDaily := flag.String("usdc-daily-limit", "", `most USDC spendable in any rolling 24h, with unit (e.g. "20 USDC")`)
@@ -477,6 +499,17 @@ func main() {
 		trustedRaters = append(trustedRaters, a)
 	}
 
+	if *httpListen != "" {
+		// Before any keyring default. newServer() is the wallet: a flag
+		// in front of it could still register spend tools, so public
+		// mode never calls it.
+		log.Printf("Aether public read-only MCP (http=%s grpc=%s chain-id=%s); the keyring is not opened", *httpListen, grpcEndpoint, chainID)
+		if err := servePublicHTTP(*httpListen); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+
 	if stateFile == "" {
 		stateFile = filepath.Join(keyringDir, "agentmcp-spend.json")
 	}
@@ -513,8 +546,11 @@ func main() {
 	}
 }
 
-// newServer is the MCP server with every tool registered; the MCPB
-// manifest lists its tools from here too, so the two can't drift.
+// newServer is the wallet MCP server, with every tool registered,
+// including ones that spend, sign, or create a key. The MCPB manifest
+// lists its tools from here too, so the two can't drift. The public
+// HTTP server is newPublicServer, not a flag in front of this: calling
+// this and then hiding tools would still construct the wallet tool set.
 func newServer() *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "aether-wallet", Version: version()}, &mcp.ServerOptions{Instructions: serverInstructions})
 

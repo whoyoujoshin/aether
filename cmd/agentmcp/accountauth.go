@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"cosmossdk.io/math"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/whoyoujoshin/aether/wallet"
@@ -63,32 +62,25 @@ type getAccountAuthenticatorsOutput struct {
 }
 
 func toolGetAccountAuthenticators(_ context.Context, _ *mcp.CallToolRequest, input getAccountAuthenticatorsInput) (*mcp.CallToolResult, getAccountAuthenticatorsOutput, error) {
-	address := input.Address
-	if address != "" {
-		if _, err := sdk.AccAddressFromBech32(address); err != nil {
-			return nil, getAccountAuthenticatorsOutput{}, newError(codeInvalidAddress, "invalid address "+address+": "+err.Error())
-		}
-	} else {
-		w, err := newWallet()
-		if err != nil {
-			return nil, getAccountAuthenticatorsOutput{}, err
-		}
-		acc, err := getOrCreateAgentAccount(w)
-		if err != nil {
-			return nil, getAccountAuthenticatorsOutput{}, err
-		}
-		address = acc.Address
-	}
-
-	client, err := wallet.NewClient(grpcEndpoint)
+	address, err := agentOrAddress(input.Address)
 	if err != nil {
 		return nil, getAccountAuthenticatorsOutput{}, err
+	}
+	out, err := authenticatorsFor(address)
+	return nil, out, err
+}
+
+// authenticatorsFor reads an address. It does not open the keyring.
+func authenticatorsFor(address string) (getAccountAuthenticatorsOutput, error) {
+	client, err := wallet.NewClient(grpcEndpoint)
+	if err != nil {
+		return getAccountAuthenticatorsOutput{}, err
 	}
 	defer client.Close()
 
 	authenticators, err := client.Authenticators(address)
 	if err != nil {
-		return nil, getAccountAuthenticatorsOutput{}, err
+		return getAccountAuthenticatorsOutput{}, err
 	}
 
 	out := make([]authenticatorDTO, len(authenticators))
@@ -112,5 +104,5 @@ func toolGetAccountAuthenticators(_ context.Context, _ *mcp.CallToolRequest, inp
 		}
 		out[i] = d
 	}
-	return nil, getAccountAuthenticatorsOutput{Address: address, Authenticators: out}, nil
+	return getAccountAuthenticatorsOutput{Address: address, Authenticators: out}, nil
 }

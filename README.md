@@ -223,6 +223,15 @@ go run ./cmd/agentmcp --grpc localhost:9090 --rpc http://localhost:26657 --chain
     [--granter <your-address> [--fee-granter <your-address>]]
 ```
 
+**Public read-only URL** (no local package). `--http` serves Streamable HTTP at `/mcp` and `GET /healthz`. It is a different server from the wallet above: it never opens the keyring and does not register tools that spend, sign, create a key, or call the faucet. `get_balance`, `get_miner_status` and `get_account_authenticators` require an address. `get_transaction_status` looks a hash up. `find_services` is the service directory. Stdio, with the full wallet, stays the default when `--http` is omitted.
+
+```bash
+go run ./cmd/agentmcp --http 127.0.0.1:8090 \
+    --grpc grpc.157-245-252-221.sslip.io:443 --chain-id aether-testnet-1
+```
+
+That listens on `http://127.0.0.1:8090/mcp`. Bind it to loopback. The explorer SPA serves `index.html` with HTTP 200 for unknown paths, so Caddy has to proxy `/mcp` to this process before that fallthrough — the snippet is commented in [`scripts/tls/Caddyfile`](scripts/tls/Caddyfile) and is not applied. The registry entry stays `io.github.whoyoujoshin/aether-wallet`; `agentmcp server-json --remote <url>` can add a `remotes` URL later, and omits it when the flag is empty. Neither the Caddy route nor a registry publish is done yet.
+
 Built for how agents actually fail:
 
 - **No double payments on retry.** `send_aeth` requires an `idempotencyKey`; a retry with the same key re-sends the identical signed transaction (its sequence number is signed in, so the chain can include it at most once) and returns its status.

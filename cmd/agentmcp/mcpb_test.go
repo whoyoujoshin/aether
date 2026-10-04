@@ -64,11 +64,38 @@ func TestServerJSON(t *testing.T) {
 	require.Equal(t, "mcpb", doc.Packages[0].RegistryType)
 	require.Equal(t, url, doc.Packages[0].Identifier)
 	require.Equal(t, sha, doc.Packages[0].FileSha256)
+	var raw map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(out.Bytes(), &raw))
+	_, hasRemotes := raw["remotes"]
+	require.False(t, hasRemotes, "remotes defaults to empty and is omitted")
+
+	out.Reset()
+	remote := "https://explorer.example/mcp"
+	require.NoError(t, runPackaging([]string{"server-json", "--version", "0.2.1-testnet", "--url", url, "--sha256", sha, "--remote", remote}, &out))
+	var withRemote struct {
+		Name     string `json:"name"`
+		Packages []struct {
+			RegistryType string `json:"registryType"`
+		} `json:"packages"`
+		Remotes []struct {
+			Type string `json:"type"`
+			URL  string `json:"url"`
+		} `json:"remotes"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &withRemote))
+	require.Equal(t, registryName, withRemote.Name)
+	require.Len(t, withRemote.Packages, 1, "packages stay; remotes are added beside them")
+	require.Equal(t, "mcpb", withRemote.Packages[0].RegistryType)
+	require.Equal(t, []struct {
+		Type string `json:"type"`
+		URL  string `json:"url"`
+	}{{Type: "streamable-http", URL: remote}}, withRemote.Remotes)
 
 	for _, bad := range [][]string{
 		{"server-json", "--version", "v0.2.1-testnet", "--url", url, "--sha256", sha},              // tag, not version
 		{"server-json", "--version", "0.2.1-testnet", "--url", url, "--sha256", "abc"},             // not a SHA-256
 		{"server-json", "--version", "0.2.1-testnet", "--url", "https://x/y.zip", "--sha256", sha}, // registry needs "mcp" in the URL
+		{"server-json", "--version", "0.2.1-testnet", "--url", url, "--sha256", sha, "--remote", "not-a-url"},
 	} {
 		require.Error(t, runPackaging(bad, &bytes.Buffer{}), bad)
 	}

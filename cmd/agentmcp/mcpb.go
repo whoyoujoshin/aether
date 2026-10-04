@@ -17,8 +17,10 @@ import (
 //
 //	agentmcp mcpb-manifest --version 0.2.1-testnet
 //	    the MCPB bundle's manifest.json (https://github.com/modelcontextprotocol/mcpb)
-//	agentmcp server-json --version 0.2.1-testnet --url <.mcpb release URL> --sha256 <hex>
-//	    the MCP Registry's server.json for that bundle
+//	agentmcp server-json --version 0.2.1-testnet --url <.mcpb release URL> --sha256 <hex> [--remote <streamable HTTP URL>]
+//	    the MCP Registry's server.json for that bundle. --remote is optional
+//	    and defaults to empty (no remotes field). The same registry name is
+//	    kept; do not publish a version from here.
 //
 // scripts/package-mcpb.sh builds the bundle from these; the release
 // workflow runs it for every tag.
@@ -164,14 +166,18 @@ func buildMCPBManifest(ctx context.Context, ver string) (*mcpbManifest, error) {
 	return m, nil
 }
 
-func buildServerJSON(ver, url, sha string) (map[string]any, error) {
-	if !strings.Contains(url, "mcp") {
+func buildServerJSON(ver, bundleURL, sha, remote string) (map[string]any, error) {
+	if !strings.Contains(bundleURL, "mcp") {
 		return nil, errors.New("the registry requires the bundle URL to contain \"mcp\"")
 	}
 	if len(sha) != 64 || strings.Trim(strings.ToLower(sha), "0123456789abcdef") != "" {
 		return nil, fmt.Errorf("--sha256 must be 64 hex characters, got %q", sha)
 	}
-	return map[string]any{
+	remote, err := parseRemoteURL(remote)
+	if err != nil {
+		return nil, err
+	}
+	doc := map[string]any{
 		"$schema":     "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 		"name":        registryName,
 		"title":       "Aether testnet wallet",
@@ -181,12 +187,22 @@ func buildServerJSON(ver, url, sha string) (map[string]any, error) {
 		"repository":  map[string]string{"url": repoURL, "source": "github"},
 		"packages": []map[string]any{{
 			"registryType": "mcpb",
-			"identifier":   url,
+			"identifier":   bundleURL,
 			"version":      ver,
 			"fileSha256":   strings.ToLower(sha),
 			"transport":    map[string]string{"type": "stdio"},
 		}},
-	}, nil
+	}
+	// Empty by default. The live URL is filled in after the public
+	// process is actually deployed; publishing it early would point
+	// clients at a host that still serves the explorer SPA.
+	if remote != "" {
+		doc["remotes"] = []map[string]string{{
+			"type": "streamable-http",
+			"url":  remote,
+		}}
+	}
+	return doc, nil
 }
 
 func runPackaging(args []string, out io.Writer) error {
@@ -194,6 +210,7 @@ func runPackaging(args []string, out io.Writer) error {
 	ver := fs.String("version", "", "bundle version, e.g. 0.2.1-testnet (the release tag without its v)")
 	url := fs.String("url", "", "server-json: the .mcpb file's release download URL")
 	sha := fs.String("sha256", "", "server-json: the .mcpb file's SHA-256, hex")
+	remote := fs.String("remote", "", "server-json: optional public Streamable HTTP URL; empty omits remotes")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -206,7 +223,7 @@ func runPackaging(args []string, out io.Writer) error {
 	case "mcpb-manifest":
 		doc, err = buildMCPBManifest(context.Background(), *ver)
 	case "server-json":
-		doc, err = buildServerJSON(*ver, *url, *sha)
+		doc, err = buildServerJSON(*ver, *url, *sha, *remote)
 	}
 	if err != nil {
 		return err
