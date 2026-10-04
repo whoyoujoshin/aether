@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/whoyoujoshin/aether/wallet"
@@ -55,34 +54,27 @@ type getMinerStatusOutput struct {
 }
 
 func toolGetMinerStatus(ctx context.Context, _ *mcp.CallToolRequest, input getMinerStatusInput) (*mcp.CallToolResult, getMinerStatusOutput, error) {
-	address := input.Address
-	if address != "" {
-		if _, err := sdk.AccAddressFromBech32(address); err != nil {
-			return nil, getMinerStatusOutput{}, newError(codeInvalidAddress, "invalid address "+address+": "+err.Error())
-		}
-	} else {
-		w, err := newWallet()
-		if err != nil {
-			return nil, getMinerStatusOutput{}, err
-		}
-		acc, err := getOrCreateAgentAccount(w)
-		if err != nil {
-			return nil, getMinerStatusOutput{}, err
-		}
-		address = acc.Address
-	}
-
-	client, err := wallet.NewClient(grpcEndpoint)
+	address, err := agentOrAddress(input.Address)
 	if err != nil {
 		return nil, getMinerStatusOutput{}, err
+	}
+	out, err := minerStatusFor(ctx, address)
+	return nil, out, err
+}
+
+// minerStatusFor reads an address. It does not open the keyring.
+func minerStatusFor(ctx context.Context, address string) (getMinerStatusOutput, error) {
+	client, err := wallet.NewClient(grpcEndpoint)
+	if err != nil {
+		return getMinerStatusOutput{}, err
 	}
 	defer client.Close()
 
 	st, err := client.MinerStatus(ctx, address)
 	if err != nil {
-		return nil, getMinerStatusOutput{}, err
+		return getMinerStatusOutput{}, err
 	}
-	return nil, getMinerStatusOutput{
+	return getMinerStatusOutput{
 		Address: st.Address,
 		Height:  st.Height,
 		Epoch: minerEpochDTO{

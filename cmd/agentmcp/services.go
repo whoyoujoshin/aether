@@ -118,24 +118,34 @@ type findServicesOutput struct {
 }
 
 func toolFindServices(ctx context.Context, _ *mcp.CallToolRequest, in findServicesInput) (*mcp.CallToolResult, findServicesOutput, error) {
+	trusted, err := trustedSet()
+	if err != nil {
+		return nil, findServicesOutput{}, err
+	}
+	out, err := findServices(ctx, in, trusted, purchaseHistory())
+	return nil, out, err
+}
+
+// findServices lists the directory. trusted and history are supplied by
+// the caller: the wallet server includes its own account (which opens
+// the keyring), the public server must not.
+func findServices(ctx context.Context, in findServicesInput, trusted map[string]bool, history func(string) *yourHistoryDTO) (findServicesOutput, error) {
 	var maxPrice math.Int
 	var maxAsset wallet.Asset
 	if in.MaxPrice != "" {
 		var err error
 		if maxAsset, maxPrice, err = parseAssetAmount(in.MaxPrice); err != nil {
-			return nil, findServicesOutput{}, err
+			return findServicesOutput{}, err
 		}
 	}
 	listings, err := serviceDirectory().Listings(ctx)
 	if err != nil {
-		return nil, findServicesOutput{}, err
+		return findServicesOutput{}, err
+	}
+	if history == nil {
+		history = func(string) *yourHistoryDTO { return nil }
 	}
 	words := strings.Fields(strings.ToLower(in.Query))
-	trusted, err := trustedSet()
-	if err != nil {
-		return nil, findServicesOutput{}, err
-	}
-	history := purchaseHistory()
 	out := findServicesOutput{Services: []serviceDTO{}}
 	for _, l := range listings {
 		price, err := wallet.ParseUaeth(l.Manifest.Price)
@@ -180,7 +190,7 @@ func toolFindServices(ctx context.Context, _ *mcp.CallToolRequest, in findServic
 	if len(out.Services) > 50 {
 		out.Services = out.Services[:50]
 	}
-	return nil, out, nil
+	return out, nil
 }
 
 // trustScore orders services by what can't be faked: this agent's own
@@ -196,13 +206,21 @@ func trustScore(s serviceDTO) float64 {
 	return score
 }
 
-// trustedSet is whose ratings count as trusted: --trust, the owner and
-// this agent (and its granter, whose funds it spends).
-func trustedSet() (map[string]bool, error) {
+// publicTrustedSet is whose ratings count on the public server: only
+// addresses passed with --trust. It never opens the keyring; that
+// server has no agent account.
+func publicTrustedSet() map[string]bool {
 	set := map[string]bool{}
 	for _, a := range trustedRaters {
 		set[a] = true
 	}
+	return set
+}
+
+// trustedSet is whose ratings count as trusted: --trust, the owner and
+// this agent (and its granter, whose funds it spends).
+func trustedSet() (map[string]bool, error) {
+	set := publicTrustedSet()
 	if approver != "" {
 		set[approver] = true
 	}
