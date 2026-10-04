@@ -132,13 +132,13 @@ Those three IDs stay on Aether, idle; the counterparty chain is gone.
 Still not done: a connection to a counterparty chain someone else
 operates. That's an operational step, not a code one.
 
-### Open issue: the live chain's bond cooldown and IBC unbonding period
+### Resolved: the live chain's bond cooldown and IBC unbonding period
 
 The live run reported an unbonding period of 1h40m. The testnet still has
 `x/pow`'s original 100-block placeholder `BondCooldown`;
 `BondCooldownProduction` (4,320 blocks) is only the default for chains
 started from genesis after it landed. Three facts make this worse than
-it looks, and the fix is still being decided:
+it looks:
 
 - **The real lockup is shorter than reported.** The 1h40m came from
   `cmd/relayer` converting `BondCooldown` to time with the 60s *target*
@@ -167,5 +167,17 @@ cutover). Joshua approved:
 
 Both passed a local governance rehearsal. The cooldown is still counted
 in blocks, so re-check it if block time ever drops (below ~3.4s it
-falls under 48h). Until both proposals pass on `aether-testnet-1`, don't
-open an IBC connection that's meant to stay up.
+falls under 48h).
+
+**Live on `aether-testnet-1`, 2026-10-04.** Proposals #3 and #4 both
+closed `PROPOSAL_STATUS_PASSED` (#3 at 15:58:07 CT, #4 ten seconds
+later). Gitty read the values back from the seed's public RPC at block
+202,043 (16:05 CT):
+
+- evidence `max_age_num_blocks` = **2,880**, `max_age_duration` =
+  172,800s (48h);
+- `x/pow` `bond_cooldown` = **51,840**.
+
+An IBC connection meant to stay up can now be opened. The next one is
+the Osmosis testnet ([OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md)), after
+the October binary swaps.

@@ -5,18 +5,21 @@ to Osmosis's public testnet and keeping it relayed in both directions.
 Rewritten 2026-10-03 for how relaying works now (Helicase onto Aether,
 `cmd/outbound` onto Osmosis); not yet executed.
 
-## Status: ready once proposals #3 and #4 have executed
+## Status: gate cleared 2026-10-04; start after the October binary swaps
 
-docs/IBC.md: *"Until both proposals pass on `aether-testnet-1`, don't open
-an IBC connection that's meant to stay up."*
+Proposals #3 and #4 both passed. Gitty read the new values back from the
+seed's public RPC at block 202,043 (16:05 CT): `max_age_num_blocks` =
+2,880 and `bond_cooldown` = 51,840 (see docs/IBC.md). Step 0 below is
+done. Begin at step 1 once the peer-1, sync3 and seed binary swaps for
+block 225,000 are finished ([UPGRADE-2026-10.md](UPGRADE-2026-10.md)),
+so the IBC setup and the swaps don't run on the same validators at once.
 
 | id | sets | voting ends |
 |---|---|---|
 | #3 | `consensus` evidence `max_age_num_blocks = 2880` | 2026-10-04 15:58:07 CT |
 | #4 | `pow` `bond_cooldown = 51840` | 2026-10-04 15:58:17 CT |
 
-Both had full turnout, all Yes. Neither executes early: `x/governance`
-tallies and executes only once `now > VotingEndTime`.
+Both had full turnout, all Yes, and both executed at the end of voting.
 
 Why #4 matters here: `cmd/relayer` gives Osmosis's client of Aether a
 trusting period derived from Aether's bond cooldown times its block time.
