@@ -11,6 +11,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      "/llms.txt": "http://localhost:8081",
+      "/start.md": "http://localhost:8081",
       "/api": {
         target: "http://localhost:8081",
         changeOrigin: true,

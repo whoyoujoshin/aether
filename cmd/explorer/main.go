@@ -534,6 +534,7 @@ func main() {
 		log.Fatalf("--faucet-api: %v", err)
 	}
 	mux.HandleFunc("/llms.txt", handleLLMsTxt)
+	mux.HandleFunc("/start.md", handleStartMd)
 
 	// Optional: serve explorer-web's built static assets from the same
 	// process/port, so production deploys are a single binary + one
