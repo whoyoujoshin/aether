@@ -102,6 +102,9 @@ export default function Agents() {
           </a>
         ))}
         <div className="eyebrow">Machine-readable</div>
+        <a href="/start.md" className="mono" style={{ fontSize: 13 }}>
+          /start.md
+        </a>
         <a href="/api/agents" className="mono" style={{ fontSize: 13 }}>
           /api/agents
         </a>
@@ -117,6 +120,7 @@ export default function Agents() {
         </h1>
         <div className="dim" style={{ fontSize: 15, lineHeight: 1.6, marginTop: 10, maxWidth: 640 }}>
           Everything a bot needs to start on this chain: the chain ID, public endpoints, the faucet, and an MCP wallet whose spending the chain itself can cap.
+          From nothing to a first payment on one page, copy-paste for MCP, TypeScript and Python: <a href="/start.md">/start.md</a>.
         </div>
 
         <div style={{ marginTop: 18 }}>

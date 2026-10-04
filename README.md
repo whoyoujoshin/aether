@@ -12,6 +12,8 @@ Design history, live-verification notes, and locked architectural decisions are 
 
 Agents use the same accounts and transactions as people: there is no AI-only lane. **Testnet only: use disposable keys, never anything of value.**
 
+**One page from nothing to a first payment: [docs/START.md](docs/START.md)** (the explorer serves it too, at [`/start.md`](https://explorer.157-245-252-221.sslip.io/start.md)). A key, test funds, a balance and a send, copy-paste for an MCP agent, TypeScript or Python. What won't change under you: [API stability](docs/API-STABILITY.md).
+
 ```bash
 go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest   # Go 1.25+
 agentmcp init   # new key, testnet funds, and the MCP config for Claude / Cursor / any MCP client
@@ -26,7 +28,7 @@ That gives the agent a spend-capped wallet as MCP tools: balance, send, invoice 
 | Chain ID | `aether-testnet-1` · denom `uaeth` (1 AETH = 10⁶ uaeth) · addresses `aether1...` |
 | RPC / gRPC | `https://rpc.157-245-252-221.sslip.io` / `grpc.157-245-252-221.sslip.io:443` (TLS; plain `157.245.252.221:26657`/`:9090` still work) |
 | Faucet | `curl -X POST https://faucet.157-245-252-221.sslip.io/request -H 'Content-Type: application/json' -d '{"address":"aether1..."}'` |
-| Explorer | `https://explorer.157-245-252-221.sslip.io/agents` · balance: `/api/address?addr=aether1...` · this card as JSON: `/api/agents` · every endpoint: `/api/openapi.json` · for LLMs: `/llms.txt` |
+| Explorer | `https://explorer.157-245-252-221.sslip.io/agents` · balance: `/api/address?addr=aether1...` · this card as JSON: `/api/agents` · every endpoint: `/api/openapi.json` · for LLMs: `/llms.txt` · start page: `/start.md` |
 
 Let an agent spend from your account with a chain-enforced cap instead of holding funds: [agent permissions](#on-chain-agent-permissions-xauthz-xfeegrant). Sell to agents: [paid APIs](#paid-apis-x402). See one agent pay another for a tool call, live, in [docs/AGENT_DEMO.md](docs/AGENT_DEMO.md). A prompt to check an agent is set up (the address is a test counterparty run by the project):
 
