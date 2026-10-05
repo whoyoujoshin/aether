@@ -1,28 +1,35 @@
-# October 2026 upgrade: everything on at block 225,000
+# October 2026 upgrade: everything on at block 205,000
 
 **For:** the four validators (seed, sync3, sync4, peer-1), plus any other
 node running `aetherd`. **Deadline:** every node on the new binary before
-the chain reaches **block 225,000**, about 5 to 6 October 2026 at today's
-5 to 7 s blocks (later blocks are slower: check the tip and the time
-left before each step). Aim to finish by the end of **5 October**.
+the chain reaches **block 205,000**, about 21:50 CT on 4 October 2026 at
+~7 s blocks (check the tip and the time left before each step).
 
-Earlier versions of this runbook said 500,000 and then 350,000. A binary
-built before the 225,000 change (for example `ece0049`, which sync3 runs
-since its move, or `f665d22`) is **not** enough: those nodes swap once
-more.
+**Moved from 225,000 to 205,000 on 4 October 2026** (tip ~203,800), so
+Joshua can watch the activation. **Every node swaps, sync4 included:** a
+binary built for 225,000 (for example the one sync4 runs) disagrees with
+this one from 205,000 and falls off the chain, and so does anything older
+(`ece0049`, `f665d22`). Earlier versions of this runbook said 500,000,
+350,000 and 225,000.
 
-## What switches on at 225,000
+**Abort rule.** If all four aren't on the 205,000 binary by block
+**204,700**, put every node already swapped back on the binary it ran
+before, and tell Claude. Nothing has activated before 205,000, so the old
+binaries still agree with everyone; a split at 205,000 with two nodes on
+each side would stop the chain.
+
+## What switches on at 205,000
 
 `October2026UpgradeHeight` (`x/pow/types.go`) turns on every gated change
 made since the 161,000 cutover, together, after governance proposals #3
-and #4 close (2026-10-04 15:58 CT, around block 207,000 to 212,000):
+and #4 passed (2026-10-04 15:58 CT):
 
 - **Smooth difficulty retarget** (`x/pow/retarget.go`). The old rule
   multiplies difficulty by about ten for a share one block after the
   last; on 3 October it went from 7,278 to about 21,000,000 in hours, and
   validators lost their seats for want of a share per epoch. From
-  225,000 each share moves it by `2^((60 s − elapsed) / 1800 s)`, about 2%
-  for a fast one. At 225,000 difficulty is also capped once at 285,960
+  205,000 each share moves it by `2^((60 s − elapsed) / 1800 s)`, about 2%
+  for a fast one. At 205,000 difficulty is also capped once at 285,960
   so the new rule starts from a sane value.
 - **Randomness beacon** (`beacon.go`). Validator selection draws from
   all qualified miners, weighted by work, with a seed built over the
@@ -38,7 +45,7 @@ and #4 close (2026-10-04 15:58 CT, around block 207,000 to 212,000):
   native miners until a pool actually sends work.
 
 A node without the new binary computes difficulty, selection and AuxPoW
-acceptance differently from 225,000 and falls off the chain; if two of
+acceptance differently from 205,000 and falls off the chain; if two of
 the four validators do, the chain stops.
 
 ## Miners: update now, no coordination
@@ -56,7 +63,7 @@ epoch stays.
 
 - **No halt and no restart height.** Everything that changed in chain
   code since the 161,000 cutover binary is in `x/pow`, and all of it
-  behaves exactly as before below 225,000. Old and new binaries agree on
+  behaves exactly as before below 205,000. Old and new binaries agree on
   every block until then, so nodes can be swapped one at a time,
   whenever, in any order.
 - **One at a time, though.** With four equal validators the chain needs
@@ -64,8 +71,6 @@ epoch stays.
 - **The seed goes last** until peer-1 has its own path to sync3 and sync4
   (section 2): while peer-1 reaches them only through the seed, a seed
   restart takes two validators out.
-- **Don't do it around 15:58 CT on 4 October**, when governance
-  proposals #3 and #4 execute. Before or after is fine; after is simpler.
 
 ## 1. Build once
 
@@ -73,7 +78,7 @@ On a machine with Go 1.25, from `main`:
 
 ```bash
 git fetch origin && git checkout origin/main
-grep -n "October2026UpgradeHeight int64 = 225_000" x/pow/types.go
+grep -n "October2026UpgradeHeight int64 = 205_000" x/pow/types.go
 #   must show: a binary without it isn't the upgrade
 go build -o aetherd ./cmd/aetherd
 sha256sum aetherd          # note it; every node gets this same file
@@ -111,11 +116,13 @@ the open item.
 
 ## 3. Swap, one node at a time
 
-Order: **sync3, sync4, peer-1, seed.** sync4 gets its new binary by
-moving to its own server ([MOVE-SYNC-NODES.md](MOVE-SYNC-NODES.md)),
-built from `main` with the line above. sync3 already moved, on `ece0049`,
-so it swaps like the others below. Only swap while
-`aetherd query pow active-validators` shows four. For each node:
+Order: **sync3, sync4, peer-1, seed.** All four have moved already and
+swap in place below; sync4's binary was built for 225,000, so it swaps
+like the rest. Swap while `aetherd query pow active-validators` shows
+four. If an epoch boundary (the next is block 204,479) leaves three,
+keep going: each swap then pauses blocks for as long as that node is
+down, so have the new binary checked before stopping the old one. For
+each node:
 
 **a. Before touching it,** check the other three are signing. Run this
 anywhere with the RPC (it prints each validator address in the latest
@@ -174,7 +181,7 @@ restarts twice.
 
 Until all four are done, **don't submit governance proposals that use the
 new `merged_mining_reward_share_bps` field** (old binaries don't know
-it). The new binary refuses that field below 225,000 anyway.
+it). The new binary refuses that field below 205,000 anyway.
 
 ## If something goes wrong
 
@@ -190,8 +197,8 @@ it). The new binary refuses that field below 225,000 anyway.
 - **The chain stalls during the upgrade:** two validators are down.
   Bring back whichever restarted last (old or new binary both work), and
   check the others with step 3a.
-- **Running out of time:** a node must not reach 225,000 on an older
+- **Running out of time:** a node must not reach 205,000 on an older
   binary. If a validator can't be swapped by then (for example the set
   isn't back to four in time), tell Claude **before** the chain gets
-  within a day of 225,000: the height can still be moved later with
+  near 205,000 (the abort rule above): the height can still be moved later with
   another binary, but not once the chain passes it.

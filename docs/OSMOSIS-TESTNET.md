@@ -10,8 +10,8 @@ Rewritten 2026-10-03 for how relaying works now (Helicase onto Aether,
 Proposals #3 and #4 both passed. Gitty read the new values back from the
 seed's public RPC at block 202,043 (16:05 CT): `max_age_num_blocks` =
 2,880 and `bond_cooldown` = 51,840 (see docs/IBC.md). Step 0 below is
-done. Begin at step 1 once the peer-1, sync3 and seed binary swaps for
-block 225,000 are finished ([UPGRADE-2026-10.md](UPGRADE-2026-10.md)),
+done. Begin at step 1 once all four validators run the binary for block
+205,000 and the activation there looks healthy ([UPGRADE-2026-10.md](UPGRADE-2026-10.md)),
 so the IBC setup and the swaps don't run on the same validators at once.
 
 | id | sets | voting ends |

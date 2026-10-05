@@ -20,11 +20,11 @@ A **testnet activation height** (or calendar date) far enough ahead for operator
 
 ## Height: decided
 
-**225,000** (`October2026UpgradeHeight`, 3 October 2026), with the smooth
+**205,000** (`October2026UpgradeHeight`; set to 225,000 on 3 October 2026, moved to 205,000 on 4 October), with the smooth
 retarget and the randomness beacon, after governance proposals #3 and #4
 close. See docs/UPGRADE-2026-10.md. The pool choice is still open.
 
 ## Acceptance
 - [ ] Chosen pool/stratum named
-- [x] Proposed testnet activation height (or date) written down: 225,000
+- [x] Proposed testnet activation height (or date) written down: 205,000
 - [ ] Follow-up PR can wire the height into a release
