@@ -178,6 +178,12 @@ later). Gitty read the values back from the seed's public RPC at block
   172,800s (48h);
 - `x/pow` `bond_cooldown` = **51,840**.
 
-An IBC connection meant to stay up can now be opened. The next one is
-the Osmosis testnet ([OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md)), after
-the October binary swaps.
+**Osmosis testnet connected, 2026-10-04.** The first lasting connection
+opened right after the October upgrade activated:
+
+- **Aether's end:** `connection-1`, `transfer/channel-1` over client `07-tendermint-1`.
+- **Osmosis's end:** `connection-4605`, `transfer/channel-11841` over client `07-tendermint-5277`.
+- **Relaying:** Helicase relays onto Aether, and `cmd/outbound` on the seed relays onto Osmosis.
+
+IDs, trusting periods and the end-to-end check are in
+[OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md).
