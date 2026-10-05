@@ -45,7 +45,18 @@ type Config struct {
 	AetherRPC string
 	// Interval is how often to look for work.
 	Interval time.Duration
+	// RefreshAfter is how stale Aether's client of the other chain may get
+	// on a quiet channel before Helicase updates it anyway
+	// (relayer.Plan). Zero means DefaultRefreshAfter.
+	RefreshAfter time.Duration
 }
+
+// DefaultRefreshAfter keeps Aether's view of the other chain within a
+// few minutes of its tip. A transfer from Aether with a relative timeout
+// (ibc-go's default is 1,000 of the other chain's blocks, ~12 min on
+// Osmosis) counts from that view, so a staler one times the transfer out
+// before it's sent. The updates ride in Aether blocks with no fee.
+const DefaultRefreshAfter = 5 * time.Minute
 
 // maxMsgsPerCycle leaves room under the chain's cap on relay
 // transactions per block (helicaseMaxTxsPerBlock) for the client update.
@@ -82,6 +93,9 @@ func New(cfg Config, cdc codec.Codec, txConfig client.TxConfig, encode func(clie
 	}
 	if cfg.Interval <= 0 {
 		cfg.Interval = 2 * time.Second
+	}
+	if cfg.RefreshAfter <= 0 {
+		cfg.RefreshAfter = DefaultRefreshAfter
 	}
 	aether, err := relayer.NewReadOnlyChain("aether", cfg.AetherRPC, "", cdc, txConfig)
 	if err != nil {
@@ -127,7 +141,7 @@ func (w *Worker) Run(ctx context.Context) {
 }
 
 func (w *Worker) runCycle() {
-	plan, err := relayer.Plan(w.cparty, w.aether, w.cfg.ClientID, "", maxMsgsPerCycle)
+	plan, err := relayer.Plan(w.cparty, w.aether, w.cfg.ClientID, "", maxMsgsPerCycle, w.cfg.RefreshAfter)
 	if err != nil {
 		w.mu.Lock()
 		repeat := err.Error() == w.lastError

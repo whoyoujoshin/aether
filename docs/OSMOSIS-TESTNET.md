@@ -3,16 +3,32 @@
 Runbook for opening a lasting IBC connection from Aether's live testnet
 to Osmosis's public testnet and keeping it relayed in both directions.
 Rewritten 2026-10-03 for how relaying works now (Helicase onto Aether,
-`cmd/outbound` onto Osmosis); not yet executed.
+`cmd/outbound` onto Osmosis). **Executed 4 to 5 October 2026; the path is
+live.**
 
-## Status: gate cleared 2026-10-04; start after the October binary swaps
+## Status: live since 2026-10-04 21:58 CT
 
-Proposals #3 and #4 both passed. Gitty read the new values back from the
-seed's public RPC at block 202,043 (16:05 CT): `max_age_num_blocks` =
-2,880 and `bond_cooldown` = 51,840 (see docs/IBC.md). Step 0 below is
-done. Begin at step 1 once all four validators run the binary for block
-205,000 and the activation there looks healthy ([UPGRADE-2026-10.md](UPGRADE-2026-10.md)),
-so the IBC setup and the swaps don't run on the same validators at once.
+Gitty ran steps 1 to 4 after the October upgrade activated at block
+205,000, and steps 5 to 8 that night. Everything below is what was
+actually used; the step text keeps the procedure for a rebuild.
+
+| | Aether (`aether-testnet-1`) | Osmosis (`osmo-test-5`) |
+|---|---|---|
+| Client | `07-tendermint-1` (of Osmosis; Helicase updates it) | `07-tendermint-5277` (of Aether; `cmd/outbound` updates it) |
+| Connection | `connection-1` | `connection-4605` |
+| Channel | `transfer/channel-1` | `transfer/channel-11841` |
+| Trusting period | 80 h (Osmosis testnet unbonds in 5 days) | ~53 h, from `bond_cooldown` × block time |
+
+- **AETH on Osmosis:** `ibc/0D80A29BCBE8A38AAE75313264A0741092566D4EF5A7FEDAD7F86E12193C2328`.
+- **Opened by `cmd/relayer`:** round trip of 12,345 uaeth at Aether 205,070 to 205,073.
+- **End to end with the services only (step 8):** 1 AETH out at 206,917 and back at 206,931, each leg relayed in under a minute.
+- **Relayer accounts:** Aether `aether1zva7at6leed498uw3rwm8xdxpnu2vdt4da7u633tz2333d4gtuvs5fyuwe`; Osmosis `osmo1mlv24mz4ygnfnp4x4345kpjyx2mqu99x2ag3rm`.
+- **Key homes on the seed:** `/root/relayer-keys` (Aether) and `/root/.osmosisd-relayer` (Osmosis), both on the test keyring.
+- **Helicase:** runs on sync3, sync4 and the seed; not yet on peer-1.
+
+The gate (step 0) was governance proposals #3 and #4, both passed on
+4 October: `max_age_num_blocks` = 2,880 and `bond_cooldown` = 51,840
+(see docs/IBC.md).
 
 | id | sets | voting ends |
 |---|---|---|
@@ -35,7 +51,7 @@ almost at once; at 51,840 blocks it's about 72 hours.
 | gRPC | on the seed: `127.0.0.1:9090` | `grpc.osmotest5.osmosis.zone:443` (TLS) |
 | Bech32 prefix | `aether` | `osmo` |
 | Signing | ML-DSA-44 | secp256k1 |
-| Unbonding | `bond_cooldown` × block time (~72h after #4) | 24h |
+| Unbonding | `bond_cooldown` × block time (~79h at 5.5 s blocks) | 5 days (the live client's trusting period is 80 h) |
 
 Endpoints are from the Cosmos chain registry as of 2026-09-29; step 1
 checks which answer. gRPC addresses ending `:443` or starting `https://`
@@ -115,12 +131,12 @@ go build -o /root/aether-outbound ./cmd/outbound
 /root/aether-relayer \
   -aether-rpc http://127.0.0.1:26657 -aether-grpc 127.0.0.1:9090 \
   -aether-chain-id aether-testnet-1 \
-  -aether-key relayer -aether-home /root/.aether -aether-gas-prices 0.0001uaeth \
+  -aether-key relayer -aether-home /root/relayer-keys -aether-gas-prices 0.0001uaeth \
   -cparty-rpc https://rpc.osmotest5.osmosis.zone \
   -cparty-grpc grpc.osmotest5.osmosis.zone:443 \
   -cparty-chain-id osmo-test-5 -cparty-bech32-prefix osmo \
   -cparty-key relayer -cparty-home /root/.osmosisd-relayer \
-  -cparty-gas-prices 0.025uosmo \
+  -cparty-gas-prices 0.05uosmo \
   -keyring-backend test 2>&1 | tee /root/osmosis-handshake.log
 ```
 
@@ -138,6 +154,11 @@ It prints each client, connection and channel it creates and ends with
 If it fails partway, send Claude the log before running it again: a
 second run opens a second set of clients rather than finishing the first.
 
+`-aether-home` is wherever the Aether `relayer` key lives
+(`/root/relayer-keys` on the seed). Osmosis testnet refused
+`0.025uosmo` on 4 October (it wanted 60,000 uosmo where 50,000 was
+offered), so use `0.05uosmo`; that first attempt created nothing.
+
 ### 5. Relay onto Osmosis: `cmd/outbound` as a service
 
 `/etc/systemd/system/aether-outbound-osmosis.service`:
@@ -154,8 +175,9 @@ ExecStart=/root/aether-outbound \
   --cparty-grpc grpc.osmotest5.osmosis.zone:443 \
   --cparty-chain-id osmo-test-5 --cparty-bech32-prefix osmo \
   --cparty-key relayer --cparty-home /root/.osmosisd-relayer \
-  --cparty-gas-prices 0.025uosmo --keyring-backend test \
-  --client-id 07-tendermint-<n: Osmosis's client of Aether, from step 4> \
+  --cparty-gas-prices 0.05uosmo --keyring-backend test \
+  --client-id 07-tendermint-<n: Osmosis's client of Aether, from step 4; live: 5277> \
+  --refresh-after 1h \
   --listen 127.0.0.1:8095
 Restart=always
 RestartSec=10
@@ -176,9 +198,20 @@ Add to each validator's `config/app.toml`:
 
 ```toml
 [helicase]
-counterparty-rpc = "https://rpc.osmosis-endpoint-from-step-1"
-client-id = "07-tendermint-<Aether's client of Osmosis, from step 4>"
+counterparty-rpc = "https://rpc.osmotest5.osmosis.zone"
+client-id = "07-tendermint-<Aether's client of Osmosis, from step 4; live: 1>"
+# refresh-after = "5m"   # the default; see below
 ```
+
+`refresh-after` is how stale Aether's view of Osmosis may get on a quiet
+channel. It matters to senders: a transfer from Aether with a relative
+timeout (the CLI's default is 1,000 Osmosis blocks, ~12 minutes at
+Osmosis's 0.7 s blocks) counts from that view. On 4 October, before this
+setting existed, the view was refreshed only at a third of the 80 h
+trusting period. It was a day behind, so a default transfer timed out
+before it was sent (Helicase refunded it). `cmd/outbound`'s
+`--refresh-after 1h` does the same for Osmosis's view of Aether, where
+1,000 Aether blocks is about 1.5 hours.
 
 It takes effect at the node's next restart. **Do it as part of the
 rolling upgrade** ([UPGRADE-2026-10.md](UPGRADE-2026-10.md)): edit
@@ -215,11 +248,11 @@ channel.
 
 ## Risks specific to this pairing
 
-- **Client expiry is the main failure mode.** Osmosis's 24h unbonding
-  means Aether's client of Osmosis trusts it for less than a day.
-  Helicase refreshes it at a third of that, so it only expires if no
-  validator running Helicase proposes for many hours, or Osmosis's RPC
-  is unreachable that long. Reviving an expired client needs a
+- **Client expiry is the main failure mode.** Aether's client of Osmosis
+  trusts it for 80 h and Helicase refreshes it every few minutes, so it
+  only expires if no validator running Helicase proposes for days, or
+  Osmosis's RPC is unreachable that long. Osmosis's client of Aether
+  (~53 h) depends on `cmd/outbound` the same way. Reviving an expired client needs a
   governance proposal on Aether.
 - **Public testnets reset.** If Osmosis testnet is wiped, the path is
   rebuilt from step 4. That's normal for a testnet.

@@ -21,6 +21,7 @@ const (
 	flagHelicaseClientID        = "helicase.client-id"
 	flagHelicaseAetherRPC       = "helicase.aether-rpc"
 	flagHelicaseInterval        = "helicase.interval"
+	flagHelicaseRefreshAfter    = "helicase.refresh-after"
 )
 
 func addHelicaseFlags(startCmd *cobra.Command) {
@@ -28,6 +29,7 @@ func addHelicaseFlags(startCmd *cobra.Command) {
 	startCmd.Flags().String(flagHelicaseClientID, "", "Helicase: Aether's light client of that chain, e.g. 07-tendermint-0")
 	startCmd.Flags().String(flagHelicaseAetherRPC, "http://127.0.0.1:26657", "Helicase: this node's own RPC")
 	startCmd.Flags().Duration(flagHelicaseInterval, 2*time.Second, "Helicase: how often to look for packets to relay")
+	startCmd.Flags().Duration(flagHelicaseRefreshAfter, helicase.DefaultRefreshAfter, "Helicase: update Aether's client of the other chain at least this often, even with no packets, so transfers with relative timeouts don't time out at once")
 }
 
 // startHelicase runs the Helicase worker in this node if one is
@@ -42,6 +44,7 @@ func startHelicase(a *app.App, appOpts servertypes.AppOptions, logger log.Logger
 		ClientID:        cast.ToString(appOpts.Get(flagHelicaseClientID)),
 		AetherRPC:       cast.ToString(appOpts.Get(flagHelicaseAetherRPC)),
 		Interval:        cast.ToDuration(appOpts.Get(flagHelicaseInterval)),
+		RefreshAfter:    cast.ToDuration(appOpts.Get(flagHelicaseRefreshAfter)),
 	}
 	w, err := helicase.New(cfg, a.AppCodec(), a.GetTxConfig(), app.EncodeHelicaseTx, logger)
 	if err != nil {

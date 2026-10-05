@@ -40,8 +40,11 @@ func (r *PlanResult) Any() bool { return r.Update || r.Packets+r.Acks+r.Timeouts
 // execution order, at most maxMsgs besides the update. Every message
 // names signer. Helicase runs it with Aether as dst and an empty signer
 // (the relay transaction sets its own); the outbound relayer with Aether
-// as src and its own key's address on the other chain.
-func Plan(src, dst *Chain, clientID, signer string, maxMsgs int) (*PlanResult, error) {
+// as src and its own key's address on the other chain. refreshAfter is
+// how stale the client may get on a quiet channel before an update is
+// sent anyway (see refreshThreshold); zero or less leaves only the
+// trusting-period rule.
+func Plan(src, dst *Chain, clientID, signer string, maxMsgs int, refreshAfter time.Duration) (*PlanResult, error) {
 	ctx := context.Background()
 	var work PlanResult
 
@@ -213,7 +216,7 @@ func Plan(src, dst *Chain, clientID, signer string, maxMsgs int) (*PlanResult, e
 		}
 	}
 
-	if update != nil && (len(msgs) > 0 || needsRefresh(dst, clientID, cs, proofTime)) {
+	if update != nil && (len(msgs) > 0 || needsRefresh(dst, clientID, cs, proofTime, refreshAfter)) {
 		msgs = append([]sdk.Msg{update}, msgs...)
 		work.Update = true
 	}
@@ -222,9 +225,9 @@ func Plan(src, dst *Chain, clientID, signer string, maxMsgs int) (*PlanResult, e
 }
 
 // needsRefresh: with no packets to carry it, the client is still updated
-// once its latest consensus state is a third of the way through its
-// trusting period, so it never expires on a quiet channel.
-func needsRefresh(dst *Chain, clientID string, cs *ibctm.ClientState, now time.Time) bool {
+// once its latest consensus state is older than refreshThreshold, so it
+// never expires on a quiet channel and never lags far behind.
+func needsRefresh(dst *Chain, clientID string, cs *ibctm.ClientState, now time.Time, refreshAfter time.Duration) bool {
 	res, err := clientutils.QueryConsensusStateABCI(dst.ClientCtx, clientID, cs.LatestHeight)
 	if err != nil {
 		return true
@@ -237,7 +240,26 @@ func needsRefresh(dst *Chain, clientID string, cs *ibctm.ClientState, now time.T
 	if !ok {
 		return true
 	}
-	return now.Sub(tmCons.Timestamp) > cs.TrustingPeriod/3
+	return now.Sub(tmCons.Timestamp) > refreshThreshold(cs.TrustingPeriod, refreshAfter)
+}
+
+// refreshThreshold is the shorter of a third of the trusting period
+// (the margin that keeps a client from expiring) and refreshAfter.
+//
+// The second matters for senders, not for the client's safety: a
+// transfer whose timeout is relative (ibc-go's CLI default is 1,000
+// blocks) counts from the sending chain's view of the receiving chain,
+// which is this client's latest height. On a quiet channel refreshed
+// only at a third of an 80 h trusting period, that view was a day
+// behind, so a default transfer from Aether to Osmosis (0.7 s blocks:
+// 1,000 blocks is ~12 min) timed out before it was sent (4 October
+// 2026, packet 2 on channel-1).
+func refreshThreshold(trustingPeriod, refreshAfter time.Duration) time.Duration {
+	t := trustingPeriod / 3
+	if refreshAfter > 0 && refreshAfter < t {
+		return refreshAfter
+	}
+	return t
 }
 
 func clientStateOf(dst *Chain, clientID string) (*ibctm.ClientState, error) {

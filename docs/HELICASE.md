@@ -49,7 +49,7 @@ over RPC. Every couple of seconds it:
    - packets the other chain sent that Aether hasn't received;
    - acknowledgements the other chain wrote for packets Aether sent;
    - packets Aether sent that timed out before the other chain received them.
-3. **Proves each one.** Each gets its proof, behind a client update to that block. With no work, the client is still updated once it's a third of the way to expiring, so a quiet channel's client never expires.
+3. **Proves each one.** Each gets its proof, behind a client update to that block. With no work, the client is still updated once its latest state is older than `refresh-after` (default 5 minutes) or a third of the way to expiring, whichever comes first. A quiet channel's client then never expires, and never lags far enough behind to time out transfers sent with a relative timeout.
 4. **Builds one relay transaction per message.** A duplicate, such as a packet the previous proposer already delivered, is a harmless no-op and doesn't take the others with it.
 
 When the node proposes, it puts those transactions at the front of its
@@ -64,7 +64,7 @@ aetherd start --home C:\aether-data\.aether \
 ```
 
 The same settings can go in `app.toml` under `[helicase]`
-(`counterparty-rpc`, `client-id`, `aether-rpc`, `interval`). The other
+(`counterparty-rpc`, `client-id`, `aether-rpc`, `interval`, `refresh-after`). The other
 chain's RPC must serve `tx_search`, because the worker finds a packet's
 contents from the transaction that sent it.
 
@@ -81,7 +81,7 @@ an ordinary key there. Every few seconds it relays onto that chain:
 - packets Aether sent;
 - acknowledgements Aether wrote for that chain's packets;
 - timeouts for that chain's packets Aether never received;
-- a client update to Aether's latest block ahead of them, plus a refresh at a third of the client's trusting period on a quiet channel.
+- a client update to Aether's latest block ahead of them, plus, on a quiet channel, a refresh once the client is older than `--refresh-after` (default 1 h) or a third of its trusting period.
 
 It runs the same planner as Helicase (`relayer.Plan`), with the two
 chains swapped. It keeps no state of its own, so a restart or a second

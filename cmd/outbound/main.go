@@ -49,6 +49,7 @@ func main() {
 
 		clientID = flag.String("client-id", "07-tendermint-0", "the other chain's client of Aether")
 		interval = flag.Duration("interval", 6*time.Second, "how often to look for work")
+		refresh  = flag.Duration("refresh-after", time.Hour, "update the other chain's client of Aether at least this often, even with no packets: a transfer to Aether with a relative timeout (1,000 Aether blocks by default, ~1.5 h) counts from that client's latest height")
 		maxMsgs  = flag.Int("max-msgs", 20, "most packets, acknowledgements and timeouts per transaction")
 		expiryAt = flag.Duration("expiry-warning", 24*time.Hour, "report unhealthy when the client expires sooner than this")
 		listen   = flag.String("listen", "127.0.0.1:8095", "health endpoint address; empty disables it")
@@ -79,7 +80,7 @@ func main() {
 		go serveHealth(*listen, st, *interval, *expiryAt)
 	}
 	for {
-		cycle(aether, cparty, *clientID, *maxMsgs, st)
+		cycle(aether, cparty, *clientID, *maxMsgs, *refresh, st)
 		if *once {
 			if st.snapshot().LastError != "" {
 				os.Exit(1)
@@ -93,8 +94,8 @@ func main() {
 // cycle relays what's pending once: up to maxMsgs packets,
 // acknowledgements and timeouts in one transaction, behind a client
 // update.
-func cycle(aether, cparty *relayer.Chain, clientID string, maxMsgs int, st *status) {
-	plan, err := relayer.Plan(aether, cparty, clientID, cparty.FromAddrStr, maxMsgs)
+func cycle(aether, cparty *relayer.Chain, clientID string, maxMsgs int, refreshAfter time.Duration, st *status) {
+	plan, err := relayer.Plan(aether, cparty, clientID, cparty.FromAddrStr, maxMsgs, refreshAfter)
 	if err == nil && plan.Any() {
 		if _, err = cparty.SignAndBroadcast(plan.Msgs...); err == nil {
 			log.Printf("relayed onto %s at proof height %s: %d packets, %d acknowledgements, %d timeouts (client update: %v)",
