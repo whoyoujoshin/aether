@@ -166,6 +166,7 @@ func MakeEncodingConfig() EncodingConfig {
 	appCodec := codec.NewProtoCodec(interfaceRegistry)
 	legacyAmino := codec.NewLegacyAmino()
 	std.RegisterLegacyAminoCodec(legacyAmino)
+	mldsa.RegisterLegacyAminoCodec(legacyAmino)
 	ModuleBasics.RegisterLegacyAminoCodec(legacyAmino)
 
 	txCfg, err := tx.NewTxConfigWithOptions(appCodec, tx.ConfigOptions{
@@ -626,7 +627,11 @@ func New(
 		if helicaseActive(ctx.BlockHeight()) && isHelicaseTx(tx) {
 			return helicaseAnteHandle(ctx, tx, simulate)
 		}
-		return pqDecorator.AnteHandle(ctx, tx, simulate, stdAnteHandler)
+		newCtx, err = pqDecorator.AnteHandle(ctx, tx, simulate, stdAnteHandler)
+		if err == nil && simulate {
+			consumeSimulatedMLDSASigGas(newCtx, tx, app.AccountKeeper.GetParams(newCtx).TxSizeCostPerByte)
+		}
+		return newCtx, err
 	}
 
 	app.SetAnteHandler(anteHandler)
