@@ -388,7 +388,7 @@ It checks every `--interval` (30s) and does nothing until a new block. With `--s
 
 ## Merged mining (AuxPoW)
 
-Litecoin/Dogecoin-family AuxPoW (chain ID **17776**) may satisfy PoW and earn the reward + retarget difficulty. **Only native work counts toward Top-K.** Pools connect through `cmd/auxpowd`, a bridge speaking the merged-mining RPC Namecoin and Dogecoin use (`createauxblock` / `submitauxblock`); it hands out work from `MergedMiningActivationHeight` (225,000 on the testnet). Plan and status: [docs/MERGED-MINING-PLAN.md](docs/MERGED-MINING-PLAN.md). See also `cmd/auxpowtest` and the whitepaper.
+Litecoin/Dogecoin-family AuxPoW (chain ID **17776**) may satisfy PoW and earn the reward + retarget difficulty. **Only native work counts toward Top-K.** Pools connect through `cmd/auxpowd`, a bridge speaking the merged-mining RPC Namecoin and Dogecoin use (`createauxblock` / `submitauxblock`); it hands out work from `MergedMiningActivationHeight` (205,000 on the testnet). Plan and status: [docs/MERGED-MINING-PLAN.md](docs/MERGED-MINING-PLAN.md). See also `cmd/auxpowtest` and the whitepaper.
 
 ## Block reward schedule
 

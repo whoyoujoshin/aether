@@ -18,7 +18,7 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
   binding), C (separate tracks), D (parent chain ID) and E (coinbase-only
   commitment, committed nonce). They share one
   activation height, `MergedMiningActivationHeight`, which is now
-  **225,000** on the testnet (`October2026UpgradeHeight`, with the smooth
+  **205,000** on the testnet (`October2026UpgradeHeight`, with the smooth
   retarget and the randomness beacon; docs/UPGRADE-2026-10.md). It was a
   1,000,000 and then a 20,000,000 placeholder. A pool trial is next (M4).
 

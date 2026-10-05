@@ -388,14 +388,15 @@ const MergedMiningActivationHeight int64 = October2026UpgradeHeight
 // 161,000 cutover switches on, together: the smooth difficulty retarget
 // (SmoothRetargetActivationHeight, retarget.go), the randomness beacon
 // (RandomnessBeaconActivationHeight) and merged mining
-// (MergedMiningActivationHeight). Chosen on 3 October 2026 at height
-// ~193,000, to fall after governance proposals #3 and #4 close
-// (2026-10-04 15:58 CT, around height 207,000 to 212,000 at 5 to 7 s
-// blocks): 225,000 is about 5 to 6 October. Every node needs a binary
-// carrying it before then (docs/UPGRADE-2026-10.md); one without it
-// computes difficulty, validator selection and AuxPoW acceptance
-// differently from this height and falls off the chain.
-const October2026UpgradeHeight int64 = 225_000
+// (MergedMiningActivationHeight). First set on 3 October 2026 to
+// 225,000; moved on 4 October 2026 at height ~203,800 to 205,000 (about
+// 21:50 CT that evening at ~7 s blocks), after governance proposals #3
+// and #4 had passed, so the activation could be watched. Every node
+// needs a binary carrying 205,000 before then, including any built for
+// 225,000 (docs/UPGRADE-2026-10.md); one without it computes
+// difficulty, validator selection and AuxPoW acceptance differently from
+// this height and falls off the chain.
+const October2026UpgradeHeight int64 = 205_000
 
 // RandomnessBeaconActivationHeight gates Phase 3 of
 // aether-randomness-beacon-design.md (see beacon.go): the

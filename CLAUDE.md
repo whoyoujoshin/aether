@@ -13,7 +13,7 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
 - **OS:** Windows, developed via PowerShell
 - **Stack:** Cosmos SDK v0.50.12, CometBFT v0.38.12, Go
 - **Data directory:** `C:\aether-data` (moved off OneDrive — see gotcha below)
-- **Critical:** every `aetherd` command must include `--home C:\aether-data\.aether`. Don't omit this flag or assume a default home dir.
+- **Critical:** every `aetherd` command for peer-1 (DardenPC) must include `--home C:\aether-peer1`, its live node home. `C:\aether-data` is the git repo, not a node home. Don't omit this flag or assume a default home dir.
 
 ## Current state (as of last check-in)
 - Build is clean; `BeginBlock` difficulty retargeting runs stably
