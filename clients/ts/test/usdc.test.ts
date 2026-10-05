@@ -7,7 +7,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { Writer, readFields, first, text } from "../src/proto.js";
 import {
-  AETH, AetherClient, Assets, Key, fetchPaid, formatAmount, receiptAmount, usdc, MSG_GRANT_TYPE_URL, MSG_SEND_TYPE_URL, PaymentError,
+  AETH, AetherClient, Assets, Key, fetchPaid, formatAmount, receiptAmount, usdc, usdcAt, usdcFor, MSG_GRANT_TYPE_URL, MSG_SEND_TYPE_URL, PaymentError,
 } from "../src/index.js";
 
 const v = JSON.parse(readFileSync(new URL("../../../testdata/vectors.json", import.meta.url), "utf8"));
@@ -32,6 +32,34 @@ test("USDC: amounts name their asset, and USDC is unknown until a channel is giv
   assert.throws(() => on.parse("0.0000001 USDC"), /decimal places/);
   assert.equal(formatAmount(USDC, 50_000n), "0.05 USDC");
   assert.equal(on.byDenom(USDC.denom)?.symbol, "USDC");
+});
+
+test("USDC: a routed USDC (path and base denom) matches Go's", () => {
+  const r = v.usdc.routed;
+  const routed = usdcAt(r.path, r.baseDenom);
+  assert.equal(routed.denom, r.denom);
+  assert.equal(routed.origin, r.origin);
+  assert.equal(routed.baseUnit, "uusdc");
+  assert.deepEqual(usdcAt("transfer/channel-3", "uusdc"), USDC, "the channel shorthand is a one-hop path");
+  assert.notEqual(usdcAt(r.path, r.baseDenom.toLowerCase()).denom, r.denom, "the base denom is case-sensitive");
+  for (const [path, base] of [["", "uusdc"], ["transfer", "uusdc"], ["transfer/connection-1", "uusdc"], ["transfer/channel-1/", "uusdc"], ["transfer/channel-1", ""], ["transfer/channel-1", "ibc/0D80A29BCBE8A38AAE75313264A0741092566D4EF5A7FEDAD7F86E12193C2328"]]) {
+    assert.throws(() => usdcAt(path, base), /USDC/, `${path} ${base}`);
+  }
+
+  const on = new Assets({ usdcPath: r.path, usdcBaseDenom: r.baseDenom });
+  assert.deepEqual(on.parse("2 USDC"), { asset: routed, amount: 2_000_000n });
+  assert.equal(on.byDenom(r.denom)?.origin, r.origin);
+  assert.equal(usdcFor({}), undefined);
+  assert.deepEqual(usdcFor({ usdcPath: "transfer/channel-1/transfer/channel-4280" }), usdcAt("transfer/channel-1/transfer/channel-4280", "uusdc"), "the base denom defaults to uusdc");
+  assert.throws(() => new Assets({ usdcChannel: "channel-3", usdcPath: r.path }), /not both/);
+  assert.throws(() => new Assets({ usdcBaseDenom: "uusdc" }), /needs usdcPath/);
+
+  const inj = usdcFor({ usdcPath: r.path, usdcBaseDenom: r.baseDenom, usdcIssuer: "Injective" });
+  assert.equal(inj?.denom, r.denom, "the issuer only renames");
+  assert.equal(inj?.origin, `Injective over ${r.path}`);
+  assert.deepEqual(usdcFor({ usdcChannel: "channel-3", usdcIssuer: "Noble" }), USDC);
+  assert.throws(() => usdcFor({ usdcIssuer: "Injective" }), /needs usdcChannel or usdcPath/);
+  assert.throws(() => usdcFor({ usdcChannel: "channel-3", usdcIssuer: "Injective testnet" }), /one word/);
 });
 
 /** A node that puts every transaction straight into a block, recording the coins each message moves. */

@@ -8,8 +8,8 @@ import (
 	"github.com/whoyoujoshin/aether/wallet"
 )
 
-// assets are the tokens the explorer names: AETH, and Noble USDC over
-// --usdc-channel once it's set. Any other token is shown by its bare
+// assets are the tokens the explorer names: AETH, and the USDC that
+// --usdc-channel or --usdc-path names once one is set. Any other token is shown by its bare
 // denom: one that only looks like USDC (it arrived some other way) is
 // never labeled USDC.
 var assets, _ = wallet.NewAssets("")

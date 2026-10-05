@@ -17,7 +17,7 @@ import (
 const baseDenom = wallet.BaseDenom
 
 // assets is what this server accepts: AETH, plus USDC once --usdc-channel
-// names Aether's channel to Noble.
+// or --usdc-path names its route.
 var assets, _ = wallet.NewAssets("")
 
 // USDC limits, in uusdc. USDC can't share AETH's caps (there's no price
@@ -75,7 +75,7 @@ func formatAeth(uaeth math.Int) string { return wallet.FormatAeth(uaeth) }
 // amountDTO states an amount with its asset, in both units, so an agent
 // never has to convert (and can check the one it meant).
 type amountDTO struct {
-	Asset  string `json:"asset" jsonschema:"AETH, or USDC (Noble's, over Aether's channel to Noble)"`
+	Asset  string `json:"asset" jsonschema:"AETH, or USDC (the one its owner configured: issuer and route are in origin)"`
 	Amount string `json:"amount" jsonschema:"the amount in the asset's own unit, e.g. 1.5"`
 	Base   string `json:"base" jsonschema:"the same amount in the asset's smallest unit (uaeth or uusdc; 1 = 1,000,000 of them)"`
 	Denom  string `json:"denom" jsonschema:"the chain's name for the asset: uaeth, or ibc/... for USDC"`
@@ -170,17 +170,17 @@ func newSpend(now time.Time, a wallet.Asset, amount int64, tag string) spendEven
 }
 
 // configureUSDC sets up USDC from the --usdc-* flags. The limits are
-// refused unless the channel is set and they're written in USDC.
-func configureUSDC(channel, perTx, daily, threshold string) error {
-	a, err := wallet.NewAssets(channel)
+// refused unless a USDC is set and they're written in USDC.
+func configureUSDC(setting wallet.USDCSetting, perTx, daily, threshold string) error {
+	a, err := wallet.NewAssetsFor(setting)
 	if err != nil {
-		return fmt.Errorf("--usdc-channel: %w", err)
+		return fmt.Errorf("USDC setting: %w", err)
 	}
 	assets = a
 	usdc, ok := a.BySymbol("USDC")
 	parse := func(flagName, s string) (math.Int, error) {
 		if !ok {
-			return math.Int{}, fmt.Errorf("%s needs --usdc-channel", flagName)
+			return math.Int{}, fmt.Errorf("%s needs --usdc-channel or --usdc-path", flagName)
 		}
 		got, amount, err := a.Parse(s)
 		if err != nil {

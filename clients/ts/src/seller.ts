@@ -68,12 +68,18 @@ export interface PaywallConfig {
   payTo: string;
   /**
    * Per request, with its unit: "0.01 AETH", or "0.05 USDC" with
-   * usdcChannel. Its asset is what everything is charged in: payments,
+   * usdcChannel or usdcPath. Its asset is what everything is charged in: payments,
    * deposits and balances, pull allowances and collections, withdrawals.
    */
   price: string;
-  /** Aether's end of its channel to Noble (e.g. channel-3), to charge in USDC: Noble's uusdc over exactly that channel. */
+  /** Aether's end of its direct channel to Noble (e.g. channel-3), to charge in USDC: Noble's uusdc over exactly that channel. */
   usdcChannel?: string;
+  /** To charge in USDC that arrives another way: its denom trace on Aether (see UsdcSetting). */
+  usdcPath?: string;
+  /** With usdcPath: USDC's denom on the chain that issues it. Default uusdc. */
+  usdcBaseDenom?: string;
+  /** One-word name of USDC's issuer, shown as "USDC (<issuer>)". */
+  usdcIssuer?: string;
   name?: string;
   description?: string;
   mimeType?: string;
@@ -200,7 +206,7 @@ export class Paywall {
 
   constructor(private readonly cfg: PaywallConfig) {
     if (!isAddress(cfg.payTo)) throw new Error(`invalid payTo address "${cfg.payTo}"`);
-    const assets = new Assets({ usdcChannel: cfg.usdcChannel });
+    const assets = new Assets({ usdcChannel: cfg.usdcChannel, usdcPath: cfg.usdcPath, usdcBaseDenom: cfg.usdcBaseDenom, usdcIssuer: cfg.usdcIssuer });
     const priced = assets.parse(cfg.price);
     this.asset = priced.asset;
     this.price = priced.amount;

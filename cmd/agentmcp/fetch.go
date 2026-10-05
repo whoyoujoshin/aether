@@ -190,7 +190,7 @@ func quote(r *httpResult) (paywall.PaymentRequirements, string, error) {
 		unknown = req.Asset
 	}
 	if unknown != "" {
-		return paywall.PaymentRequirements{}, pr.Error, newError(codePaymentUnsupported, fmt.Sprintf("the server charges in %s, which this agent doesn't know (for Noble USDC, its owner sets --usdc-channel)", unknown))
+		return paywall.PaymentRequirements{}, pr.Error, newError(codePaymentUnsupported, fmt.Sprintf("the server charges in %s, which this agent doesn't know (for USDC, its owner sets --usdc-channel or --usdc-path)", unknown))
 	}
 	return paywall.PaymentRequirements{}, pr.Error, newError(codePaymentUnsupported, fmt.Sprintf("the server doesn't accept %q payments on %s", paywall.Scheme, chainID))
 }

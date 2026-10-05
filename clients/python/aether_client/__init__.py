@@ -1,7 +1,7 @@
 """Python client for the Aether chain."""
 
 from .amount import (AETH, DENOM, Asset, Assets, decimal_of, format_aeth, format_amount, parse_amount, parse_uaeth, receipt_amount,
-                     usdc)
+                     usdc, usdc_at, usdc_for, DEFAULT_USDC_BASE_DENOM)
 from .client import AetherClient, IncomingPayment, SendGrant, SendResult, TransactionInfo, Transfer, decode_send_grant, transfers
 from .directory import (ANNOUNCE_PREFIX, DEFAULT_WINDOW, DELIST_PREFIX, DIRECTORY_ADDRESS, RATE_PREFIX, Rating, RatingSummary, Reputation,
                         Service, fetch_manifest, find_services, normalize_url, rate_service, rating_memo)

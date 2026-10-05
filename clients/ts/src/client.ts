@@ -2,7 +2,7 @@ import { Writer, readFields, first, text } from "./proto.js";
 import { Rpc, RpcError, TxEvent, TxResult } from "./rpc.js";
 import { Key, isAddress } from "./keys.js";
 import { buildSend, buildTx, memoOf, MSG_SEND_TYPE_URL, SEND_AUTHORIZATION_TYPE_URL, type AnyMsg, SignedTx } from "./tx.js";
-import { AETH, Assets, DENOM, type Asset } from "./amount.js";
+import { AETH, Assets, DENOM, type Asset, type UsdcSetting } from "./amount.js";
 
 export type TxStatus = "pending" | "confirmed" | "failed";
 
@@ -97,17 +97,18 @@ export class AetherClient {
   // Sequences this client has used but the chain may not report yet
   // (a second send within one block would otherwise reuse one).
   private nextSeq = new Map<string, bigint>();
-  /** The assets amounts may name: AETH, and USDC when usdcChannel is set. */
+  /** The assets amounts may name: AETH, and USDC when usdcChannel or usdcPath is set. */
   readonly assets: Assets;
 
   /**
-   * usdcChannel: Aether's end of its channel to Noble (e.g. "channel-3").
-   * With it, amounts may be in USDC ("5 USDC"); without it, USDC is an
-   * unknown unit, never guessed at.
+   * usdcChannel: Aether's end of its direct channel to Noble (e.g.
+   * "channel-3"); or usdcPath and usdcBaseDenom for USDC that arrives
+   * another way (see UsdcSetting). With one, amounts may be in USDC
+   * ("5 USDC"); without, USDC is an unknown unit, never guessed at.
    */
-  constructor(readonly opts: { rpc: string; chainId?: string; fetch?: typeof fetch; usdcChannel?: string }) {
+  constructor(readonly opts: { rpc: string; chainId?: string; fetch?: typeof fetch } & UsdcSetting) {
     this.rpc = new Rpc(opts.rpc, opts.fetch);
-    this.assets = new Assets({ usdcChannel: opts.usdcChannel });
+    this.assets = new Assets({ usdcChannel: opts.usdcChannel, usdcPath: opts.usdcPath, usdcBaseDenom: opts.usdcBaseDenom, usdcIssuer: opts.usdcIssuer });
   }
 
   get chainId(): string {

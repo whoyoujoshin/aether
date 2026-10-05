@@ -213,10 +213,12 @@ class Paywall:
                  receipt_delegation: Optional[dict] = None, pull_collector_key: Optional[Key] = None,
                  pull_ledger: Union[None, str, FileLedger] = None, pull_credit: Optional[str] = None,
                  pull_collect_every: float = 60, usdc_channel: Optional[str] = None,
-                 now: Callable[[], float] = time.time):
+                 usdc_path: Optional[str] = None, usdc_base_denom: Optional[str] = None,
+                 usdc_issuer: Optional[str] = None, now: Callable[[], float] = time.time):
         """price and min_deposit carry their unit ("0.01 AETH"). The price's asset is what everything
         is charged in: "0.05 USDC" with usdc_channel (Aether's end of its channel to Noble, e.g.
-        channel-3) charges Noble's USDC over exactly that channel, for payments, deposits and
+        channel-3) charges Noble's USDC over exactly that channel (or usdc_path and usdc_base_denom
+        for USDC that arrives another way; see usdc_for), for payments, deposits and
         balances, pull allowances and collections, and withdrawals; min_deposit and pull_credit
         must then be in USDC too. prepaid_ledger (a
         FileLedger or a path) offers aether-prepaid: it holds customers'
@@ -234,7 +236,7 @@ class Paywall:
         if not is_address(pay_to):
             raise ValueError(f'invalid pay_to address "{pay_to}"')
         self.client, self.pay_to = client, pay_to
-        assets = Assets(usdc_channel)
+        assets = Assets(usdc_channel, usdc_path, usdc_base_denom, usdc_issuer)
         self.asset, self.price = assets.parse(price)
 
         def same(what: str, s: str) -> int:

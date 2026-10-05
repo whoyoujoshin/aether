@@ -246,6 +246,36 @@ channel.
 - **Tell Claude:** the handshake log, the `/healthz` output, and the
   heights of the two transfers.
 
+## USDC over this path
+
+Aether has no direct channel to a USDC issuer yet, so USDC reaches it
+through Osmosis. The tools accept exactly one USDC, named by its route
+and its denom on the issuing chain. Any other token, even one called
+USDC, shows by its bare denom and is never spent as USDC.
+
+| | Noble's USDC through Osmosis | Circle's USDC on Injective, through Osmosis |
+|--|--|--|
+| Route | Noble `channel-22` → Osmosis `channel-4280` → Osmosis `channel-11841` → Aether `channel-1` | Injective `channel-77026` → Osmosis `channel-10092` → Osmosis `channel-11841` → Aether `channel-1` |
+| `--usdc-path` | `transfer/channel-1/transfer/channel-4280` | `transfer/channel-1/transfer/channel-10092` |
+| `--usdc-base-denom` | (default, `uusdc`) | `erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d` (case-sensitive) |
+| `--usdc-issuer` | (default, `Noble`) | `Injective` |
+| Denom on Aether | `ibc/9863BBE01215028DB708587E8899F8CA19A3459CABA8CF68130BB07060A35136` | `ibc/4F4C931B9AC39222C0EC5EB909F2BA8C0C615A1E343D8C1448ACDBBE6AF3743A` |
+| Status | Usable now: Osmosis already holds Noble's testnet USDC | Needs a first transfer from Injective to Osmosis over `channel-77026`; none had crossed as of 2026-10-04 |
+
+The same settings work everywhere:
+- **`agentmcp`, `cmd/paywall`, the explorer and `walletapi`:** these flags.
+  `walletapi` also reads `AETHER_USDC_PATH`, `AETHER_USDC_BASE_DENOM` and
+  `AETHER_USDC_ISSUER`.
+- **TypeScript client:** `usdcPath`, `usdcBaseDenom` and `usdcIssuer`.
+- **Python client:** `usdc_path`, `usdc_base_denom` and `usdc_issuer`.
+
+`--usdc-channel` remains as shorthand for Noble's USDC over a direct
+channel, if Aether ever opens one.
+
+Switching from one USDC to the other is a settings change, but they're
+different tokens. Balances in the old one stay where they are and show
+by bare denom until they're sent back the way they came.
+
 ## Risks specific to this pairing
 
 - **Client expiry is the main failure mode.** Aether's client of Osmosis

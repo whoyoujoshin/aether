@@ -22,7 +22,7 @@ import (
 // off after the test.
 func useUSDC(t *testing.T, perTx, daily, threshold string) wallet.Asset {
 	t.Helper()
-	require.NoError(t, configureUSDC("channel-3", perTx, daily, threshold))
+	require.NoError(t, configureUSDC(wallet.USDCSetting{Channel: "channel-3"}, perTx, daily, threshold))
 	t.Cleanup(func() {
 		assets, _ = wallet.NewAssets("")
 		usdcPerTxLimit, usdcDailyLimit, usdcApprovalThreshold = 0, 0, math.Int{}
@@ -165,15 +165,21 @@ func TestConfigureUSDC_RefusesMistakes(t *testing.T) {
 		assets, _ = wallet.NewAssets("")
 		usdcPerTxLimit, usdcDailyLimit, usdcApprovalThreshold = 0, 0, math.Int{}
 	})
-	for name, c := range map[string][4]string{
-		"limits without a channel": {"", "5 USDC", "10 USDC", ""},
-		"limit in AETH":            {"channel-3", "5 AETH", "10 USDC", ""},
-		"only one limit":           {"channel-3", "5 USDC", "", ""},
-		"bad channel":              {"3", "", "", ""},
-		"threshold with no owner":  {"channel-3", "5 USDC", "10 USDC", "4 USDC"},
+	ch3 := wallet.USDCSetting{Channel: "channel-3"}
+	for name, c := range map[string]struct {
+		usdc                    wallet.USDCSetting
+		perTx, daily, threshold string
+	}{
+		"limits without a USDC":   {wallet.USDCSetting{}, "5 USDC", "10 USDC", ""},
+		"limit in AETH":           {ch3, "5 AETH", "10 USDC", ""},
+		"only one limit":          {ch3, "5 USDC", "", ""},
+		"bad channel":             {wallet.USDCSetting{Channel: "3"}, "", "", ""},
+		"bad path":                {wallet.USDCSetting{Path: "channel-1"}, "", "", ""},
+		"channel and path":        {wallet.USDCSetting{Channel: "channel-3", Path: "transfer/channel-3"}, "", "", ""},
+		"threshold with no owner": {ch3, "5 USDC", "10 USDC", "4 USDC"},
 	} {
 		usdcPerTxLimit, usdcDailyLimit = 0, 0
-		require.Error(t, configureUSDC(c[0], c[1], c[2], c[3]), name)
+		require.Error(t, configureUSDC(c.usdc, c.perTx, c.daily, c.threshold), name)
 	}
 }
 
