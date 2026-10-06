@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"cosmossdk.io/log"
@@ -28,16 +29,15 @@ import (
 // Once the sender's pubkey was on chain, that panicked in x/auth
 // ("Cannot encode unregistered concrete type mldsa.PubKey"). And the
 // estimate left out most of the 2,420-byte ML-DSA-44 signature, so a tx
-// sent at it ran out of gas. Check both: the first send (no pubkey on
-// chain yet) and the second.
+// sent at it ran out of gas. With --gas-prices, the estimate also ran
+// with a zero fee, so it left out moving the fee, and still came in
+// short. Check each: a first send (no pubkey on chain yet) and a later
+// one, free and priced.
 func TestSimulateGasCoversMLDSASignature(t *testing.T) {
 	registry := codectypes.NewInterfaceRegistry()
 	mldsa.RegisterInterfaces(registry)
 	w, err := wallet.NewWallet("aetherd", "test", t.TempDir(), codec.NewProtoCodec(registry))
 	require.NoError(t, err)
-	sender, _, err := w.CreateAccount("sender")
-	require.NoError(t, err)
-	senderAddr := sdk.MustAccAddressFromBech32(sender.Address)
 	to := sdk.AccAddress("some_recipient______")
 
 	a := app.New(log.NewNopLogger(), dbm.NewMemDB(), nil, true, nil, t.TempDir(), 0, noAppOptions{}, baseapp.SetChainID(e2eChainID)).(*app.App)
@@ -55,29 +55,47 @@ func TestSimulateGasCoversMLDSASignature(t *testing.T) {
 	_, err = a.Commit()
 	require.NoError(t, err)
 
-	ten := sdk.NewCoins(sdk.NewInt64Coin("uaeth", 10_000_000))
-	require.NoError(t, a.BankKeeper.MintCoins(c.ctx(), pow.ModuleName, ten))
-	require.NoError(t, a.BankKeeper.SendCoinsFromModuleToAccount(c.ctx(), pow.ModuleName, senderAddr, ten))
+	addrs := map[string]sdk.AccAddress{}
+	for _, name := range []string{"free", "priced"} {
+		acc, _, err := w.CreateAccount(name)
+		require.NoError(t, err)
+		addrs[name] = sdk.MustAccAddressFromBech32(acc.Address)
+		ten := sdk.NewCoins(sdk.NewInt64Coin("uaeth", 10_000_000))
+		require.NoError(t, a.BankKeeper.MintCoins(c.ctx(), pow.ModuleName, ten))
+		require.NoError(t, a.BankKeeper.SendCoinsFromModuleToAccount(c.ctx(), pow.ModuleName, addrs[name], ten))
+	}
 
-	send := banktypes.NewMsgSend(senderAddr, to, sdk.NewCoins(sdk.NewInt64Coin("uaeth", 1000)))
-	for _, round := range []string{"no pubkey on chain", "pubkey on chain"} {
+	for _, tc := range []struct {
+		sender  string
+		fee     int64 // what the real tx pays; the estimate runs with 0uaeth, as the CLI's does with --gas-prices
+		onChain bool  // whether the sender's pubkey is on chain yet
+	}{
+		{"free", 0, false},
+		{"free", 0, true},
+		{"priced", 18, false},
+		{"priced", 18, true},
+	} {
+		round := fmt.Sprintf("%s, pubkey on chain %v", tc.sender, tc.onChain)
+		senderAddr := addrs[tc.sender]
 		info := a.AccountKeeper.GetAccount(c.ctx(), senderAddr)
-		if round == "pubkey on chain" {
+		if tc.onChain {
 			require.IsType(t, &mldsa.PubKey{}, info.GetPubKey())
 		} else {
 			require.Nil(t, info.GetPubKey())
 		}
 
-		signed, err := w.BuildAndSignMsgTx("sender", send, wallet.TxParams{
+		send := banktypes.NewMsgSend(senderAddr, to, sdk.NewCoins(sdk.NewInt64Coin("uaeth", 1000)))
+		signed, err := w.BuildAndSignMsgTx(tc.sender, send, wallet.TxParams{
 			ChainID:       e2eChainID,
 			AccountNumber: info.GetAccountNumber(),
 			Sequence:      info.GetSequence(),
 			GasLimit:      400_000,
-			Fees:          sdk.NewCoins(sdk.NewCoin("uaeth", sdkmath.ZeroInt())),
+			Fees:          sdk.NewCoins(sdk.NewInt64Coin("uaeth", tc.fee)),
 		})
 		require.NoError(t, err)
 
-		// What the CLI simulates: the same tx with its signature left empty.
+		// What the CLI simulates: the same tx with its signature left
+		// empty, and with --gas-prices, gas 0 and so a fee of 0uaeth.
 		decoded, err := enc.TxConfig.TxDecoder()(signed.Bytes)
 		require.NoError(t, err)
 		builder, err := enc.TxConfig.WrapTxBuilder(decoded)
@@ -87,6 +105,10 @@ func TestSimulateGasCoversMLDSASignature(t *testing.T) {
 		require.Len(t, sigs, 1)
 		sigs[0].Data = &txsigning.SingleSignatureData{SignMode: txsigning.SignMode_SIGN_MODE_DIRECT}
 		require.NoError(t, builder.SetSignatures(sigs...))
+		if tc.fee > 0 {
+			builder.SetFeeAmount(sdk.Coins{sdk.NewCoin("uaeth", sdkmath.ZeroInt())})
+			builder.SetGasLimit(0)
+		}
 		simBytes, err := enc.TxConfig.TxEncoder()(builder.GetTx())
 		require.NoError(t, err)
 
@@ -101,7 +123,7 @@ func TestSimulateGasCoversMLDSASignature(t *testing.T) {
 		res := resp.TxResults[0]
 		require.Zero(t, res.Code, res.Log)
 
-		t.Logf("%s: sim %d real %d txbytes %d simbytes %d", round, gasInfo.GasUsed, res.GasUsed, len(signed.Bytes), len(simBytes))
+		t.Logf("%s: sim %d real %d", round, gasInfo.GasUsed, res.GasUsed)
 		require.GreaterOrEqual(t, gasInfo.GasUsed, uint64(res.GasUsed), "%s: estimate below real use", round)
 		// x/auth's estimate runs over on its own once the pubkey is on
 		// chain: it counts the pubkey a second time (about 1,320 bytes,
