@@ -20,8 +20,8 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
 - **October upgrade** activated at block 205,000 (`October2026UpgradeHeight`): the ASERT difficulty retarget, the randomness beacon, and the merged-mining rules.
 - **IBC to Osmosis testnet** has been live since 2026-10-04 (Aether `channel-1` ↔ Osmosis `channel-11841`). Helicase relays onto Aether from the validators; `cmd/outbound` on the seed relays onto Osmosis. See `docs/OSMOSIS-TESTNET.md`.
 - **USDC** is Circle's testnet USDC on Injective, through Osmosis (`wallet.TestnetUSDC`). Noble's testnet is shutting down. The first transfer from Injective over `channel-77026` is still to do.
-- **`--gas auto`** works on ML-DSA accounts at the default adjustment, with fees given either way (PRs #86 and #88). The node answering `--node` needs `5267ab3` or later for the `--gas-prices` case.
-- The latest release tag is `v0.2.5-testnet`. The MCP Registry's `0.2.6-testnet` entry was published by hand and points at the `v0.2.5` bundle; the next tag should be `v0.2.7-testnet`.
+- **`--gas auto`** works on ML-DSA accounts at the default adjustment, with fees given either way (PRs #86 and #88). The node answering `--node` needs `5267ab3` or later for the `--gas-prices` case; the seed runs it (verified with a real tx at adjustment 1.0: 196,472 estimated, 176,743 used).
+- The latest release is `v0.2.7-testnet` (2026-10-06, on `039ab83`). Its MCP Registry entry is `0.2.7-testnet`: it points at that release's bundle and keeps the public `/mcp` remote. The registry also holds a hand-published `0.2.6-testnet`, so the next tag is `v0.2.8-testnet` or later. Tags are pushed by Joshua: this repo's Claude sessions can push only their own branch.
 
 ## Known gotchas (hard-won, don't relearn these)
 
