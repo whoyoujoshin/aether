@@ -1,9 +1,11 @@
 package app
 
 import (
+	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	"github.com/cosmos/cosmos-sdk/x/auth/signing"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 )
@@ -47,4 +49,40 @@ func consumeSimulatedMLDSASigGas(ctx sdk.Context, tx sdk.Tx, costPerByte uint64)
 		}
 		ctx.GasMeter().ConsumeGas(costPerByte*(mldsa.SignatureSize-sdkSimSigSize), "txSize: mldsa44 signature")
 	}
+}
+
+// consumeSimulatedFeeGas makes `--gas auto --gas-prices` estimates cover
+// moving the fee.
+//
+// With --gas-prices, the CLI simulates at gas 0, so the fee it simulates
+// is zero ("0uaeth"), and x/auth skips moving a zero fee. The real tx
+// moves its fee from the payer (or granter) to the fee collector, which
+// reads the payer's account: with a 1,312-byte ML-DSA-44 pubkey on it,
+// that's most of the 15k gas the estimate came in short by. So a
+// simulated tx whose fee names a denom but is zero pays for moving 1 of
+// each denom, on a cache that's thrown away. A tx with no fee at all is
+// left alone: its real version moves nothing either.
+//
+// It runs only when simulating, so it doesn't change consensus.
+func (app *App) consumeSimulatedFeeGas(ctx sdk.Context, tx sdk.Tx) {
+	feeTx, ok := tx.(sdk.FeeTx)
+	if !ok {
+		return
+	}
+	fee := feeTx.GetFee()
+	if len(fee) == 0 || !fee.IsZero() {
+		return
+	}
+	probe := sdk.NewCoins()
+	for _, c := range fee {
+		probe = probe.Add(sdk.NewCoin(c.Denom, sdkmath.OneInt()))
+	}
+	from := sdk.AccAddress(feeTx.FeePayer())
+	if granter := feeTx.FeeGranter(); granter != nil {
+		from = granter
+	}
+	// The cache shares ctx's gas meter; its writes are dropped. If the
+	// payer can't cover even 1 unit, the real tx fails anyway.
+	cache, _ := ctx.CacheContext()
+	_ = app.BankKeeper.SendCoinsFromAccountToModule(cache, from, authtypes.FeeCollectorName, probe)
 }

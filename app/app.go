@@ -630,6 +630,7 @@ func New(
 		newCtx, err = pqDecorator.AnteHandle(ctx, tx, simulate, stdAnteHandler)
 		if err == nil && simulate {
 			consumeSimulatedMLDSASigGas(newCtx, tx, app.AccountKeeper.GetParams(newCtx).TxSizeCostPerByte)
+			app.consumeSimulatedFeeGas(newCtx, tx)
 		}
 		return newCtx, err
 	}
