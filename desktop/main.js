@@ -58,11 +58,25 @@ function backendArgs() {
   ];
 }
 
+// The USDC the wallet shows and sends on the public testnet: Circle's
+// USDC on Injective's testnet, through Osmosis (wallet.TestnetUSDC in Go;
+// see docs/OSMOSIS-TESTNET.md). Any other token shows by its bare denom,
+// never as USDC. A USDC setting already in the environment wins.
+function usdcEnv() {
+  const e = process.env;
+  if (e.AETHER_USDC_CHANNEL || e.AETHER_USDC_PATH) return {};
+  return {
+    AETHER_USDC_PATH: "transfer/channel-1/transfer/channel-10092",
+    AETHER_USDC_BASE_DENOM: "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d",
+    AETHER_USDC_ISSUER: "Injective",
+  };
+}
+
 function startBackend() {
   const binPath = backendBinaryPath();
   backendProcess = spawn(binPath, backendArgs(), {
     stdio: ["ignore", "pipe", "pipe"],
-    env: Object.assign({}, process.env, { AETHER_WALLET_TOKEN: API_TOKEN }),
+    env: Object.assign({}, process.env, usdcEnv(), { AETHER_WALLET_TOKEN: API_TOKEN }),
   });
 
   backendProcess.stdout.on("data", (d) => process.stdout.write(`[walletapi] ${d}`));

@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/whoyoujoshin/aether/wallet"
 )
 
 func TestMCPBManifest(t *testing.T) {
@@ -37,6 +39,18 @@ func TestMCPBManifest(t *testing.T) {
 			require.True(t, ok, "%s references undefined user_config.%s", os, key[1])
 			require.NotNil(t, uc.Default, "user_config.%s needs a default: clients may not substitute blanks", key[1])
 		}
+	}
+	// The bundle knows the testnet's USDC, and its caps are settings
+	// that parse as USDC.
+	joined := strings.Join(cfg.Args, " ")
+	require.Contains(t, joined, "--usdc-path "+wallet.TestnetUSDC.Path+" --usdc-base-denom "+wallet.TestnetUSDC.BaseDenom+" --usdc-issuer Injective")
+	for _, key := range []string{"usdc_per_tx_limit", "usdc_daily_limit"} {
+		require.Contains(t, joined, "${user_config."+key+"}")
+		assets, err := wallet.NewAssetsFor(wallet.TestnetUSDC)
+		require.NoError(t, err)
+		as, _, err := assets.Parse(m.UserConfig[key].Default.(string))
+		require.NoError(t, err, key)
+		require.Equal(t, "USDC", as.Symbol, key)
 	}
 	require.Equal(t, "${__dirname}/server/agentmcp", cfg.Command)
 	require.Equal(t, "${__dirname}/server/agentmcp.exe", cfg.PlatformOverrides["win32"].Command)

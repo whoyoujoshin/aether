@@ -198,10 +198,16 @@ explorer shows the channel.
 > settings for both routes are in
 > [OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md#usdc-over-this-path).
 >
+> **Update, 2026-10-06: Injective's USDC is the testnet's.** Noble's
+> testnet is shutting down, so the public testnet uses Circle's USDC on
+> Injective, through Osmosis (`wallet.TestnetUSDC`). The desktop wallet
+> and the Claude Desktop bundle have it built in from `v0.2.7-testnet`;
+> the explorer takes it as flags (see
+> [OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md#usdc-over-this-path)).
+>
 > Still to do:
-> - setting the USDC for the desktop wallet, the public explorer and the
->   Claude Desktop bundle (the bundle's settings can't be blank, so it
->   waits for a chosen route).
+> - the first transfer of Injective's testnet USDC to Osmosis over
+>   `channel-77026`, then on to Aether.
 
 The chain already moves any coin. The tools around it assume AETH: about 60
 references in `agentmcp`, 40 in the paywall, and 180 across the TypeScript and
