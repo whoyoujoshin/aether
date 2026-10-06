@@ -260,7 +260,22 @@ USDC, shows by its bare denom and is never spent as USDC.
 | `--usdc-base-denom` | (default, `uusdc`) | `erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d` (case-sensitive) |
 | `--usdc-issuer` | (default, `Noble`) | `Injective` |
 | Denom on Aether | `ibc/9863BBE01215028DB708587E8899F8CA19A3459CABA8CF68130BB07060A35136` | `ibc/4F4C931B9AC39222C0EC5EB909F2BA8C0C615A1E343D8C1448ACDBBE6AF3743A` |
-| Status | Usable now: Osmosis already holds Noble's testnet USDC | Needs a first transfer from Injective to Osmosis over `channel-77026`; none had crossed as of 2026-10-04 |
+| Status | Going away: Noble's testnet is shutting down (around 2026-10-14) | **The testnet's USDC.** Needs a first transfer from Injective to Osmosis over `channel-77026`; none had crossed as of 2026-10-04 |
+
+**The public testnet uses Injective's USDC** (`wallet.TestnetUSDC`). From
+`v0.2.7-testnet` it's built in:
+- **Claude Desktop bundle:** the agent knows it, with caps of 1 USDC per
+  payment and 5 USDC a day. Both are settings in the bundle.
+- **Desktop wallet:** it shows and sends it, unless `AETHER_USDC_CHANNEL`
+  or `AETHER_USDC_PATH` is already set.
+
+The explorer reads it from its service's flags. On the seed, add these to
+`aether-explorer.service`'s `ExecStart`, then `systemctl daemon-reload`
+and restart the explorer:
+
+```
+--usdc-path transfer/channel-1/transfer/channel-10092 --usdc-base-denom erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d --usdc-issuer Injective
+```
 
 The same settings work everywhere:
 - **`agentmcp`, `cmd/paywall`, the explorer and `walletapi`:** these flags.

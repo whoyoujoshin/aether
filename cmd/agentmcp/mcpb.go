@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/whoyoujoshin/aether/wallet"
 )
 
 // Packaging for MCP clients and the MCP Registry:
@@ -145,7 +147,12 @@ func buildMCPBManifest(ctx context.Context, ver string) (*mcpbManifest, error) {
 			Description: "Most the agent may spend in any rolling 24 hours, in uaeth."},
 		"keyring_dir": {Type: "directory", Title: "Keyring folder", Required: false, Default: "${HOME}/.aether-agent",
 			Description: "Where the agent's key and spending records live. Keep it private: whoever can read it controls the account."},
+		"usdc_per_tx_limit": {Type: "string", Title: "USDC per-payment limit", Required: false, Default: "1 USDC",
+			Description: `Most the agent may send in one USDC payment, with its unit (e.g. "1 USDC"). USDC is Circle's testnet USDC from Injective, through Osmosis; its caps are separate from AETH's.`},
+		"usdc_daily_limit": {Type: "string", Title: "USDC daily limit", Required: false, Default: "5 USDC",
+			Description: `Most USDC the agent may spend in any rolling 24 hours, with its unit (e.g. "5 USDC").`},
 	}
+	usdc := wallet.TestnetUSDC
 
 	// One bundle for every platform. MCPB picks a command per OS but not
 	// per CPU, so on macOS a launcher picks the Intel or Apple Silicon
@@ -155,6 +162,9 @@ func buildMCPBManifest(ctx context.Context, ver string) (*mcpbManifest, error) {
 		"--keyring-dir", "${user_config.keyring_dir}",
 		"--per-tx-limit", "${user_config.per_tx_limit}",
 		"--daily-limit", "${user_config.daily_limit}",
+		"--usdc-path", usdc.Path, "--usdc-base-denom", usdc.BaseDenom, "--usdc-issuer", usdc.Issuer,
+		"--usdc-per-tx-limit", "${user_config.usdc_per_tx_limit}",
+		"--usdc-daily-limit", "${user_config.usdc_daily_limit}",
 	}
 	s := &m.Server
 	s.Type, s.EntryPoint = "binary", "server/agentmcp"

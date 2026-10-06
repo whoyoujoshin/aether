@@ -78,11 +78,14 @@ func TestAgentCard(t *testing.T) {
 	require.Nil(t, card.Faucet)
 }
 
-// The card must list exactly the tools agentmcp registers.
+// The card must list exactly the tools agentmcp registers, each once.
+// Public mode (--http) registers its read-only tools again under the
+// same names, so a name found twice is still one tool.
 func TestAgentCard_ListsEveryAgentmcpTool(t *testing.T) {
 	files, err := filepath.Glob("../agentmcp/*.go")
 	require.NoError(t, err)
 	re := regexp.MustCompile(`Name:\s+"([a-z_]+)"`)
+	seen := map[string]bool{}
 	var registered []string
 	for _, f := range files {
 		if strings.HasSuffix(f, "_test.go") {
@@ -91,7 +94,10 @@ func TestAgentCard_ListsEveryAgentmcpTool(t *testing.T) {
 		src, err := os.ReadFile(f)
 		require.NoError(t, err)
 		for _, m := range re.FindAllStringSubmatch(string(src), -1) {
-			registered = append(registered, m[1])
+			if !seen[m[1]] {
+				seen[m[1]] = true
+				registered = append(registered, m[1])
+			}
 		}
 	}
 	listed := append([]string(nil), agentmcpTools...)

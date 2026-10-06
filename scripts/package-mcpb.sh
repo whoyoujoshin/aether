@@ -12,6 +12,10 @@ TAG=${1:?usage: package-mcpb.sh <tag, e.g. v0.2.1-testnet> <out dir>}
 OUT=${2:?usage: package-mcpb.sh <tag> <out dir>}
 VERSION=${TAG#v}
 URL="https://github.com/whoyoujoshin/aether/releases/download/$TAG/aether-wallet.mcpb"
+# The public read-only MCP endpoint (agentmcp --http on the seed, live
+# since 2026-10-03). Every registry version lists it, so a release never
+# drops it; REMOTE= (empty) leaves it out.
+REMOTE=${REMOTE-https://explorer.157-245-252-221.sslip.io/mcp}
 MCPB_CLI=@anthropic-ai/mcpb@2.1.2
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -35,5 +39,5 @@ npx --yes "$MCPB_CLI" validate "$B/manifest.json"
 npx --yes "$MCPB_CLI" pack "$B" "$OUT/aether-wallet.mcpb"
 
 SHA=$(sha256sum "$OUT/aether-wallet.mcpb" | cut -d' ' -f1)
-(cd "$ROOT" && go run ./cmd/agentmcp server-json --version "$VERSION" --url "$URL" --sha256 "$SHA") > "$OUT/server.json"
+(cd "$ROOT" && go run ./cmd/agentmcp server-json --version "$VERSION" --url "$URL" --sha256 "$SHA" --remote "$REMOTE") > "$OUT/server.json"
 echo "aether-wallet.mcpb sha256 $SHA"

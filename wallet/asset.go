@@ -94,6 +94,17 @@ func USDCAt(path, baseDenom string) (Asset, error) {
 	}, nil
 }
 
+// TestnetUSDC is the USDC the public testnet's tools accept: Circle's
+// USDC on Injective's testnet (injective-888), sent to Osmosis's testnet
+// over Injective's channel-77026 / Osmosis's channel-10092, then to
+// Aether over Osmosis's channel-11841 / Aether's channel-1. Noble's
+// testnet, the other USDC Osmosis carries, is shutting down.
+var TestnetUSDC = USDCSetting{
+	Path:      "transfer/channel-1/transfer/channel-10092",
+	BaseDenom: "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d",
+	Issuer:    "Injective",
+}
+
 // USDCSetting is how a tool is told which USDC it accepts: Channel, as
 // shorthand for Noble's USDC over Aether's direct channel to Noble, or
 // Path and BaseDenom for any other route or issuer (BaseDenom defaults to
