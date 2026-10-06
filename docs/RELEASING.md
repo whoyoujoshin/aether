@@ -14,13 +14,15 @@ git push origin v0.2.1-testnet
 
 Versions are `vMAJOR.MINOR.PATCH-testnet`; Go orders them, so `go install .../agentmcp@latest` picks the newest.
 
+The registry never accepts a version twice. `0.2.6-testnet` was published to it by hand on 2026-10-03 (to add the remote), with no matching release, so the next tag is `v0.2.7-testnet` or later.
+
 ## 2. Release Binaries (automatic, about 5 minutes)
 
 `.github/workflows/release.yml` publishes a prerelease with:
 
 - `aether-<platform>.tar.gz` for Linux, Windows and macOS (Intel and Apple Silicon): `aetherd`, `wallet`, `faucet`, `explorer`, `agentmcp`, `paywall`, `powminer`
 - `aether-wallet.mcpb`: agentmcp as an MCP bundle for every platform (built by `scripts/package-mcpb.sh`)
-- `server.json`: the bundle's MCP Registry entry, with its SHA-256
+- `server.json`: the bundle's MCP Registry entry, with its SHA-256, and the public read-only endpoint (`https://explorer.157-245-252-221.sslip.io/mcp`) as its remote
 
 Check the run in the Actions tab and that the release has all six files.
 
