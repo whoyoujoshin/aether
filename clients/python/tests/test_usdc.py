@@ -9,7 +9,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from aether_client import (AETH, MSG_GRANT_TYPE_URL, AetherClient, Assets, Key, PaymentError, fetch_paid, format_amount,
-                           receipt_amount, transfers, usdc)
+                           receipt_amount, transfers, usdc, usdc_at, usdc_for)
 from aether_client.proto import Writer, first, read_fields
 from aether_client.rpc import RpcError
 from aether_client.tx import MSG_SEND_TYPE_URL
@@ -98,6 +98,42 @@ class USDCTest(unittest.TestCase):
         self.assertEqual(receipt_amount(50_000), "50000", "AETH receipts read as they always did")
         with self.assertRaises(ValueError):
             usdc("3")
+
+    def test_routed_usdc_matches_go(self):
+        r = V["usdc"]["routed"]
+        routed = usdc_at(r["path"], r["baseDenom"])
+        self.assertEqual(routed.denom, r["denom"])
+        self.assertEqual(routed.origin, r["origin"])
+        self.assertEqual(routed.base_unit, "uusdc")
+        self.assertEqual(usdc_at("transfer/channel-3", "uusdc"), USDC, "the channel shorthand is a one-hop path")
+        self.assertNotEqual(usdc_at(r["path"], r["baseDenom"].lower()).denom, r["denom"], "the base denom is case-sensitive")
+        for path, base in [("", "uusdc"), ("transfer", "uusdc"), ("transfer/connection-1", "uusdc"), ("transfer/channel-1/", "uusdc"),
+                           ("transfer/channel-1", ""),
+                           ("transfer/channel-1", "ibc/0D80A29BCBE8A38AAE75313264A0741092566D4EF5A7FEDAD7F86E12193C2328")]:
+            with self.assertRaises(ValueError, msg=f"{path} {base}"):
+                usdc_at(path, base)
+
+        on = Assets(usdc_path=r["path"], usdc_base_denom=r["baseDenom"])
+        self.assertEqual(on.parse("2 USDC"), (routed, 2_000_000))
+        self.assertEqual(on.by_denom(r["denom"]).origin, r["origin"])
+        self.assertIsNone(usdc_for())
+        self.assertEqual(usdc_for(usdc_path="transfer/channel-1/transfer/channel-4280"),
+                         usdc_at("transfer/channel-1/transfer/channel-4280", "uusdc"), "the base denom defaults to uusdc")
+        with self.assertRaisesRegex(ValueError, "not both"):
+            Assets("channel-3", usdc_path=r["path"])
+        with self.assertRaisesRegex(ValueError, "needs usdc_path"):
+            Assets(usdc_base_denom="uusdc")
+        c = AetherClient("http://node", CHAIN, usdc_path=r["path"], usdc_base_denom=r["baseDenom"])
+        self.assertEqual(c.assets.by_symbol("USDC"), routed)
+
+        inj = usdc_for(usdc_path=r["path"], usdc_base_denom=r["baseDenom"], usdc_issuer="Injective")
+        self.assertEqual(inj.denom, r["denom"], "the issuer only renames")
+        self.assertEqual(inj.origin, f"Injective over {r['path']}")
+        self.assertEqual(usdc_for("channel-3", usdc_issuer="Noble"), USDC)
+        with self.assertRaisesRegex(ValueError, "needs usdc_channel or usdc_path"):
+            usdc_for(usdc_issuer="Injective")
+        with self.assertRaisesRegex(ValueError, "one word"):
+            usdc_for("channel-3", usdc_issuer="Injective testnet")
 
     def test_amounts_name_their_asset(self):
         with self.assertRaisesRegex(ValueError, 'unknown unit "USDC"'):

@@ -67,22 +67,79 @@ export interface Asset {
   baseUnit: string;
   /** How many base units make one symbol, as a power of ten. */
   decimals: number;
-  /** Where it comes from: "Aether", or "Noble over transfer/channel-3". */
+  /** Where it comes from: "Aether"; for USDC, its issuer and route, like "Noble over transfer/channel-3". */
   origin: string;
 }
 
 export const AETH: Asset = { symbol: "AETH", denom: DENOM, baseUnit: DENOM, decimals: DECIMALS, origin: "Aether" };
 
+/** USDC's denom on Noble, which issues it. */
+export const DEFAULT_USDC_BASE_DENOM = "uusdc";
+
 /**
  * Noble's USDC as it exists on Aether after crossing channel, the Aether
- * end of Aether's own channel to Noble. The same token reaching Aether any
- * other way (through Osmosis, say) has a different denom and isn't
- * interchangeable with it, so it's never accepted as USDC.
+ * end of Aether's own channel to Noble. It's usdcAt with a single hop and
+ * Noble's base denom.
  */
 export function usdc(channel: string): Asset {
   if (!/^channel-[0-9]+$/.test(channel)) throw new Error(`USDC channel "${channel}": want Aether's end of its channel to Noble, like channel-3`);
-  const hash = bytesToHex(sha256(new TextEncoder().encode(`transfer/${channel}/uusdc`))).toUpperCase();
-  return { symbol: "USDC", denom: `ibc/${hash}`, baseUnit: "uusdc", decimals: 6, origin: `Noble over transfer/${channel}` };
+  return usdcAt(`transfer/${channel}`, DEFAULT_USDC_BASE_DENOM);
+}
+
+const HOP = /^[a-zA-Z0-9._+\-#[\]<>]{2,128}\/channel-[0-9]+$/;
+const BASE_DENOM = /^[a-zA-Z][a-zA-Z0-9/:._-]{2,127}$/;
+
+/**
+ * The USDC that reaches Aether along path, its ICS-20 denom trace as
+ * Aether records it (Aether's own hop first), with baseDenom its denom on
+ * the chain that issues it: "transfer/channel-1/transfer/channel-4280" and
+ * "uusdc" for Noble's USDC through Osmosis, say. The same token reaching
+ * Aether any other way has a different denom and isn't interchangeable
+ * with it, so it's never accepted as USDC. baseDenom is case-sensitive.
+ */
+export function usdcAt(path: string, baseDenom: string): Asset {
+  const hops = path.split("/");
+  if (path === "" || hops.length % 2 !== 0) {
+    throw new Error(`USDC path "${path}": want port/channel hops from Aether's end, like transfer/channel-1/transfer/channel-4280`);
+  }
+  for (let i = 0; i < hops.length; i += 2) {
+    const hop = `${hops[i]}/${hops[i + 1]}`;
+    if (!HOP.test(hop)) throw new Error(`USDC path "${path}": hop "${hop}" isn't port/channel-N`);
+  }
+  if (baseDenom.startsWith("ibc/") || !BASE_DENOM.test(baseDenom)) {
+    throw new Error(`USDC base denom "${baseDenom}": want its denom on the chain that issues it, like uusdc, not an ibc/ hash`);
+  }
+  const hash = bytesToHex(sha256(new TextEncoder().encode(`${path}/${baseDenom}`))).toUpperCase();
+  const issuer = baseDenom === DEFAULT_USDC_BASE_DENOM ? "Noble" : baseDenom;
+  return { symbol: "USDC", denom: `ibc/${hash}`, baseUnit: "uusdc", decimals: 6, origin: `${issuer} over ${path}` };
+}
+
+/**
+ * Which USDC a client accepts: usdcChannel, as shorthand for Noble's USDC
+ * over Aether's direct channel to Noble, or usdcPath and usdcBaseDenom for
+ * any other route or issuer (usdcBaseDenom defaults to uusdc). None: AETH
+ * only. usdcIssuer names the issuer in the asset's origin, which tools
+ * label USDC by ("USDC (Injective)"); default Noble for uusdc, else the
+ * base denom.
+ */
+export interface UsdcSetting {
+  usdcChannel?: string;
+  usdcPath?: string;
+  usdcBaseDenom?: string;
+  usdcIssuer?: string;
+}
+
+/** The USDC the setting names, or undefined if it names none. */
+export function usdcFor(s: UsdcSetting): Asset | undefined {
+  let u: Asset | undefined;
+  if (s.usdcChannel && (s.usdcPath || s.usdcBaseDenom)) throw new Error("set either usdcChannel or usdcPath and usdcBaseDenom, not both");
+  if (s.usdcChannel) u = usdc(s.usdcChannel);
+  else if (s.usdcPath) u = usdcAt(s.usdcPath, s.usdcBaseDenom || DEFAULT_USDC_BASE_DENOM);
+  else if (s.usdcBaseDenom) throw new Error(`USDC base denom "${s.usdcBaseDenom}" needs usdcPath too`);
+  if (!s.usdcIssuer) return u;
+  if (!u) throw new Error(`USDC issuer "${s.usdcIssuer}" needs usdcChannel or usdcPath too`);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/.test(s.usdcIssuer)) throw new Error(`USDC issuer "${s.usdcIssuer}": want one word, like Injective`);
+  return { ...u, origin: `${s.usdcIssuer} over ${u.origin.slice(u.origin.indexOf(" over ") + 6)}` };
 }
 
 /** Renders base units as a decimal amount without trailing zeros or symbol: 1500000n -> "1.5". */
@@ -99,13 +156,14 @@ export function formatAmount(asset: Asset, base: bigint): string {
   return `${decimalOf(asset, base)} ${asset.symbol}`;
 }
 
-/** The assets a client accepts: AETH always, USDC over usdcChannel if given. */
+/** The assets a client accepts: AETH always, and the USDC its setting names, if any. */
 export class Assets {
   private readonly all: Asset[];
 
-  constructor(opts: { usdcChannel?: string } = {}) {
+  constructor(opts: UsdcSetting = {}) {
     this.all = [AETH];
-    if (opts.usdcChannel) this.all.push(usdc(opts.usdcChannel));
+    const u = usdcFor(opts);
+    if (u) this.all.push(u);
   }
 
   /** Every asset, AETH first. */

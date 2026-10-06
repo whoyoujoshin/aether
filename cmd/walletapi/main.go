@@ -45,7 +45,7 @@ var (
 	chainID        string
 	port           string
 	// assets are the tokens this wallet names: AETH, and USDC once
-	// --usdc-channel is set.
+	// --usdc-channel or --usdc-path is set.
 	assets, _ = wallet.NewAssets("")
 )
 
@@ -319,10 +319,17 @@ func main() {
 	flag.StringVar(&chainID, "chain-id", "aether-testnet-1", "chain ID")
 	flag.StringVar(&port, "port", "8090", "local HTTP port to listen on")
 	flag.StringVar(&legacyKeyringDir, "legacy-keyring-dir", "", "another test keyring (e.g. the CLI's ~/.aether) whose keys can be brought over one at a time; empty: none")
-	usdcChannel := flag.String("usdc-channel", os.Getenv("AETHER_USDC_CHANNEL"), "Aether's end of its channel to Noble (e.g. channel-3): shows and sends Noble USDC over exactly that channel; empty: AETH only")
+	// Shows and sends that USDC. The desktop app can set it through the
+	// environment instead.
+	usdc := wallet.USDCFlags(flag.CommandLine, wallet.USDCSetting{
+		Channel:   os.Getenv("AETHER_USDC_CHANNEL"),
+		Path:      os.Getenv("AETHER_USDC_PATH"),
+		BaseDenom: os.Getenv("AETHER_USDC_BASE_DENOM"),
+		Issuer:    os.Getenv("AETHER_USDC_ISSUER"),
+	})
 	flag.Parse()
 	var err error
-	if assets, err = wallet.NewAssets(*usdcChannel); err != nil {
+	if assets, err = wallet.NewAssetsFor(*usdc); err != nil {
 		log.Fatal(err)
 	}
 

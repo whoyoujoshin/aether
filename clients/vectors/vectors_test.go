@@ -114,13 +114,21 @@ type vectors struct {
 	} `json:"pull"`
 	DirectoryAddress string `json:"directoryAddress"`
 	// USDC is Noble's USDC over one channel, as wallet.USDC pins it, and
-	// how a receipt states an amount of it.
+	// how a receipt states an amount of it. Routed is USDC that reaches
+	// Aether some other way, as wallet.USDCAt pins it: Circle's USDC on
+	// Injective, through Osmosis.
 	USDC struct {
 		Channel       string `json:"channel"`
 		Denom         string `json:"denom"`
 		ReceiptAmount string `json:"receiptAmount"`
+		Routed        struct {
+			Path      string `json:"path"`
+			BaseDenom string `json:"baseDenom"`
+			Denom     string `json:"denom"`
+			Origin    string `json:"origin"`
+		} `json:"routed"`
 	} `json:"usdc"`
-	Receipts         struct {
+	Receipts struct {
 		Direct            paywall.Receipt `json:"direct"` // signed by the payee's own key
 		DirectMessage     string          `json:"directMessage"`
 		Delegated         paywall.Receipt `json:"delegated"` // signed by a key the payee delegated to
@@ -198,6 +206,11 @@ func build(t *testing.T) vectors {
 	require.NoError(t, err)
 	v.USDC.Channel, v.USDC.Denom = "channel-3", usdc.Denom
 	v.USDC.ReceiptAmount = paywall.ReceiptAmount(math.NewInt(50_000), usdc.Denom)
+	r := &v.USDC.Routed
+	r.Path, r.BaseDenom = "transfer/channel-1/transfer/channel-10092", "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d"
+	routed, err := wallet.USDCAt(r.Path, r.BaseDenom)
+	require.NoError(t, err)
+	r.Denom, r.Origin = routed.Denom, routed.Origin
 
 	// Pull.
 	f.DepositTx = ""

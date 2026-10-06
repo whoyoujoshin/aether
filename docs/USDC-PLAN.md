@@ -188,11 +188,20 @@ explorer shows the channel.
 > The clients' seller kits charge USDC as `cmd/paywall` does (a price
 > in USDC with `usdcChannel` / `usdc_channel`).
 >
+> **Update, 2026-10-05: the USDC is a setting, not a channel.** Aether
+> reached Osmosis first and has no channel to Noble, so every tool now
+> also takes a route and a base denom (`--usdc-path`,
+> `--usdc-base-denom`, `--usdc-issuer`; `usdcPath`/`usdc_path` and so on
+> in the clients). That covers Noble's USDC through Osmosis now and
+> Circle's USDC on Injective through Osmosis once it's flowing.
+> `--usdc-channel` stays as shorthand for a direct Noble channel. The
+> settings for both routes are in
+> [OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md#usdc-over-this-path).
+>
 > Still to do:
-> - setting `--usdc-channel` for the desktop wallet, the public explorer
->   and the Claude Desktop bundle once the Noble channel exists (the
->   bundle's settings can't be blank, so it waits for a real channel
->   number).
+> - setting the USDC for the desktop wallet, the public explorer and the
+>   Claude Desktop bundle (the bundle's settings can't be blank, so it
+>   waits for a chosen route).
 
 The chain already moves any coin. The tools around it assume AETH: about 60
 references in `agentmcp`, 40 in the paywall, and 180 across the TypeScript and

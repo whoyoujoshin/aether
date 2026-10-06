@@ -93,7 +93,13 @@
   "usdc": {
     "channel": "channel-3",
     "denom": "ibc/6490A7EAB61059BFC1CDDEB05917DD70BDF3A611654162A1A47DB930D40D8AF4",
-    "receiptAmount": "50000ibc/6490A7EAB61059BFC1CDDEB05917DD70BDF3A611654162A1A47DB930D40D8AF4"
+    "receiptAmount": "50000ibc/6490A7EAB61059BFC1CDDEB05917DD70BDF3A611654162A1A47DB930D40D8AF4",
+    "routed": {
+      "path": "transfer/channel-1/transfer/channel-10092",
+      "baseDenom": "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d",
+      "denom": "ibc/4F4C931B9AC39222C0EC5EB909F2BA8C0C615A1E343D8C1448ACDBBE6AF3743A",
+      "origin": "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d over transfer/channel-1/transfer/channel-10092"
+    }
   },
   "receipts": {
     "direct": {

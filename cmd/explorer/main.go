@@ -509,10 +509,10 @@ func main() {
 	flag.StringVar(&ibcName, "ibc-name", "", "display name for that chain (default: its chain ID)")
 	flag.StringVar(&faucetAPI, "faucet-api", "", "faucet the Faucet page uses through /api/faucet/, e.g. http://127.0.0.1:8080 (it must trust this explorer in its --trusted-proxies); empty: shown as unavailable")
 	flag.StringVar(&nodeLocationsPath, "node-locations", "", "JSON file placing validators and miners on the Validators globe (see docs/EXPLORER-LOCATIONS.md); empty: no globe")
-	usdcChannel := flag.String("usdc-channel", "", "Aether's end of its channel to Noble (e.g. channel-3): labels Noble USDC over exactly that channel; empty: other tokens show by denom")
+	usdc := wallet.USDCFlags(flag.CommandLine, wallet.USDCSetting{}) // labels that USDC; other tokens show by denom
 	flag.Parse()
 	var err error
-	if assets, err = wallet.NewAssets(*usdcChannel); err != nil {
+	if assets, err = wallet.NewAssetsFor(*usdc); err != nil {
 		log.Fatal(err)
 	}
 	resolvePublicEndpoints()

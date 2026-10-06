@@ -48,7 +48,7 @@ export interface AssetInfo {
 const AETH_ASSET: AssetInfo = { symbol: "AETH", denom: "uaeth", baseUnit: "uaeth", decimals: 6, origin: "Aether" };
 let knownAssets: AssetInfo[] = [AETH_ASSET];
 
-/** Sets the assets /api/assets names (AETH, and USDC over one channel). */
+/** Sets the assets /api/assets names (AETH, and USDC over one route). */
 export function setAssets(list: AssetInfo[] | undefined) {
   if (list && list.length) knownAssets = list;
 }

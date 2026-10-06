@@ -103,7 +103,7 @@ func apiRoutes() []apiRoute {
 			[]apiParam{{name: "seconds", description: "window, 10 to 600 (default 96)", example: "96", integer: true},
 				{name: "min", description: "at least this many blocks per chain, up to 50 (default 0)", example: "20", integer: true}}, typeOf[helixDTO]()},
 		{"/api/assets", handleAssets, "chain", "The tokens this explorer names",
-			"AETH, and Noble USDC over the one channel the explorer was told about. Any other denom is shown as is.",
+			"AETH, and the one USDC (route and issuing denom) the explorer was told about. Any other denom is shown as is.",
 			nil, typeOf[assetsResponse]()},
 	}
 }

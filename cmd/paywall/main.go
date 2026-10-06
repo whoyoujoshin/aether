@@ -62,8 +62,8 @@ func main() {
 	listen := flag.String("listen", ":8402", "address to serve on")
 	upstream := flag.String("upstream", "", "URL of the API to charge for (required)")
 	payTo := flag.String("pay-to", "", "address payments go to (required)")
-	price := flag.String("price", "", `price per request with its unit, which also picks the asset everything is charged in: e.g. "0.01 AETH", or "0.05 USDC" with --usdc-channel (required)`)
-	usdcChannel := flag.String("usdc-channel", "", "Aether's end of its channel to Noble (e.g. channel-3), to charge in USDC: Noble's uusdc over exactly this channel")
+	price := flag.String("price", "", `price per request with its unit, which also picks the asset everything is charged in: e.g. "0.01 AETH", or "0.05 USDC" with --usdc-channel or --usdc-path (required)`)
+	usdc := wallet.USDCFlags(flag.CommandLine, wallet.USDCSetting{})
 	grpcEndpoint := flag.String("grpc", "localhost:9090", "node gRPC endpoint used to verify payments")
 	chainID := flag.String("chain-id", "aether-testnet-1", "chain ID payments must be on")
 	description := flag.String("description", "", "what a payment buys, shown to payers and in the service directory")
@@ -95,9 +95,9 @@ func main() {
 	if err != nil || target.Scheme == "" || target.Host == "" {
 		log.Fatalf("invalid --upstream %q", *upstream)
 	}
-	assets, err := wallet.NewAssets(*usdcChannel)
+	assets, err := wallet.NewAssetsFor(*usdc)
 	if err != nil {
-		log.Fatalf("invalid --usdc-channel: %v", err)
+		log.Fatalf("invalid USDC setting: %v", err)
 	}
 	asset, amount, err := assets.Parse(*price)
 	if err != nil {

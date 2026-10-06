@@ -120,12 +120,15 @@ def decode_send_grant(resp: bytes, denom: str = DENOM) -> Optional[SendGrant]:
 
 
 class AetherClient:
-    def __init__(self, rpc: str, chain_id: str = "aether-testnet-1", usdc_channel: Optional[str] = None):
-        """usdc_channel: Aether's end of its channel to Noble (e.g. "channel-3"). With it, amounts may be
-        in USDC ("5 USDC"); without it, USDC is an unknown unit, never guessed at."""
+    def __init__(self, rpc: str, chain_id: str = "aether-testnet-1", usdc_channel: Optional[str] = None,
+                 usdc_path: Optional[str] = None, usdc_base_denom: Optional[str] = None,
+                 usdc_issuer: Optional[str] = None):
+        """usdc_channel: Aether's end of its direct channel to Noble (e.g. "channel-3"); or usdc_path and
+        usdc_base_denom for USDC that arrives another way (see usdc_for). With one, amounts may be in
+        USDC ("5 USDC"); without, USDC is an unknown unit, never guessed at."""
         self.rpc = Rpc(rpc)
         self.chain_id = chain_id
-        self.assets = Assets(usdc_channel)
+        self.assets = Assets(usdc_channel, usdc_path, usdc_base_denom, usdc_issuer)
         # Sequences used but maybe not reported by the chain yet (a second
         # send within one block would otherwise reuse one).
         self._next_seq = {}
@@ -157,7 +160,7 @@ class AetherClient:
 
     def send(self, key: Key, to: str, amount: str, memo: str = "", gas_limit: Optional[int] = None) -> SendResult:
         """Signs and broadcasts a payment; `amount` carries its unit ("1.5 AETH", or "5 USDC" when the
-        client has a usdc_channel), and it sends that asset.
+        client has a USDC set), and it sends that asset.
         Returns once the node accepts it -- call wait_for_transaction to confirm.
         To retry after an error without paying twice, rebroadcast(result.signed)."""
         if not is_address(to):

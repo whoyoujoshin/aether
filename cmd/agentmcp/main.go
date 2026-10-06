@@ -454,13 +454,13 @@ func main() {
 	flag.BoolVar(&directoryAllowPrivate, "directory-allow-private", false, "let find_services/announce_service fetch manifests from private/loopback addresses (local devnets only)")
 	flag.StringVar(&feeGranter, "fee-granter", "", "pay transaction fees from this account's x/feegrant allowance to the agent")
 	httpListen := flag.String("http", "", `listen address for a public read-only Streamable HTTP server at /mcp (for example 127.0.0.1:8090). Empty (default): stdio, with the full wallet. Public mode never opens the keyring`)
-	usdcChannel := flag.String("usdc-channel", "", "Aether's end of its channel to Noble (e.g. channel-3): USDC is Noble's uusdc over exactly this channel. Empty: this agent knows only AETH")
+	usdc := wallet.USDCFlags(flag.CommandLine, wallet.USDCSetting{})
 	usdcPerTx := flag.String("usdc-per-tx-limit", "", `most USDC one payment may spend, with unit (e.g. "5 USDC"); USDC spending stays off until this and --usdc-daily-limit are set`)
 	usdcDaily := flag.String("usdc-daily-limit", "", `most USDC spendable in any rolling 24h, with unit (e.g. "20 USDC")`)
 	usdcThreshold := flag.String("usdc-approval-threshold", "", `USDC payments above this (e.g. "10 USDC") wait for the owner's approval; requires --approver`)
 	flag.Parse()
 
-	if err := configureUSDC(*usdcChannel, *usdcPerTx, *usdcDaily, *usdcThreshold); err != nil {
+	if err := configureUSDC(*usdc, *usdcPerTx, *usdcDaily, *usdcThreshold); err != nil {
 		log.Fatal(err)
 	}
 
