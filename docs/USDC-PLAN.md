@@ -231,11 +231,14 @@ explorer shows the channel.
 > supply denom (about 10.64 million USDC), and it matches Injective's
 > migration table and the `injective-lists` mainnet entry.
 >
+> Done (PR #91): Injective key support (`eth_secp256k1`) in
+> `cmd/relayer` and `cmd/outbound`, and Helicase following several
+> counterparties.
+>
 > Still to do:
-> - Injective key support (`eth_secp256k1`) in `cmd/relayer` and
->   `cmd/outbound`, and Helicase following a second counterparty;
-> - the Aether ↔ Injective testnet channel, then a first transfer of
->   the 20 testnet USDC already on Injective;
+> - the Aether ↔ Injective testnet channel, opened from DardenPC while
+>   Gitty is away ([INJECTIVE-TESTNET.md](INJECTIVE-TESTNET.md)), then a
+>   first transfer of testnet USDC from Circle's faucet;
 > - then `wallet.TestnetUSDC` on the direct route, `v0.2.8-testnet`, and
 >   new explorer flags.
 
