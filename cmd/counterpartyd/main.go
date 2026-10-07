@@ -14,19 +14,21 @@ import (
 
 	"cosmossdk.io/log"
 	cmtcfg "github.com/cometbft/cometbft/config"
-	addresscodec "github.com/cosmos/cosmos-sdk/codec/address"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/keys"
+	addresscodec "github.com/cosmos/cosmos-sdk/codec/address"
+	"github.com/cosmos/cosmos-sdk/crypto/hd"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	bankcli "github.com/cosmos/cosmos-sdk/x/bank/client/cli"
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
 	stakingcli "github.com/cosmos/cosmos-sdk/x/staking/client/cli"
 
-	ibccli "github.com/cosmos/ibc-go/v8/modules/core/client/cli"
 	ibctransfercli "github.com/cosmos/ibc-go/v8/modules/apps/transfer/client/cli"
+	ibccli "github.com/cosmos/ibc-go/v8/modules/core/client/cli"
 
 	"github.com/cosmos/cosmos-sdk/server"
 	svrcmd "github.com/cosmos/cosmos-sdk/server/cmd"
@@ -34,6 +36,7 @@ import (
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 
 	"github.com/whoyoujoshin/aether/counterparty"
+	"github.com/whoyoujoshin/aether/crypto/ethsecp256k1"
 )
 
 var encodingConfig = counterparty.MakeEncodingConfig(counterparty.Bech32Prefix)
@@ -47,7 +50,12 @@ var initClientCtx = client.Context{}.
 	WithBroadcastMode(flags.BroadcastSync).
 	WithHomeDir(counterparty.DefaultNodeHome).
 	WithViper("").
-	WithAccountRetriever(authtypes.AccountRetriever{})
+	WithAccountRetriever(authtypes.AccountRetriever{}).
+	// keys add --algo eth_secp256k1 --coin-type 60 makes an Injective-style
+	// key, for testing the relayers' signing for Injective.
+	WithKeyringOptions(func(o *keyring.Options) {
+		o.SupportedAlgos = keyring.SigningAlgoList{hd.Secp256k1, ethsecp256k1.Algo}
+	})
 
 func init() {
 	counterparty.SetAddressPrefixes()

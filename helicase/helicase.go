@@ -49,6 +49,9 @@ type Config struct {
 	// on a quiet channel before Helicase updates it anyway
 	// (relayer.Plan). Zero means DefaultRefreshAfter.
 	RefreshAfter time.Duration
+	// MaxMsgs caps the packets, acknowledgements and timeouts per cycle.
+	// Zero means maxMsgsPerCycle; with several paths, Split divides it.
+	MaxMsgs int
 }
 
 // DefaultRefreshAfter keeps Aether's view of the other chain within a
@@ -59,7 +62,8 @@ type Config struct {
 const DefaultRefreshAfter = 5 * time.Minute
 
 // maxMsgsPerCycle leaves room under the chain's cap on relay
-// transactions per block (helicaseMaxTxsPerBlock) for the client update.
+// transactions per block (helicaseMaxTxsPerBlock) for the client update,
+// or one per path when several paths share a block.
 const maxMsgsPerCycle = 60
 
 // staleAfter: a batch computed more than this many blocks before the one
@@ -96,6 +100,9 @@ func New(cfg Config, cdc codec.Codec, txConfig client.TxConfig, encode func(clie
 	}
 	if cfg.RefreshAfter <= 0 {
 		cfg.RefreshAfter = DefaultRefreshAfter
+	}
+	if cfg.MaxMsgs <= 0 {
+		cfg.MaxMsgs = maxMsgsPerCycle
 	}
 	aether, err := relayer.NewReadOnlyChain("aether", cfg.AetherRPC, "", cdc, txConfig)
 	if err != nil {
@@ -141,7 +148,7 @@ func (w *Worker) Run(ctx context.Context) {
 }
 
 func (w *Worker) runCycle() {
-	plan, err := relayer.Plan(w.cparty, w.aether, w.cfg.ClientID, "", maxMsgsPerCycle, w.cfg.RefreshAfter)
+	plan, err := relayer.Plan(w.cparty, w.aether, w.cfg.ClientID, "", w.cfg.MaxMsgs, w.cfg.RefreshAfter)
 	if err != nil {
 		w.mu.Lock()
 		repeat := err.Error() == w.lastError
@@ -169,4 +176,29 @@ func (w *Worker) runCycle() {
 		w.logger.Info("helicase: relay transactions ready", "aether_tip", plan.DstTip, "proof_height", plan.ProofHeight,
 			"packets", plan.Packets, "acks", plan.Acks, "timeouts", plan.Timeouts)
 	}
+}
+
+// Split divides the per-cycle message budget between n paths, so that
+// all of them together stay within one block's relay transactions.
+func Split(n int) int {
+	if n <= 1 {
+		return maxMsgsPerCycle
+	}
+	if per := maxMsgsPerCycle / n; per > 0 {
+		return per
+	}
+	return 1
+}
+
+// Sources is several workers, one per path (one chain Aether has a light
+// client of), proposing their relay transactions in the same blocks.
+type Sources []*Worker
+
+// RelayTxs returns every worker's latest batch, path by path.
+func (s Sources) RelayTxs(height int64) [][]byte {
+	var all [][]byte
+	for _, w := range s {
+		all = append(all, w.RelayTxs(height)...)
+	}
+	return all
 }

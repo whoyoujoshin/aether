@@ -1,0 +1,19 @@
+syntax = "proto3";
+// Injective's eth_secp256k1 key types, wire-compatible with
+// injective.crypto.v1beta1.ethsecp256k1 so the relayers can sign
+// transactions on Injective (crypto/ethsecp256k1). Same package, message
+// names and fields as Injective's own keys.proto: the type URLs in a
+// transaction's signer info and in a keyring record must match exactly.
+package injective.crypto.v1beta1.ethsecp256k1;
+
+option go_package = "github.com/whoyoujoshin/aether/crypto/ethsecp256k1";
+
+// PubKey is a compressed (33-byte) secp256k1 public key.
+message PubKey {
+  bytes key = 1;
+}
+
+// PrivKey is a 32-byte secp256k1 private key.
+message PrivKey {
+  bytes key = 1;
+}

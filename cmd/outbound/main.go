@@ -26,8 +26,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cosmos/cosmos-sdk/crypto/keyring"
-
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/counterparty"
 	"github.com/whoyoujoshin/aether/relayer"
@@ -63,7 +61,7 @@ func main() {
 		log.Fatal(err)
 	}
 	cpartyEnc := counterparty.MakeEncodingConfig(*cpartyBech32)
-	kr, err := keyring.New("counterpartyd", *keyringBack, *cpartyHome, os.Stdin, cpartyEnc.Codec)
+	kr, err := relayer.OpenCounterpartyKeyring(*keyringBack, *cpartyHome, os.Stdin, cpartyEnc.Codec)
 	if err != nil {
 		log.Fatalf("opening keyring: %v", err)
 	}
