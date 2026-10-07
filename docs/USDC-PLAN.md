@@ -205,9 +205,39 @@ explorer shows the channel.
 > the explorer takes it as flags (see
 > [OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md#usdc-over-this-path)).
 >
+> **Update, 2026-10-07: no route through Osmosis; go direct to
+> Injective.** Circle is discontinuing USDC on Noble (minting stops
+> 2026-10-13; contract paused 2027-01-12), and Injective's USDC is the
+> Cosmos standard, adopted by the Cosmos Hub, dYdX and Skip:Go. But no
+> testnet route to it works: every Injective testnet client of Osmosis's
+> testnet (`07-tendermint-312` behind `channel-77026`, and the rest) has
+> expired, so the first transfer was refused and nothing moved. The
+> plan is a direct Aether ↔ Injective channel that we relay ourselves.
+> `wallet.TestnetUSDC` (shipped in `v0.2.7-testnet`) still names the
+> dead Osmosis route; it changes to the direct channel once a transfer
+> over it has landed on Aether.
+>
+> Circle's USDC on Injective, as the bank denom (the IBC hash covers
+> this exact text; the EIP-55 capitalization matters, and the
+> all-lowercase form is a different, empty denom):
+>
+> | | Base denom | Decimals |
+> |--|--|--|
+> | Testnet (`injective-888`) | `erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d` | 6 |
+> | Mainnet (`injective-1`) | `erc20:0xa00C59fF5a080D2b954d0c75e46E22a0c371235a` | 6 |
+>
+> The mainnet denom was checked against chain state on 2026-10-07: the
+> sentry LCD and PublicNode both return it as `metadata.base` and as the
+> supply denom (about 10.64 million USDC), and it matches Injective's
+> migration table and the `injective-lists` mainnet entry.
+>
 > Still to do:
-> - the first transfer of Injective's testnet USDC to Osmosis over
->   `channel-77026`, then on to Aether.
+> - Injective key support (`eth_secp256k1`) in `cmd/relayer` and
+>   `cmd/outbound`, and Helicase following a second counterparty;
+> - the Aether ↔ Injective testnet channel, then a first transfer of
+>   the 20 testnet USDC already on Injective;
+> - then `wallet.TestnetUSDC` on the direct route, `v0.2.8-testnet`, and
+>   new explorer flags.
 
 The chain already moves any coin. The tools around it assume AETH: about 60
 references in `agentmcp`, 40 in the paywall, and 180 across the TypeScript and
