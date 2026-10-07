@@ -32,6 +32,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+
+	"github.com/whoyoujoshin/aether/crypto/ethsecp256k1"
 )
 
 // Chain is a minimal RPC+gRPC+signing handle to one side of the relay.
@@ -109,6 +111,12 @@ func NewChain(name, rpcAddr, grpcAddr, chainID, bech32Prefix string, cdc codec.C
 	if err != nil {
 		return nil, fmt.Errorf("%s: encoding %s address: %w", name, bech32Prefix, err)
 	}
+	// A chain whose accounts use eth_secp256k1 keys (Injective) stores
+	// its own account type, so look accounts up with AccountInfo there.
+	var retriever client.AccountRetriever = authtypes.AccountRetriever{}
+	if pk, err := record.GetPubKey(); err == nil && pk.Type() == ethsecp256k1.KeyType {
+		retriever = accountInfoRetriever{}
+	}
 
 	clientCtx := client.Context{}.
 		WithChainID(chainID).
@@ -121,7 +129,7 @@ func NewChain(name, rpcAddr, grpcAddr, chainID, bech32Prefix string, cdc codec.C
 		WithFromName(fromName).
 		WithFromAddress(addr).
 		WithBroadcastMode("sync").
-		WithAccountRetriever(authtypes.AccountRetriever{}).
+		WithAccountRetriever(retriever).
 		WithSkipConfirmation(true).
 		WithInput(bufio.NewReader(os.Stdin)).
 		WithOutput(os.Stdout)
@@ -131,7 +139,7 @@ func NewChain(name, rpcAddr, grpcAddr, chainID, bech32Prefix string, cdc codec.C
 		WithTxConfig(txConfig).
 		WithKeybase(kr).
 		WithFromName(fromName). // gas simulation looks the key up by it
-		WithAccountRetriever(authtypes.AccountRetriever{}).
+		WithAccountRetriever(retriever).
 		// Handshake txs batch a MsgUpdateClient (commit verification)
 		// with a message carrying three merkle proofs, and Aether's
 		// ML-DSA signature and pubkey alone are ~3.7KB of per-byte gas.

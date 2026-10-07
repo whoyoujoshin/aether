@@ -15,11 +15,10 @@ import (
 
 	"cosmossdk.io/log"
 	storetypes "cosmossdk.io/store/types"
+	signing "cosmossdk.io/x/tx/signing"
 	upgrademodule "cosmossdk.io/x/upgrade"
 	upgradekeeper "cosmossdk.io/x/upgrade/keeper"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
-	signing "cosmossdk.io/x/tx/signing"
-	gogoproto "github.com/cosmos/gogoproto/proto"
 	abci "github.com/cometbft/cometbft/abci/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/baseapp"
@@ -27,6 +26,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/address"
+	"github.com/cosmos/cosmos-sdk/codec/legacy"
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/cosmos/cosmos-sdk/server/api"
@@ -35,6 +35,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/std"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
+	signingtypes "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	"github.com/cosmos/cosmos-sdk/x/auth"
 	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
@@ -50,6 +51,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+	gogoproto "github.com/cosmos/gogoproto/proto"
 
 	capability "github.com/cosmos/ibc-go/modules/capability"
 	capabilitykeeper "github.com/cosmos/ibc-go/modules/capability/keeper"
@@ -61,11 +63,13 @@ import (
 	ibcexported "github.com/cosmos/ibc-go/v8/modules/core/exported"
 	ibckeeper "github.com/cosmos/ibc-go/v8/modules/core/keeper"
 	ibctm "github.com/cosmos/ibc-go/v8/modules/light-clients/07-tendermint"
+
+	"github.com/whoyoujoshin/aether/crypto/ethsecp256k1"
 )
 
 const (
-	Name          = "counterparty"
-	Bech32Prefix  = "cparty"
+	Name         = "counterparty"
+	Bech32Prefix = "cparty"
 )
 
 var DefaultNodeHome string
@@ -76,6 +80,12 @@ func init() {
 		panic(err)
 	}
 	DefaultNodeHome = filepath.Join(home, ".counterparty")
+}
+
+// x/auth's gas estimation amino-encodes signers' pubkeys with the SDK's
+// global codec, so eth_secp256k1 keys must be registered there too.
+func init() {
+	ethsecp256k1.RegisterLegacyAminoCodec(legacy.Cdc)
 }
 
 func SetAddressPrefixes() {
@@ -126,11 +136,16 @@ func MakeEncodingConfig(bech32Prefix string) EncodingConfig {
 		panic(err)
 	}
 	std.RegisterInterfaces(interfaceRegistry)
+	// Accounts may also use Injective's eth_secp256k1 keys, so a local
+	// devnet can stand in for Injective when testing the relayers'
+	// signing for it (see crypto/ethsecp256k1).
+	ethsecp256k1.RegisterInterfaces(interfaceRegistry)
 	ModuleBasics.RegisterInterfaces(interfaceRegistry)
 
 	appCodec := codec.NewProtoCodec(interfaceRegistry)
 	legacyAmino := codec.NewLegacyAmino()
 	std.RegisterLegacyAminoCodec(legacyAmino)
+	ethsecp256k1.RegisterLegacyAminoCodec(legacyAmino)
 	ModuleBasics.RegisterLegacyAminoCodec(legacyAmino)
 
 	txCfg, err := authtx.NewTxConfigWithOptions(appCodec, authtx.ConfigOptions{
@@ -160,11 +175,11 @@ type App struct {
 	memKeys           map[string]*storetypes.MemoryStoreKey
 	txConfig          client.TxConfig
 
-	AccountKeeper    authkeeper.AccountKeeper
-	BankKeeper       bankkeeper.BaseKeeper
-	StakingKeeper    *stakingkeeper.Keeper
-	ConsensusKeeper  consensuskeeper.Keeper
-	UpgradeKeeper    *upgradekeeper.Keeper
+	AccountKeeper   authkeeper.AccountKeeper
+	BankKeeper      bankkeeper.BaseKeeper
+	StakingKeeper   *stakingkeeper.Keeper
+	ConsensusKeeper consensuskeeper.Keeper
+	UpgradeKeeper   *upgradekeeper.Keeper
 
 	CapabilityKeeper     *capabilitykeeper.Keeper
 	IBCKeeper            *ibckeeper.Keeper
@@ -299,6 +314,7 @@ func New(
 		AccountKeeper:   app.AccountKeeper,
 		BankKeeper:      app.BankKeeper,
 		SignModeHandler: encCfg.TxConfig.SignModeHandler(),
+		SigGasConsumer:  sigGasConsumer,
 	})
 	if err != nil {
 		panic(err)
@@ -314,6 +330,16 @@ func New(
 		}
 	}
 	return app
+}
+
+// sigGasConsumer charges an eth_secp256k1 signature like a secp256k1 one
+// (as Injective does), and everything else as the SDK does.
+func sigGasConsumer(meter storetypes.GasMeter, sig signingtypes.SignatureV2, params authtypes.Params) error {
+	if _, ok := sig.PubKey.(*ethsecp256k1.PubKey); ok {
+		meter.ConsumeGas(params.SigVerifyCostSecp256k1, "ante verify: eth_secp256k1")
+		return nil
+	}
+	return authante.DefaultSigVerificationGasConsumer(meter, sig, params)
 }
 
 func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.ResponseInitChain, error) {

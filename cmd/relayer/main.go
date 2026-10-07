@@ -57,7 +57,7 @@ func main() {
 	}
 
 	cpartyEnc := counterparty.MakeEncodingConfig(*cpartyBech32)
-	cpartyKr, err := keyring.New("counterpartyd", *keyringBackend, *cpartyHome, os.Stdin, cpartyEnc.Codec)
+	cpartyKr, err := relayer.OpenCounterpartyKeyring(*keyringBackend, *cpartyHome, os.Stdin, cpartyEnc.Codec)
 	if err != nil {
 		log.Fatalf("opening counterparty keyring: %v", err)
 	}
