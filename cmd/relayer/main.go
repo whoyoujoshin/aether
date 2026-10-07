@@ -10,10 +10,12 @@
 package main
 
 import (
+	"cmp"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/codec/address"
@@ -23,6 +25,7 @@ import (
 
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/counterparty"
+	"github.com/whoyoujoshin/aether/crypto/ethsecp256k1"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	"github.com/whoyoujoshin/aether/relayer"
 )
@@ -45,6 +48,11 @@ func main() {
 		cpartyBech32   = flag.String("cparty-bech32-prefix", counterparty.Bech32Prefix, "Counterparty chain's bech32 address prefix (e.g. \"osmo\" for Osmosis) -- counterparty's own encoding config is entirely standard Cosmos SDK + ibc-go otherwise, so any standard external chain works by just changing this and the endpoints/chain-id above")
 
 		keyringBackend = flag.String("keyring-backend", "test", "keyring backend for both chains (test/file/os)")
+		showAddresses  = flag.Bool("show-addresses", false, "print the relayer's address on each chain, to fund them, and exit without connecting")
+		send           = flag.String("send", "", "instead of opening a path: send this amount (e.g. 1000000erc20:0x0C38...) from the counterparty key over -send-channel and exit; relaying it is left to Helicase")
+		sendChannel    = flag.String("send-channel", "", "with -send: the counterparty's channel to Aether, e.g. channel-123")
+		sendTo         = flag.String("send-to", "", "with -send: the Aether address to receive it; empty means the Aether relayer key")
+		sendTimeout    = flag.Duration("send-timeout", time.Hour, "with -send: refund the transfer if it isn't received on Aether within this long")
 	)
 	flag.Parse()
 
@@ -61,6 +69,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("opening counterparty keyring: %v", err)
 	}
+	if *showAddresses {
+		printAddress("aether", aetherKr, *aetherKey, app.Bech32MainPrefix)
+		printAddress("counterparty", cpartyKr, *cpartyKey, *cpartyBech32)
+		return
+	}
 
 	aether, err := relayer.NewChain("aether", *aetherRPC, *aetherGRPC, *aetherChainID, app.Bech32MainPrefix,
 		aetherEnc.Codec, aetherEnc.TxConfig, aetherKr, *aetherKey, *aetherGasPrice)
@@ -71,6 +84,10 @@ func main() {
 		cpartyEnc.Codec, cpartyEnc.TxConfig, cpartyKr, *cpartyKey, *cpartyGasPrice)
 	if err != nil {
 		log.Fatalf("connecting to counterparty: %v", err)
+	}
+	if *send != "" {
+		sendToAether(cparty, *send, *sendChannel, cmp.Or(*sendTo, aether.FromAddrStr), *sendTimeout)
+		return
 	}
 
 	aetherHeight, err := aether.LatestHeight()
@@ -186,4 +203,45 @@ func expect(c *relayer.Chain, addr, denom string, want math.Int, what string) {
 		log.Fatalf("%s: got %s, want %s%s", what, got, want, denom)
 	}
 	fmt.Printf("  %s on %s: %s  ok\n", what, c.Name, got)
+}
+
+// printAddress prints key name's address in kr, in prefix's bech32.
+func printAddress(chain string, kr keyring.Keyring, name, prefix string) {
+	record, err := kr.Key(name)
+	if err != nil {
+		log.Fatalf("%s key %q: %v", chain, name, err)
+	}
+	addr, err := record.GetAddress()
+	if err != nil {
+		log.Fatalf("%s key %q: %v", chain, name, err)
+	}
+	s, err := address.NewBech32Codec(prefix).BytesToString(addr)
+	if err != nil {
+		log.Fatalf("%s key %q: %v", chain, name, err)
+	}
+	fmt.Printf("%s relayer: %s (%s key %q)\n", chain, s, record.PubKey.TypeUrl, name)
+	if pk, err := record.GetPubKey(); err == nil && pk.Type() == ethsecp256k1.KeyType {
+		fmt.Printf("%s relayer, Ethereum form: 0x%x\n", chain, addr.Bytes())
+	}
+}
+
+// sendToAether sends amount from cparty's key to receiver on Aether over
+// channel, and prints the packet. It doesn't relay it.
+func sendToAether(cparty *relayer.Chain, amount, channel, receiver string, timeout time.Duration) {
+	if channel == "" {
+		log.Fatal("-send needs -send-channel")
+	}
+	coin, err := sdk.ParseCoinNormalized(amount)
+	if err != nil {
+		log.Fatalf("-send %q: %v", amount, err)
+	}
+	if coin.String() != amount {
+		log.Fatalf("-send %q reads as %s; give the amount and denom exactly, with no spaces or decimals", amount, coin)
+	}
+	packet, err := relayer.TransferWithTimeout(cparty, channel, coin, receiver, timeout)
+	if err != nil {
+		log.Fatalf("send: %v", err)
+	}
+	fmt.Printf("sent packet %d over %s/%s: %s from %s to %s; Helicase relays it onto Aether\n",
+		packet.Sequence, transfertypes.PortID, channel, coin, cparty.FromAddrStr, receiver)
 }

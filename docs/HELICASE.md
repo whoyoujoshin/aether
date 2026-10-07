@@ -63,6 +63,11 @@ aetherd start --home C:\aether-data\.aether \
   --helicase.client-id 07-tendermint-0
 ```
 
+To follow several chains, list their RPCs and Aether's clients of them
+comma-separated, in the same order:
+`--helicase.counterparty-rpc https://<chain A's RPC>,https://<chain B's RPC>`
+with `--helicase.client-id 07-tendermint-1,07-tendermint-2`.
+
 The same settings can go in `app.toml` under `[helicase]`
 (`counterparty-rpc`, `client-id`, `aether-rpc`, `interval`, `refresh-after`). The other
 chain's RPC must serve `tx_search`, because the worker finds a packet's
@@ -146,6 +151,14 @@ sequence 5, where the handshake left it. The node logged no rejected
 proposals, no failed relay transactions and no panics. An earlier run
 without the app-side mempool gave the same result.
 
+**Two paths** (2026-10-07), same setup with an eth_secp256k1 relayer key
+on the counterparty, standing in for Injective. `cmd/relayer` opened two
+paths (Aether clients `07-tendermint-0` and `-1`, channels `channel-0`
+and `-1`), each with a round trip. The node restarted with both clients
+listed. `cmd/relayer -send` sent 7000stake over `channel-0` and 8000stake
+over `channel-1`; each arrived on Aether as its own `ibc/…` denom,
+relayed by its own worker, with no rejected proposals.
+
 To reproduce:
 
 1. Build `aetherd` with `ibcActivationHeight` and `helicaseActivationHeight` set to a small value. This is a local build only; never commit it.
@@ -168,7 +181,7 @@ with a different app hash and stop at the next block.
 
 ## Limits and next steps
 
-- **One path per node.** A node follows one client, `--helicase.client-id`, and every open channel over it. Following several chains means one worker per client, which is a small change.
+- **Several chains per node.** A node follows each client in `--helicase.client-id` and every open channel over it, one worker per client. The per-cycle message cap is split between them so a proposal stays under its 100 transactions.
 - **Only 07-tendermint clients.** Every Cosmos SDK chain uses that client type.
 - **The proposer does the work.** Relaying adds RPC reads to the other chain on the node that proposes. The worker runs beside consensus and never blocks it: `PrepareProposal` only takes what's already built.
 - **Next:** Noble and Osmosis testnets (see [USDC-PLAN.md](USDC-PLAN.md)).
