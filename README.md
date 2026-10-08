@@ -257,7 +257,7 @@ Read `cmd/agentmcp/main.go`'s package doc comment before deploying either.
 
 ### Client libraries (TypeScript, Python)
 
-For agents and services that aren't MCP clients, `clients/ts` (`aether-chain-client`) and `clients/python` (`aether-chain-client`, imported as `aether_client`) implement the same things natively — no Go, no `aetherd`:
+For agents and services that aren't MCP clients, `clients/ts` and `clients/python` implement the same things natively — no Go, no `aetherd`. Both are published as `aether-chain-client`: `npm install aether-chain-client` and `pip install aether-chain-client` (imported as `aether_client`).
 
 - ML-DSA-44 keys from a recovery phrase (the same phrase gives the same address as `aetherd keys add` and `agentmcp`), addresses, signing.
 - Sending AETH (signed locally, broadcast over the node's CometBFT RPC), with sequence tracking for several sends per block and a safe `rebroadcast` for retries — the same signed bytes are included at most once.

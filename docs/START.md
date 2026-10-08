@@ -42,9 +42,7 @@ can pay from your account under a limit the chain enforces instead; see
 ## 2. TypeScript (Node 20+)
 
 ```bash
-git clone --depth 1 https://github.com/whoyoujoshin/aether
-(cd aether/clients/ts && npm install && npm run build)
-npm install ./aether/clients/ts
+npm install aether-chain-client
 ```
 
 ```ts
@@ -78,7 +76,7 @@ console.log(done.status, "https://explorer.157-245-252-221.sslip.io/tx/" + sent.
 ## 3. Python (3.10+)
 
 ```bash
-pip install "git+https://github.com/whoyoujoshin/aether#subdirectory=clients/python"
+pip install aether-chain-client
 ```
 
 ```python
