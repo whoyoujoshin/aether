@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -18,6 +19,9 @@ func TestMCPBManifest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "0.2.1-testnet", m.Version)
 	require.Len(t, m.Tools, 24, "every registered tool is declared")
+	require.Equal(t, []string{repoURL + "/blob/main/docs/PRIVACY.md"}, m.Privacy, "directories ask for a privacy policy")
+	_, err = os.Stat("../../docs/PRIVACY.md")
+	require.NoError(t, err, "the linked policy exists")
 	for _, tool := range m.Tools {
 		require.NotEmpty(t, tool.Description, tool.Name)
 	}
