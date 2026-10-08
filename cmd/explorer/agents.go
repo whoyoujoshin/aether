@@ -74,9 +74,11 @@ type agentAuthzDTO struct {
 }
 
 type agentMCPDTO struct {
-	Install string   `json:"install"`
-	Init    string   `json:"init"`
-	Tools   []string `json:"tools"`
+	Install    string   `json:"install"`
+	Init       string   `json:"init"`
+	Tools      []string `json:"tools"`
+	Remote     string   `json:"remote,omitempty"`     // public read-only Streamable HTTP endpoint
+	ServerCard string   `json:"serverCard,omitempty"` // MCP server card
 }
 
 type agentCardDTO struct {
@@ -148,9 +150,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			Active:           height >= app.AuthzFeegrantActivationHeight,
 		},
 		MCP: agentMCPDTO{
-			Install: "go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest",
-			Init:    "agentmcp init",
-			Tools:   agentmcpTools,
+			Install:    "go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest",
+			Init:       "agentmcp init",
+			Tools:      agentmcpTools,
+			Remote:     publicMCP,
+			ServerCard: "/.well-known/mcp/server-card.json",
 		},
 		Payments: []string{"aether-memo", "aether-prepaid", "aether-pull"},
 		Docs: map[string]string{
