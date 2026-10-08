@@ -1,10 +1,11 @@
 // cmd/explorer/helix.go
 //
 // GET /api/helix: the two strands the explorer draws as a helix, Aether
-// and the IBC chain it's connected to (--ibc-rpc), with the packets
-// relayed between them as the rungs. Everything is read from the two
-// chains' own CometBFT RPCs on each request. Block results never change
-// once a block is committed, so those alone are cached.
+// and an IBC chain it's connected to (--ibc-rpc), with the packets
+// relayed between them as the rungs. With several chains in --ibc-rpc,
+// ?peer= picks which one is the second strand. Everything is read from
+// the chains' own CometBFT RPCs on each request. Block results never
+// change once a block is committed, so those alone are cached.
 package main
 
 import (
@@ -28,11 +29,84 @@ import (
 
 var (
 	// ibcRPCEndpoint is the CometBFT RPC of the chain on the other end of
-	// Aether's IBC channel. Empty: the helix has one strand.
+	// Aether's IBC channel, or several, comma-separated. Empty: the helix
+	// has one strand.
 	ibcRPCEndpoint string
-	// ibcName is what the explorer calls that chain; empty: its chain ID.
+	// ibcName is what the explorer calls each of those chains, comma-
+	// separated in the same order; an empty or missing one: its chain ID.
 	ibcName string
 )
+
+// helixPeer is one chain the helix can draw opposite Aether.
+type helixPeer struct{ endpoint, name string }
+
+// helixPeers are the chains in --ibc-rpc, named by --ibc-name.
+func helixPeers() []helixPeer {
+	var names []string
+	for _, n := range strings.Split(ibcName, ",") {
+		names = append(names, strings.TrimSpace(n))
+	}
+	var peers []helixPeer
+	for _, e := range strings.Split(ibcRPCEndpoint, ",") {
+		if e = strings.TrimSpace(e); e == "" {
+			continue
+		}
+		p := helixPeer{endpoint: e}
+		if i := len(peers); i < len(names) {
+			p.name = names[i]
+		}
+		peers = append(peers, p)
+	}
+	return peers
+}
+
+var (
+	peerChainIDsMu sync.Mutex
+	peerChainIDs   = map[string]string{} // endpoint -> chain ID, once seen
+)
+
+// peerChainID is the chain ID behind endpoint, asked once and remembered:
+// a chain's ID doesn't change. Empty if the chain can't be reached.
+func peerChainID(ctx context.Context, endpoint string) string {
+	peerChainIDsMu.Lock()
+	id, ok := peerChainIDs[endpoint]
+	peerChainIDsMu.Unlock()
+	if ok {
+		return id
+	}
+	rpc, err := cometrpchttp.New(endpoint, "/websocket")
+	if err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	st, err := rpc.Status(ctx)
+	if err != nil {
+		return ""
+	}
+	rememberPeerChainID(endpoint, st.NodeInfo.Network)
+	return st.NodeInfo.Network
+}
+
+func rememberPeerChainID(endpoint, chainID string) {
+	if chainID == "" {
+		return
+	}
+	peerChainIDsMu.Lock()
+	peerChainIDs[endpoint] = chainID
+	peerChainIDsMu.Unlock()
+}
+
+// pickPeer is the peer named by want (a chain ID or display name, any
+// case), or the first one when want is empty or matches none.
+func pickPeer(peers []helixPeerDTO, want string) int {
+	for i, p := range peers {
+		if want != "" && (strings.EqualFold(p.ChainID, want) || strings.EqualFold(p.Name, want)) {
+			return i
+		}
+	}
+	return 0
+}
 
 const (
 	helixDefaultSeconds = 96
@@ -94,9 +168,16 @@ type helixBridgeDTO struct {
 	AvgRelaySecs          float64 `json:"avgRelaySecs"`  // mean send-to-receipt among packets in the window; 0 if none
 }
 
+// helixPeerDTO is one chain the helix can draw opposite Aether.
+type helixPeerDTO struct {
+	ChainID string `json:"chainId"` // empty while that chain can't be reached
+	Name    string `json:"name"`
+}
+
 type helixDTO struct {
 	WindowSecs int               `json:"windowSecs"`
 	Now        string            `json:"now"`
+	Peers      []helixPeerDTO    `json:"peers"` // every chain in --ibc-rpc; ?peer= (a chain ID or name) picks the one drawn as ibc, the first by default
 	Aether     helixStrandDTO    `json:"aether"`
 	IBC        *helixStrandDTO   `json:"ibc"`     // null when the explorer has no --ibc-rpc
 	Bridge     *helixBridgeDTO   `json:"bridge"`  // null without an ICS-20 channel to that chain
@@ -230,6 +311,9 @@ func readStrand(ctx context.Context, endpoint, chain string, cutoff time.Time, m
 		return helixStrandDTO{}, nil, fmt.Errorf("status: %w", err)
 	}
 	strand := helixStrandDTO{ChainID: st.NodeInfo.Network, Name: st.NodeInfo.Network, Height: st.SyncInfo.LatestBlockHeight, Blocks: []helixBlockDTO{}}
+	if chain == "ibc" {
+		rememberPeerChainID(endpoint, strand.ChainID)
+	}
 	one := 1
 	if vals, err := rpc.Validators(ctx, nil, &one, &one); err == nil {
 		strand.Validators = vals.Total
@@ -429,16 +513,37 @@ func intParam(raw string, def, lo, hi int) int {
 	return v
 }
 
-// --- GET /api/helix?seconds=&min= ---
+// --- GET /api/helix?seconds=&min=&peer= ---
 func handleHelix(w http.ResponseWriter, r *http.Request) {
 	seconds := intParam(r.URL.Query().Get("seconds"), helixDefaultSeconds, 10, helixMaxSeconds)
 	minBlocks := intParam(r.URL.Query().Get("min"), 0, 0, helixMaxMinBlocks)
 	ctx := r.Context()
 	now := time.Now().UTC()
 	cutoff := now.Add(-time.Duration(seconds) * time.Second)
-	out := helixDTO{WindowSecs: seconds, Now: now.Format(time.RFC3339Nano), Packets: []helixPacketDTO{}}
+	out := helixDTO{WindowSecs: seconds, Now: now.Format(time.RFC3339Nano), Peers: []helixPeerDTO{}, Packets: []helixPacketDTO{}}
 	errs := map[string]string{}
 
+	// The chains that can be the second strand, and the one that is.
+	peers := helixPeers()
+	out.Peers = make([]helixPeerDTO, len(peers))
+	var pwg sync.WaitGroup
+	for i, p := range peers {
+		pwg.Add(1)
+		go func() {
+			defer pwg.Done()
+			id := peerChainID(ctx, p.endpoint)
+			name := p.name
+			if name == "" {
+				name = id
+			}
+			out.Peers[i] = helixPeerDTO{ChainID: id, Name: name}
+		}()
+	}
+	pwg.Wait()
+	var peer *helixPeer
+	if len(peers) > 0 {
+		peer = &peers[pickPeer(out.Peers, r.URL.Query().Get("peer"))]
+	}
 	// Aether's proposers by miner account, as the block page names them.
 	var miners map[string]string
 	if rpc, err := newRPC(); err == nil {
@@ -457,11 +562,11 @@ func handleHelix(w http.ResponseWriter, r *http.Request) {
 		defer wg.Done()
 		aether, aetherEv, aetherErr = readStrand(ctx, rpcEndpoint, "aether", cutoff, minBlocks, aetherProposer)
 	}()
-	if ibcRPCEndpoint != "" {
+	if peer != nil {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ibc, ibcEv, ibcErr = readStrand(ctx, ibcRPCEndpoint, "ibc", cutoff, minBlocks, nil)
+			ibc, ibcEv, ibcErr = readStrand(ctx, peer.endpoint, "ibc", cutoff, minBlocks, nil)
 		}()
 	}
 	wg.Wait()
@@ -471,12 +576,12 @@ func handleHelix(w http.ResponseWriter, r *http.Request) {
 	}
 	aether.Name = "Aether"
 	out.Aether = aether
-	if ibcRPCEndpoint != "" {
+	if peer != nil {
 		if ibcErr != nil {
 			errs["ibc"] = ibcErr.Error()
 		}
-		if ibcName != "" {
-			ibc.Name = ibcName
+		if peer.name != "" {
+			ibc.Name = peer.name
 		}
 		if ibc.Blocks == nil {
 			ibc.Blocks = []helixBlockDTO{}

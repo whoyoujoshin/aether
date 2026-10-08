@@ -91,3 +91,27 @@ func TestJoinPackets_SameChannelIDBothWaysAreTwoPackets(t *testing.T) {
 	require.Equal(t, "in", ps[1].Direction)
 	require.Equal(t, "received", ps[1].Status)
 }
+
+// --ibc-rpc and --ibc-name pair up by position; a missing or empty name
+// leaves the chain ID to name it.
+func TestHelixPeers_PairsEndpointsWithNames(t *testing.T) {
+	defer func(rpc, name string) { ibcRPCEndpoint, ibcName = rpc, name }(ibcRPCEndpoint, ibcName)
+
+	ibcRPCEndpoint, ibcName = "https://rpc.osmotest5.osmosis.zone, https://testnet.sentry.tm.injective.network:443,", "Osmosis"
+	require.Equal(t, []helixPeer{
+		{endpoint: "https://rpc.osmotest5.osmosis.zone", name: "Osmosis"},
+		{endpoint: "https://testnet.sentry.tm.injective.network:443"},
+	}, helixPeers())
+
+	ibcRPCEndpoint, ibcName = "", "Osmosis"
+	require.Empty(t, helixPeers())
+}
+
+func TestPickPeer_ByChainIDOrNameElseFirst(t *testing.T) {
+	peers := []helixPeerDTO{{ChainID: "osmo-test-5", Name: "Osmosis"}, {ChainID: "injective-888", Name: "Injective"}}
+	require.Equal(t, 1, pickPeer(peers, "injective-888"))
+	require.Equal(t, 1, pickPeer(peers, "injective"))
+	require.Equal(t, 0, pickPeer(peers, "OSMO-TEST-5"))
+	require.Equal(t, 0, pickPeer(peers, ""))
+	require.Equal(t, 0, pickPeer(peers, "noble-grand-1"), "an unknown peer falls back to the first")
+}

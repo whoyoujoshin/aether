@@ -215,8 +215,8 @@ function StrandTable({ h, chain }: { h: Helix; chain: "aether" | "ibc" }) {
 
 /** Blocks with both chains (mockup 5b): one timeline, or a chain's own table. */
 export default function HelixBlocks() {
-  const { view, ibcName } = useChain();
-  const helix = useApi(() => api.helix(150, 20), [], 4000);
+  const { view, ibcName, peer } = useChain();
+  const helix = useApi(() => api.helix(150, 20, peer), [peer], 4000);
   const now = useChainClock(helix.data);
   const narrow = useNarrow();
   const h = helix.data;
