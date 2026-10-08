@@ -148,7 +148,7 @@ func buildMCPBManifest(ctx context.Context, ver string) (*mcpbManifest, error) {
 		"keyring_dir": {Type: "directory", Title: "Keyring folder", Required: false, Default: "${HOME}/.aether-agent",
 			Description: "Where the agent's key and spending records live. Keep it private: whoever can read it controls the account."},
 		"usdc_per_tx_limit": {Type: "string", Title: "USDC per-payment limit", Required: false, Default: "1 USDC",
-			Description: `Most the agent may send in one USDC payment, with its unit (e.g. "1 USDC"). USDC is Circle's testnet USDC from Injective, through Osmosis; its caps are separate from AETH's.`},
+			Description: `Most the agent may send in one USDC payment, with its unit (e.g. "1 USDC"). USDC is Circle's testnet USDC from Injective, over Aether's direct channel to it; its caps are separate from AETH's.`},
 		"usdc_daily_limit": {Type: "string", Title: "USDC daily limit", Required: false, Default: "5 USDC",
 			Description: `Most USDC the agent may spend in any rolling 24 hours, with its unit (e.g. "5 USDC").`},
 	}

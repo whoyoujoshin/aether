@@ -248,8 +248,11 @@ channel.
 
 ## USDC over this path
 
-Aether has no direct channel to a USDC issuer yet, so USDC reaches it
-through Osmosis. The tools accept exactly one USDC, named by its route
+**Superseded 2026-10-08:** the testnet's USDC now comes straight from
+Injective over Aether's own channel (`transfer/channel-2`; see
+[INJECTIVE-TESTNET.md](INJECTIVE-TESTNET.md)). Both routes below are
+dead: Injective's clients of Osmosis expired, and Noble's testnet is
+shutting down. The settings and denom notes still apply. The tools accept exactly one USDC, named by its route
 and its denom on the issuing chain. Any other token, even one called
 USDC, shows by its bare denom and is never spent as USDC.
 
@@ -262,8 +265,9 @@ USDC, shows by its bare denom and is never spent as USDC.
 | Denom on Aether | `ibc/9863BBE01215028DB708587E8899F8CA19A3459CABA8CF68130BB07060A35136` | `ibc/4F4C931B9AC39222C0EC5EB909F2BA8C0C615A1E343D8C1448ACDBBE6AF3743A` |
 | Status | Going away: Noble's testnet is shutting down (around 2026-10-14) | **The testnet's USDC.** Needs a first transfer from Injective to Osmosis over `channel-77026`; none had crossed as of 2026-10-04 |
 
-**The public testnet uses Injective's USDC** (`wallet.TestnetUSDC`). From
-`v0.2.7-testnet` it's built in:
+**The public testnet uses Injective's USDC** (`wallet.TestnetUSDC`), over
+`transfer/channel-2` from `v0.2.8-testnet` on (through Osmosis in
+`v0.2.7-testnet`). It's built in:
 - **Claude Desktop bundle:** the agent knows it, with caps of 1 USDC per
   payment and 5 USDC a day. Both are settings in the bundle.
 - **Desktop wallet:** it shows and sends it, unless `AETHER_USDC_CHANNEL`
@@ -274,7 +278,7 @@ The explorer reads it from its service's flags. On the seed, add these to
 and restart the explorer:
 
 ```
---usdc-path transfer/channel-1/transfer/channel-10092 --usdc-base-denom erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d --usdc-issuer Injective
+--usdc-path transfer/channel-2 --usdc-base-denom erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d --usdc-issuer Injective
 ```
 
 The same settings work everywhere:
