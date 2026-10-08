@@ -3,10 +3,10 @@
 # The version is the tag's number without "v" and "-testnet": the tag
 # v0.2.9-testnet publishes 0.2.9.
 #
-# npm: the NPM_TOKEN repository secret (a granular token that may publish
-# without two-factor codes). PyPI: no secret; PyPI trusts this workflow
-# file by name (a trusted publisher for whoyoujoshin/aether,
-# publish-clients.yml).
+# No secrets: npm and PyPI both trust this workflow file by name (a
+# trusted publisher for whoyoujoshin/aether, publish-clients.yml), through
+# GitHub's OIDC token. Renaming the file breaks publishing until both
+# registries' trusted publishers are updated too.
 name: Publish clients
 
 on:
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # npm provenance: links the package to this run
+      id-token: write # npm trusted publishing (and provenance)
     defaults:
       run:
         working-directory: clients/ts
@@ -50,12 +50,12 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships npm 10.
+      - run: npm install -g npm@latest
       - run: npm ci
       - run: npm test
       - run: npm version "${{ needs.version.outputs.version }}" --no-git-tag-version
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   pypi:
     name: PyPI

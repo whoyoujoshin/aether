@@ -42,5 +42,5 @@ mcp-publisher publish
 
 The same tag runs `publish-clients.yml`, which tests both clients and publishes them as `aether-chain-client`: the TypeScript client to [npm](https://www.npmjs.com/package/aether-chain-client), the Python client to [PyPI](https://pypi.org/project/aether-chain-client/) (imported as `aether_client`). The version is the tag's number: `v0.2.9-testnet` publishes `0.2.9`. A registry never accepts a version twice, so a failed release is fixed with the next tag, not a re-run.
 
-- npm signs in with the `NPM_TOKEN` repository secret: a granular token, allowed to publish without two-factor codes, that expires after 90 days. Renew it before then, or that job fails.
-- PyPI needs no secret: it trusts this repository's `publish-clients.yml` by name (a trusted publisher on the `aether-chain-client` project). Renaming the file breaks that until the publisher on PyPI is updated too.
+- Neither registry needs a secret: both trust this repository's `publish-clients.yml` by name (a trusted publisher on the `aether-chain-client` package on npm and project on PyPI). Renaming the file breaks publishing until both are updated too.
+- npm's package settings disallow token publishing, so a leaked token can't publish; only this workflow can.
