@@ -15,11 +15,13 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
 - **Data directory:** `C:\aether-data` (moved off OneDrive — see gotcha below)
 - **Critical:** every `aetherd` command for peer-1 (DardenPC) must include `--home C:\aether-peer1`, its live node home. `C:\aether-data` is the git repo, not a node home. Don't omit this flag or assume a default home dir.
 
-## Current state (as of 2026-10-06)
-- **Public testnet `aether-testnet-1`** is live, with four validators: the seed, sync3 and sync4 (DigitalOcean, run by Gitty) and peer-1 (DardenPC). All four run `2c32e6a` or later. The tip was about 217,000 on 2026-10-06.
+## Current state (as of 2026-10-08)
+- **Public testnet `aether-testnet-1`** is live, with four validators: the seed, sync3 and sync4 (DigitalOcean, run by Gitty) and peer-1 (DardenPC). All four run `2c32e6a` or later; peer-1 runs `12b2d15`. The tip was about 242,000 on 2026-10-08. Gitty is away for a while: work that needs the seed waits, and DardenPC carries what it can.
+- **peer-1 is started by the scheduled task "Aether Peer-1"** (every 5 minutes and at boot), which runs `C:\aether-data\peer1-ensure.ps1`. The script names the binary (`aetherd-<commit>.exe`) and starts it only if nothing holds port 26667. peer-1's RPC is `127.0.0.1:26667` and gRPC `localhost:9091`, not the defaults.
 - **October upgrade** activated at block 205,000 (`October2026UpgradeHeight`): the ASERT difficulty retarget, the randomness beacon, and the merged-mining rules.
 - **IBC to Osmosis testnet** has been live since 2026-10-04 (Aether `channel-1` ↔ Osmosis `channel-11841`). Helicase relays onto Aether from the validators; `cmd/outbound` on the seed relays onto Osmosis. See `docs/OSMOSIS-TESTNET.md`.
-- **USDC** is Circle's testnet USDC on Injective, through Osmosis (`wallet.TestnetUSDC`). Noble's testnet is shutting down. The first transfer from Injective over `channel-77026` is still to do.
+- **IBC to Injective testnet** has been live since 2026-10-08 (Aether `channel-2` ↔ Injective `channel-77152`), all run from DardenPC: Helicase on peer-1 relays onto Aether (its `[helicase]` follows Osmosis and Injective), and `outbound.exe` on DardenPC relays onto Injective and must keep running (Injective's client of Aether trusts it ~65 h). See `docs/INJECTIVE-TESTNET.md`.
+- **USDC** is Circle's testnet USDC on Injective over that channel (`wallet.TestnetUSDC`, path `transfer/channel-2`, Aether denom `ibc/064D82A6…2C5C`); the first transfers landed 2026-10-08. Released builds up to `v0.2.7-testnet` still name the dead route through Osmosis; `v0.2.8-testnet` fixes that. The explorer on the seed needs new `--usdc-path` flags when Gitty is back.
 - **`--gas auto`** works on ML-DSA accounts at the default adjustment, with fees given either way (PRs #86 and #88). The node answering `--node` needs `5267ab3` or later for the `--gas-prices` case; the seed runs it (verified with a real tx at adjustment 1.0: 196,472 estimated, 176,743 used).
 - The latest release is `v0.2.7-testnet` (2026-10-06, on `039ab83`). Its MCP Registry entry is `0.2.7-testnet`: it points at that release's bundle and keeps the public `/mcp` remote. The registry also holds a hand-published `0.2.6-testnet`, so the next tag is `v0.2.8-testnet` or later. Tags are pushed by Joshua: this repo's Claude sessions can push only their own branch.
 

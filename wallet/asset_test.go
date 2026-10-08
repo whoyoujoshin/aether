@@ -71,9 +71,9 @@ func TestTestnetUSDC(t *testing.T) {
 	usdc, ok, err := TestnetUSDC.Asset()
 	require.NoError(t, err)
 	require.True(t, ok)
-	// The same denom clients/testdata/vectors.json pins as usdc.routed.
-	require.Equal(t, "ibc/4F4C931B9AC39222C0EC5EB909F2BA8C0C615A1E343D8C1448ACDBBE6AF3743A", usdc.Denom)
-	require.Equal(t, "Injective over transfer/channel-1/transfer/channel-10092", usdc.Origin)
+	// The denom the first transfer from Injective arrived as, 2026-10-08.
+	require.Equal(t, "ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C", usdc.Denom)
+	require.Equal(t, "Injective over transfer/channel-2", usdc.Origin)
 }
 
 func TestUSDCSetting(t *testing.T) {

@@ -235,12 +235,13 @@ explorer shows the channel.
 > `cmd/relayer` and `cmd/outbound`, and Helicase following several
 > counterparties.
 >
-> Still to do:
-> - the Aether ↔ Injective testnet channel, opened from DardenPC while
->   Gitty is away ([INJECTIVE-TESTNET.md](INJECTIVE-TESTNET.md)), then a
->   first transfer of testnet USDC from Circle's faucet;
-> - then `wallet.TestnetUSDC` on the direct route, `v0.2.8-testnet`, and
->   new explorer flags.
+> Done 2026-10-08: the Aether ↔ Injective testnet channel (Aether
+> `channel-2` ↔ Injective `channel-77152`), opened and relayed from
+> DardenPC ([INJECTIVE-TESTNET.md](INJECTIVE-TESTNET.md)); the first USDC
+> transfers landed; `wallet.TestnetUSDC` is on the direct route.
+>
+> Still to do: release `v0.2.8-testnet`, and the explorer's flags on the
+> seed (Gitty, when he's back).
 
 The chain already moves any coin. The tools around it assume AETH: about 60
 references in `agentmcp`, 40 in the paywall, and 180 across the TypeScript and

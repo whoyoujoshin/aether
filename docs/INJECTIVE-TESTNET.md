@@ -8,8 +8,12 @@ everything here runs from Joshua's PC, with no step on the seed.
 
 **Status:** channel open since 2026-10-08 (steps 0 to 4); `outbound.exe`
 running on DardenPC (step 5); Helicase on peer-1 following both clients,
-on `aetherd-12b2d15.exe` (step 6). First USDC transfer (step 7) still to
-do.
+on `aetherd-12b2d15.exe` (step 6). **First USDC landed 2026-10-08**
+(step 7): 2 USDC arrived from the Injective relayer key at
+`aether1pwkam97mpyc6se99cxy58d4lf7f9ff5knesns3v56y40kqph8y5qzu2mq9`,
+brought in by Helicase on peer-1 and acknowledged on Injective by
+`outbound.exe`. `wallet.TestnetUSDC` uses this route from
+`v0.2.8-testnet`.
 
 | | Aether (`aether-testnet-1`) | Injective (`injective-888`) |
 |---|---|---|

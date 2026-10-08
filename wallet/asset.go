@@ -60,8 +60,7 @@ func USDC(channel string) (Asset, error) {
 //
 //   - Noble's USDC over a direct channel: "transfer/channel-3", "uusdc".
 //   - Noble's USDC through Osmosis: "transfer/channel-1/transfer/channel-4280", "uusdc".
-//   - Circle's USDC on Injective, through Osmosis:
-//     "transfer/channel-1/transfer/channel-10092",
+//   - Circle's USDC on Injective, direct: "transfer/channel-2",
 //     "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d".
 //
 // That's the only USDC these tools accept. The same token reaching Aether
@@ -95,12 +94,11 @@ func USDCAt(path, baseDenom string) (Asset, error) {
 }
 
 // TestnetUSDC is the USDC the public testnet's tools accept: Circle's
-// USDC on Injective's testnet (injective-888), sent to Osmosis's testnet
-// over Injective's channel-77026 / Osmosis's channel-10092, then to
-// Aether over Osmosis's channel-11841 / Aether's channel-1. Noble's
-// testnet, the other USDC Osmosis carries, is shutting down.
+// USDC on Injective's testnet (injective-888), over Aether's direct
+// channel to Injective (Aether channel-2, Injective channel-77152; see
+// docs/INJECTIVE-TESTNET.md). Its first transfer landed 2026-10-08.
 var TestnetUSDC = USDCSetting{
-	Path:      "transfer/channel-1/transfer/channel-10092",
+	Path:      "transfer/channel-2",
 	BaseDenom: "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d",
 	Issuer:    "Injective",
 }
