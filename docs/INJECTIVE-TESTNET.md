@@ -6,7 +6,23 @@ public testnet, so Circle's testnet USDC on Injective
 one hop. Written 2026-10-07 for **DardenPC (peer-1)**: Gitty is away, so
 everything here runs from Joshua's PC, with no step on the seed.
 
-**Status:** not started.
+**Status:** channel open since 2026-10-08 (steps 0 to 4). Steps 5 to 7
+(outbound, Helicase on peer-1, first USDC) still to do.
+
+| | Aether (`aether-testnet-1`) | Injective (`injective-888`) |
+|---|---|---|
+| Client | `07-tendermint-2` (of Injective; Helicase on peer-1 updates it) | `07-tendermint-510` (of Aether; `outbound.exe` updates it) |
+| Connection | `connection-2` | `connection-416` |
+| Channel | `transfer/channel-2` | `transfer/channel-77152` |
+| Unbonding | 97h44m (bond cooldown × block time, at opening) | 504h (21 days) |
+
+- **Opened by `relayer.exe`** from DardenPC, Aether tip 241,761, with a
+  12,345 uaeth round trip.
+- **AETH on Injective:** `ibc/9A6A7B57762D2D5AA66FA261ED02BB721CA0BB05331900BE6CCA2BD7D6590678`.
+- **Injective's USDC on Aether:** `ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C`
+  (path `transfer/channel-2`, base `erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d`).
+- **peer-1's ports:** RPC `127.0.0.1:26667`, gRPC `localhost:9091`, not
+  the defaults. The commands below use them.
 
 ## Who does what, once it's open
 
@@ -28,8 +44,8 @@ everything here runs from Joshua's PC, with no step on the seed.
 
 | | Aether (`aether-testnet-1`) | Injective testnet (`injective-888`) |
 |---|---|---|
-| RPC | peer-1's own, `http://127.0.0.1:26657` (check in step 0) | `https://testnet.sentry.tm.injective.network:443` |
-| gRPC | peer-1's own, `127.0.0.1:9090` (check in step 0) | `testnet.sentry.chain.grpc.injective.network:443` (TLS) |
+| RPC | peer-1's own, `http://127.0.0.1:26667` (check in step 0) | `https://testnet.sentry.tm.injective.network:443` |
+| gRPC | peer-1's own, `127.0.0.1:9091` (check in step 0) | `testnet.sentry.chain.grpc.injective.network:443` (TLS) |
 | Bech32 prefix | `aether` | `inj` |
 | Signing | ML-DSA-44 | eth_secp256k1 (coin type 60) |
 | Gas price | `0.0001uaeth` | `160000000inj` (Injective's default; 1 INJ = 10^18 inj) |
@@ -49,12 +65,12 @@ Select-String -Path C:\aether-peer1\config\app.toml -Pattern 'helicase'
 ```
 
 - The RPC `laddr` (in `[rpc]`) gives the Aether RPC port, usually
-  `tcp://127.0.0.1:26657`. If it's different, use that port everywhere
-  below instead of 26657.
+  `tcp://127.0.0.1:26667` on peer-1. If it's different, use that port
+  everywhere below instead of 26667.
 - `indexer` must be `"kv"`: `outbound.exe` finds packets with
   `tx_search`.
 - `[grpc]` must have `enable = true`. Its `address` gives the gRPC port,
-  usually `localhost:9090`.
+  `localhost:9091` on peer-1.
 - The last command should print nothing, since peer-1 has no Helicase
   yet. If it prints a `[helicase]` section, send it to Claude before
   step 6.
@@ -117,7 +133,7 @@ unattended and can't type a passphrase. They hold only testnet funds.
 
 ```powershell
 C:\aether-bin\relayer.exe `
-  -aether-rpc http://127.0.0.1:26657 -aether-grpc 127.0.0.1:9090 `
+  -aether-rpc http://127.0.0.1:26667 -aether-grpc 127.0.0.1:9091 `
   -aether-chain-id aether-testnet-1 `
   -aether-key relayer -aether-home C:\aether-relayer\aether -aether-gas-prices 0.0001uaeth `
   -cparty-rpc https://testnet.sentry.tm.injective.network:443 `
@@ -132,7 +148,7 @@ It prints each client, connection and channel it creates, and ends with
 `round trip complete`. **Send the log to Claude.** From it you need:
 
 - **Aether's client of Injective** (`created client 07-tendermint-N on
-  aether`): Helicase's `client-id` in step 6.
+  aether`; live: `07-tendermint-2`): Helicase's `client-id` in step 6.
 - **Injective's client of Aether** (`created client 07-tendermint-M on
   counterparty`): `outbound.exe`'s `-client-id` in step 5.
 - **Both channels** (`channel transfer/channel-… on aether` and `… on
@@ -146,7 +162,7 @@ rerun opens a second, separate path.
 
 ```powershell
 C:\aether-bin\outbound.exe `
-  -aether-rpc http://127.0.0.1:26657 `
+  -aether-rpc http://127.0.0.1:26667 `
   -cparty-rpc https://testnet.sentry.tm.injective.network:443 `
   -cparty-grpc testnet.sentry.chain.grpc.injective.network:443 `
   -cparty-chain-id injective-888 -cparty-bech32-prefix inj `
@@ -176,7 +192,7 @@ the other three are signing, and never run two copies.
 **a. Check the other three are signing.** This must print 4:
 
 ```powershell
-((Invoke-RestMethod http://127.0.0.1:26657/block).result.block.last_commit.signatures | Where-Object block_id_flag -eq 2).Count
+((Invoke-RestMethod http://127.0.0.1:26667/block).result.block.last_commit.signatures | Where-Object block_id_flag -eq 2).Count
 ```
 
 **b. Add Helicase to `C:\aether-peer1\config\app.toml`.** Put this at
@@ -202,9 +218,9 @@ already on the new code; just start it.
 height moving, and then a count of 1:
 
 ```powershell
-(Invoke-RestMethod http://127.0.0.1:26657/status).result.sync_info | Select-Object latest_block_height, catching_up
-$me = (Invoke-RestMethod http://127.0.0.1:26657/status).result.validator_info.address
-((Invoke-RestMethod http://127.0.0.1:26657/block).result.block.last_commit.signatures | Where-Object validator_address -eq $me).Count
+(Invoke-RestMethod http://127.0.0.1:26667/status).result.sync_info | Select-Object latest_block_height, catching_up
+$me = (Invoke-RestMethod http://127.0.0.1:26667/status).result.validator_info.address
+((Invoke-RestMethod http://127.0.0.1:26667/block).result.block.last_commit.signatures | Where-Object validator_address -eq $me).Count
 ```
 
 Its log should show `helicase started` twice, once per client. A few
@@ -236,7 +252,7 @@ Aether the next time peer-1 proposes; `outbound.exe` takes the
 acknowledgement back to Injective. Then check that it arrived:
 
 ```powershell
-C:\aether-bin\aetherd-new.exe query bank balances <the aether1… address> --node tcp://127.0.0.1:26657
+C:\aether-bin\aetherd-new.exe query bank balances <the aether1… address> --node tcp://127.0.0.1:26667
 ```
 
 It shows as an `ibc/…` denom. **Send Claude** the `sent packet` line,
