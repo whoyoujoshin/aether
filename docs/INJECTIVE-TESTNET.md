@@ -6,8 +6,10 @@ public testnet, so Circle's testnet USDC on Injective
 one hop. Written 2026-10-07 for **DardenPC (peer-1)**: Gitty is away, so
 everything here runs from Joshua's PC, with no step on the seed.
 
-**Status:** channel open since 2026-10-08 (steps 0 to 4). Steps 5 to 7
-(outbound, Helicase on peer-1, first USDC) still to do.
+**Status:** channel open since 2026-10-08 (steps 0 to 4); `outbound.exe`
+running on DardenPC (step 5); Helicase on peer-1 following both clients,
+on `aetherd-12b2d15.exe` (step 6). First USDC transfer (step 7) still to
+do.
 
 | | Aether (`aether-testnet-1`) | Injective (`injective-888`) |
 |---|---|---|
@@ -204,10 +206,22 @@ same order on both lines:
 [helicase]
 counterparty-rpc = "https://rpc.osmotest5.osmosis.zone,https://testnet.sentry.tm.injective.network:443"
 client-id = "07-tendermint-1,07-tendermint-N"
+aether-rpc = "http://127.0.0.1:26667"
 ```
 
-**c. Swap the binary and restart.** Stop peer-1 the way you normally
-do, and wait until no `aetherd` process is left (`Get-Process aetherd`
+`aether-rpc` is peer-1's own RPC. Without it Helicase uses the default
+port 26657, and on peer-1 every cycle fails with `connection refused`.
+
+**c. Swap the binary and restart.** peer-1 is started by the scheduled
+task "Aether Peer-1", which runs `C:\aether-data\peer1-ensure.ps1` every 5
+minutes and at boot. That script names the binary, so put the new one
+beside the old under its commit (`aetherd-12b2d15.exe`) and change `$exe`
+in the script. The script counts peer-1 as running when port 26667 is in
+use or any `aetherd*.exe` runs on `C:\aether-peer1`. (Until 2026-10-08 it
+only knew the names `aetherd-205k.exe` and `aetherd.exe`, so while peer-1
+ran as `aetherd-2c32e6a.exe` it tried every 5 minutes to start a second
+copy, which died on the database lock.) Disable the task, stop peer-1
+the way you normally do, and wait until no `aetherd` process is left (`Get-Process aetherd`
 shows nothing). Then put `C:\aether-bin\aetherd-new.exe` where the old
 binary was (keep the old one as `aetherd-old.exe`) and start peer-1 the
 usual way, with `--home C:\aether-peer1`. If peer-1 runs through
