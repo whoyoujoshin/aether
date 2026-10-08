@@ -1452,6 +1452,21 @@ input::placeholder {
   background: var(--border);
   color: var(--bone);
 }
+.chain-switch .peer-select {
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 8px 0 0 8px;
+  background: transparent;
+  color: var(--bone);
+  font-size: 13px;
+  cursor: pointer;
+}
+.chain-switch .peer-select option {
+  background: var(--panel);
+  color: var(--bone);
+}
 .chain-switch .dot {
   width: 8px;
   height: 8px;

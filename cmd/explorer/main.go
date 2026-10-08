@@ -505,8 +505,8 @@ func main() {
 	flag.StringVar(&publicGRPC, "public-grpc", "", "gRPC endpoint to advertise to agents (default: the public testnet's on aether-testnet-1)")
 	flag.StringVar(&publicFaucet, "public-faucet", "", "faucet URL to advertise to agents (default: the public testnet's on aether-testnet-1)")
 	flag.StringVar(&publicSeed, "public-seed", "", "seed node (id@host:port) to advertise (default: the public testnet's on aether-testnet-1)")
-	flag.StringVar(&ibcRPCEndpoint, "ibc-rpc", "", "CometBFT RPC of the chain on the other end of Aether's IBC transfer channel: draws it as the helix's second strand (empty: Aether only)")
-	flag.StringVar(&ibcName, "ibc-name", "", "display name for that chain (default: its chain ID)")
+	flag.StringVar(&ibcRPCEndpoint, "ibc-rpc", "", "CometBFT RPC of the chain on the other end of Aether's IBC transfer channel: draws it as the helix's second strand; comma-separated for several chains, the first drawn by default and the rest picked with ?peer= (empty: Aether only)")
+	flag.StringVar(&ibcName, "ibc-name", "", "display name for each --ibc-rpc chain, comma-separated in the same order (default: its chain ID)")
 	flag.StringVar(&faucetAPI, "faucet-api", "", "faucet the Faucet page uses through /api/faucet/, e.g. http://127.0.0.1:8080 (it must trust this explorer in its --trusted-proxies); empty: shown as unavailable")
 	flag.StringVar(&nodeLocationsPath, "node-locations", "", "JSON file placing validators and miners on the Validators globe (see docs/EXPLORER-LOCATIONS.md); empty: no globe")
 	usdc := wallet.USDCFlags(flag.CommandLine, wallet.USDCSetting{}) // labels that USDC; other tokens show by denom

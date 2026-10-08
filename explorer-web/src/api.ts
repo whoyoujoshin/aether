@@ -396,9 +396,15 @@ export interface HelixBridge {
   avgRelaySecs: number; // 0 if no packet in the window has both ends
 }
 
+export interface HelixPeer {
+  chainId: string; // empty while that chain can't be reached
+  name: string;
+}
+
 export interface Helix {
   windowSecs: number;
   now: string;
+  peers?: HelixPeer[]; // every chain the explorer can draw opposite Aether; older APIs omit it
   aether: HelixStrand;
   ibc: HelixStrand | null; // null when the explorer has no --ibc-rpc
   bridge: HelixBridge | null;
@@ -505,7 +511,8 @@ export const api = {
   ibc: () => getJSON<IBCSummary>("/api/ibc"),
   agents: () => getJSON<AgentCard>("/api/agents"),
   assets: () => getJSON<{ assets: AssetInfo[] }>("/api/assets"),
-  helix: (seconds = 96, min = 0) => getJSON<Helix>(`/api/helix?seconds=${seconds}&min=${min}`),
+  helix: (seconds = 96, min = 0, peer?: string | null) =>
+    getJSON<Helix>(`/api/helix?seconds=${seconds}&min=${min}${peer ? `&peer=${encodeURIComponent(peer)}` : ""}`),
   locations: () => getJSON<{ locations: NodeLocation[] }>("/api/locations"),
   faucetStats: () => getJSON<FaucetStats>("/api/faucet/stats"),
   faucetDrips: (limit = 20) => getJSON<{ drips: Drip[] | null }>(`/api/faucet/drips?limit=${limit}`),

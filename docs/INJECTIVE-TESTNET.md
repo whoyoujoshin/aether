@@ -291,6 +291,23 @@ the balance, and the handshake log. Claude then switches the wallet's
 USDC default to this one-hop route (`transfer/channel-<Aether's side>`,
 base `erc20:0x0C38…`) for the next release.
 
+## 8. Show Injective on the explorer (on the seed)
+
+The explorer can draw either connected chain as the helix's second
+strand, with a picker in the top bar. In the seed's DigitalOcean web
+console (first `bind 'set enable-bracketed-paste off'`):
+
+1. Redeploy the explorer from main, which builds and swaps it with
+   backups and rolls back if it doesn't answer:
+   `REPO=/root/aether-src bash /root/aether-src/scripts/deploy-explorer.sh`
+2. In `/etc/systemd/system/aether-explorer.service`, replace
+   `--ibc-rpc https://rpc.osmotest5.osmosis.zone` with
+   `--ibc-rpc https://rpc.osmotest5.osmosis.zone,https://testnet.sentry.tm.injective.network:443 --ibc-name Osmosis,Injective`,
+   then `systemctl daemon-reload && systemctl restart aether-explorer`.
+3. `curl -s 'localhost:8081/api/helix?seconds=30&peer=injective-888'`
+   lists both chains in `peers` and draws `injective-888`, with the bridge
+   on `channel-2`.
+
 ## If something goes wrong
 
 - **Step 4 fails on Injective with an insufficient-fee error:** the gas

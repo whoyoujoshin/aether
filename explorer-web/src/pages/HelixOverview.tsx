@@ -85,8 +85,8 @@ function cards(helix: Helix, stats: Stats | null, view: ChainView): StrandCard[]
 
 /** The overview with both chains drawn as a helix (mockup 5a). */
 export default function HelixOverview() {
-  const { view, ibcName } = useChain();
-  const helix = useApi(() => api.helix(WINDOW, 8), [], 4000);
+  const { view, ibcName, peer } = useChain();
+  const helix = useApi(() => api.helix(WINDOW, 8, peer), [peer], 4000);
   const stats = useApi(api.stats, [], 6000);
   const recent = useApi(() => api.recentTransactions(20), [], 6000);
   const now = useChainClock(helix.data);
