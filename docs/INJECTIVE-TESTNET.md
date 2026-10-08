@@ -293,6 +293,9 @@ base `erc20:0x0C38…`) for the next release.
 
 ## 8. Show Injective on the explorer (on the seed)
 
+Done 2026-10-08: the explorer on `bf099a0` draws Osmosis or Injective,
+with the bridge on `channel-2 ⇄ channel-77152` for Injective.
+
 The explorer can draw either connected chain as the helix's second
 strand, with a picker in the top bar. In the seed's DigitalOcean web
 console (first `bind 'set enable-bracketed-paste off'`):
