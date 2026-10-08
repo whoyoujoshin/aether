@@ -189,9 +189,10 @@ test`) only if nothing holds port 8096 and no `outbound*.exe` relays over
 Its log is `C:\aether-data\outbound-injective.log` (the previous run's is
 kept as `.prev`). To hand over, register the task, press Ctrl+C in the
 window, wait until port 8096 is free, then `Start-ScheduledTask 'Aether
-Outbound Injective'`. The script and the registration commands are in
-the 2026-10-08 session notes; the task runs as the same account as
-"Aether Peer-1".
+Outbound Injective'`. The script and its registration are in
+`scripts/windows/` (`outbound-injective-ensure.ps1`,
+`register-outbound-injective.ps1`), next to peer-1's `peer1-ensure.ps1`;
+the task runs as the same account as "Aether Peer-1".
 
 Check it from another window:
 
