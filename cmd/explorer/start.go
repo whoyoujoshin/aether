@@ -79,7 +79,7 @@ npm install ./aether/clients/ts
 
 ` + "```ts" + `
 // first.mjs -- plain JavaScript too, so no build step: node first.mjs
-import { AetherClient, Key } from "@aether-chain/client";
+import { AetherClient, Key } from "aether-chain-client";
 
 const client = new AetherClient({ rpc: "{{.RPC}}", chainId: "{{.ChainID}}" });
 

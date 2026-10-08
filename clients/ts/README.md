@@ -1,9 +1,9 @@
-# @aether-chain/client
+# aether-chain-client
 
 TypeScript client for the [Aether](https://github.com/whoyoujoshin/aether) chain: ML-DSA-44 keys, sending and receiving AETH, buying from and selling paid APIs (x402 `aether-memo`, `aether-prepaid` and `aether-pull`) and the on-chain service directory. It talks to a node's CometBFT RPC (port 26657) only.
 
 ```ts
-import { AetherClient, Key, fetchPaid, findServices, rateService, withdrawPrepaid } from "@aether-chain/client";
+import { AetherClient, Key, fetchPaid, findServices, rateService, withdrawPrepaid } from "aether-chain-client";
 
 const client = new AetherClient({ rpc: "http://localhost:26657", chainId: "aether-testnet-1" });
 const key = Key.fromMnemonic(process.env.AETHER_MNEMONIC!); // same address as `aetherd keys add` / `agentmcp`
@@ -28,7 +28,7 @@ Charge per request from a Node service -- all three payment schemes, the `/.well
 
 ```ts
 import express from "express";
-import { AetherClient, Key, Paywall } from "@aether-chain/client";
+import { AetherClient, Key, Paywall } from "aether-chain-client";
 
 const client = new AetherClient({ rpc: "http://localhost:26657", chainId: "aether-testnet-1" });
 const pw = new Paywall({

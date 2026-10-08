@@ -1,0 +1,82 @@
+# Publishes the TypeScript and Python clients as aether-chain-client on
+# npm and PyPI when a release tag (v0.2.9-testnet and later) is pushed.
+# The version is the tag's number without "v" and "-testnet": the tag
+# v0.2.9-testnet publishes 0.2.9.
+#
+# npm: the NPM_TOKEN repository secret (a granular token that may publish
+# without two-factor codes). PyPI: no secret; PyPI trusts this workflow
+# file by name (a trusted publisher for whoyoujoshin/aether,
+# publish-clients.yml).
+name: Publish clients
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Version from tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          v="${v%-testnet}"
+          if ! [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "tag $GITHUB_REF_NAME doesn't give a plain version (got $v)" >&2
+            exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  npm:
+    name: npm
+    needs: version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance: links the package to this run
+    defaults:
+      run:
+        working-directory: clients/ts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm test
+      - run: npm version "${{ needs.version.outputs.version }}" --no-git-tag-version
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  pypi:
+    name: PyPI
+    needs: version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # PyPI trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test and build
+        working-directory: clients/python
+        run: |
+          python -m pip install --upgrade pip build pytest
+          python -m pip install .
+          python -m pytest -q
+          sed -i 's/^version = ".*"/version = "${{ needs.version.outputs.version }}"/' pyproject.toml
+          python -m build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: clients/python/dist

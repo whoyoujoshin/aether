@@ -257,7 +257,7 @@ Read `cmd/agentmcp/main.go`'s package doc comment before deploying either.
 
 ### Client libraries (TypeScript, Python)
 
-For agents and services that aren't MCP clients, `clients/ts` (`@aether-chain/client`) and `clients/python` (`aether_client`) implement the same things natively — no Go, no `aetherd`:
+For agents and services that aren't MCP clients, `clients/ts` (`aether-chain-client`) and `clients/python` (`aether-chain-client`, imported as `aether_client`) implement the same things natively — no Go, no `aetherd`:
 
 - ML-DSA-44 keys from a recovery phrase (the same phrase gives the same address as `aetherd keys add` and `agentmcp`), addresses, signing.
 - Sending AETH (signed locally, broadcast over the node's CometBFT RPC), with sequence tracking for several sends per block and a safe `rebroadcast` for retries — the same signed bytes are included at most once.
@@ -267,7 +267,7 @@ For agents and services that aren't MCP clients, `clients/ts` (`@aether-chain/cl
 - Receipts: `fetchPaid` checks a seller's signed receipt against the purchase and returns it (`result.receipt.verified`); `verifyReceipt` checks one on its own.
 
 ```ts
-import { AetherClient, Key, fetchPaid } from "@aether-chain/client";
+import { AetherClient, Key, fetchPaid } from "aether-chain-client";
 const client = new AetherClient({ rpc: "http://localhost:26657", chainId: "aether-testnet-1" });
 const key = Key.fromMnemonic(process.env.AETHER_MNEMONIC!);
 const res = await fetchPaid(client, key, "https://api.example.com/forecast", { maxAmount: "0.05 AETH", prepay: "1 AETH" });
@@ -284,7 +284,7 @@ res = fetch_paid(client, key, "https://api.example.com/forecast", max_amount="0.
 **Selling, too.** Both include a seller kit: charge per request from a Node or Python service without running `cmd/paywall` — all three schemes (`pull: { collectorKey }` / `pull_collector_key=`, then `startCollecting()` / `start_collecting()`), the manifest for the [service directory](#service-directory), withdrawals and signed receipts (`receipts: { key }` / `receipt_key=`, with an optional delegation). It talks to the same buyers (`agentmcp`, either client, a person paying an invoice by hand), and its ledger file is the Go paywall's format.
 
 ```ts
-import { AetherClient, Key, Paywall } from "@aether-chain/client";
+import { AetherClient, Key, Paywall } from "aether-chain-client";
 const pw = new Paywall({ client, payTo: "aether1...", price: "0.01 AETH", name: "Weather",
   prepaid: { ledger: "ledger.json", minDeposit: "0.1 AETH", payoutKey: Key.fromMnemonic(process.env.PAYOUT_MNEMONIC!) } });
 app.use(pw.middleware({ free: ["/health"] }));   // Express/Connect, before body parsers; who paid: req.aether
