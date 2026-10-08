@@ -178,9 +178,21 @@ C:\aether-bin\outbound.exe `
   -refresh-after 1h -listen 127.0.0.1:8096
 ```
 
-`07-tendermint-M` is Injective's client of Aether from step 4. Leave it
-running in its own window. To have it start with Windows, make a Task
-Scheduler task that runs this command at logon and restarts on failure.
+`07-tendermint-M` is Injective's client of Aether from step 4 (live:
+`07-tendermint-510`). Try it in a window first. To keep it running
+across reboots, hand it to a scheduled task, like peer-1's: the task
+"Aether Outbound Injective" runs `C:\aether-data\outbound-injective-ensure.ps1`
+two minutes after boot and every 5 minutes, with no time limit. The
+script starts `outbound.exe` with the flags above (plus `-keyring-backend
+test`) only if nothing holds port 8096 and no `outbound*.exe` relays over
+`07-tendermint-510`: two copies would race the Injective key's sequence.
+Its log is `C:\aether-data\outbound-injective.log` (the previous run's is
+kept as `.prev`). To hand over, register the task, press Ctrl+C in the
+window, wait until port 8096 is free, then `Start-ScheduledTask 'Aether
+Outbound Injective'`. The script and the registration commands are in
+the 2026-10-08 session notes; the task runs as the same account as
+"Aether Peer-1".
+
 Check it from another window:
 
 ```powershell
