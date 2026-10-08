@@ -37,3 +37,10 @@ curl -LO https://github.com/whoyoujoshin/aether/releases/download/v0.2.1-testnet
 mcp-publisher login github     # device code: approve it while signed in as whoyoujoshin
 mcp-publisher publish
 ```
+
+## 4. npm and PyPI (automatic)
+
+The same tag runs `publish-clients.yml`, which tests both clients and publishes them as `aether-chain-client`: the TypeScript client to [npm](https://www.npmjs.com/package/aether-chain-client), the Python client to [PyPI](https://pypi.org/project/aether-chain-client/) (imported as `aether_client`). The version is the tag's number: `v0.2.9-testnet` publishes `0.2.9`. A registry never accepts a version twice, so a failed release is fixed with the next tag, not a re-run.
+
+- npm signs in with the `NPM_TOKEN` repository secret: a granular token, allowed to publish without two-factor codes, that expires after 90 days. Renew it before then, or that job fails.
+- PyPI needs no secret: it trusts this repository's `publish-clients.yml` by name (a trusted publisher on the `aether-chain-client` project). Renaming the file breaks that until the publisher on PyPI is updated too.

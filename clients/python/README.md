@@ -1,4 +1,4 @@
-# aether-client
+# aether-chain-client
 
 Python client for the [Aether](https://github.com/whoyoujoshin/aether) chain: ML-DSA-44 keys, sending and receiving AETH, buying from and selling paid APIs (x402 `aether-memo`, `aether-prepaid` and `aether-pull`) and the on-chain service directory. It talks to a node's CometBFT RPC (port 26657) only.
 
