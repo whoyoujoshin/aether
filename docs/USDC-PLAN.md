@@ -240,8 +240,10 @@ explorer shows the channel.
 > DardenPC ([INJECTIVE-TESTNET.md](INJECTIVE-TESTNET.md)); the first USDC
 > transfers landed; `wallet.TestnetUSDC` is on the direct route.
 >
-> Still to do: release `v0.2.8-testnet`, and the explorer's flags on the
-> seed (Gitty, when he's back).
+> Also done 2026-10-08: `v0.2.8-testnet` released with the direct route
+> in the Claude Desktop bundle and desktop wallet, and the explorer on
+> the seed switched to `--usdc-path transfer/channel-2` (it shows the
+> transfers as USDC (Injective)).
 
 The chain already moves any coin. The tools around it assume AETH: about 60
 references in `agentmcp`, 40 in the paywall, and 180 across the TypeScript and
