@@ -72,6 +72,7 @@ type mcpbManifest struct {
 	Homepage      string   `json:"homepage"`
 	Documentation string   `json:"documentation"`
 	Support       string   `json:"support"`
+	Privacy       []string `json:"privacy_policies"`
 	License       string   `json:"license"`
 	Keywords      []string `json:"keywords"`
 	Server        struct {
@@ -124,13 +125,14 @@ func buildMCPBManifest(ctx context.Context, ver string) (*mcpbManifest, error) {
 		LongDescription: "A wallet an AI agent can use on the Aether public testnet (`aether-testnet-1`): check its balance, send AETH, " +
 			"invoice and wait for payment, pay for HTTP 402 APIs, find paid services, and top itself up from the testnet faucet.\n\n" +
 			"On first use it creates its own account in the keyring folder below. Spending is capped per payment and per 24 hours by this server. " +
-			"**Testnet only: the account is a disposable hot wallet, so never send it anything of value.** The node is reached over plain HTTP.\n\n" +
+			"**Testnet only: the account is a disposable hot wallet, so never send it anything of value.**\n\n" +
 			"Owner approvals, webhook alerts and spending from your own account under a chain-enforced grant are available when you run `agentmcp` yourself: " +
 			repoURL + "#ai-agent-wallet-mcp",
 		Icon:          "icon.png",
 		Homepage:      repoURL + "#ai-agents-start-here",
 		Documentation: repoURL + "#ai-agent-wallet-mcp",
 		Support:       repoURL + "/issues",
+		Privacy:       []string{repoURL + "/blob/main/docs/PRIVACY.md"},
 		License:       "MIT",
 		Keywords:      []string{"aether", "wallet", "payments", "x402", "testnet", "crypto", "agents"},
 		Tools:         tools,
