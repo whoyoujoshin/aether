@@ -21,7 +21,15 @@ agentmcp init   # new key, testnet funds, and the MCP config for Claude / Cursor
 
 No Go? `agentmcp` is in every platform's archive on the [releases page](../../releases). `@latest` is the newest tested release; `@main` has unreleased changes.
 
-That gives the agent a spend-capped wallet as MCP tools: balance, send, invoice and wait-for-payment, paying for HTTP 402 APIs, and the service directory (full list and guarantees in [AI agent wallet](#ai-agent-wallet-mcp)).
+**Just looking?** The public read-only server needs no install or key: balances, transactions, miners and the paid-service directory, at `https://explorer.157-245-252-221.sslip.io/mcp`.
+
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=aether&config=eyJ1cmwiOiJodHRwczovL2V4cGxvcmVyLjE1Ny0yNDUtMjUyLTIyMS5zc2xpcC5pby9tY3AifQ==)
+
+```bash
+claude mcp add --transport http aether https://explorer.157-245-252-221.sslip.io/mcp   # Claude Code
+```
+
+The local wallet below gives the agent a spend-capped wallet as MCP tools: balance, send, invoice and wait-for-payment, paying for HTTP 402 APIs, and the service directory (full list and guarantees in [AI agent wallet](#ai-agent-wallet-mcp)).
 
 | | |
 |--|--|
@@ -230,7 +238,7 @@ go run ./cmd/agentmcp --http 127.0.0.1:8090 \
     --grpc grpc.157-245-252-221.sslip.io:443 --chain-id aether-testnet-1
 ```
 
-That listens on `http://127.0.0.1:8090/mcp`. Bind it to loopback. The explorer SPA serves `index.html` with HTTP 200 for unknown paths, so Caddy has to proxy `/mcp` to this process before that fallthrough — the snippet is commented in [`scripts/tls/Caddyfile`](scripts/tls/Caddyfile) and is not applied. The registry entry stays `io.github.whoyoujoshin/aether-wallet`; `agentmcp server-json --remote <url>` can add a `remotes` URL later, and omits it when the flag is empty. Neither the Caddy route nor a registry publish is done yet.
+That listens on `http://127.0.0.1:8090/mcp`. Bind it to loopback. The explorer SPA serves `index.html` with HTTP 200 for unknown paths, so Caddy has to proxy `/mcp` to this process before that fallthrough (the `handle /mcp*` block in [`scripts/tls/Caddyfile`](scripts/tls/Caddyfile)). The public testnet runs it at `https://explorer.157-245-252-221.sslip.io/mcp`: it's the `remotes` URL of the registry entry `io.github.whoyoujoshin/aether-wallet` (`agentmcp server-json --remote <url>`), and the explorer's `/.well-known/mcp/server-card.json` names it.
 
 Built for how agents actually fail:
 
