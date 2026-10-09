@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"cosmossdk.io/math"
@@ -44,6 +45,9 @@ const (
 	statusPending   = "pending"   // accepted, not yet in a block
 	statusConfirmed = "confirmed" // in a block, succeeded
 	statusFailed    = "failed"    // rejected, or in a block and failed
+	// statusNotFound: get_transaction_status only. In no block and not
+	// in the node's mempool: never sent, dropped, or a wrong hash.
+	statusNotFound = "not_found"
 )
 
 // chain is everything the payment tools need from a node, so tests can
@@ -102,6 +106,32 @@ func (g grpcChain) sendGrant(granter, grantee string) (*wallet.SendGrant, error)
 }
 func (g grpcChain) balance(a string) (sdk.Coins, error) { return g.c.GetBalance(a) }
 func (g grpcChain) close() error                        { return g.c.Close() }
+
+// mempoolHas reports whether the node's mempool holds hash, from
+// CometBFT RPC /unconfirmed_txs. known is false when it can't tell: no
+// RPC, an error, or more waiting transactions than one page lists.
+var mempoolHas = func(hash string) (found, known bool) {
+	if rpcEndpoint == "" {
+		return false, false
+	}
+	c, err := rpchttp.New(rpcEndpoint, "/websocket")
+	if err != nil {
+		return false, false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	limit := 100
+	res, err := c.UnconfirmedTxs(ctx, &limit)
+	if err != nil {
+		return false, false
+	}
+	for _, tx := range res.Txs {
+		if strings.EqualFold(hex.EncodeToString(tx.Hash()), hash) {
+			return true, true
+		}
+	}
+	return false, res.Total <= len(res.Txs)
+}
 
 var dialChain = func() (chain, error) {
 	c, err := wallet.NewClient(grpcEndpoint)
@@ -423,7 +453,7 @@ func chainStatus(c chain, hash string) (string, *wallet.TransactionDetail, error
 // --- get_transaction_status / wait_for_transaction ---
 
 type transactionStatusOutput struct {
-	Status    string     `json:"status" jsonschema:"pending (not in a block yet), confirmed, or failed"`
+	Status    string     `json:"status" jsonschema:"pending (not in a block yet), confirmed, failed, or, from get_transaction_status only, not_found (in no block and not waiting in the node's mempool: never sent, dropped, or a wrong hash)"`
 	Hash      string     `json:"hash"`
 	Height    int64      `json:"height,omitempty"`
 	ErrorCode string     `json:"errorCode,omitempty" jsonschema:"set when status is failed, e.g. INSUFFICIENT_FUNDS or GRANT_LIMIT_EXCEEDED"`
@@ -476,6 +506,14 @@ func toolGetTransactionStatus(_ context.Context, _ *mcp.CallToolRequest, in getT
 	}
 	defer c.close()
 	out, err := statusOf(c, in.Hash)
+	if err == nil && out.Status == statusPending {
+		// statusOf says pending for any hash not in a block, which is
+		// right for one this agent just sent but misleading for a hash
+		// the node has never seen.
+		if found, known := mempoolHas(in.Hash); known && !found {
+			out.Status = statusNotFound
+		}
+	}
 	return nil, out, err
 }
 
