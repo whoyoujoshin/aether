@@ -108,7 +108,47 @@ def test_find_services(kit, monkeypatch):
                 manifest={"name": "Aether hello", "description": "practice", "price": "1"})])
     out = kit.find_paid_services("hello")
     assert out["services"][0]["url"] == "https://x/svc/hello"
+    assert out["services"][0]["price"] == "1uaeth"
     assert "untrusted" in out["note"]
+
+
+def test_price_with_its_unit():
+    assert agent_tools._price({"price": "500", "priceAeth": "0.0005"}) == "0.0005 AETH"
+    assert agent_tools._price({"price": "50000", "asset": "ibc/X", "symbol": "USDC", "priceAmount": "0.05"}) == "0.05 USDC"
+
+
+def test_parallel_sends_share_one_budget(kit):
+    import threading
+    gate = threading.Barrier(4)
+    send = kit.client.send
+
+    def slow_send(*a, **k):
+        import time
+        time.sleep(0.05)  # the sends overlap
+        return send(*a, **k)
+    kit.client.send = slow_send
+    results = []
+
+    def go(i):
+        gate.wait()
+        results.append(kit.send_payment(TO, "0.4 AETH", f"p{i}"))
+    threads = [threading.Thread(target=go, args=(i,)) for i in range(4)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    assert sum(1 for r in results if r.get("status") == "pending") == 2, "1 AETH a day covers two of 0.4"
+    assert len(kit.client.sent) == 2
+
+
+def test_uncertain_send_is_not_repeated(kit):
+    def boom(*a, **k):
+        raise TimeoutError("node timed out")
+    kit.client.send = boom
+    first = kit.send_payment(TO, "0.4 AETH", "u1")
+    assert first["error"]["code"] == "SEND_UNCERTAIN"
+    assert kit.send_payment(TO, "0.4 AETH", "u1")["replayed"] is True
+    assert kit.spending_status()["spentLast24h"] == "0.4 AETH", "it may have gone out"
 
 
 def test_read_only_without_a_key():

@@ -26,6 +26,26 @@ await rateService(client, key, "https://api.example.com", 5); // only raters who
 const back = await withdrawPrepaid(client, key, "https://api.example.com", { withdrawalId: "w1" }); // unspent prepaid balance
 ```
 
+## AI agents
+
+`AetherToolkit` turns a client and key into six tools for a model: balance,
+transaction status, the service directory, a payment, a paid API call and the
+testnet faucet. Spending is capped in code (per payment and per rolling 24 hours,
+checked before anything is signed), a send's `idempotency_key` never pays twice,
+and a failure comes back as `{error: {code, message}}` for the model to read.
+
+```ts
+import { AetherClient, AetherToolkit, Key } from "aether-chain-client";
+
+const kit = new AetherToolkit(new AetherClient({ rpc: "https://rpc.157-245-252-221.sslip.io" }),
+  Key.fromMnemonic(process.env.AETHER_MNEMONIC!), { maxPerPayment: "0.1 AETH", dailyBudget: "1 AETH" });
+const tools = kit.toolSpecs();             // OpenAI-style function tools; "anthropic" for Messages API tools
+const result = await kit.call(name, args); // answer the model's tool call
+```
+
+Without a key it offers only the read-only tools. For ElizaOS, use
+[`elizaos-plugin-aether`](../eliza), built on it.
+
 ## Selling
 
 Charge per request from a Node service -- all three payment schemes, the `/.well-known/x402` manifest for the service directory, and withdrawals of unspent prepaid balances. Compatible with the Go paywall and every Aether buyer.

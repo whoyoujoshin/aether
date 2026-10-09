@@ -1,5 +1,6 @@
 # Publishes the TypeScript and Python clients as aether-chain-client on
-# npm and PyPI when a release tag (v0.2.9-testnet and later) is pushed.
+# npm and PyPI, and the ElizaOS plugin as elizaos-plugin-aether on npm,
+# when a release tag (v0.2.9-testnet and later) is pushed.
 # The version is the tag's number without "v" and "-testnet": the tag
 # v0.2.9-testnet publishes 0.2.9.
 #
@@ -56,6 +57,40 @@ jobs:
       - run: npm test
       - run: npm version "${{ needs.version.outputs.version }}" --no-git-tag-version
       - run: npm publish --provenance --access public
+
+  eliza:
+    name: npm (ElizaOS plugin)
+    needs: [version, npm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing (and provenance)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
+      - name: Build the client it uses
+        working-directory: clients/ts
+        run: npm ci && npm run build
+      - name: Test
+        working-directory: clients/eliza
+        run: npm ci && npm test
+      # In the repo the plugin uses ../ts; published, it depends on the
+      # client version this same tag just published.
+      - name: Publish
+        working-directory: clients/eliza
+        run: |
+          v="${{ needs.version.outputs.version }}"
+          npm version "$v" --no-git-tag-version
+          npm pkg set "dependencies.aether-chain-client=^$v"
+          if ! npm view elizaos-plugin-aether name >/dev/null 2>&1; then
+            echo "::warning::elizaos-plugin-aether isn't on npm yet: its first version is published by hand (docs/RELEASING.md), then this job takes over"
+            exit 0
+          fi
+          npm publish --provenance --access public
 
   pypi:
     name: PyPI
