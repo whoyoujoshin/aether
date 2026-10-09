@@ -454,7 +454,7 @@ func (s *server) miners(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "reading the leaderboard: "+err.Error())
 		return
 	}
-	entries := make([]rankedEntry, 0, min(top, len(lb.Entries)))
+	entries := make([]rankedEntry, 0, len(lb.Entries))
 	for i, e := range lb.Entries {
 		if i == top {
 			break
