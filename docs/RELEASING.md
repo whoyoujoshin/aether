@@ -44,3 +44,20 @@ The same tag runs `publish-clients.yml`, which tests both clients and publishes 
 
 - Neither registry needs a secret: both trust this repository's `publish-clients.yml` by name (a trusted publisher on the `aether-chain-client` package on npm and project on PyPI). Renaming the file breaks publishing until both are updated too.
 - npm's package settings disallow token publishing, so a leaked token can't publish; only this workflow can.
+
+### The ElizaOS plugin
+
+The same workflow publishes `clients/eliza` as [`elizaos-plugin-aether`](https://www.npmjs.com/package/elizaos-plugin-aether), at the tag's version, depending on the client version that tag published. A trusted publisher is set in a package's settings on npmjs.com, so the package has to exist first: its first version goes up by hand, once; until then the job skips publishing with a warning. On a computer with Node 20 or later (DardenPC), after a tag's `aether-chain-client` is on npm (here 0.2.11), in PowerShell:
+
+```powershell
+git clone https://github.com/whoyoujoshin/aether C:\aether-publish   # a separate clone: leave C:\aether-data (peer-1's) alone
+cd C:\aether-publish\clients\ts; npm ci; npm run build
+cd ..\eliza; npm ci; npm test
+npm version 0.2.11 --no-git-tag-version
+npm pkg set "dependencies.aether-chain-client=^0.2.11"
+npm login
+npm publish --access public
+cd C:\; Remove-Item -Recurse -Force C:\aether-publish
+```
+
+Then on npmjs.com, in the package's **Settings**: add a trusted publisher (GitHub Actions, `whoyoujoshin` / `aether`, workflow `publish-clients.yml`), and under publishing access choose to require two-factor authentication and disallow tokens. Later tags publish it from the workflow.

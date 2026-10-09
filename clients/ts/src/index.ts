@@ -18,3 +18,5 @@ export { FileLedger, LedgerError } from "./ledger.js";
 export type { Ledger, Withdrawal } from "./ledger.js";
 export { RECEIPT_HEADER, checkReceipt, createReceiptDelegation, decodeReceipt, delegationSigningMessage, receiptSigningMessage, signReceipt, verifyReceipt } from "./receipt.js";
 export type { Receipt, ReceiptDelegation, ReceiptExpectation } from "./receipt.js";
+export { AetherToolkit, manifestPrice, TESTNET_FAUCET } from "./agentTools.js";
+export type { AetherToolkitOptions, ToolSpec, ToolResult } from "./agentTools.js";

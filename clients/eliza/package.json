@@ -1,0 +1,104 @@
+{
+  "name": "elizaos-plugin-aether",
+  "version": "0.1.0",
+  "description": "ElizaOS plugin for Aether: an agent wallet with spending limits that pays for APIs (x402), sends AETH and USDC, and finds paid services in the on-chain directory.",
+  "keywords": [
+    "elizaos",
+    "elizaos-plugin",
+    "aether",
+    "ai-agents",
+    "agent-payments",
+    "x402",
+    "wallet",
+    "post-quantum",
+    "usdc"
+  ],
+  "homepage": "https://github.com/whoyoujoshin/aether/tree/main/clients/eliza#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whoyoujoshin/aether.git",
+    "directory": "clients/eliza"
+  },
+  "bugs": {
+    "url": "https://github.com/whoyoujoshin/aether/issues"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "files": [
+    "dist/src"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "tsc -p . && node --test dist/test/*.test.js"
+  },
+  "dependencies": {
+    "aether-chain-client": "file:../ts"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "^1.0.0"
+  },
+  "devDependencies": {
+    "@elizaos/core": "^1.7.2",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "AETHER_MNEMONIC": {
+        "type": "string",
+        "description": "24-word recovery phrase of the agent's Aether account. Without it the plugin is read-only.",
+        "required": false,
+        "sensitive": true
+      },
+      "AETHER_MAX_PER_PAYMENT": {
+        "type": "string",
+        "description": "Most one payment may be, with its unit (default \"1 AETH\").",
+        "required": false
+      },
+      "AETHER_DAILY_BUDGET": {
+        "type": "string",
+        "description": "Most the agent may spend in a rolling 24 hours, same asset (default \"5 AETH\").",
+        "required": false
+      },
+      "AETHER_RPC_URL": {
+        "type": "string",
+        "description": "Node RPC (default the public testnet, https://rpc.157-245-252-221.sslip.io).",
+        "required": false
+      },
+      "AETHER_CHAIN_ID": {
+        "type": "string",
+        "description": "Default aether-testnet-1.",
+        "required": false
+      },
+      "AETHER_FAUCET_URL": {
+        "type": "string",
+        "description": "Testnet faucet (default the public one; \"none\" turns it off).",
+        "required": false
+      },
+      "AETHER_USDC_PATH": {
+        "type": "string",
+        "description": "Denom trace of the USDC to accept, e.g. transfer/channel-2 (testnet USDC from Injective). Unset: AETH only.",
+        "required": false
+      },
+      "AETHER_USDC_BASE_DENOM": {
+        "type": "string",
+        "description": "That USDC's denom on its issuing chain, e.g. erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d.",
+        "required": false
+      },
+      "AETHER_USDC_ISSUER": {
+        "type": "string",
+        "description": "Its issuing chain, e.g. Injective.",
+        "required": false
+      }
+    }
+  }
+}
