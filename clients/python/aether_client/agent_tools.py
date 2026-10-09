@@ -13,6 +13,7 @@ faucet for funds. The same tools come out in each framework's own form:
     kit.langchain()       # LangChain / LangGraph tools
     kit.openai_agents()   # OpenAI Agents SDK FunctionTools
     kit.crewai()          # CrewAI tools
+    kit.llamaindex()      # LlamaIndex FunctionTools
     kit.tool_specs()      # plain JSON-schema specs, for any model's tool calling,
     kit.call(name, args)  # ... answered by this
 
@@ -390,6 +391,19 @@ class AetherToolkit:
                                 params_json_schema=ensure_strict_json_schema(model.model_json_schema()),
                                 strict_json_schema=True)
         return [make(t) for t in self.specs()]
+
+    def llamaindex(self) -> list:
+        """The tools as LlamaIndex FunctionTools (pip install llama-index-core)."""
+        import asyncio
+        from llama_index.core.tools import FunctionTool
+        models = self._args_models()
+        out = []
+        for t in self.specs():
+            async def run_async(_f=t.func, **kw):
+                return await asyncio.to_thread(_f, **kw)  # a paid call waits for its payment to confirm
+            out.append(FunctionTool.from_defaults(fn=t.func, async_fn=run_async, name=t.name,
+                                                  description=t.description, fn_schema=models[t.name]))
+        return out
 
     def crewai(self) -> list:
         """The tools as CrewAI tools (pip install crewai)."""

@@ -34,7 +34,7 @@ find paid APIs in the on-chain directory, send a payment, call a paid API (payin
 it), and ask the testnet faucet for funds. Each framework gets them in its own form:
 
 ```bash
-pip install "aether-chain-client[langchain]"      # or [openai-agents], [crewai]
+pip install "aether-chain-client[langchain]"      # or [openai-agents], [crewai], [llamaindex]
 ```
 
 ```python
@@ -49,6 +49,7 @@ kit = AetherToolkit(client, Key.from_mnemonic(os.environ["AETHER_MNEMONIC"]),
 tools = kit.langchain()        # LangChain / LangGraph: create_react_agent(model, tools)
 tools = kit.openai_agents()    # OpenAI Agents SDK: Agent(name=..., tools=tools)
 tools = kit.crewai()           # CrewAI: Agent(..., tools=tools)
+tools = kit.llamaindex()       # LlamaIndex: FunctionAgent(tools=tools, llm=...)
 specs = kit.tool_specs()       # anything else: OpenAI-style function specs ("anthropic" for Messages API tools)
 result = kit.call(name, arguments)   # ... and the answer to the model's tool call
 ```
@@ -65,7 +66,7 @@ result = kit.call(name, arguments)   # ... and the answer to the model's tool ca
 - **Untrusted text stays data.** Memos, service names and descriptions and API
   response bodies are set by other people; the tool descriptions tell the model so.
 
-Tested with langchain-core 1.6, openai-agents 0.23 and crewai 1.6.
+Tested with langchain-core 1.6, openai-agents 0.23, crewai 1.6 and llama-index-core 0.14.
 
 ## Selling
 

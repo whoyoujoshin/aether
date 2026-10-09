@@ -43,8 +43,23 @@ const tools = kit.toolSpecs();             // OpenAI-style function tools; "anth
 const result = await kit.call(name, args); // answer the model's tool call
 ```
 
-Without a key it offers only the read-only tools. For ElizaOS, use
-[`elizaos-plugin-aether`](../eliza), built on it.
+Without a key it offers only the read-only tools. The same tools, in other frameworks:
+
+```ts
+// Coinbase AgentKit: an action provider beside the others
+import { aetherActionProvider } from "aether-chain-client/agentkit";
+const agentkit = await AgentKit.from({ walletProvider, actionProviders: [aetherActionProvider(kit)] });
+
+// GOAT SDK: a plugin beside the others
+import { aether } from "aether-chain-client/goat";
+const tools = await getOnChainTools({ wallet, plugins: [aether(kit)] });
+```
+
+Both need `zod` (AgentKit and GOAT already depend on it) and work whatever
+network or chain the framework's own wallet is on: they pay from the Aether key
+in the toolkit, within its limits. Checked with AgentKit 0.10 (and its LangChain
+adapter) and GOAT 0.5 (and its Vercel AI adapter). For ElizaOS, use
+[`elizaos-plugin-aether`](../eliza).
 
 ## Selling
 
