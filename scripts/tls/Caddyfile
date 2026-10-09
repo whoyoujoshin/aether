@@ -32,25 +32,14 @@ faucet.157-245-252-221.sslip.io {
 }
 
 explorer.157-245-252-221.sslip.io {
-	reverse_proxy 127.0.0.1:8081
-
-	# /mcp is NOT routed yet. Do not reload Caddy with the block below
-	# until a read-only `agentmcp --http 127.0.0.1:8090` is actually
-	# running; nothing here is applied on the seed by this change.
-	#
-	# The explorer SPA (spaFallback in cmd/explorer) answers any path
-	# that isn't a real file — including /mcp — with index.html and
-	# HTTP 200. A client that connected to the public URL would get
-	# the app instead of Streamable HTTP. When the process is up,
-	# replace this site with the handles below so /mcp is proxied to
-	# it and does not fall through:
-	#
-	# explorer.157-245-252-221.sslip.io {
-	# 	handle /mcp* {
-	# 		reverse_proxy 127.0.0.1:8090
-	# 	}
-	# 	handle {
-	# 		reverse_proxy 127.0.0.1:8081
-	# 	}
-	# }
+	# Public read-only MCP. Must be matched before the explorer SPA,
+	# which answers unknown paths (including /mcp) with index.html HTTP 200.
+	handle /mcp* {
+		reverse_proxy 127.0.0.1:8090
+	}
+	# The paid agent services' /svc/<name> routes go here, added on the
+	# seed by scripts/agentservices/caddy.sh (docs/PAID-SERVICES.md).
+	handle {
+		reverse_proxy 127.0.0.1:8081
+	}
 }

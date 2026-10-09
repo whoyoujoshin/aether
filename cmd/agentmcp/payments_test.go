@@ -2,9 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -410,4 +417,69 @@ func TestState_SurvivesRestart(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, again.Replayed)
 	require.Equal(t, f.broadcasts[0], f.broadcasts[1])
+}
+
+// get_transaction_status tells a hash in the mempool (pending) from one
+// the node has never seen (not_found), and says pending when it can't
+// tell, as before.
+func TestGetTransactionStatus_NotFound(t *testing.T) {
+	f := setupAgent(t)
+	f.blocks["AAAA"] = &wallet.TransactionDetail{Hash: "AAAA", Height: 90}
+	orig := mempoolHas
+	t.Cleanup(func() { mempoolHas = orig })
+
+	status := func(hash string) string {
+		t.Helper()
+		_, out, err := toolGetTransactionStatus(context.Background(), nil, getTransactionStatusInput{Hash: hash})
+		require.NoError(t, err)
+		return out.Status
+	}
+
+	mempoolHas = func(string) (bool, bool) { return false, true }
+	require.Equal(t, statusConfirmed, status("AAAA"), "a hash in a block never asks the mempool")
+	require.Equal(t, statusNotFound, status("BBBB"))
+
+	mempoolHas = func(h string) (bool, bool) { return h == "CCCC", true }
+	require.Equal(t, statusPending, status("CCCC"))
+
+	mempoolHas = func(string) (bool, bool) { return false, false }
+	require.Equal(t, statusPending, status("DDDD"), "can't tell: pending, as before")
+}
+
+// mempoolHas reads CometBFT's /unconfirmed_txs and matches a hash in
+// either case; with more waiting than one page lists it can't tell.
+func TestMempoolHas(t *testing.T) {
+	tx := []byte("an aether transaction")
+	sum := sha256.Sum256(tx)
+	hash := hex.EncodeToString(sum[:])
+	total := 1
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.Equal(t, "unconfirmed_txs", req.Method)
+		fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%s,"result":{"n_txs":"1","total":"%d","total_bytes":"21","txs":[%q]}}`,
+			req.ID, total, base64.StdEncoding.EncodeToString(tx))
+	}))
+	defer srv.Close()
+	orig := rpcEndpoint
+	t.Cleanup(func() { rpcEndpoint = orig })
+	rpcEndpoint = srv.URL
+
+	found, known := mempoolHas(strings.ToUpper(hash))
+	require.True(t, found)
+	require.True(t, known)
+	found, known = mempoolHas("00")
+	require.False(t, found)
+	require.True(t, known, "the whole mempool was listed")
+
+	total = 500
+	_, known = mempoolHas("00")
+	require.False(t, known, "more waiting than listed: can't tell")
+
+	rpcEndpoint = ""
+	_, known = mempoolHas(hash)
+	require.False(t, known)
 }
