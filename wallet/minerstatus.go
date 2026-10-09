@@ -3,6 +3,7 @@ package wallet
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"sync"
 
@@ -286,4 +287,75 @@ func (c *Client) avgBlockTime(ctx context.Context, cmt cmtservice.ServiceClient,
 	}
 	elapsed := float64(latestUnixNano-old.SdkBlock.Header.Time.UnixNano()) / 1e9
 	return elapsed / float64(height-from), true
+}
+
+// LeaderboardEntry is one miner's proof-of-work this epoch.
+type LeaderboardEntry struct {
+	Address         string `json:"address"`
+	Work            uint64 `json:"work"`
+	ActiveValidator bool   `json:"activeValidator"`
+}
+
+// Leaderboard is the current epoch's miners, most work first, as of one
+// block.
+type Leaderboard struct {
+	Height  int64              `json:"height"`
+	Epoch   EpochStatus        `json:"epoch"`
+	TopK    int64              `json:"topKSize"`
+	Rule    string             `json:"selectionRule"`
+	Entries []LeaderboardEntry `json:"entries"`
+}
+
+// MinerLeaderboard reads the current epoch's leaderboard at the node's
+// latest block.
+func (c *Client) MinerLeaderboard(ctx context.Context) (*Leaderboard, error) {
+	cmt := cmtservice.NewServiceClient(c.conn)
+	latest, err := cmt.GetLatestBlock(ctx, &cmtservice.GetLatestBlockRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("latest block: %w", err)
+	}
+	if latest.SdkBlock == nil {
+		return nil, fmt.Errorf("latest block: node returned no block")
+	}
+	height := latest.SdkBlock.Header.Height
+	at := metadata.AppendToOutgoingContext(ctx, grpctypes.GRPCBlockHeightHeader, strconv.FormatInt(height, 10))
+	q := pow.NewQueryClient(c.conn)
+
+	params, err := q.Params(at, &pow.QueryParamsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("pow params: %w", err)
+	}
+	board, err := q.MinerLeaderboard(at, &pow.QueryMinerLeaderboardRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("miner leaderboard: %w", err)
+	}
+	active, err := q.ActiveValidators(at, &pow.QueryActiveValidatorsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("active validators: %w", err)
+	}
+	isActive := make(map[string]bool, len(active.Validators))
+	for _, v := range active.Validators {
+		isActive[v] = true
+	}
+
+	index, start, selection := EpochWindow(height, params.EpochLength)
+	lb := &Leaderboard{
+		Height: height,
+		Epoch: EpochStatus{
+			Index: index, Length: params.EpochLength, StartHeight: start,
+			SelectionHeight: selection, BlocksUntilSelection: selection - height,
+		},
+		TopK:    params.TopKSize,
+		Rule:    SelectionRuleAt(selection),
+		Entries: make([]LeaderboardEntry, 0, len(board.Entries)),
+	}
+	if avg, ok := c.avgBlockTime(ctx, cmt, height, latest.SdkBlock.Header.Time.UnixNano()); ok {
+		lb.Epoch.AvgBlockSeconds = avg
+		lb.Epoch.EstSecondsUntilSelection = int64(avg * float64(lb.Epoch.BlocksUntilSelection))
+	}
+	for _, e := range board.Entries {
+		lb.Entries = append(lb.Entries, LeaderboardEntry{Address: e.Address, Work: e.Work, ActiveValidator: isActive[e.Address]})
+	}
+	sort.SliceStable(lb.Entries, func(i, j int) bool { return lb.Entries[i].Work > lb.Entries[j].Work })
+	return lb, nil
 }

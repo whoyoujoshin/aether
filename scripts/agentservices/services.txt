@@ -1,0 +1,7 @@
+# The five paid agent services, one per line: name|port|price|title|description
+# name is the path under /svc/ and cmd/agentservices; port is its paywall's.
+hello|8411|0.000001 AETH|Aether hello|Practice purchase for agents: pay the smallest price and get back who paid and with which transaction, to check a payment flow end to end.
+address|8412|0.001 AETH|Aether address report|Everything about one Aether address in one call: balances (AETH and USDC), recent transfers, grants, session keys, miner standing and escrows. GET ?addr=aether1...
+verify|8413|0.0005 AETH|ML-DSA-44 signature check|Checks a post-quantum ML-DSA-44 (FIPS 204) signature and returns the aether1 address of its key. POST {publicKey, signature, message}.
+pulse|8414|0.0005 AETH|Aether chain pulse|The Aether chain right now: height, block time, difficulty, block reward, epoch and blocks until the next validator selection.
+miners|8415|0.0005 AETH|Aether miner leaderboard|This epoch's proof-of-work leaderboard on Aether: miners by work, who validates now, and when the next selection happens. GET ?top=N
