@@ -32,6 +32,7 @@ After=network-online.target aetherd.service
 
 [Service]
 ExecStart=/root/agentservices --listen 127.0.0.1:8500 --grpc $GRPC $USDC
+Environment=HOME=/root
 Restart=always
 RestartSec=2
 NoNewPrivileges=true
@@ -52,6 +53,7 @@ After=network-online.target aether-agentservices.service
 
 [Service]
 ExecStart=/root/paywall --listen 127.0.0.1:$port --upstream http://127.0.0.1:8500/$name --pay-to $PAY_TO --price "$price" --grpc $GRPC --chain-id $CHAIN_ID --name "$title" --description "$desc" --free /help --public-url $PUBLIC/$name $USDC
+Environment=HOME=/root
 Restart=always
 RestartSec=2
 NoNewPrivileges=true

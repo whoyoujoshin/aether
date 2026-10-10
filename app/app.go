@@ -79,14 +79,16 @@ import (
 
 const Name = "aether"
 
+// DefaultNodeHome is ~/.aether, or empty when $HOME isn't set (a systemd
+// unit without User= or Environment=HOME). Only aetherd needs it, and it
+// refuses to start without one; the other programs that import this
+// package (paywall, faucet, agentservices...) never use it.
 var DefaultNodeHome string
 
 func init() {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		panic(err)
+	if home, err := os.UserHomeDir(); err == nil {
+		DefaultNodeHome = filepath.Join(home, ".aether")
 	}
-	DefaultNodeHome = filepath.Join(home, ".aether")
 }
 
 // Bech32MainPrefix is Aether's own real account address prefix,

@@ -61,6 +61,11 @@ func init() {
 }
 
 func main() {
+	if app.DefaultNodeHome == "" {
+		// As before, when this was a panic in the app package: no guessing a home.
+		fmt.Fprintln(os.Stderr, "aetherd: $HOME is not set (in a systemd unit: Environment=HOME=/root)")
+		os.Exit(1)
+	}
 	rootCmd := &cobra.Command{
 		Use:   "aetherd",
 		Short: "Aether Network daemon",
