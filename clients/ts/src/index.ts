@@ -20,3 +20,4 @@ export { RECEIPT_HEADER, checkReceipt, createReceiptDelegation, decodeReceipt, d
 export type { Receipt, ReceiptDelegation, ReceiptExpectation } from "./receipt.js";
 export { AetherToolkit, manifestPrice, TESTNET_FAUCET } from "./agentTools.js";
 export type { AetherToolkitOptions, ToolSpec, ToolResult } from "./agentTools.js";
+export { serveMcp, handleMcpMessage, mcpTools, MCP_PROTOCOL_VERSIONS } from "./mcpServer.js";

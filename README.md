@@ -29,6 +29,8 @@ No Go? `agentmcp` is in every platform's archive on the [releases page](../../re
 claude mcp add --transport http aether https://explorer.157-245-252-221.sslip.io/mcp   # Claude Code
 ```
 
+The same read-only tools can also run on your own machine, from the npm package, with only chain data coming from the node: `npx -y -p aether-chain-client aether-mcp` (stdio; `get_balance`, `get_transaction_status`, `find_services`). In an MCP config: `{"command": "npx", "args": ["-y", "-p", "aether-chain-client", "aether-mcp"]}`.
+
 The local wallet below gives the agent a spend-capped wallet as MCP tools: balance, send, invoice and wait-for-payment, paying for HTTP 402 APIs, and the service directory (full list and guarantees in [AI agent wallet](#ai-agent-wallet-mcp)).
 
 | | |
