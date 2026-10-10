@@ -106,8 +106,10 @@ type faucetServer struct {
 	confirmPollInterval time.Duration
 
 	// send and confirm are sendCoins and confirmTxOnChain, or fakes in tests.
-	send    func(addresses []string) (string, error)
-	confirm func(txHash string) (*wallet.TransactionDetail, error)
+	send func(addresses []string) (string, error)
+	// broadcast signs the drip at a sequence and broadcasts it; nil is the real one (tests fake it).
+	broadcast func(seq uint64) (wallet.BroadcastResult, error)
+	confirm   func(txHash string) (*wallet.TransactionDetail, error)
 
 	ledger    *ledger
 	pow       *powIssuer
@@ -494,20 +496,36 @@ func (f *faucetServer) sendCoins(addresses []string) (string, error) {
 	gas := uint64(gasBase + gasPerSend*len(addresses))
 	fee := f.gasPrice.Amount.MulInt64(int64(gas)).Ceil().TruncateInt()
 
-	signed, err := f.wal.BuildAndSignMsgsTx(f.fromKey, msgs, wallet.TxParams{
-		ChainID:       f.chainID,
-		AccountNumber: f.accountNumber,
-		Sequence:      f.sequence,
-		GasLimit:      gas,
-		Fees:          sdk.NewCoins(sdk.NewCoin("uaeth", fee)),
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to build/sign tx: %w", err)
+	broadcast := f.broadcast
+	if broadcast == nil {
+		broadcast = func(seq uint64) (wallet.BroadcastResult, error) {
+			signed, err := f.wal.BuildAndSignMsgsTx(f.fromKey, msgs, wallet.TxParams{
+				ChainID:       f.chainID,
+				AccountNumber: f.accountNumber,
+				Sequence:      seq,
+				GasLimit:      gas,
+				Fees:          sdk.NewCoins(sdk.NewCoin("uaeth", fee)),
+			})
+			if err != nil {
+				return wallet.BroadcastResult{}, fmt.Errorf("failed to build/sign tx: %w", err)
+			}
+			return f.client.BroadcastTx(signed)
+		}
 	}
 
-	result, err := f.client.BroadcastTx(signed)
+	result, err := broadcast(f.sequence)
 	if err != nil {
 		return "", fmt.Errorf("failed to broadcast: %w", err)
+	}
+	// Something else sent from the faucet account (another process with its
+	// key): every send would fail until a restart. The node says which
+	// sequence it wants, counting its mempool, so take that and try once more.
+	if want, ok := expectedSequence(result); ok && want != f.sequence {
+		log.Printf("faucet sequence was %d, the node expects %d (another sender uses this account?): retrying", f.sequence, want)
+		f.sequence = want
+		if result, err = broadcast(f.sequence); err != nil {
+			return "", fmt.Errorf("failed to broadcast: %w", err)
+		}
 	}
 	if result.Code != 0 {
 		return "", fmt.Errorf("transaction rejected: %s", result.RawLog)
@@ -515,6 +533,22 @@ func (f *faucetServer) sendCoins(addresses []string) (string, error) {
 
 	f.sequence++ // only advance our local counter after a genuinely successful broadcast
 	return result.TxHash, nil
+}
+
+var sequenceMismatch = regexp.MustCompile(`account sequence mismatch, expected (\d+)`)
+
+// expectedSequence is the sequence a node asked for when it rejected a
+// transaction for the wrong one.
+func expectedSequence(r wallet.BroadcastResult) (uint64, bool) {
+	if r.Code == 0 {
+		return 0, false
+	}
+	m := sequenceMismatch.FindStringSubmatch(r.RawLog)
+	if m == nil {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(m[1], 10, 64)
+	return n, err == nil
 }
 
 func main() {

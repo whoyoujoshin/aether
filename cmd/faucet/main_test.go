@@ -11,6 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"cosmossdk.io/math"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/stretchr/testify/require"
+
 	"github.com/whoyoujoshin/aether/wallet"
 )
 
@@ -306,4 +310,34 @@ func TestConcurrentRequestsForOneAddressSendOnce(t *testing.T) {
 	if len(chain.sends) != 1 {
 		t.Fatalf("sends = %d", len(chain.sends))
 	}
+}
+
+// Another process sending from the faucet account used to make every drip
+// fail until a restart (seen on the seed: "expected 1888, got 82").
+func TestSendCoinsTakesTheSequenceTheNodeExpects(t *testing.T) {
+	var tried []uint64
+	f := &faucetServer{sequence: 82, amountUaeth: 1, gasPrice: sdk.NewDecCoinFromDec("uaeth", math.LegacyMustNewDecFromStr("0.0001"))}
+	f.broadcast = func(seq uint64) (wallet.BroadcastResult, error) {
+		tried = append(tried, seq)
+		if seq != 1888 {
+			return wallet.BroadcastResult{Code: 32, Codespace: "sdk", RawLog: "account sequence mismatch, expected 1888, got 82: incorrect account sequence"}, nil
+		}
+		return wallet.BroadcastResult{TxHash: "AB"}, nil
+	}
+	hash, err := f.sendCoins([]string{"aether1x"})
+	require.NoError(t, err)
+	require.Equal(t, "AB", hash)
+	require.Equal(t, []uint64{82, 1888}, tried)
+	require.Equal(t, uint64(1889), f.sequence, "the next drip follows on")
+
+	// Any other rejection fails as before, without a retry, and the sequence stays.
+	tried = nil
+	f.broadcast = func(seq uint64) (wallet.BroadcastResult, error) {
+		tried = append(tried, seq)
+		return wallet.BroadcastResult{Code: 5, Codespace: "sdk", RawLog: "insufficient funds"}, nil
+	}
+	_, err = f.sendCoins([]string{"aether1x"})
+	require.ErrorContains(t, err, "insufficient funds")
+	require.Equal(t, []uint64{1889}, tried)
+	require.Equal(t, uint64(1889), f.sequence)
 }

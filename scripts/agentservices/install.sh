@@ -66,20 +66,23 @@ for u in "${units[@]}"; do
   systemctl enable "$u" >/dev/null 2>&1
   systemctl restart "$u"
 done
-sleep 3
 
 echo "== Checks (each paywall's free /help and its 402)"
+# curl -w prints 000 when nothing answers; "|| true" keeps set -e from
+# ending the script there, so every service gets a line.
+code() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$1" || true; }
 fail=0
 while IFS='|' read -r name port price title desc; do
   case "$name" in ''|'#'*) continue;; esac
-  help=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/help")
-  paid=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/")
-  man=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/.well-known/x402")
+  for _ in $(seq 1 10); do [ "$(code "http://127.0.0.1:$port/help")" = 200 ] && break; sleep 1; done
+  help=$(code "http://127.0.0.1:$port/help")
+  paid=$(code "http://127.0.0.1:$port/")
+  man=$(code "http://127.0.0.1:$port/.well-known/x402")
   printf '%-8s help %s  unpaid %s  manifest %s\n' "$name" "$help" "$paid" "$man"
   [ "$help" = 200 ] && [ "$paid" = 402 ] && [ "$man" = 200 ] || fail=1
 done < "$LIST"
 if [ $fail = 1 ]; then
-  echo "Some checks failed: see journalctl -u aether-agentservices -u 'aether-paywall-*' -n 30 --no-pager" >&2
+  echo "Some checks failed (000: not answering). Why: journalctl -u aether-paywall-<name> -n 5 --no-pager" >&2
   exit 1
 fi
 echo "All five answer: help 200, unpaid 402, manifest 200."
