@@ -12,7 +12,10 @@
     "cosmos",
     "post-quantum",
     "ml-dsa",
-    "usdc"
+    "usdc",
+    "coinbase-agentkit",
+    "goat-sdk",
+    "elizaos"
   ],
   "homepage": "https://github.com/whoyoujoshin/aether/tree/main/clients/ts#readme",
   "repository": {
@@ -27,6 +30,31 @@
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./agentkit": {
+      "types": "./dist/src/agentkit.d.ts",
+      "default": "./dist/src/agentkit.js"
+    },
+    "./goat": {
+      "types": "./dist/src/goat.d.ts",
+      "default": "./dist/src/goat.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "agentkit": [
+        "dist/src/agentkit.d.ts"
+      ],
+      "goat": [
+        "dist/src/goat.d.ts"
+      ]
+    }
+  },
   "files": [
     "dist/src"
   ],
@@ -43,9 +71,18 @@
     "@scure/base": "^2.0.0",
     "@scure/bip39": "^2.0.0"
   },
+  "peerDependencies": {
+    "zod": "^3.23.0 || ^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "zod": "^3.25.76"
   },
   "publishConfig": {
     "access": "public"

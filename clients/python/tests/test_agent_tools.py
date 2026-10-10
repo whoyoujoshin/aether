@@ -209,3 +209,17 @@ def test_crewai_tools(kit):
     send = tools["aether_send_payment"]
     assert send.args_schema.model_json_schema()["required"] == ["to", "amount", "idempotency_key"]
     assert send.run(to=TO, amount="0.1 AETH", idempotency_key="cr1")["status"] == "pending"
+
+
+def test_llamaindex_tools(kit):
+    pytest.importorskip("llama_index.core")
+    import asyncio
+    tools = {t.metadata.name: t for t in kit.llamaindex()}
+    send = tools["aether_send_payment"]
+    params = send.metadata.get_parameters_dict()
+    assert params["required"] == ["to", "amount", "idempotency_key"]
+    assert params["properties"]["amount"]["description"].startswith("with its unit")
+    out = send.call(to=TO, amount="0.1 AETH", idempotency_key="li1")
+    assert out.raw_output["status"] == "pending"
+    again = asyncio.run(send.acall(to=TO, amount="0.1 AETH", idempotency_key="li1"))
+    assert again.raw_output["replayed"] is True
