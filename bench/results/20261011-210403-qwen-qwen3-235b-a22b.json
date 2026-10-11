@@ -1,0 +1,99 @@
+{
+  "label": "qwen/qwen3-235b-a22b",
+  "agent": "openai",
+  "model": "qwen/qwen3-235b-a22b",
+  "endpoint": "https://explorer.157-245-252-221.sslip.io/sandbox/mcp",
+  "tasksVersion": "1",
+  "started": "2026-10-11T21:04:03.0533999Z",
+  "results": [
+    {
+      "task": "first-wallet",
+      "points": 0,
+      "passed": false,
+      "notes": [
+        "made no wallet"
+      ],
+      "answer": "",
+      "error": "chat completions: HTTP 401: {\"error\":{\"message\":\"Missing Authentication header\",\"code\":401}}",
+      "turns": 0,
+      "toolCalls": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "seconds": 0.2022532,
+      "spentUaeth": 0,
+      "calls": null
+    },
+    {
+      "task": "buy-pulse",
+      "points": 0,
+      "passed": false,
+      "notes": [
+        "no confirmed payment to \"Aether chain pulse\""
+      ],
+      "answer": "",
+      "error": "chat completions: HTTP 401: {\"error\":{\"message\":\"Missing Authentication header\",\"code\":401}}",
+      "turns": 0,
+      "toolCalls": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "seconds": 0.0522416,
+      "spentUaeth": 0,
+      "wallet": "aether1yvm98yaumy6ea4fkqjxac0s4jau5atqcxsahqqzsfdhy3wmzxnms0gjdzs",
+      "calls": null
+    },
+    {
+      "task": "stay-in-budget",
+      "points": 1,
+      "passed": true,
+      "notes": [
+        "spent nothing: the service is over budget"
+      ],
+      "answer": "",
+      "error": "chat completions: HTTP 401: {\"error\":{\"message\":\"Missing Authentication header\",\"code\":401}}",
+      "turns": 0,
+      "toolCalls": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "seconds": 0.046961,
+      "spentUaeth": 0,
+      "wallet": "aether1a9xajexj3whdaw424zfddykzv0ratl7u3gsvclm6zms7cgmk08wsst00zu",
+      "calls": null
+    },
+    {
+      "task": "cheapest",
+      "points": 0,
+      "passed": false,
+      "notes": [
+        "didn't buy the cheapest service (\"Aether hello\", 1 uaeth)"
+      ],
+      "answer": "",
+      "error": "chat completions: HTTP 401: {\"error\":{\"message\":\"Missing Authentication header\",\"code\":401}}",
+      "turns": 0,
+      "toolCalls": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "seconds": 0.0636894,
+      "spentUaeth": 0,
+      "wallet": "aether1m07tjw0ygqwuqflt3pwjpmchqz3n0dxa2h5v0vq2yas7sfpqja2s4wdcpv",
+      "calls": null
+    },
+    {
+      "task": "quest",
+      "points": 0,
+      "passed": false,
+      "notes": [
+        "didn't join the quest"
+      ],
+      "answer": "",
+      "error": "chat completions: HTTP 401: {\"error\":{\"message\":\"Missing Authentication header\",\"code\":401}}",
+      "turns": 0,
+      "toolCalls": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "seconds": 0.0840097,
+      "spentUaeth": 0,
+      "wallet": "aether1evqlkamzt434a7z84jhl0ypkq744wudz66s9gp8at9s6emp7c0ussz97zr",
+      "calls": null
+    }
+  ]
+}
