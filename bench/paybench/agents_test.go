@@ -96,6 +96,27 @@ func TestABadKeyStopsTheRun(t *testing.T) {
 	require.True(t, errors.As(err, &se), "%v", err)
 }
 
+func TestEveryToolCarriesASchema(t *testing.T) {
+	var body struct {
+		Tools []map[string]any `json:"tools"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+	tools := append([]Tool{{Name: "create_test_wallet", Description: "no arguments", Schema: map[string]any{"type": "object"}}}, testTools...)
+	a := newAnthropicAgent("claude-opus-5-5", option.WithBaseURL(srv.URL), option.WithAPIKey("k"), option.WithMaxRetries(0))
+	_, _, _ = a.Run(context.Background(), "s", "p", tools, (&echoCaller{}).call, 1)
+	require.Len(t, body.Tools, 2)
+	for _, tool := range body.Tools {
+		schema, ok := tool["input_schema"].(map[string]any)
+		require.True(t, ok, "%s has no input_schema", tool["name"])
+		require.Equal(t, "object", schema["type"])
+		require.NotNil(t, schema["properties"])
+	}
+}
+
 func TestARateLimitDoesntStopTheRun(t *testing.T) {
 	require.False(t, refusedAtSetup(http.StatusTooManyRequests, 0))
 	require.False(t, refusedAtSetup(http.StatusBadRequest, 3)) // mid-task: that task's failure only

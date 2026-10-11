@@ -59,7 +59,13 @@ func newAnthropicAgent(model string, opts ...option.RequestOption) *anthropicAge
 func (a *anthropicAgent) Run(ctx context.Context, system, prompt string, tools []Tool, call ToolCaller, maxTurns int) (string, Usage, error) {
 	var params []anthropic.ToolUnionParam
 	for _, t := range tools {
-		schema := anthropic.ToolInputSchemaParam{Properties: t.Schema["properties"]}
+		// A tool without arguments still needs a schema: the SDK drops an
+		// empty one from the request, which the API refuses.
+		props := t.Schema["properties"]
+		if props == nil {
+			props = map[string]any{}
+		}
+		schema := anthropic.ToolInputSchemaParam{Properties: props}
 		if req, ok := t.Schema["required"].([]any); ok {
 			for _, r := range req {
 				if s, ok := r.(string); ok {
