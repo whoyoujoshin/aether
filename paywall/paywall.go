@@ -15,6 +15,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/whoyoujoshin/aether/wallet"
+	"github.com/whoyoujoshin/aether/x402"
 )
 
 // Config sets what a Paywall charges and how it checks payment.
@@ -52,6 +53,8 @@ type Config struct {
 	Pull *PullConfig
 	// Receipts, if set, signs a receipt for every paid response.
 	Receipts *ReceiptConfig
+	// Exact, if set, also offers the standard x402 v2 exact scheme.
+	Exact *ExactConfig
 }
 
 // RedeemedStore remembers which invoices have been used.
@@ -71,6 +74,7 @@ type Paywall struct {
 
 	withdrawMu sync.Mutex
 	pull       *pullState
+	exact      exactState
 }
 
 func New(cfg Config) (*Paywall, error) {
@@ -115,6 +119,9 @@ func New(cfg Config) (*Paywall, error) {
 			pc.CollectEvery = time.Minute
 		}
 	}
+	if cfg.Exact != nil && cfg.Exact.Settler == nil {
+		return nil, errors.New("exact needs a settler")
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
@@ -142,6 +149,10 @@ func New(cfg Config) (*Paywall, error) {
 // Middleware serves next only to requests that paid.
 func (p *Paywall) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if v2 := r.Header.Get(HeaderPaymentSignature); v2 != "" && p.cfg.Exact != nil {
+			p.serveExact(w, r, v2, next)
+			return
+		}
 		header := r.Header.Get(HeaderPayment)
 		if header == "" {
 			p.paymentRequired(w, r, ErrPaymentRequired, "this resource costs "+p.both(p.cfg.Price)+" per request", "")
@@ -231,13 +242,10 @@ func (p *Paywall) Middleware(next http.Handler) http.Handler {
 }
 
 // Payer returns the address that paid for this request, as recorded
-// in the X-PAYMENT-RESPONSE header the middleware set.
+// in the settlement header the middleware set.
 func Payer(w http.ResponseWriter) string {
-	var s SettlementResponse
-	if DecodeHeader(w.Header().Get(HeaderPaymentResponse), &s) != nil {
-		return ""
-	}
-	return s.Payer
+	payer, _ := Settlement(w.Header())
+	return payer
 }
 
 func (p *Paywall) received(d *wallet.TransactionDetail) (math.Int, string) {
@@ -289,6 +297,9 @@ func (p *Paywall) schemes() []string {
 	}
 	if p.cfg.Pull != nil {
 		out = append(out, SchemePull)
+	}
+	if p.cfg.Exact != nil {
+		out = append(out, x402.SchemeExact)
 	}
 	return out
 }
@@ -367,6 +378,9 @@ func (p *Paywall) paymentRequiredFor(w http.ResponseWriter, r *http.Request, cod
 			}
 		}
 		body.Accepts = append(body.Accepts, pull)
+	}
+	if p.cfg.Exact != nil {
+		w.Header().Set(HeaderPaymentRequired, p.exactPaymentRequired(r, code))
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusPaymentRequired)
