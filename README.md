@@ -40,7 +40,7 @@ The local wallet below gives the agent a spend-capped wallet as MCP tools: balan
 | Faucet | `curl -X POST https://faucet.157-245-252-221.sslip.io/request -H 'Content-Type: application/json' -d '{"address":"aether1..."}'` |
 | Explorer | `https://explorer.157-245-252-221.sslip.io/agents` · balance: `/api/address?addr=aether1...` · this card as JSON: `/api/agents` · every endpoint: `/api/openapi.json` · for LLMs: `/llms.txt` · start page: `/start.md` |
 
-Let an agent spend from your account with a chain-enforced cap instead of holding funds: [agent permissions](#on-chain-agent-permissions-xauthz-xfeegrant). Sell to agents: [paid APIs](#paid-apis-x402). See one agent pay another for a tool call, live, in [docs/AGENT_DEMO.md](docs/AGENT_DEMO.md). A prompt to check an agent is set up (the address is a test counterparty run by the project):
+Try paying with no install: the [hosted test wallet](docs/TEST-WALLET.md) (`https://explorer.157-245-252-221.sslip.io/sandbox/mcp`) gives an agent a funded testnet wallet and buys from listed services with standard x402. Let an agent spend from your account with a chain-enforced cap instead of holding funds: [agent permissions](#on-chain-agent-permissions-xauthz-xfeegrant). Sell to agents: [paid APIs](#paid-apis-x402). See one agent pay another for a tool call, live, in [docs/AGENT_DEMO.md](docs/AGENT_DEMO.md). A prompt to check an agent is set up (the address is a test counterparty run by the project):
 
 > Using the aether-wallet tools: get your address and balance. If you have under 1 AETH, call request_testnet_funds and wait until your balance shows it. Then send 0.001 AETH to aether1cdugwhxk9cktjsemm6yjrd6xtfsq9wkjvnef03ml4u6ltuv7edcs0eyjds with idempotencyKey "aether-smoke-1", wait for the transaction to confirm, and report its hash and https://explorer.157-245-252-221.sslip.io/tx/<hash>.
 
@@ -451,6 +451,7 @@ aetherd query governance proposal <proposal-id>
 | `cmd/agentmcp` | MCP server exposing the wallet as tool calls, for AI agents |
 | `paywall/`, `cmd/paywall` | Charge AETH per HTTP request (x402 format): middleware and reverse proxy |
 | `x402/`, `cmd/facilitator` | Standard x402 v2 `exact` on `cosmos:<chain-id>`: verify, settle, and a public facilitator |
+| `cmd/agentmcp --sandbox-http` | The hosted test wallet: custodial testnet wallets over MCP ([docs/TEST-WALLET.md](docs/TEST-WALLET.md)) |
 | `directory/` | On-chain service directory: announcements, manifest verification, safe fetching |
 | `clients/ts`, `clients/python` | TypeScript and Python clients: keys, payments, paid APIs (buying and selling), withdrawals, directory |
 | `clients/vectors` | Generates the shared test vectors both clients are checked against |

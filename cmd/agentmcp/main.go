@@ -453,6 +453,12 @@ func main() {
 	flag.StringVar(&faucetURL, "faucet", "", "testnet faucet URL for request_testnet_funds (default: the public faucet on aether-testnet-1; \"off\" disables)")
 	flag.BoolVar(&directoryAllowPrivate, "directory-allow-private", false, "let find_services/announce_service fetch manifests from private/loopback addresses (local devnets only)")
 	flag.StringVar(&feeGranter, "fee-granter", "", "pay transaction fees from this account's x/feegrant allowance to the agent")
+	flag.StringVar(&sandboxListen, "sandbox-http", "", "listen address for the hosted test wallet, a separate public Streamable HTTP server at /mcp that gives callers small custodial testnet wallets (test/dev chains only). It never opens the agent account; it needs --sandbox-secret-file and --sandbox-funder")
+	flag.StringVar(&sandboxFunderName, "sandbox-funder", "", "keyring account (in --keyring-dir) that funds each new test wallet")
+	flag.StringVar(&sandboxGrant, "sandbox-grant", "0.01 AETH", "what each new test wallet gets")
+	flag.StringVar(&sandboxSecretFile, "sandbox-secret-file", "", "32-byte file that encrypts test wallet tokens (created if missing; losing it invalidates every token)")
+	flag.IntVar(&sandboxPerIP, "sandbox-per-ip", 3, "new test wallets a day per caller (by X-Forwarded-For)")
+	flag.IntVar(&sandboxPerDay, "sandbox-per-day", 200, "new test wallets a day in all")
 	httpListen := flag.String("http", "", `listen address for a public read-only Streamable HTTP server at /mcp (for example 127.0.0.1:8090). Empty (default): stdio, with the full wallet. Public mode never opens the keyring`)
 	usdc := wallet.USDCFlags(flag.CommandLine, wallet.USDCSetting{})
 	usdcPerTx := flag.String("usdc-per-tx-limit", "", `most USDC one payment may spend, with unit (e.g. "5 USDC"); USDC spending stays off until this and --usdc-daily-limit are set`)
@@ -499,6 +505,16 @@ func main() {
 		trustedRaters = append(trustedRaters, a)
 	}
 
+	if sandboxListen != "" {
+		if *httpListen != "" {
+			log.Fatal("--http and --sandbox-http are separate servers: run one per process")
+		}
+		log.Printf("Aether hosted test wallet MCP (http=%s grpc=%s chain-id=%s); the agent account is not opened", sandboxListen, grpcEndpoint, chainID)
+		if err := servePublicSandbox(sandboxListen); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if *httpListen != "" {
 		// Before any keyring default. newServer() is the wallet: a flag
 		// in front of it could still register spend tools, so public

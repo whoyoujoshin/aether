@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Routes https://explorer.157-245-252-221.sslip.io/svc/<name> to each
-# service's paywall (scripts/agentservices/services.txt), and /facilitator
-# to the x402 facilitator (cmd/facilitator on 127.0.0.1:8403), by adding
+# service's paywall (scripts/agentservices/services.txt), /facilitator
+# to the x402 facilitator (cmd/facilitator on 127.0.0.1:8403), and
+# /sandbox/mcp to the hosted test wallet (sandbox.sh, 127.0.0.1:8092), by adding
 # one block per route to the explorer's site in /etc/caddy/Caddyfile, before
 # its catch-all handle. Backs the file up first, validates, and puts the
 # backup back if Caddy rejects the result. Safe to run again: it replaces
@@ -33,6 +34,11 @@ block=$(mktemp)
   echo "		uri strip_prefix /facilitator"
   echo "		reverse_proxy 127.0.0.1:8403"
   echo "	}"
+  echo "	@test_wallet path /sandbox/mcp /sandbox/mcp/*"
+  echo "	handle @test_wallet {"
+  echo "		uri strip_prefix /sandbox"
+  echo "		reverse_proxy 127.0.0.1:8092"
+  echo "	}"
   echo "	# END agentservices"
 } > "$block"
 
@@ -63,4 +69,4 @@ if ! caddy validate --config "$CADDYFILE" --adapter caddyfile >/dev/null 2>&1; t
   exit 1
 fi
 systemctl reload caddy
-echo "Caddy reloaded with the /svc and /facilitator routes."
+echo "Caddy reloaded with the /svc, /facilitator and /sandbox/mcp routes."
