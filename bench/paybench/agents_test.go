@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -76,6 +77,29 @@ func TestAnthropicAgentReportsARefusal(t *testing.T) {
 	a := newAnthropicAgent("claude-opus-5-5", option.WithBaseURL(srv.URL), option.WithAPIKey("test"))
 	_, _, err := a.Run(context.Background(), "s", "p", testTools, (&echoCaller{}).call, 5)
 	require.ErrorContains(t, err, "refusal")
+}
+
+func TestABadKeyStopsTheRun(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}`)
+	}))
+	defer srv.Close()
+	a := newAnthropicAgent("claude-opus-5-5", option.WithBaseURL(srv.URL), option.WithAPIKey("bad"), option.WithMaxRetries(0))
+	_, _, err := a.Run(context.Background(), "s", "p", testTools, (&echoCaller{}).call, 5)
+	var se setupError
+	require.True(t, errors.As(err, &se), "%v", err)
+
+	oa := &openAIAgent{baseURL: srv.URL, model: "m", apiKey: "bad"}
+	_, _, err = oa.Run(context.Background(), "s", "p", testTools, (&echoCaller{}).call, 5)
+	require.True(t, errors.As(err, &se), "%v", err)
+}
+
+func TestARateLimitDoesntStopTheRun(t *testing.T) {
+	require.False(t, refusedAtSetup(http.StatusTooManyRequests, 0))
+	require.False(t, refusedAtSetup(http.StatusBadRequest, 3)) // mid-task: that task's failure only
+	require.True(t, refusedAtSetup(http.StatusNotFound, 0))
 }
 
 func TestOpenAIAgentRunsTheToolLoop(t *testing.T) {

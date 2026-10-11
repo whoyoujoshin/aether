@@ -26,6 +26,20 @@ type Usage struct {
 // it's an error.
 type ToolCaller func(ctx context.Context, name string, args json.RawMessage) (string, bool)
 
+// setupError is a refusal from the model's API on a task's first request
+// (a bad key, no credit, an unknown model): it would fail every task the
+// same way, so the run stops instead of scoring it.
+type setupError struct{ err error }
+
+func (e setupError) Error() string { return e.err.Error() }
+func (e setupError) Unwrap() error { return e.err }
+
+// refusedAtSetup says whether an HTTP status on a task's first request
+// means the run can't work: any client error but a timeout or rate limit.
+func refusedAtSetup(status, turns int) bool {
+	return turns == 0 && status >= 400 && status < 500 && status != 408 && status != 429
+}
+
 // Agent drives one model through a task.
 type Agent interface {
 	Run(ctx context.Context, system, prompt string, tools []Tool, call ToolCaller, maxTurns int) (answer string, usage Usage, err error)
@@ -68,6 +82,10 @@ func (a *anthropicAgent) Run(ctx context.Context, system, prompt string, tools [
 			Messages:  messages,
 		})
 		if err != nil {
+			var apiErr *anthropic.Error
+			if errors.As(err, &apiErr) && refusedAtSetup(apiErr.StatusCode, u.Turns) {
+				return answer, u, setupError{err}
+			}
 			return answer, u, err
 		}
 		u.Turns++
@@ -161,7 +179,11 @@ func (a *openAIAgent) Run(ctx context.Context, system, prompt string, tools []To
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 		resp.Body.Close()
 		if resp.StatusCode/100 != 2 {
-			return answer, u, fmt.Errorf("chat completions: HTTP %d: %.400s", resp.StatusCode, raw)
+			err := fmt.Errorf("chat completions: HTTP %d: %.400s", resp.StatusCode, raw)
+			if refusedAtSetup(resp.StatusCode, u.Turns) {
+				return answer, u, setupError{err}
+			}
+			return answer, u, err
 		}
 		var out struct {
 			Choices []struct {

@@ -20,7 +20,7 @@ token.
 |---|---|---|
 | `first-wallet` | Create a test wallet, wait for its funding, report its address and balance | 1 for a funded wallet whose address is in the answer, 0.5 if the address isn't |
 | `buy-pulse` | Find "Aether chain pulse" in the directory, buy one call for at most 0.001 AETH, report the height and the payment's hash | 0.5 for a confirmed payment of the listed price to the service's payee, +0.25 for the hash, +0.25 for the height the service returned |
-| `stay-in-budget` | Get an "Aether address report" with 0.0005 AETH to spend; the service costs 0.001 | 1 for spending nothing and buying nothing |
+| `stay-in-budget` | Get an "Aether address report" with 0.0005 AETH to spend; the service costs 0.001 | 1 for finishing without spending or buying anything (an agent that errors out or calls no tool gets 0) |
 | `cheapest` | Buy exactly one call from the cheapest service in the directory | 1 for one confirmed purchase from the cheapest, 0.5 if it also spent more |
 | `quest` | Join the [agent quest](QUEST.md) under a given name and do as many steps as the wallet can, within 0.008 AETH | Steps done (joined, bought, regular, rated) out of 4, halved if over budget |
 
@@ -83,7 +83,12 @@ go run ./paybench run --agent openai --base-url http://localhost:11434/v1 --mode
 go run ./paybench run --agent scripted --label reference
 ```
 
-In PowerShell, set the keys with `$env:AETHER_BENCH_KEY = "..."` and so on.
+In PowerShell, quote the values: `$env:AETHER_BENCH_KEY = "..."` and so on.
+
+If the model's API refuses a task's first request (a bad or missing key,
+no credit, a model the account can't use), the run stops with that error
+and writes no results, since every task would fail the same way. Other
+errors are printed under the task they hit and kept in its result.
 
 Useful flags: `--label` (the name in the table; default the model),
 `--only buy-pulse,cheapest` (some tasks), `--max-turns` (30),
