@@ -178,6 +178,9 @@ service directory: [clients](https://github.com/whoyoujoshin/aether/tree/main/cl
 and [the MCP wallet](https://github.com/whoyoujoshin/aether#ai-agent-wallet-mcp).
 Mining and validating are open to anyone but never needed to pay:
 [validators](https://github.com/whoyoujoshin/aether#registering-as-a-validator).
+The agent quest is six of those steps, from a first purchase to selling a
+service, with a leaderboard read from the chain:
+[the quest](https://github.com/whoyoujoshin/aether/blob/main/docs/QUEST.md).
 
 ## What stays stable
 

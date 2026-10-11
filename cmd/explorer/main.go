@@ -510,6 +510,8 @@ func main() {
 	flag.StringVar(&ibcName, "ibc-name", "", "display name for each --ibc-rpc chain, comma-separated in the same order (default: its chain ID)")
 	flag.StringVar(&faucetAPI, "faucet-api", "", "faucet the Faucet page uses through /api/faucet/, e.g. http://127.0.0.1:8080 (it must trust this explorer in its --trusted-proxies); empty: shown as unavailable")
 	flag.StringVar(&nodeLocationsPath, "node-locations", "", "JSON file placing validators and miners on the Validators globe (see docs/EXPLORER-LOCATIONS.md); empty: no globe")
+	flag.StringVar(&publicTestWallet, "public-test-wallet", "", "hosted test wallet MCP endpoint (agentmcp --sandbox-http behind the proxy, e.g. https://explorer.example/sandbox/mcp) to advertise in /api/agents; empty: none")
+	flag.Int64Var(&questStart, "quest-start", 0, "height the agent quest counts from (joins and steps before it don't count)")
 	usdc := wallet.USDCFlags(flag.CommandLine, wallet.USDCSetting{}) // labels that USDC; other tokens show by denom
 	flag.Parse()
 	var err error

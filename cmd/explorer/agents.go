@@ -36,9 +36,20 @@ var agentmcpTools = []string{
 	"create_invoice", "wait_for_payment",
 	"fetch_paid", "list_purchases", "list_prepaid_balances", "withdraw_prepaid",
 	"find_services", "rate_service", "announce_service",
+	"get_quest",
 	"get_miner_status",
 	"create_escrow", "release_escrow", "refund_escrow", "get_escrow", "list_escrows",
 }
+
+// testWalletTools are the hosted test wallet's tools (agentmcp
+// --sandbox-http, cmd/agentmcp/sandbox.go); the same test keeps them in step.
+var testWalletTools = []string{
+	"create_test_wallet", "get_test_wallet", "send_from_test_wallet", "buy_service", "get_quest",
+	"get_balance", "get_transaction_status", "find_services",
+}
+
+// publicTestWallet is the hosted test wallet's URL (--public-test-wallet).
+var publicTestWallet string
 
 const repoURL = "https://github.com/whoyoujoshin/aether"
 
@@ -79,6 +90,16 @@ type agentMCPDTO struct {
 	Tools      []string `json:"tools"`
 	Remote     string   `json:"remote,omitempty"`     // public read-only Streamable HTTP endpoint
 	ServerCard string   `json:"serverCard,omitempty"` // MCP server card
+	// TestWallet is the hosted test wallet, if this explorer advertises one.
+	TestWallet *agentTestWalletDTO `json:"testWallet,omitempty"`
+}
+
+// agentTestWalletDTO is the hosted test wallet: custodial testnet
+// wallets over MCP, no install or sign-in.
+type agentTestWalletDTO struct {
+	URL   string   `json:"url"`
+	Tools []string `json:"tools"`
+	Note  string   `json:"note"`
 }
 
 type agentCardDTO struct {
@@ -156,7 +177,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			Remote:     publicMCP,
 			ServerCard: "/.well-known/mcp/server-card.json",
 		},
-		Payments: []string{"aether-memo", "aether-prepaid", "aether-pull"},
+		Payments: []string{"aether-memo", "aether-prepaid", "aether-pull", "exact"},
 		Docs: map[string]string{
 			"start":       repoURL + "#ai-agents-start-here",
 			"mcp":         repoURL + "#ai-agent-wallet-mcp",
@@ -166,6 +187,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			"miner":       "/api/miner?addr=aether1...",
 			"minerAlerts": repoURL + "#miner-and-validator-alerts",
 			"openapi":     "/api/openapi.json",
+			"x402":        repoURL + "/blob/main/docs/X402.md",
+			"quest":       "/api/quest",
 			"llms":        "/llms.txt",
 		},
 		Warnings: []string{
@@ -184,6 +207,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			card.Faucet.Batch = "POST " + batch + ` {"addresses":["aether1...", ...]}`
 			card.Faucet.Status = "GET " + status + "?address=aether1..."
 		}
+	}
+	if publicTestWallet != "" {
+		card.MCP.TestWallet = &agentTestWalletDTO{URL: publicTestWallet, Tools: testWalletTools,
+			Note: "Hosted, custodial testnet wallets: create_test_wallet gives one, funded, with no install or sign-in; the server can spend it too."}
 	}
 	if strings.HasPrefix(publicRPC, "http://") || strings.HasPrefix(publicFaucet, "http://") {
 		card.Warnings = append(card.Warnings, "Endpoints are plain HTTP (no TLS): some sandboxes won't reach them.")

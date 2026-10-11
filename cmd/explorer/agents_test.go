@@ -85,24 +85,34 @@ func TestAgentCard_ListsEveryAgentmcpTool(t *testing.T) {
 	files, err := filepath.Glob("../agentmcp/*.go")
 	require.NoError(t, err)
 	re := regexp.MustCompile(`Name:\s+"([a-z_]+)"`)
-	seen := map[string]bool{}
-	var registered []string
-	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") {
-			continue
-		}
-		src, err := os.ReadFile(f)
-		require.NoError(t, err)
-		for _, m := range re.FindAllStringSubmatch(string(src), -1) {
-			if !seen[m[1]] {
-				seen[m[1]] = true
-				registered = append(registered, m[1])
+	// The hosted test wallet (sandbox.go) is its own server with its own
+	// list; every other file registers the wallet's tools.
+	names := func(include func(string) bool) []string {
+		seen := map[string]bool{}
+		var out []string
+		for _, f := range files {
+			if strings.HasSuffix(f, "_test.go") || !include(filepath.Base(f)) {
+				continue
+			}
+			src, err := os.ReadFile(f)
+			require.NoError(t, err)
+			for _, m := range re.FindAllStringSubmatch(string(src), -1) {
+				if !seen[m[1]] {
+					seen[m[1]] = true
+					out = append(out, m[1])
+				}
 			}
 		}
+		sort.Strings(out)
+		return out
 	}
-	listed := append([]string(nil), agentmcpTools...)
-	sort.Strings(registered)
-	sort.Strings(listed)
-	require.NotEmpty(t, registered)
-	require.Equal(t, registered, listed)
+	sorted := func(s []string) []string {
+		out := append([]string(nil), s...)
+		sort.Strings(out)
+		return out
+	}
+	wallet := names(func(f string) bool { return f != "sandbox.go" })
+	require.NotEmpty(t, wallet)
+	require.Equal(t, wallet, sorted(agentmcpTools))
+	require.Equal(t, names(func(f string) bool { return f == "sandbox.go" }), sorted(testWalletTools))
 }

@@ -30,7 +30,8 @@ full wallet, with spend limits and owner approvals) or `aether-chain-client`.
 | `create_test_wallet` | A new wallet funded with 0.01 AETH (enough for at least 10 calls to the seed's services). Returns its `walletToken`. The funding lands with the next block (~60 s) |
 | `get_test_wallet` | Its address and balances, and whether the funding has landed |
 | `buy_service` | Calls a service from the on-chain directory and pays it with standard x402 (`exact`) if the price is at most `maxAmount`. Returns the response and the payment's transaction. It waits for the payment's block, so it takes up to about a minute |
-| `send_from_test_wallet` | Sends test AETH to any address |
+| `send_from_test_wallet` | Sends test AETH to any address, with an optional memo (joining the quest and rating a service are memo sends) |
+| `get_quest` | The [agent quest](QUEST.md): this wallet's progress, what to do next, and the top of the leaderboard |
 | `get_balance`, `get_transaction_status`, `find_services` | As on the read-only `/mcp` |
 
 The `walletToken` is the wallet. Every wallet tool takes it, and anyone
