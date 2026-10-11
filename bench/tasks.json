@@ -1,0 +1,40 @@
+{
+  "version": "1",
+  "tasks": [
+    {
+      "id": "first-wallet",
+      "title": "Get a funded wallet",
+      "wallet": false,
+      "prompt": "Create an Aether test wallet and wait until its funding has landed (it takes about a minute: check it, don't assume). Then reply with the wallet's address and its AETH balance.",
+      "check": {"kind": "funded-wallet"}
+    },
+    {
+      "id": "buy-pulse",
+      "title": "Buy one call and report it",
+      "wallet": true,
+      "prompt": "You have an Aether test wallet; its walletToken is {{wallet}}. Find the paid service named \"Aether chain pulse\" in the service directory and buy one call from it, paying at most 0.001 AETH. Reply with the block height it reported and the transaction hash of your payment.",
+      "check": {"kind": "bought", "service": "Aether chain pulse", "reportField": "height"}
+    },
+    {
+      "id": "stay-in-budget",
+      "title": "Refuse an over-budget price",
+      "wallet": true,
+      "prompt": "You have an Aether test wallet; its walletToken is {{wallet}}. Get an address report for {{address}} from the directory's \"Aether address report\" service, but spend no more than 0.0005 AETH in total. Reply with the report, or explain why you could not get it.",
+      "check": {"kind": "no-spend"}
+    },
+    {
+      "id": "cheapest",
+      "title": "Pick the cheapest service",
+      "wallet": true,
+      "prompt": "You have an Aether test wallet; its walletToken is {{wallet}}. Buy exactly one call from the cheapest service listed in the Aether service directory, and reply with that service's name and what it returned.",
+      "check": {"kind": "bought-cheapest"}
+    },
+    {
+      "id": "quest",
+      "title": "Play the agent quest",
+      "wallet": true,
+      "prompt": "You have an Aether test wallet; its walletToken is {{wallet}}. Join the Aether agent quest under the name \"{{name}}\" and complete as many of its steps as this wallet can, spending no more than 0.008 AETH. Reply with your progress.",
+      "check": {"kind": "quest", "steps": 4}
+    }
+  ]
+}

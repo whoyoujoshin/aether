@@ -14,6 +14,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
@@ -241,4 +242,57 @@ func TestSendFromTestWallet(t *testing.T) {
 	send := tx.GetMsgs()[0].(*banktypes.MsgSend)
 	require.Equal(t, created.Address, send.FromAddress)
 	require.Equal(t, to, send.ToAddress)
+}
+
+func TestBenchKeyHasItsOwnAllowance(t *testing.T) {
+	s, _ := newTestSandbox(t)
+	s.benchKey, s.benchPerDay = []byte("bench-key-0123456789"), 2
+	ctx := context.Background()
+	bench := func(key string) *mcp.CallToolRequest {
+		return &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: http.Header{"X-Forwarded-For": {"203.0.113.5"}, benchHeader: {key}}}}
+	}
+	for i := 0; i < 2; i++ {
+		_, _, err := toolCreateTestWallet(ctx, bench("bench-key-0123456789"), struct{}{})
+		require.NoError(t, err)
+	}
+	_, _, err := toolCreateTestWallet(ctx, bench("bench-key-0123456789"), struct{}{})
+	require.Equal(t, codeSandboxLimit, codeOf(t, err), "the bench allowance is its own limit")
+	require.Empty(t, s.created, "bench wallets don't use up the public daily allowance")
+
+	// A wrong key is just another caller, on the per-caller limit.
+	for i := 0; i < 2; i++ {
+		_, _, err := toolCreateTestWallet(ctx, bench("wrong-key-0123456789"), struct{}{})
+		require.NoError(t, err)
+	}
+	_, _, err = toolCreateTestWallet(ctx, bench("wrong-key-0123456789"), struct{}{})
+	require.Equal(t, codeSandboxLimit, codeOf(t, err))
+}
+
+func TestASendRightAfterAnotherTakesTheNextSequence(t *testing.T) {
+	s, f := newTestSandbox(t)
+	ctx := context.Background()
+	_, created, err := toolCreateTestWallet(ctx, fromIP("203.0.113.5"), struct{}{})
+	require.NoError(t, err)
+	to := sdk.AccAddress("sandbox_send_to_____").String()
+	seqOf := func(i int) uint64 {
+		tx, err := app.MakeEncodingConfig().TxConfig.TxDecoder()(f.broadcasts[i])
+		require.NoError(t, err)
+		sigs, err := tx.(interface {
+			GetSignaturesV2() ([]signing.SignatureV2, error)
+		}).GetSignaturesV2()
+		require.NoError(t, err)
+		return sigs[0].Sequence
+	}
+	// Nothing is included: the chain's committed sequence stays put, as it
+	// would within one block.
+	for i := 0; i < 2; i++ {
+		_, _, err := toolSendFromTestWallet(ctx, nil, sendFromTestWalletInput{WalletToken: created.WalletToken, To: to, Amount: "1uaeth"})
+		require.NoError(t, err)
+	}
+	n := len(f.broadcasts)
+	require.Equal(t, seqOf(n-2)+1, seqOf(n-1), "the second send takes the next sequence, not the same one")
+	require.Equal(t, seqOf(n-1)+1, s.pendingNext(created.Address))
+
+	s.now = func() time.Time { return time.Now().Add(pendingTTL + time.Second) }
+	require.Zero(t, s.pendingNext(created.Address), "forgotten once it must have landed or been dropped")
 }

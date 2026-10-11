@@ -12,6 +12,11 @@
 # AETH (each new wallet takes --sandbox-grant, 0.01 AETH by default; at
 # most 200 wallets a day). It builds its own binary, /root/agentmcp-sandbox,
 # so the public read-only /mcp's /root/agentmcp is never touched.
+#
+# It also creates $KEYDIR/bench-key: callers that send it as
+# X-Aether-Bench-Key draw new wallets from the payments benchmark's own
+# allowance (60 a day) instead of the per-caller one (docs/BENCHMARK.md).
+# Hand it to whoever runs the benchmark as AETHER_BENCH_KEY, not in a chat.
 set -euo pipefail
 REPO=${REPO:-$(pwd)}
 GRPC=${GRPC:-localhost:9090}
@@ -32,6 +37,10 @@ if ! /root/aetherd-keys.tmp keys show sandbox-funder --keyring-backend test --ke
 fi
 FUNDER=$(/root/aetherd-keys.tmp keys show sandbox-funder -a --keyring-backend test --keyring-dir "$KEYDIR")
 rm -f /root/aetherd-keys.tmp
+if [ ! -s "$KEYDIR/bench-key" ]; then
+  echo "== Creating the benchmark key ($KEYDIR/bench-key)"
+  (umask 077 && openssl rand -hex 24 > "$KEYDIR/bench-key")
+fi
 
 echo "== Unit"
 cat > /etc/systemd/system/aether-sandbox.service <<UNIT
@@ -40,7 +49,7 @@ Description=Aether hosted test wallet (custodial testnet wallets over MCP)
 After=network-online.target
 
 [Service]
-ExecStart=/root/agentmcp-sandbox --sandbox-http 127.0.0.1:8092 --grpc $GRPC --chain-id $CHAIN_ID --rpc "" --keyring-dir $KEYDIR --keyring-backend test --sandbox-funder sandbox-funder --sandbox-secret-file $KEYDIR/token-secret $USDC
+ExecStart=/root/agentmcp-sandbox --sandbox-http 127.0.0.1:8092 --grpc $GRPC --chain-id $CHAIN_ID --rpc "" --keyring-dir $KEYDIR --keyring-backend test --sandbox-funder sandbox-funder --sandbox-secret-file $KEYDIR/token-secret --sandbox-bench-key-file $KEYDIR/bench-key $USDC
 Environment=HOME=/root
 Restart=always
 RestartSec=2

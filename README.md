@@ -453,6 +453,7 @@ aetherd query governance proposal <proposal-id>
 | `x402/`, `cmd/facilitator` | Standard x402 v2 `exact` on `cosmos:<chain-id>`: verify, settle, and a public facilitator |
 | `quest/` | The agent quest: steps and leaderboard computed from chain data ([docs/QUEST.md](docs/QUEST.md)) |
 | `cmd/agentmcp --sandbox-http` | The hosted test wallet: custodial testnet wallets over MCP ([docs/TEST-WALLET.md](docs/TEST-WALLET.md)) |
+| `bench/` | The payments benchmark, "can your agent pay for an API?": tasks, harness and on-chain scoring for Claude, GPT and open models ([docs/BENCHMARK.md](docs/BENCHMARK.md)) |
 | `directory/` | On-chain service directory: announcements, manifest verification, safe fetching |
 | `clients/ts`, `clients/python` | TypeScript and Python clients: keys, payments, paid APIs (buying and selling), withdrawals, directory |
 | `clients/vectors` | Generates the shared test vectors both clients are checked against |

@@ -42,7 +42,9 @@ token works after a restart too.
 ## Limits
 
 - Three new wallets a day per caller, and 200 a day in all. Reuse a token
-  rather than making a new one.
+  rather than making a new one. The payments benchmark has its own
+  allowance of 60 a day, for callers that send its key
+  (`X-Aether-Bench-Key`; see [BENCHMARK.md](BENCHMARK.md)).
 - `buy_service` pays only services listed in the on-chain directory (what
   `find_services` returns), so the server is no open proxy.
 - It runs only on a test or dev chain: it refuses to start on any other.
@@ -59,6 +61,8 @@ holds. The server never opens an agent account.
 `buy_service` reads the service's `PAYMENT-REQUIRED` header, signs a send
 of exactly the price to its `payTo`, and retries with `PAYMENT-SIGNATURE`.
 The service settles the payment before it answers (see [X402.md](X402.md)).
+A send or a purchase made while the wallet's last one is still waiting for
+its block takes the next sequence, so an agent needn't wait between them.
 
 It is `agentmcp --sandbox-http`, a separate server from the public
 read-only `/mcp`, which stays read-only.
@@ -79,6 +83,8 @@ AETH each is at most 2 AETH a day.
 Back up `token-secret`: losing it invalidates every token handed out.
 
 The flags, if you need to change them: `--sandbox-grant` (0.01 AETH),
-`--sandbox-per-ip` (3), `--sandbox-per-day` (200). Logs:
+`--sandbox-per-ip` (3), `--sandbox-per-day` (200), `--sandbox-bench-key-file`
+(`sandbox.sh` creates `/root/aether-sandbox-key/bench-key`) and
+`--sandbox-bench-per-day` (60). Logs:
 `journalctl -u aether-sandbox`. Each new wallet logs its address and
 funding transaction.
