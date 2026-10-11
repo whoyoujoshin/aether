@@ -61,6 +61,20 @@ in the toolkit, within its limits. Checked with AgentKit 0.10 (and its LangChain
 adapter) and GOAT 0.5 (and its Vercel AI adapter). For ElizaOS, use
 [`elizaos-plugin-aether`](../eliza).
 
+## Read-only MCP server
+
+`aether-mcp` is a read-only Aether MCP server over stdio, in this package: the
+public `/mcp`'s `get_balance`, `get_transaction_status` and `find_services`, run
+on your own machine. It holds no key and can't send anything.
+
+```json
+{ "mcpServers": { "aether": { "command": "npx", "args": ["-y", "-p", "aether-chain-client", "aether-mcp"] } } }
+```
+
+It reads the public testnet node by default; `AETHER_RPC_URL`, `AETHER_CHAIN_ID`
+and `AETHER_USDC_PATH` / `AETHER_USDC_BASE_DENOM` / `AETHER_USDC_ISSUER` point it
+elsewhere. To spend, use the full wallet (`agentmcp`) or `AetherToolkit` above.
+
 ## Selling
 
 Charge per request from a Node service -- all three payment schemes, the `/.well-known/x402` manifest for the service directory, and withdrawals of unspent prepaid balances. Compatible with the Go paywall and every Aether buyer.
