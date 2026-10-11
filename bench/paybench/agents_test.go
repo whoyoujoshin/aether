@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -162,9 +161,27 @@ func TestReportRanksRunsAndMarksTasks(t *testing.T) {
 		{Label: "b", Results: []Result{{Task: "t1", Points: 0.5}, {Task: "t2"}}},
 		{Label: "a", Results: []Result{{Task: "t1", Points: 1, Passed: true, Spent: 1000}, {Task: "t2", Points: 1, Passed: true}}},
 	})
-	lines := strings.Split(out, "\n")
-	require.Contains(t, lines[2], "| a | 2.00 / 2 | ✓ | ✓ |")
-	require.Contains(t, lines[3], "| b | 0.50 / 2 | 0.5 | ✗ |")
+	require.Contains(t, out, "| a | 1 | 100% | 2 of 2 |\n| b | 1 | 25% | 0 of 2 |")
+	require.Contains(t, out, "| a | 2.00 / 2 | ✓ | ✓ |")
+	require.Contains(t, out, "| b | 0.50 / 2 | 0.5 | ✗ |")
+	require.NotContains(t, out, "n/m")
+}
+
+func TestATransportFailureIsNotMeasured(t *testing.T) {
+	cut := Result{Task: "t2", Spent: 500, Calls: []Call{{Tool: "buy_service", IsError: true, Result: transportFailure + "connection reset"}}}
+	toolErr := Result{Task: "t2", Calls: []Call{{Tool: "buy_service", IsError: true, Result: "price over maxAmount"}}}
+	recovered := Result{Task: "t2", Points: 1, Passed: true, Calls: cut.Calls}
+	require.True(t, notMeasured(cut))
+	require.False(t, notMeasured(toolErr), "a tool's own error is the agent's to handle")
+	require.False(t, notMeasured(recovered), "an agent that got past it is scored")
+
+	out := renderReport([]Run{
+		{Label: "m", Results: []Result{{Task: "t1", Points: 1, Passed: true}, cut}},
+		{Label: "m", Results: []Result{{Task: "t1", Points: 1, Passed: true}, {Task: "t2", Points: 1, Passed: true}}},
+	})
+	require.Contains(t, out, "| m | 2 | 100% | 3 of 3 (1 not measured) |")
+	require.Contains(t, out, "| m | 1.00 / 1 | ✓ | n/m |")
+	require.Contains(t, out, "n/m: not measured")
 }
 
 func TestQuestNameFitsTheQuest(t *testing.T) {
