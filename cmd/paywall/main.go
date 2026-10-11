@@ -30,6 +30,12 @@
 // The upstream must not be reachable except through this proxy, or
 // clients can skip paying. Paid requests reach it with X-PAYMENT
 // removed and X-Aether-Payer / X-Aether-Payment-Tx added.
+//
+// It also accepts the standard x402 v2 exact scheme (network
+// cosmos:<chain-id>; turn it off with --exact=false): any x402 v2 client,
+// such as Coinbase's @x402/fetch with aether-chain-client's
+// ExactAetherScheme, pays a request with a signed send of the price,
+// which this proxy checks and broadcasts through --grpc before serving.
 package main
 
 import (
@@ -54,6 +60,7 @@ import (
 	"github.com/whoyoujoshin/aether/directory"
 	"github.com/whoyoujoshin/aether/paywall"
 	"github.com/whoyoujoshin/aether/wallet"
+	"github.com/whoyoujoshin/aether/x402"
 )
 
 func main() {
@@ -80,6 +87,7 @@ func main() {
 	pullEvery := flag.Duration("pull-collect-every", time.Minute, "how often what aether-pull buyers owe is collected")
 	receiptKey := flag.String("receipt-key", "", "keyring account that signs a receipt for every paid response: --pay-to's own key, or one it delegated receipts to (--receipt-delegation)")
 	receiptDelegation := flag.String("receipt-delegation", "", "file from `paywall delegate-receipts`, letting --receipt-key sign for --pay-to so its key can stay offline")
+	exact := flag.Bool("exact", true, "also accept the standard x402 v2 exact scheme (network cosmos:<chain-id>), from any x402 v2 client, settled through this node")
 	keyringDir := flag.String("keyring-dir", "", "keyring directory holding --payout-key and --receipt-key")
 	keyringBackend := flag.String("keyring-backend", "test", "keyring backend holding --payout-key and --receipt-key")
 	if len(os.Args) > 1 && os.Args[1] == "delegate-receipts" {
@@ -123,6 +131,9 @@ func main() {
 	cfg := paywall.Config{
 		PayTo: *payTo, Price: amount, Asset: asset, Network: *chainID, Description: *description,
 		InvoiceTTL: *ttl, Lookup: client.GetTransactionByHash,
+	}
+	if *exact {
+		cfg.Exact = &paywall.ExactConfig{Settler: x402.NewFacilitator(*chainID, x402.NodeChain{Client: client})}
 	}
 	var prepaidFile *paywall.FileLedger
 	if *prepaidLedger != "" {
@@ -278,10 +289,9 @@ const (
 // the paywall recorded.
 func withPayerHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var s paywall.SettlementResponse
-		if paywall.DecodeHeader(w.Header().Get(paywall.HeaderPaymentResponse), &s) == nil {
-			r.Header.Set(headerPayer, s.Payer)
-			r.Header.Set(headerPaymentTx, s.Transaction)
+		if payer, tx := paywall.Settlement(w.Header()); payer != "" || tx != "" {
+			r.Header.Set(headerPayer, payer)
+			r.Header.Set(headerPaymentTx, tx)
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -294,6 +304,7 @@ func newProxy(target *url.URL) *httputil.ReverseProxy {
 	proxy.Director = func(r *http.Request) {
 		forward(r)
 		r.Header.Del(paywall.HeaderPayment)
+		r.Header.Del(paywall.HeaderPaymentSignature)
 	}
 	return proxy
 }

@@ -75,6 +75,30 @@ It reads the public testnet node by default; `AETHER_RPC_URL`, `AETHER_CHAIN_ID`
 and `AETHER_USDC_PATH` / `AETHER_USDC_BASE_DENOM` / `AETHER_USDC_ISSUER` point it
 elsewhere. To spend, use the full wallet (`agentmcp`) or `AetherToolkit` above.
 
+## Standard x402 (v2)
+
+`aether-chain-client/x402` is the x402 v2 `exact` scheme on Aether (network
+`cosmos:aether-testnet-1`) for Coinbase's `@x402/core` client and `@x402/fetch`:
+a 402 that accepts it is paid with a signed send of exactly the amount, which
+the resource server's facilitator (`cmd/facilitator`) checks and broadcasts.
+
+```ts
+import { x402Client } from "@x402/core/client";
+import { wrapFetchWithPayment } from "@x402/fetch";
+import { AetherClient, Key } from "aether-chain-client";
+import { ExactAetherScheme } from "aether-chain-client/x402";
+
+const network = "cosmos:aether-testnet-1";
+const pay = new x402Client()
+  .register(network, new ExactAetherScheme(new AetherClient({ rpc: "https://rpc.157-245-252-221.sslip.io" }), key))
+  // x402Client pays only USD stablecoins it knows unless told otherwise.
+  .setSpendControls({ allowedAssets: [{ network, asset: "uaeth", maxAmountPerPayment: "1000000" }] });
+const res = await wrapFetchWithPayment(fetch, pay)("https://api.example/paid");
+```
+
+The key's account pays the transaction fee and must exist on chain. Payments
+from one key go one at a time (each is signed for the account's next sequence).
+
 ## Selling
 
 Charge per request from a Node service -- all three payment schemes, the `/.well-known/x402` manifest for the service directory, and withdrawals of unspent prepaid balances. Compatible with the Go paywall and every Aether buyer.

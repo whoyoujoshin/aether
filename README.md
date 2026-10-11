@@ -319,6 +319,8 @@ go run ./cmd/paywall --upstream http://localhost:8000 --pay-to <your-address> \
 
 An unpaid request gets `402 Payment Required` in the [x402](https://www.x402.org) wire format with scheme `aether-memo`: a price, an address and a one-time invoice. The client pays that amount with the invoice as the memo (from any wallet — humans can pay too), then repeats the request with an `X-PAYMENT` header naming the invoice and transaction hash. The proxy checks the transaction on chain, serves the request exactly once, and tells the upstream who paid (`X-Aether-Payer`). Invoices are HMAC-signed, so issuing them stores nothing. Go services can use the `paywall` package's middleware directly.
 
+**Standard x402 v2.** The proxy also offers the standard `exact` scheme on the network `cosmos:aether-testnet-1` in a `PAYMENT-REQUIRED` header, so any x402 v2 client can pay. Coinbase's `@x402/fetch` works with `ExactAetherScheme` from `aether-chain-client/x402`. Sellers using another x402 server SDK can point it at the public facilitator (`cmd/facilitator`). See [docs/X402.md](docs/X402.md).
+
 **Charging USDC.** `--price "0.05 USDC" --usdc-channel <Aether's channel to Noble>` charges Noble's USDC over exactly that channel instead (or `--usdc-path` and `--usdc-base-denom` for USDC that arrives another route). One proxy charges one asset: deposits, balances, pull allowances, collections, withdrawals and `--min-deposit`/`--pull-credit` are all in it. The 402's `asset` field is the USDC denom (`ibc/...`), `extra.symbol`/`extra.amount` state the price in USDC (`amountAeth` is only for AETH prices), the manifest carries the same, and a receipt's `amount` gets the denom appended (`50000ibc/...`) so it can't be read as uaeth. AETH services read exactly as before. `agentmcp`'s `fetch_paid` pays a USDC price by any scheme (its `maxAmount`, `prepay` and `pullAllowance` must be in USDC, else `ASSET_MISMATCH`).
 
 With ~60s blocks a paid request waits about one block; a payment is served whenever it lands within the invoice's 24h lifetime, so slow confirmation never forfeits it.
@@ -448,6 +450,7 @@ aetherd query governance proposal <proposal-id>
 | `cmd/explorer` | Minimal live explorer |
 | `cmd/agentmcp` | MCP server exposing the wallet as tool calls, for AI agents |
 | `paywall/`, `cmd/paywall` | Charge AETH per HTTP request (x402 format): middleware and reverse proxy |
+| `x402/`, `cmd/facilitator` | Standard x402 v2 `exact` on `cosmos:<chain-id>`: verify, settle, and a public facilitator |
 | `directory/` | On-chain service directory: announcements, manifest verification, safe fetching |
 | `clients/ts`, `clients/python` | TypeScript and Python clients: keys, payments, paid APIs (buying and selling), withdrawals, directory |
 | `clients/vectors` | Generates the shared test vectors both clients are checked against |
