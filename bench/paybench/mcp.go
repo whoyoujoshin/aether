@@ -61,6 +61,9 @@ func dialWallet(ctx context.Context, endpoint, benchKey string) (*walletClient, 
 		if schema["type"] == nil {
 			schema["type"] = "object"
 		}
+		if schema["properties"] == nil {
+			schema["properties"] = map[string]any{}
+		}
 		w.tools = append(w.tools, Tool{Name: t.Name, Description: t.Description, Schema: schema})
 	}
 	return w, nil

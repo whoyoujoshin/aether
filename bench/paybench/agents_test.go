@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -78,6 +79,50 @@ func TestAnthropicAgentReportsARefusal(t *testing.T) {
 	require.ErrorContains(t, err, "refusal")
 }
 
+func TestABadKeyStopsTheRun(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}`)
+	}))
+	defer srv.Close()
+	a := newAnthropicAgent("claude-opus-5-5", option.WithBaseURL(srv.URL), option.WithAPIKey("bad"), option.WithMaxRetries(0))
+	_, _, err := a.Run(context.Background(), "s", "p", testTools, (&echoCaller{}).call, 5)
+	var se setupError
+	require.True(t, errors.As(err, &se), "%v", err)
+
+	oa := &openAIAgent{baseURL: srv.URL, model: "m", apiKey: "bad"}
+	_, _, err = oa.Run(context.Background(), "s", "p", testTools, (&echoCaller{}).call, 5)
+	require.True(t, errors.As(err, &se), "%v", err)
+}
+
+func TestEveryToolCarriesASchema(t *testing.T) {
+	var body struct {
+		Tools []map[string]any `json:"tools"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+	tools := append([]Tool{{Name: "create_test_wallet", Description: "no arguments", Schema: map[string]any{"type": "object"}}}, testTools...)
+	a := newAnthropicAgent("claude-opus-5-5", option.WithBaseURL(srv.URL), option.WithAPIKey("k"), option.WithMaxRetries(0))
+	_, _, _ = a.Run(context.Background(), "s", "p", tools, (&echoCaller{}).call, 1)
+	require.Len(t, body.Tools, 2)
+	for _, tool := range body.Tools {
+		schema, ok := tool["input_schema"].(map[string]any)
+		require.True(t, ok, "%s has no input_schema", tool["name"])
+		require.Equal(t, "object", schema["type"])
+		require.NotNil(t, schema["properties"])
+	}
+}
+
+func TestARateLimitDoesntStopTheRun(t *testing.T) {
+	require.False(t, refusedAtSetup(http.StatusTooManyRequests, 0))
+	require.False(t, refusedAtSetup(http.StatusBadRequest, 3)) // mid-task: that task's failure only
+	require.True(t, refusedAtSetup(http.StatusNotFound, 0))
+}
+
 func TestOpenAIAgentRunsTheToolLoop(t *testing.T) {
 	var bodies []map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -126,4 +171,13 @@ func TestQuestNameFitsTheQuest(t *testing.T) {
 	require.Equal(t, "paybench claude-opus-5-5", questName("claude-opus-5-5"))
 	require.LessOrEqual(t, len(questName("meta-llama/llama-4-maverick-17b-128e-instruct")), 32)
 	require.Regexp(t, `^[A-Za-z0-9 ._-]{1,32}$`, questName("meta-llama/llama-4-maverick-17b-128e-instruct"))
+}
+
+func TestResultsCarryNoWalletTokens(t *testing.T) {
+	tok := "aether-test-wallet-v1.Ab3_-xyz"
+	r := Run{Results: []Result{{Calls: []Call{{Tool: "buy_service",
+		Args: json.RawMessage(`{"walletToken":"` + tok + `"}`), Result: "made " + tok}}}}}
+	out := string(redactTokens(json.MarshalIndent(r, "", "  ")))
+	require.NotContains(t, out, tok)
+	require.Contains(t, out, "aether-test-wallet-v1.REDACTED")
 }
