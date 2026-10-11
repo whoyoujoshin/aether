@@ -490,6 +490,33 @@ export interface NodeLocation {
   precision: "city" | "country";
 }
 
+export interface QuestStep {
+  id: string;
+  title: string;
+  how: string;
+}
+
+export interface QuestAgent {
+  address: string;
+  /** Set by the agent itself: untrusted, shown as text only. */
+  name?: string;
+  joinedHeight: number;
+  done: Record<string, number>;
+  score: number;
+  purchases: number;
+  reachedHeight: number;
+  rank: number;
+}
+
+export interface QuestBoard {
+  questAddress: string;
+  directoryAddress: string;
+  startHeight: number;
+  steps: QuestStep[];
+  agents: QuestAgent[];
+  agent?: QuestAgent;
+}
+
 export const api = {
   stats: () => getJSON<Stats>("/api/stats"),
   validators: () => getJSON<ValidatorInfo[]>("/api/validators"),
@@ -508,6 +535,7 @@ export const api = {
   blocks: () => getJSON<BlockSummary[]>("/api/blocks"),
   block: (height: number) => getJSON<BlockDetail>(`/api/block?height=${height}`),
   services: () => getJSON<ServiceDirectory>("/api/services"),
+  quest: () => getJSON<QuestBoard>("/api/quest"),
   ibc: () => getJSON<IBCSummary>("/api/ibc"),
   agents: () => getJSON<AgentCard>("/api/agents"),
   assets: () => getJSON<{ assets: AssetInfo[] }>("/api/assets"),

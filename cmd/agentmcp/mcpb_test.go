@@ -18,7 +18,7 @@ func TestMCPBManifest(t *testing.T) {
 	m, err := buildMCPBManifest(context.Background(), "0.2.1-testnet")
 	require.NoError(t, err)
 	require.Equal(t, "0.2.1-testnet", m.Version)
-	require.Len(t, m.Tools, 24, "every registered tool is declared")
+	require.Len(t, m.Tools, 25, "every registered tool is declared")
 	require.Equal(t, []string{repoURL + "/blob/main/docs/PRIVACY.md"}, m.Privacy, "directories ask for a privacy policy")
 	_, err = os.Stat("../../docs/PRIVACY.md")
 	require.NoError(t, err, "the linked policy exists")
