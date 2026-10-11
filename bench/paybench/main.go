@@ -142,6 +142,12 @@ func run(args []string) {
 			want[id] = true
 		}
 	}
+	if *agentKind == "scripted" {
+		*model = "" // no model runs it
+		if *label == "" {
+			*label = "reference"
+		}
+	}
 	if *label == "" {
 		*label = *model
 	}
@@ -185,6 +191,9 @@ func run(args []string) {
 		}
 		if res.Error != "" {
 			log.Printf("   %s: error: %.300s", t.ID, res.Error)
+		}
+		if notMeasured(res) {
+			log.Printf("   %s: not measured: the connection to the test wallet failed during the task", t.ID)
 		}
 		log.Printf("   %s: %.2f point(s) %v", t.ID, res.Points, res.Notes)
 		r.Results = append(r.Results, res)

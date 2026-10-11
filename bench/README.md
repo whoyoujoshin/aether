@@ -11,5 +11,6 @@ go run ./paybench run --agent openai --model gpt-5
 go run ./paybench report results/*.json
 ```
 
-How it works, how to run each kind of model, and how to publish results:
+Results: [RESULTS.md](RESULTS.md). How it works, how to run each kind of
+model, and how to publish results:
 [docs/BENCHMARK.md](../docs/BENCHMARK.md).

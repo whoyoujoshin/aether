@@ -10,6 +10,10 @@ another model.
 The code is in [`bench/`](../bench): `tasks.json` (the task set) and
 `paybench/` (the harness, the agents and the scoring).
 
+**Results:** [bench/RESULTS.md](../bench/RESULTS.md). On 2026-10-11 Claude
+passed all 14 measured tasks in three runs on the testnet, as did the
+reference agent; GPT and open models are next.
+
 ## The tasks
 
 Each task is worth one point. The harness makes a fresh test wallet for
@@ -112,8 +116,13 @@ The quest task joins the public quest board as `paybench <label>`.
    go run ./paybench report results/*.json > RESULTS.md
    ```
 
+   The page has a summary per model and every run. A task whose tool
+   call failed on the way to or from the test wallet, and that the agent
+   didn't complete, shows as "n/m" (not measured) and is left out of the
+   score: it says nothing about the agent. A run whose model never
+   answered (no key, say) isn't a run of that model: leave its file out.
 4. Commit `bench/results/` and `bench/RESULTS.md` together, and say in the
-   commit which model versions and dates they cover.
+   commit which models and dates they cover.
 
 Results are comparable only within one task-set version (`version` in
 `tasks.json`, recorded in each result). A change to a task, its prompt or

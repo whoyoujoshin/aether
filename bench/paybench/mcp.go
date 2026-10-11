@@ -221,13 +221,17 @@ func (r *recorder) wroteChain() bool {
 
 const maxResultChars = 12000
 
+// transportFailure starts the result of a call that failed on the way to or
+// from the server, as opposed to a tool's own error (see notMeasured).
+const transportFailure = "tool call failed: "
+
 // call runs one tool call for the agent. The text goes back to the model
 // (an error result's text explains the error).
 func (r *recorder) call(ctx context.Context, name string, args json.RawMessage) (string, bool) {
 	start := time.Now()
 	res, err := r.w.call(ctx, name, args)
 	if err != nil {
-		res = callResult{Text: "tool call failed: " + err.Error(), IsError: true}
+		res = callResult{Text: transportFailure + err.Error(), IsError: true}
 	}
 	text := res.Text
 	if text == "" && res.Structured != nil {
