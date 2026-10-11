@@ -294,7 +294,10 @@ func (f *Facilitator) check(ctx context.Context, p PaymentPayload, req PaymentRe
 	if err != nil {
 		return c, ReasonInsufficientFunds // no account: it has never held anything
 	}
-	if si.Sequence != sequence {
+	// A sequence below the account's is already used. One above it is
+	// fine while the payer's earlier transactions wait in the mempool: the
+	// simulation below sees those and refuses a real gap.
+	if si.Sequence < sequence {
 		return c, ReasonSequence
 	}
 	doc := txtypes.SignDoc{BodyBytes: raw.BodyBytes, AuthInfoBytes: raw.AuthInfoBytes, ChainId: f.ChainID, AccountNumber: number}

@@ -5,6 +5,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -82,6 +83,8 @@ var (
 	sandboxSecretFile string
 	sandboxPerIP      int
 	sandboxPerDay     int
+	sandboxBenchKey   string
+	sandboxBenchDay   int
 
 	sbx *sandbox // set by servePublicSandbox (or a test)
 )
@@ -96,14 +99,25 @@ type sandbox struct {
 	grant      math.Int // uaeth per new wallet
 	perIP      int
 	perDay     int
-	now        func() time.Time
-	client     *http.Client
-	listed     func(ctx context.Context) ([]string, error) // service URLs from the directory
+	// benchKey, if set, lets a caller that sends it in X-Aether-Bench-Key
+	// draw new wallets from a separate allowance of benchPerDay (the
+	// payments benchmark makes one per task) instead of the per-caller one.
+	benchKey    []byte
+	benchPerDay int
+	now         func() time.Time
+	client      *http.Client
+	listed      func(ctx context.Context) ([]string, error) // service URLs from the directory
 
 	mu      sync.Mutex
 	nextSeq uint64 // the funder's next sequence as far as this process knows
 	created []time.Time
 	byIP    map[string][]time.Time
+
+	// pending is, per test wallet, the sequence after its last send that
+	// may not be in a block yet: a send or a payment right after it must
+	// take the next one (the chain's committed sequence lags a block).
+	pendMu  sync.Mutex
+	pending map[string]pendingSeq
 
 	listMu   sync.Mutex
 	listURLs []string
@@ -127,9 +141,18 @@ func newSandbox() (*sandbox, error) {
 	if err != nil {
 		return nil, fmt.Errorf("--sandbox-grant: %w", err)
 	}
-	s := &sandbox{aead: aead, grant: grant, perIP: sandboxPerIP, perDay: sandboxPerDay, now: time.Now,
+	s := &sandbox{aead: aead, grant: grant, perIP: sandboxPerIP, perDay: sandboxPerDay, benchPerDay: sandboxBenchDay, now: time.Now,
 		client: directory.SafeHTTPClient(directoryAllowPrivate, sandboxPayTimeout), byIP: map[string][]time.Time{}}
 	s.listed = s.directoryURLs
+	if sandboxBenchKey != "" {
+		b, err := os.ReadFile(sandboxBenchKey)
+		if err != nil {
+			return nil, fmt.Errorf("--sandbox-bench-key-file: %w", err)
+		}
+		if s.benchKey = []byte(strings.TrimSpace(string(b))); len(s.benchKey) < 16 {
+			return nil, errors.New("--sandbox-bench-key-file: the key must be at least 16 characters")
+		}
+	}
 	if sandboxFunderName != "" {
 		w, err := newWallet()
 		if err != nil {
@@ -242,7 +265,57 @@ func clientIP(req *mcp.CallToolRequest) string {
 	return strings.TrimSpace(parts[len(parts)-1])
 }
 
+type pendingSeq struct {
+	next  uint64
+	until time.Time
+}
+
+// pendingTTL is how long a send may still be waiting for its block.
+const pendingTTL = 3 * time.Minute
+
+func (s *sandbox) notePending(address string, next uint64) {
+	s.pendMu.Lock()
+	defer s.pendMu.Unlock()
+	if s.pending == nil {
+		s.pending = map[string]pendingSeq{}
+	}
+	now := s.now()
+	for a, p := range s.pending {
+		if now.After(p.until) {
+			delete(s.pending, a)
+		}
+	}
+	s.pending[address] = pendingSeq{next: next, until: now.Add(pendingTTL)}
+}
+
+// pendingNext is the sequence a wallet's next transaction takes, as far
+// as this server knows (0: no send of its own is pending).
+func (s *sandbox) pendingNext(address string) uint64 {
+	s.pendMu.Lock()
+	defer s.pendMu.Unlock()
+	if p, ok := s.pending[address]; ok && !s.now().After(p.until) {
+		return p.next
+	}
+	return 0
+}
+
+// benchHeader carries the benchmark's key (--sandbox-bench-key-file).
+const benchHeader = "X-Aether-Bench-Key"
+
+// bucket is whose allowance a new wallet comes from: the benchmark's, for
+// a caller with the bench key, else the caller's address.
+func (s *sandbox) bucket(req *mcp.CallToolRequest) string {
+	if len(s.benchKey) > 0 && req != nil && req.Extra != nil && req.Extra.Header != nil {
+		if got := req.Extra.Header.Get(benchHeader); got != "" && subtle.ConstantTimeCompare([]byte(got), s.benchKey) == 1 {
+			return "bench"
+		}
+	}
+	return clientIP(req)
+}
+
 // allow counts a new wallet against the limits, or says which it hit.
+// The benchmark's bucket has its own daily allowance and doesn't use up
+// the public one.
 func (s *sandbox) allow(ip string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -258,6 +331,13 @@ func (s *sandbox) allow(ip string) error {
 	}
 	s.created = keep(s.created)
 	s.byIP[ip] = keep(s.byIP[ip])
+	if ip == "bench" {
+		if len(s.byIP[ip]) >= s.benchPerDay {
+			return newError(codeSandboxLimit, fmt.Sprintf("the benchmark's %d test wallets for today are used up", s.benchPerDay))
+		}
+		s.byIP[ip] = append(s.byIP[ip], s.now())
+		return nil
+	}
 	if len(s.created) >= s.perDay {
 		return newError(codeSandboxLimit, fmt.Sprintf("this server has made its %d test wallets for today; try tomorrow, or run your own wallet (npx -y -p aether-chain-client aether-mcp, and the faucet)", s.perDay))
 	}
@@ -273,7 +353,7 @@ func (s *sandbox) allow(ip string) error {
 func (s *sandbox) release(ip string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if n := len(s.created); n > 0 {
+	if n := len(s.created); n > 0 && ip != "bench" {
 		s.created = s.created[:n-1]
 	}
 	if n := len(s.byIP[ip]); n > 0 {
@@ -365,7 +445,7 @@ type createTestWalletOutput struct {
 }
 
 func toolCreateTestWallet(_ context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, createTestWalletOutput, error) {
-	ip := clientIP(req)
+	ip := sbx.bucket(req)
 	if err := sbx.allow(ip); err != nil {
 		return nil, createTestWalletOutput{}, err
 	}
@@ -456,10 +536,11 @@ func toolSendFromTestWallet(_ context.Context, _ *mcp.CallToolRequest, in sendFr
 		return nil, sendFromTestWalletOutput{}, err
 	}
 	defer c.close()
-	hash, _, err := sendFrom(c, w, "w", address, in.To, sdk.NewCoins(sdk.NewCoin(asset.Denom, amount)), in.Memo, 0)
+	hash, next, err := sendFrom(c, w, "w", address, in.To, sdk.NewCoins(sdk.NewCoin(asset.Denom, amount)), in.Memo, sbx.pendingNext(address))
 	if err != nil {
 		return nil, sendFromTestWalletOutput{}, err
 	}
+	sbx.notePending(address, next)
 	return nil, sendFromTestWalletOutput{TxHash: hash, Amount: newAssetAmountDTO(asset, amount), To: in.To}, nil
 }
 
@@ -541,6 +622,9 @@ func toolBuyService(ctx context.Context, _ *mcp.CallToolRequest, in buyServiceIn
 	number, seq, err := c.accountInfo(address)
 	if err != nil {
 		return nil, buyServiceOutput{}, newError(codeAccountNotFound, "this wallet isn't on chain yet: its funding lands with the next block (~60s); check get_test_wallet")
+	}
+	if pend := sbx.pendingNext(address); pend > seq {
+		seq = pend // its last send isn't in a block yet
 	}
 	msg := banktypes.NewMsgSend(sdk.MustAccAddressFromBech32(address), sdk.MustAccAddressFromBech32(req.PayTo), sdk.NewCoins(sdk.NewCoin(asset.Denom, price)))
 	signed, err := w.BuildAndSignMsgTx("w", msg, wallet.TxParams{

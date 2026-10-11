@@ -12,6 +12,11 @@
 # AETH (each new wallet takes --sandbox-grant, 0.01 AETH by default; at
 # most 200 wallets a day). It builds its own binary, /root/agentmcp-sandbox,
 # so the public read-only /mcp's /root/agentmcp is never touched.
+#
+# It also creates $KEYDIR/bench-key: callers that send it as
+# X-Aether-Bench-Key draw new wallets from the payments benchmark's own
+# allowance (60 a day) instead of the per-caller one (docs/BENCHMARK.md).
+# Hand it to whoever runs the benchmark as AETHER_BENCH_KEY, not in a chat.
 set -euo pipefail
 REPO=${REPO:-$(pwd)}
 GRPC=${GRPC:-localhost:9090}
@@ -31,7 +36,10 @@ if ! /root/aetherd-keys.tmp keys show sandbox-funder --keyring-backend test --ke
   chmod 600 "$KEYDIR/funder-mnemonic.txt"
 fi
 FUNDER=$(/root/aetherd-keys.tmp keys show sandbox-funder -a --keyring-backend test --keyring-dir "$KEYDIR")
-rm -f /root/aetherd-keys.tmp
+if [ ! -s "$KEYDIR/bench-key" ]; then
+  echo "== Creating the benchmark key ($KEYDIR/bench-key)"
+  (umask 077 && openssl rand -hex 24 > "$KEYDIR/bench-key")
+fi
 
 echo "== Unit"
 cat > /etc/systemd/system/aether-sandbox.service <<UNIT
@@ -40,7 +48,7 @@ Description=Aether hosted test wallet (custodial testnet wallets over MCP)
 After=network-online.target
 
 [Service]
-ExecStart=/root/agentmcp-sandbox --sandbox-http 127.0.0.1:8092 --grpc $GRPC --chain-id $CHAIN_ID --rpc "" --keyring-dir $KEYDIR --keyring-backend test --sandbox-funder sandbox-funder --sandbox-secret-file $KEYDIR/token-secret $USDC
+ExecStart=/root/agentmcp-sandbox --sandbox-http 127.0.0.1:8092 --grpc $GRPC --chain-id $CHAIN_ID --rpc "" --keyring-dir $KEYDIR --keyring-backend test --sandbox-funder sandbox-funder --sandbox-secret-file $KEYDIR/token-secret --sandbox-bench-key-file $KEYDIR/bench-key $USDC
 Environment=HOME=/root
 Restart=always
 RestartSec=2
@@ -62,6 +70,8 @@ tools=$(curl -s --max-time 5 -X POST http://127.0.0.1:8092/mcp -H 'Content-Type:
 echo "healthz $health, tools/list ${tools:-missing}"
 echo "funder: $FUNDER"
 balance=$(curl -s --max-time 5 "http://127.0.0.1:1317/cosmos/bank/v1beta1/balances/$FUNDER/by_denom?denom=uaeth" | grep -o '"amount":"[0-9]*"' || true)
+[ -n "$balance" ] || balance=$(timeout 10 /root/aetherd-keys.tmp q bank balance "$FUNDER" uaeth --node "${NODE:-tcp://127.0.0.1:26657}" -o json 2>/dev/null | grep -o '"amount":"[0-9]*"' || true)
+rm -f /root/aetherd-keys.tmp
 echo "funder balance: ${balance:-unknown (check: aetherd q bank balances $FUNDER)}"
 [ "$health" = 200 ] && [ -n "$tools" ] || { echo "Not answering. Why: journalctl -u aether-sandbox -n 20 --no-pager" >&2; exit 1; }
 echo "Running. If the funder has no AETH yet, send it some, e.g. 20 AETH from the faucet key."

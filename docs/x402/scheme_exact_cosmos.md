@@ -105,9 +105,11 @@ The facilitator refuses the payment, with the reason in brackets, unless all of 
    (`..._signer`).
 6. The fee has no `granter`, and its `payer` is empty or the signer (`..._fee`).
 7. `timeout_height`, if set, is above the latest block (`..._expired`).
-8. The signer info's sequence equals the account's current sequence
-   (`..._sequence`). A transaction already included, or one signed for a
-   later sequence, is refused.
+8. The signer info's sequence is at least the account's current sequence
+   (`..._sequence`), so a transaction already included is refused. A later
+   sequence is allowed for a payer whose earlier transactions wait in the
+   mempool: the simulation in step 10 runs on the node's check state,
+   which counts them, and refuses a real gap.
 9. The signature verifies over
    `SignDoc{body_bytes, auth_info_bytes, chain_id, account_number}`, using
    the account number from the chain (`..._signature`). The facilitator

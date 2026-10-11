@@ -222,9 +222,15 @@ func TestVerifyChecksTheSignatureSequenceAndChain(t *testing.T) {
 	// Signed for another account number (another chain or account).
 	require.Equal(t, ReasonSignature, f.Verify(ctx, payloadFor(req, s.sign(t, []sdk.Msg{msg}, 8, 3, 0)), req).InvalidReason)
 
-	// A sequence already used, or not yet reached.
+	// A sequence already used is refused outright. One ahead is fine while
+	// the payer's earlier transaction waits in the mempool, and refused
+	// when the simulation (which sees the mempool) finds a gap.
 	require.Equal(t, ReasonSequence, f.Verify(ctx, payloadFor(req, s.sign(t, []sdk.Msg{msg}, 7, 2, 0)), req).InvalidReason)
-	require.Equal(t, ReasonSequence, f.Verify(ctx, payloadFor(req, s.sign(t, []sdk.Msg{msg}, 7, 4, 0)), req).InvalidReason)
+	next := payloadFor(req, s.sign(t, []sdk.Msg{msg}, 7, 4, 0))
+	require.True(t, f.Verify(ctx, next, req).IsValid, "seq 3 is pending: 4 is next")
+	chain.simErr = errors.New("account sequence mismatch, expected 3, got 4: incorrect account sequence")
+	require.Equal(t, ReasonSequence, f.Verify(ctx, next, req).InvalidReason, "nothing pending: a gap")
+	chain.simErr = nil
 
 	// The chain says the balance doesn't cover it.
 	chain.simErr = errors.New("spendable balance 10uaeth is smaller than 500uaeth: insufficient funds")
