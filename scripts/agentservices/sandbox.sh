@@ -36,7 +36,6 @@ if ! /root/aetherd-keys.tmp keys show sandbox-funder --keyring-backend test --ke
   chmod 600 "$KEYDIR/funder-mnemonic.txt"
 fi
 FUNDER=$(/root/aetherd-keys.tmp keys show sandbox-funder -a --keyring-backend test --keyring-dir "$KEYDIR")
-rm -f /root/aetherd-keys.tmp
 if [ ! -s "$KEYDIR/bench-key" ]; then
   echo "== Creating the benchmark key ($KEYDIR/bench-key)"
   (umask 077 && openssl rand -hex 24 > "$KEYDIR/bench-key")
@@ -71,6 +70,8 @@ tools=$(curl -s --max-time 5 -X POST http://127.0.0.1:8092/mcp -H 'Content-Type:
 echo "healthz $health, tools/list ${tools:-missing}"
 echo "funder: $FUNDER"
 balance=$(curl -s --max-time 5 "http://127.0.0.1:1317/cosmos/bank/v1beta1/balances/$FUNDER/by_denom?denom=uaeth" | grep -o '"amount":"[0-9]*"' || true)
+[ -n "$balance" ] || balance=$(timeout 10 /root/aetherd-keys.tmp q bank balance "$FUNDER" uaeth --node "${NODE:-tcp://127.0.0.1:26657}" -o json 2>/dev/null | grep -o '"amount":"[0-9]*"' || true)
+rm -f /root/aetherd-keys.tmp
 echo "funder balance: ${balance:-unknown (check: aetherd q bank balances $FUNDER)}"
 [ "$health" = 200 ] && [ -n "$tools" ] || { echo "Not answering. Why: journalctl -u aether-sandbox -n 20 --no-pager" >&2; exit 1; }
 echo "Running. If the funder has no AETH yet, send it some, e.g. 20 AETH from the faucet key."
