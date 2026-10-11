@@ -60,4 +60,6 @@ npm publish --access public
 cd C:\; Remove-Item -Recurse -Force C:\aether-publish
 ```
 
-Then on npmjs.com, in the package's **Settings**: add a trusted publisher (GitHub Actions, `whoyoujoshin` / `aether`, workflow `publish-clients.yml`), and under publishing access choose to require two-factor authentication and disallow tokens. Later tags publish it from the workflow.
+Then on npmjs.com, in the package's **Settings**: add a trusted publisher (GitHub Actions, `whoyoujoshin` / `aether`, workflow `publish-clients.yml`, no environment) and tick **Allow npm publish** (without it the workflow can only stage a version for approval), and under publishing access choose to require two-factor authentication and disallow tokens. Later tags publish it from the workflow. Done for 0.2.11 on 2026-10-11.
+
+On Windows, run npm as `npm.cmd` if PowerShell refuses `npm.ps1` (scripts disabled), and note that `cmd` drops a `^` in arguments: the hand-published 0.2.11 depends on `aether-chain-client` `0.2.11` exactly; the workflow, on Linux, writes `^<version>`.
