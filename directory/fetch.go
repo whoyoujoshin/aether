@@ -30,6 +30,33 @@ var ErrPrivateAddress = errors.New("refusing to fetch from a private or internal
 // actually dialed, so DNS can't swap it after the check. allowPrivate is
 // for local devnets and tests.
 func SafeFetcher(allowPrivate bool) Fetcher {
+	client := SafeHTTPClient(allowPrivate, fetchTimeout)
+	return func(ctx context.Context, baseURL string) (*paywall.Manifest, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+paywall.ManifestPath, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("manifest: HTTP %d", resp.StatusCode)
+		}
+		var m paywall.Manifest
+		if err := json.NewDecoder(io.LimitReader(resp.Body, maxManifestBytes)).Decode(&m); err != nil {
+			return nil, fmt.Errorf("manifest: %w", err)
+		}
+		return &m, nil
+	}
+}
+
+// SafeHTTPClient is an HTTP client for URLs anyone can name: unless
+// allowPrivate, it dials only public addresses (checked on the address
+// actually dialed, so DNS can't swap it after the check), ignores proxy
+// settings for the same reason, and never follows a redirect.
+func SafeHTTPClient(allowPrivate bool, timeout time.Duration) *http.Client {
 	dialer := &net.Dialer{Timeout: fetchTimeout}
 	transport := &http.Transport{
 		Proxy: nil, // the address check must apply to the real destination
@@ -50,33 +77,14 @@ func SafeFetcher(allowPrivate bool) Fetcher {
 			}
 			return nil, ErrPrivateAddress
 		},
-		ResponseHeaderTimeout: fetchTimeout,
+		ResponseHeaderTimeout: timeout,
 		MaxIdleConns:          16,
 		IdleConnTimeout:       30 * time.Second,
 	}
-	client := &http.Client{
+	return &http.Client{
 		Transport:     transport,
-		Timeout:       fetchTimeout,
+		Timeout:       timeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	return func(ctx context.Context, baseURL string) (*paywall.Manifest, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+paywall.ManifestPath, nil)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("manifest: HTTP %d", resp.StatusCode)
-		}
-		var m paywall.Manifest
-		if err := json.NewDecoder(io.LimitReader(resp.Body, maxManifestBytes)).Decode(&m); err != nil {
-			return nil, fmt.Errorf("manifest: %w", err)
-		}
-		return &m, nil
 	}
 }
 

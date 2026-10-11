@@ -32,7 +32,12 @@ func listTools(t *testing.T, server *mcp.Server) []*mcp.Tool {
 // and clients use it to decide which calls to confirm first.
 func TestToolAnnotations(t *testing.T) {
 	wallet := listTools(t, newServer())
-	require.Len(t, wallet, len(toolLabels), "every toolLabels entry is a registered tool, and the reverse")
+	sandbox := listTools(t, newSandboxServer())
+	names := map[string]bool{}
+	for _, tool := range append(append([]*mcp.Tool{}, wallet...), sandbox...) {
+		names[tool.Name] = true
+	}
+	require.Len(t, names, len(toolLabels), "every toolLabels entry is a tool the wallet or the test wallet server registers, and the reverse")
 	var destructives []string
 	for _, tool := range wallet {
 		a := tool.Annotations
@@ -47,6 +52,18 @@ func TestToolAnnotations(t *testing.T) {
 	}
 	// What moves the agent's money out for good, and nothing else.
 	require.ElementsMatch(t, []string{"send_aeth", "fetch_paid", "create_escrow", "release_escrow", "refund_escrow"}, destructives)
+
+	// The test wallet server: what moves a test wallet's money is marked.
+	require.Len(t, sandbox, len(sandboxToolNames))
+	var sandboxDestructive []string
+	for _, tool := range sandbox {
+		require.NotEmpty(t, tool.Title, tool.Name)
+		require.NotNil(t, tool.Annotations.DestructiveHint, tool.Name)
+		if *tool.Annotations.DestructiveHint {
+			sandboxDestructive = append(sandboxDestructive, tool.Name)
+		}
+	}
+	require.ElementsMatch(t, []string{"send_from_test_wallet", "buy_service"}, sandboxDestructive)
 
 	// The public endpoint holds no key: all of it is read-only.
 	public := listTools(t, newPublicServer())
