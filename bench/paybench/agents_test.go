@@ -172,3 +172,12 @@ func TestQuestNameFitsTheQuest(t *testing.T) {
 	require.LessOrEqual(t, len(questName("meta-llama/llama-4-maverick-17b-128e-instruct")), 32)
 	require.Regexp(t, `^[A-Za-z0-9 ._-]{1,32}$`, questName("meta-llama/llama-4-maverick-17b-128e-instruct"))
 }
+
+func TestResultsCarryNoWalletTokens(t *testing.T) {
+	tok := "aether-test-wallet-v1.Ab3_-xyz"
+	r := Run{Results: []Result{{Calls: []Call{{Tool: "buy_service",
+		Args: json.RawMessage(`{"walletToken":"` + tok + `"}`), Result: "made " + tok}}}}}
+	out := string(redactTokens(json.MarshalIndent(r, "", "  ")))
+	require.NotContains(t, out, tok)
+	require.Contains(t, out, "aether-test-wallet-v1.REDACTED")
+}

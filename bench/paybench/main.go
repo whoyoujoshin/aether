@@ -9,6 +9,7 @@
 //	go run ./paybench run --agent openai --model gpt-5 --base-url https://api.openai.com/v1
 //	go run ./paybench run --agent openai --model meta-llama/llama-4-maverick --base-url https://openrouter.ai/api/v1
 //	go run ./paybench report results/*.json > RESULTS.md
+//	go run ./paybench redact results/*.json  (files written before tokens were redacted)
 //
 // Credentials come from the environment: ANTHROPIC_API_KEY for the
 // anthropic agent, OPENAI_API_KEY (or --api-key-env) for openai, and
@@ -40,13 +41,23 @@ func main() {
 		run(os.Args[2:])
 	case "report":
 		report(os.Args[2:])
+	case "redact":
+		for _, p := range os.Args[2:] {
+			bz, err := os.ReadFile(p)
+			if err == nil {
+				err = os.WriteFile(p, redactTokens(bz, nil), 0o644)
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
 	default:
 		usage()
 	}
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: paybench run [flags] | paybench report results.json...")
+	fmt.Fprintln(os.Stderr, "usage: paybench run [flags] | paybench report results.json... | paybench redact results.json...")
 	os.Exit(2)
 }
 
@@ -183,7 +194,7 @@ func run(args []string) {
 		log.Fatal(err)
 	}
 	path := filepath.Join(*out, fmt.Sprintf("%s-%s.json", r.Started.Format("20060102-150405"), slug(*label)))
-	bz, _ := json.MarshalIndent(r, "", "  ")
+	bz := redactTokens(json.MarshalIndent(r, "", "  "))
 	if err := os.WriteFile(path, append(bz, '\n'), 0o644); err != nil {
 		log.Fatal(err)
 	}
@@ -192,6 +203,15 @@ func run(args []string) {
 		total += res.Points
 	}
 	fmt.Printf("%s: %.2f / %d points; results in %s\n", *label, total, len(r.Results), path)
+}
+
+// redactTokens blanks the test wallet tokens out of a run's JSON: a token
+// is its wallet's key, and results are published.
+func redactTokens(bz []byte, err error) []byte {
+	if err != nil {
+		log.Fatal(err)
+	}
+	return tokenPattern.ReplaceAll(bz, []byte("aether-test-wallet-v1.REDACTED"))
 }
 
 var nonSlug = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)

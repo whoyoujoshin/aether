@@ -103,7 +103,10 @@ The quest task joins the public quest board as `paybench <label>`.
    server are healthy. If it scores less, fix that before measuring models.
 2. Run each model three times with the same `tasks.json`, and keep every
    run, not the best.
-3. Copy the result files into `bench/results/` and build the table:
+3. Copy the result files into `bench/results/`. Wallet tokens (each one a
+   test wallet's key) are redacted when a run writes its file; for files
+   written before that, run `go run ./paybench redact results/*.json`
+   first. Then build the table:
 
    ```bash
    go run ./paybench report results/*.json > RESULTS.md
