@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Installs (or updates) the five paid agent services on the seed:
 # cmd/agentservices on 127.0.0.1:8500 and one cmd/paywall per service
-# (scripts/agentservices/services.txt), each a systemd unit. Run as root
+# (scripts/agentservices/services.txt), each a systemd unit; and the
+# public x402 facilitator (cmd/facilitator) on 127.0.0.1:8403. The
+# paywalls also take standard x402 v2 exact payments. Run as root
 # from the repo checkout, after creating the payee account (announce.sh
 # prints it the first time):
 #
@@ -20,9 +22,10 @@ LIST="$REPO/scripts/agentservices/services.txt"
 [ -f "$LIST" ] || { echo "run from the repo checkout (no $LIST)" >&2; exit 1; }
 
 echo "== Building from $(git -C "$REPO" log -1 --format='%h %s')"
-(cd "$REPO" && go build -o /root/agentservices.new ./cmd/agentservices && go build -o /root/paywall.new ./cmd/paywall)
+(cd "$REPO" && go build -o /root/agentservices.new ./cmd/agentservices && go build -o /root/paywall.new ./cmd/paywall && go build -o /root/facilitator.new ./cmd/facilitator)
 mv /root/agentservices.new /root/agentservices
 mv /root/paywall.new /root/paywall
+mv /root/facilitator.new /root/facilitator
 
 echo "== Units"
 cat > /etc/systemd/system/aether-agentservices.service <<UNIT
@@ -41,7 +44,23 @@ NoNewPrivileges=true
 WantedBy=multi-user.target
 UNIT
 
-units=(aether-agentservices)
+cat > /etc/systemd/system/aether-facilitator.service <<UNIT
+[Unit]
+Description=Aether x402 facilitator (exact on cosmos:$CHAIN_ID; holds no key)
+After=network-online.target
+
+[Service]
+ExecStart=/root/facilitator --listen 127.0.0.1:8403 --grpc $GRPC --chain-id $CHAIN_ID
+Environment=HOME=/root
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+units=(aether-agentservices aether-facilitator)
 while IFS='|' read -r name port price title desc; do
   case "$name" in ''|'#'*) continue;; esac
   unit=aether-paywall-$name
@@ -69,22 +88,27 @@ for u in "${units[@]}"; do
   systemctl restart "$u"
 done
 
-echo "== Checks (each paywall's free /help and its 402)"
+echo "== Checks (the facilitator; each paywall's free /help, its 402 with the x402 v2 header, its manifest)"
 # curl -w prints 000 when nothing answers; "|| true" keeps set -e from
 # ending the script there, so every service gets a line.
 code() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$1" || true; }
+hdr() { curl -s -o /dev/null -D - --max-time 5 "$1" | grep -ci '^payment-required:' || true; }
 fail=0
+for _ in $(seq 1 10); do [ "$(code http://127.0.0.1:8403/supported)" = 200 ] && break; sleep 1; done
+printf '%-8s supported %s  healthz %s\n' facilitator "$(code http://127.0.0.1:8403/supported)" "$(code http://127.0.0.1:8403/healthz)"
+[ "$(code http://127.0.0.1:8403/healthz)" = 200 ] || fail=1
 while IFS='|' read -r name port price title desc; do
   case "$name" in ''|'#'*) continue;; esac
   for _ in $(seq 1 10); do [ "$(code "http://127.0.0.1:$port/help")" = 200 ] && break; sleep 1; done
   help=$(code "http://127.0.0.1:$port/help")
   paid=$(code "http://127.0.0.1:$port/")
   man=$(code "http://127.0.0.1:$port/.well-known/x402")
-  printf '%-8s help %s  unpaid %s  manifest %s\n' "$name" "$help" "$paid" "$man"
-  [ "$help" = 200 ] && [ "$paid" = 402 ] && [ "$man" = 200 ] || fail=1
+  v2=$(hdr "http://127.0.0.1:$port/")
+  printf '%-8s help %s  unpaid %s  v2 header %s  manifest %s\n' "$name" "$help" "$paid" "$v2" "$man"
+  [ "$help" = 200 ] && [ "$paid" = 402 ] && [ "$v2" = 1 ] && [ "$man" = 200 ] || fail=1
 done < "$LIST"
 if [ $fail = 1 ]; then
   echo "Some checks failed (000: not answering). Why: journalctl -u aether-paywall-<name> -n 5 --no-pager" >&2
   exit 1
 fi
-echo "All five answer: help 200, unpaid 402, manifest 200."
+echo "All answer: the facilitator; each service's help 200, unpaid 402 with the v2 header, manifest 200."

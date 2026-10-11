@@ -18,6 +18,12 @@ Every service answers `<URL>/help` free, with what it takes and returns, and
 `<URL>/.well-known/x402` (its manifest). `scripts/agentservices/services.txt`
 holds the list: name, paywall port, price, title and description.
 
+Each paywall also takes standard x402 v2 `exact` payments (network
+`cosmos:aether-testnet-1`), so any x402 v2 client can buy, for example
+Coinbase's `@x402/fetch` with `aether-chain-client/x402`. The same install
+runs the public x402 facilitator, `aether-facilitator`, at `/facilitator`
+(see [X402.md](X402.md)).
+
 ## Layout on the seed
 
 ```
@@ -58,8 +64,9 @@ Then `find_services` on the public `/mcp` lists them.
 ## Updating
 
 To deploy new code, check out the new `origin/main` in `/root/aether-src`
-and rerun step 2 with the same `PAY_TO`: it rebuilds both binaries and
-restarts the six units. Listings stay; they don't need announcing again
+and rerun step 2 with the same `PAY_TO`: it rebuilds the binaries and
+restarts the seven units (the six above and `aether-facilitator`). Rerun
+`caddy.sh` too the first time after it added the `/facilitator` route. Listings stay; they don't need announcing again
 unless a URL changes.
 
 ## Undoing

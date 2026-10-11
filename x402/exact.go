@@ -49,8 +49,9 @@ type Facilitator struct {
 	ChainID string
 	Chain   Chain
 	// PollInterval and SettleTimeout bound the wait for a settled
-	// transaction to land in a block (defaults 1s and 90s; a requirement's
-	// maxTimeoutSeconds, when larger, wins).
+	// transaction to land in a block (defaults 2s and 90s; a requirement's
+	// maxTimeoutSeconds, when larger, wins). Aether's blocks are about a
+	// minute apart.
 	PollInterval  time.Duration
 	SettleTimeout time.Duration
 
@@ -138,7 +139,7 @@ func (f *Facilitator) Settle(ctx context.Context, p PaymentPayload, req PaymentR
 	}
 	poll := f.PollInterval
 	if poll <= 0 {
-		poll = time.Second
+		poll = 2 * time.Second
 	}
 	deadline := time.Now().Add(timeout)
 	for {

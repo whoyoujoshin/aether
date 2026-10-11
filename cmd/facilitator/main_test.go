@@ -83,3 +83,25 @@ func TestHealthzReportsTheNode(t *testing.T) {
 	require.Equal(t, 503, code)
 	require.Equal(t, false, out["ok"])
 }
+
+func TestLimitTurnsAwayTheOverflow(t *testing.T) {
+	release := make(chan struct{})
+	started := make(chan struct{}, 2)
+	slow := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started <- struct{}{}
+		<-release
+	})
+	h := limit(slow, 1)
+	done := make(chan struct{})
+	go func() {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/settle", nil))
+		close(done)
+	}()
+	<-started
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/verify", nil))
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Equal(t, "1", rec.Header().Get("Retry-After"))
+	close(release)
+	<-done
+}

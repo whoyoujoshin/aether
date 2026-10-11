@@ -6,8 +6,8 @@
 //	go run ./cmd/facilitator --listen :8403 --grpc localhost:9090 --chain-id aether-testnet-1
 //
 // It holds no key: the payer signs the whole transaction, pays its fee,
-// and this only checks and broadcasts it. Anyone may call it, so put it
-// behind a proxy that limits request rates.
+// and this only checks and broadcasts it. Anyone may call it: it handles
+// at most --max-concurrent payments at once.
 package main
 
 import (
@@ -32,7 +32,8 @@ func main() {
 	listen := flag.String("listen", ":8403", "address to serve on")
 	grpcEndpoint := flag.String("grpc", "localhost:9090", "node gRPC endpoint")
 	chainID := flag.String("chain-id", "aether-testnet-1", "chain payments are on")
-	settleTimeout := flag.Duration("settle-timeout", 90*time.Second, "how long /settle waits for the transaction to land in a block (a requirement's maxTimeoutSeconds, when larger, wins)")
+	maxConcurrent := flag.Int("max-concurrent", 32, "most /verify and /settle requests handled at once (each simulates on the node); more get 503")
+	settleTimeout := flag.Duration("settle-timeout", 80*time.Second, "how long /settle waits for the transaction to land in a block (a requirement's maxTimeoutSeconds, when larger, wins); the default answers before @x402/core's 90s facilitator timeout")
 	flag.Parse()
 
 	client, err := wallet.NewClient(*grpcEndpoint)
@@ -44,7 +45,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              *listen,
-		Handler:           newHandler(f),
+		Handler:           limit(newHandler(f), *maxConcurrent),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		// /settle waits for a block.
@@ -87,6 +88,26 @@ func newHandler(f *x402.Facilitator) http.Handler {
 		writeJSON(w, http.StatusOK, resp)
 	})
 	return mux
+}
+
+// limit answers 503 to POSTs beyond max at once, so a flood can't queue
+// unbounded work on the node.
+func limit(next http.Handler, max int) http.Handler {
+	slots := make(chan struct{}, max)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			next.ServeHTTP(w, r)
+			return
+		}
+		select {
+		case slots <- struct{}{}:
+			defer func() { <-slots }()
+			next.ServeHTTP(w, r)
+		default:
+			w.Header().Set("Retry-After", "1")
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "busy"})
+		}
+	})
 }
 
 func readRequest(w http.ResponseWriter, r *http.Request) (x402.VerifyRequest, bool) {

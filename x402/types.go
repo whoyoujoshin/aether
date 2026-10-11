@@ -111,7 +111,8 @@ type SupportedResponse struct {
 }
 
 // Reasons a payment is refused. The generic ones are the spec's; the
-// exact-scheme ones follow its invalid_exact_<network>_* naming.
+// exact-scheme ones follow its invalid_exact_<network>_* naming, for the
+// cosmos network family (docs/x402/scheme_exact_cosmos.md).
 const (
 	ReasonVersion            = "invalid_x402_version"
 	ReasonScheme             = "unsupported_scheme"
@@ -122,17 +123,17 @@ const (
 	ReasonTransactionState   = "invalid_transaction_state"
 	ReasonUnexpectedVerify   = "unexpected_verify_error"
 	ReasonUnexpectedSettle   = "unexpected_settle_error"
-	ReasonAcceptedMismatch   = "invalid_exact_aether_payload_accepted_mismatch"
-	ReasonTransaction        = "invalid_exact_aether_payload_transaction"
-	ReasonMessage            = "invalid_exact_aether_payload_message"
-	ReasonRecipientMismatch  = "invalid_exact_aether_payload_recipient_mismatch"
-	ReasonAmountMismatch     = "invalid_exact_aether_payload_amount_mismatch"
-	ReasonSigner             = "invalid_exact_aether_payload_signer"
-	ReasonSignature          = "invalid_exact_aether_payload_signature"
-	ReasonSequence           = "invalid_exact_aether_payload_sequence"
-	ReasonExpired            = "invalid_exact_aether_payload_expired"
-	ReasonFee                = "invalid_exact_aether_payload_fee"
-	ReasonGas                = "invalid_exact_aether_payload_gas"
-	ReasonAlreadySettled     = "invalid_exact_aether_payload_already_settled"
-	ReasonSettlementRejected = "invalid_exact_aether_settlement_rejected"
+	ReasonAcceptedMismatch   = "invalid_exact_cosmos_payload_accepted_mismatch"
+	ReasonTransaction        = "invalid_exact_cosmos_payload_transaction"
+	ReasonMessage            = "invalid_exact_cosmos_payload_message"
+	ReasonRecipientMismatch  = "invalid_exact_cosmos_payload_recipient_mismatch"
+	ReasonAmountMismatch     = "invalid_exact_cosmos_payload_amount_mismatch"
+	ReasonSigner             = "invalid_exact_cosmos_payload_signer"
+	ReasonSignature          = "invalid_exact_cosmos_payload_signature"
+	ReasonSequence           = "invalid_exact_cosmos_payload_sequence"
+	ReasonExpired            = "invalid_exact_cosmos_payload_expired"
+	ReasonFee                = "invalid_exact_cosmos_payload_fee"
+	ReasonGas                = "invalid_exact_cosmos_payload_gas"
+	ReasonAlreadySettled     = "invalid_exact_cosmos_payload_already_settled"
+	ReasonSettlementRejected = "invalid_exact_cosmos_settlement_rejected"
 )
