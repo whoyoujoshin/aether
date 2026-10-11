@@ -21,3 +21,5 @@ export type { Receipt, ReceiptDelegation, ReceiptExpectation } from "./receipt.j
 export { AetherToolkit, manifestPrice, TESTNET_FAUCET } from "./agentTools.js";
 export type { AetherToolkitOptions, ToolSpec, ToolResult } from "./agentTools.js";
 export { serveMcp, handleMcpMessage, mcpTools, MCP_PROTOCOL_VERSIONS } from "./mcpServer.js";
+export { ExactAetherScheme, x402Network } from "./x402.js";
+export type { ExactAetherOptions, ExactAetherPayload, X402PaymentRequirements } from "./x402.js";

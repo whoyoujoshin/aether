@@ -3,8 +3,11 @@ package x402
 import (
 	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -292,4 +295,44 @@ func TestSettleReportsARefusal(t *testing.T) {
 	got = f2.Settle(ctx, payloadFor(req, tx), req)
 	require.False(t, got.Success)
 	require.Equal(t, ReasonSettlementRejected, got.ErrorReason)
+}
+
+// The clients' send vector (clients/testdata/vectors.json, which the TS
+// and Python clients reproduce byte for byte) is a payment this
+// facilitator accepts: their ExactAetherScheme builds exactly that.
+func TestVerifyAcceptsTheClientsSendVector(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "clients", "testdata", "vectors.json"))
+	require.NoError(t, err)
+	var v struct {
+		Txs []struct {
+			ChainID       string `json:"chainId"`
+			AccountNumber uint64 `json:"accountNumber"`
+			Sequence      uint64 `json:"sequence"`
+			To            string `json:"to"`
+			AmountUaeth   string `json:"amountUaeth"`
+			TxBytes       string `json:"txBytes"`
+		} `json:"txs"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &v))
+	require.NotEmpty(t, v.Txs)
+	tx := v.Txs[0]
+	txBytes, err := hex.DecodeString(tx.TxBytes)
+	require.NoError(t, err)
+
+	f := NewFacilitator(tx.ChainID, &fakeChain{number: tx.AccountNumber, sequence: tx.Sequence, height: 100})
+	req := PaymentRequirements{Scheme: SchemeExact, Network: Network(tx.ChainID), Amount: tx.AmountUaeth, Asset: "uaeth", PayTo: tx.To, MaxTimeoutSeconds: 60}
+	r := f.Verify(context.Background(), payloadFor(req, txBytes), req)
+	require.True(t, r.IsValid, r.InvalidReason)
+}
+
+func TestRejectReasonsNameTheCause(t *testing.T) {
+	for log, want := range map[string]string{
+		"spendable balance 10uaeth is smaller than 500uaeth: insufficient funds":        ReasonInsufficientFunds,
+		"insufficient fees; got: 0uaeth required: 400uaeth: insufficient fee":           ReasonFee,
+		"out of gas in location: ReadPerByte; gasWanted: 200000, gasUsed: 201364":       ReasonGas,
+		"account sequence mismatch, expected 4, got 3: incorrect account sequence":      ReasonSequence,
+		"failed to execute message; message index: 0: something else the chain refused": ReasonSettlementRejected,
+	} {
+		require.Equal(t, want, rejectReason(log), log)
+	}
 }

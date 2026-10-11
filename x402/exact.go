@@ -170,6 +170,9 @@ func rejectReason(log string) string {
 	if strings.Contains(log, "insufficient funds") {
 		return ReasonInsufficientFunds
 	}
+	if strings.Contains(log, "insufficient fee") {
+		return ReasonFee // below the node's minimum gas price
+	}
 	if strings.Contains(log, "out of gas") {
 		return ReasonGas
 	}
