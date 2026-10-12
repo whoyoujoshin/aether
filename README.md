@@ -73,7 +73,7 @@ See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt
 
 Aether has no `x/staking` module. The active validator set is the Top-K miners by **epoch native work**. AuxPoW can earn rewards and retarget difficulty but does **not** count toward Top-K standing.
 
-Every account transaction must use ML-DSA-44 from genesis (no classical fallback), enforced by `PostQuantumDecorator`. CometBFT consensus keys remain ed25519. Details: [docs/WHITEPAPER.md](docs/WHITEPAPER.md) and the wiki decision records.
+Every account transaction must use ML-DSA-44 from genesis (no classical fallback), enforced by `PostQuantumDecorator`. CometBFT consensus keys remain ed25519. Details: [docs/WHITEPAPER.md](docs/WHITEPAPER.md) and the wiki decision records. How this compares with QRL and Nervos CKB: [docs/COMPARISON.md](docs/COMPARISON.md).
 
 ## Public testnet
 
