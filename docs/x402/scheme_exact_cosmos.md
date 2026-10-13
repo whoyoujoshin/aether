@@ -49,18 +49,21 @@ arrived over IBC (`ibc/<hash>`), such as USDC from Noble.
 
 ## Protocol Sequencing
 
-1. The client requests the resource and receives `402` with `PaymentRequirements`.
+1. The client requests the resource and receives a payment required response with `PaymentRequirements`.
 2. The client looks up its account number and next sequence (`cosmos.auth.v1beta1.Query/AccountInfo`).
 3. The client builds and signs (`SIGN_MODE_DIRECT`) a transaction with one
    `MsgSend` of exactly `amount` of `asset` to `payTo`, paying its own fee.
-4. The client resends the request with the `PaymentPayload`.
-5. The resource server sends it to the facilitator's `/verify` (or straight to `/settle`).
+4. The client sends the request again with the `PaymentPayload`.
+5. The resource server sends it to the facilitator to verify (or straight to settle).
 6. The facilitator verifies it (below).
-7. The facilitator broadcasts it and waits for it to be included in a block (`/settle`).
-8. The resource server returns the response with `PAYMENT-RESPONSE`.
+7. The resource server requests settlement: the facilitator broadcasts the transaction and waits
+   for it to be included in a block.
+8. Once settlement succeeds, the resource server returns the response with the `SettlementResponse`.
 
-A resource server may settle before doing the work (step 7 before 8) or
-after, as on other networks.
+The resource server may do the work before or after settling, as on Sui,
+but it returns the response only after settlement succeeds. This document
+is transport-agnostic: how each message travels is defined by the
+transport specs.
 
 ## PaymentPayload `payload` Field
 
