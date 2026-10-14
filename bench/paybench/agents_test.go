@@ -197,4 +197,12 @@ func TestResultsCarryNoWalletTokens(t *testing.T) {
 	out := string(redactTokens(json.MarshalIndent(r, "", "  ")))
 	require.NotContains(t, out, tok)
 	require.Contains(t, out, "aether-test-wallet-v1.REDACTED")
+
+	// A model may echo a token with look-alike dashes.
+	for _, echoed := range []string{"aether-test-wallet\u2011v1.Ab3_\u2011xyz", "aether\u2010test-wallet-v1.Ab3_-xyz"} {
+		r := Run{Results: []Result{{Answer: "your wallet " + echoed}}}
+		out := string(redactTokens(json.MarshalIndent(r, "", "  ")))
+		require.NotContains(t, out, "Ab3_", echoed)
+		require.Contains(t, out, "aether-test-wallet-v1.REDACTED")
+	}
 }

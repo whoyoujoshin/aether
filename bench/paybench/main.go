@@ -152,8 +152,12 @@ func run(args []string) {
 		*label = *model
 	}
 
+	if os.Getenv("AETHER_BENCH_KEY") == "" && *endpoint == defaultEndpoint {
+		log.Fatal("set AETHER_BENCH_KEY: without it the public test wallet allows 3 new wallets a day per caller, and a run needs 5")
+	}
+
 	ctx := context.Background()
-	w, err := dialWallet(ctx, *endpoint, os.Getenv("AETHER_BENCH_KEY"))
+	w, err := dialWallet(ctx, *endpoint, strings.TrimSpace(os.Getenv("AETHER_BENCH_KEY")))
 	if err != nil {
 		log.Fatalf("connecting to %s: %v", *endpoint, err)
 	}
@@ -186,7 +190,11 @@ func run(args []string) {
 		tctx, cancel := context.WithTimeout(ctx, *taskTimeout)
 		res, fatal := runTask(tctx, w, agent, t, *label, *maxTurns, *settle)
 		cancel()
-		if fatal != nil {
+		var ws walletSetupError
+		switch {
+		case errors.As(fatal, &ws):
+			log.Fatalf("   %s: the test wallet couldn't give the task a funded wallet, so the run measures nothing about the model; no results written.\n%v", t.ID, fatal)
+		case fatal != nil:
 			log.Fatalf("   %s: the model's API refused the first request, so every task would fail the same way; no results written.\n%v", t.ID, fatal)
 		}
 		if res.Error != "" {
@@ -220,8 +228,15 @@ func redactTokens(bz []byte, err error) []byte {
 	if err != nil {
 		log.Fatal(err)
 	}
-	return tokenPattern.ReplaceAll(bz, []byte("aether-test-wallet-v1.REDACTED"))
+	return redactPattern.ReplaceAll(bz, []byte("aether-test-wallet-v1.REDACTED"))
 }
+
+// redactPattern is tokenPattern with any dash a model may write in place
+// of "-" (a model once echoed a token with U+2011 non-breaking hyphens),
+// raw or JSON-escaped.
+var redactPattern = regexp.MustCompile(`aether` + dash + `test` + dash + `wallet` + dash + `v1\.(?:[A-Za-z0-9_]|` + dash + `)+`)
+
+const dash = `(?:-|[\x{2010}-\x{2015}\x{2212}]|\\u201[0-5]|\\u2212)`
 
 var nonSlug = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 
@@ -237,8 +252,16 @@ func questName(label string) string {
 	return strings.TrimRight(n, " -")
 }
 
-// runTask runs and scores one task. Its error is a setupError, which stops
-// the run.
+// walletSetupError is the harness failing to give a task its funded wallet
+// (the server's daily limit, say). It stops the run: the tasks left would
+// score 0 for a reason that has nothing to do with the model.
+type walletSetupError struct{ err error }
+
+func (e walletSetupError) Error() string { return "setting up the task's wallet: " + e.err.Error() }
+func (e walletSetupError) Unwrap() error { return e.err }
+
+// runTask runs and scores one task. Its error is a setupError or a
+// walletSetupError, either of which stops the run.
 func runTask(ctx context.Context, w *walletClient, agent Agent, t Task, label string, maxTurns int, settle time.Duration) (Result, error) {
 	res := Result{Task: t.ID, Notes: []string{}, Calls: []Call{}}
 	start := time.Now()
@@ -247,9 +270,7 @@ func runTask(ctx context.Context, w *walletClient, agent Agent, t Task, label st
 	if t.Wallet {
 		tw, err := w.newFundedWallet(ctx)
 		if err != nil {
-			res.Error = "setting up the task's wallet: " + err.Error()
-			res.Notes = append(res.Notes, "not run: no wallet")
-			return res, nil
+			return res, walletSetupError{err}
 		}
 		given = tw
 		res.Wallet = tw.Address
