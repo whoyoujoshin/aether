@@ -157,7 +157,7 @@ func run(args []string) {
 	}
 
 	ctx := context.Background()
-	w, err := dialWallet(ctx, *endpoint, os.Getenv("AETHER_BENCH_KEY"))
+	w, err := dialWallet(ctx, *endpoint, strings.TrimSpace(os.Getenv("AETHER_BENCH_KEY")))
 	if err != nil {
 		log.Fatalf("connecting to %s: %v", *endpoint, err)
 	}
