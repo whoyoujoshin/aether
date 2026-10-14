@@ -228,8 +228,13 @@ func redactTokens(bz []byte, err error) []byte {
 	if err != nil {
 		log.Fatal(err)
 	}
-	return redactPattern.ReplaceAll(bz, []byte("aether-test-wallet-v1.REDACTED"))
+	bz = redactPattern.ReplaceAll(bz, []byte("aether-test-wallet-v1.REDACTED"))
+	return handlePattern.ReplaceAll(bz, []byte("twREDACTED"))
 }
+
+// handlePattern is a short wallet handle, in any case (the server forgives
+// it, so a model's upper-cased echo still spends the wallet).
+var handlePattern = regexp.MustCompile(`(?i)\btw[0-9a-z]{16}\b`)
 
 // redactPattern is tokenPattern with any dash a model may write in place
 // of "-" (a model once echoed a token with U+2011 non-breaking hyphens),

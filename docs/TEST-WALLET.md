@@ -34,26 +34,37 @@ full wallet, with spend limits and owner approvals) or `aether-chain-client`.
 | `get_quest` | The [agent quest](QUEST.md): this wallet's progress, what to do next, and the top of the leaderboard |
 | `get_balance`, `get_transaction_status`, `find_services` | As on the read-only `/mcp` |
 
-The `walletToken` is the wallet. Every wallet tool takes it, and anyone
-holding it can spend the wallet. An agent keeps it in its context and can
-reuse it across sessions. The server keeps nothing per wallet, so the
-token works after a restart too.
+The `walletToken` is the wallet: a short handle such as
+`tw7k2m9x4p8q1r5v3n`. Every wallet tool takes it, and anyone holding it
+can spend the wallet. An agent keeps it in its context and can reuse it
+across sessions. The server keeps nothing per wallet, so the token works
+after a restart too.
 
 ## Limits
 
 - Three new wallets a day per caller, and 200 a day in all. Reuse a token
   rather than making a new one. The payments benchmark has its own
   allowance of 60 a day, for callers that send its key
-  (`X-Aether-Bench-Key`; see [BENCHMARK.md](BENCHMARK.md)).
+  (`X-Aether-Bench-Key`; see [BENCHMARK.md](BENCHMARK.md)). A caller that
+  sends a key that doesn't match gets `INVALID_BENCH_KEY`.
 - `buy_service` pays only services listed in the on-chain directory (what
   `find_services` returns), so the server is no open proxy.
 - It runs only on a test or dev chain: it refuses to start on any other.
 
 ## How it works
 
-A wallet token is `aether-test-wallet-v1.` followed by the key's 256-bit
-seed, encrypted with AES-GCM under the server's secret. Each call decrypts
-it into an in-memory key, signs and forgets it.
+A wallet handle is `tw` and 16 characters of Crockford base32: 80 random
+bits. The wallet's 256-bit key seed is an HMAC of the handle under a key
+derived from the server's secret, so the server stores nothing per
+wallet. Each call derives the key in memory, signs and forgets it. The
+server reads a handle with its case changed, dashes or spaces added, or
+`o`, `i` and `l` in place of `0`, `1` and `1`, since that's how copies
+tend to go wrong.
+
+Handles replaced longer tokens on 2026-10-14: `aether-test-wallet-v1.`
+and the key's seed, encrypted with AES-GCM under the same secret, about
+100 characters. In the payments benchmark an open model copied those wrong
+partway through a task. Tokens issued before then still work.
 
 New wallets are paid from a funder key, which is the only key the server
 holds. The server never opens an agent account.

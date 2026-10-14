@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/stretchr/testify/require"
@@ -198,6 +200,15 @@ func TestResultsCarryNoWalletTokens(t *testing.T) {
 	require.NotContains(t, out, tok)
 	require.Contains(t, out, "aether-test-wallet-v1.REDACTED")
 
+	// A short handle, as the server issues it or upper-cased.
+	for _, h := range []string{"tw0123456789abcdef", "TW0123456789ABCDEF"} {
+		r := Run{Results: []Result{{Answer: "wallet " + h + ".", Calls: []Call{{Tool: "get_test_wallet",
+			Args: json.RawMessage(`{"walletToken":"` + h + `"}`)}}}}}
+		out := string(redactTokens(json.MarshalIndent(r, "", "  ")))
+		require.NotContains(t, strings.ToLower(out), "0123456789abcdef", h)
+		require.Contains(t, out, "twREDACTED")
+	}
+
 	// A model may echo a token with look-alike dashes.
 	for _, echoed := range []string{"aether-test-wallet\u2011v1.Ab3_\u2011xyz", "aether\u2010test-wallet-v1.Ab3_-xyz"} {
 		r := Run{Results: []Result{{Answer: "your wallet " + echoed}}}
@@ -205,4 +216,15 @@ func TestResultsCarryNoWalletTokens(t *testing.T) {
 		require.NotContains(t, out, "Ab3_", echoed)
 		require.Contains(t, out, "aether-test-wallet-v1.REDACTED")
 	}
+}
+
+func TestReportSeparatesTaskSetVersions(t *testing.T) {
+	day := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+	run := func(v string) Run {
+		return Run{Label: "m", TasksVersion: v, Started: day, Results: []Result{{Task: "t", Points: 1, Passed: true}}}
+	}
+	out := renderReport([]Run{run("1"), run("2")})
+	require.Contains(t, out, "| m (v1) |")
+	require.Contains(t, out, "| m (v2) |")
+	require.NotContains(t, renderReport([]Run{run("1"), run("1")}), "(v1)", "one version needs no tag")
 }

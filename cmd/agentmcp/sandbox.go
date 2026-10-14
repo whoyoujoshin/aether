@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
@@ -74,6 +76,7 @@ const (
 	codeSandboxLimit   = "SANDBOX_LIMIT"
 	codeNotListed      = "SERVICE_NOT_LISTED"
 	codeBadToken       = "INVALID_WALLET_TOKEN"
+	codeBadBenchKey    = "INVALID_BENCH_KEY"
 )
 
 var (
@@ -93,6 +96,7 @@ var (
 // and the limits on new wallets.
 type sandbox struct {
 	aead       cipher.AEAD
+	handleKey  []byte // derives a wallet's key from its handle
 	funder     *wallet.Wallet
 	funderName string
 	funderAddr string
@@ -141,7 +145,7 @@ func newSandbox() (*sandbox, error) {
 	if err != nil {
 		return nil, fmt.Errorf("--sandbox-grant: %w", err)
 	}
-	s := &sandbox{aead: aead, grant: grant, perIP: sandboxPerIP, perDay: sandboxPerDay, benchPerDay: sandboxBenchDay, now: time.Now,
+	s := &sandbox{aead: aead, handleKey: deriveHandleKey(secret), grant: grant, perIP: sandboxPerIP, perDay: sandboxPerDay, benchPerDay: sandboxBenchDay, now: time.Now,
 		client: directory.SafeHTTPClient(directoryAllowPrivate, sandboxPayTimeout), byIP: map[string][]time.Time{}}
 	s.listed = s.directoryURLs
 	if sandboxBenchKey != "" {
@@ -214,10 +218,85 @@ func (s *sandbox) seal(entropy []byte) (string, error) {
 	return sandboxTokenPrefix + base64.RawURLEncoding.EncodeToString(append(nonce, ct...)), nil
 }
 
+// A wallet handle is the short walletToken create_test_wallet hands out:
+// "tw" and 16 Crockford base32 characters (80 random bits). The wallet's
+// key is derived from it under the server's secret, so the server keeps
+// nothing per wallet. It replaced the ~100-character sealed token, which
+// smaller models copied wrong; sealed tokens already issued still work.
+const (
+	handlePrefix   = "tw"
+	handleChars    = 16
+	handleAlphabet = "0123456789abcdefghjkmnpqrstvwxyz"
+)
+
+func deriveHandleKey(secret []byte) []byte {
+	m := hmac.New(sha256.New, secret)
+	m.Write([]byte("aether-test-wallet handle key"))
+	return m.Sum(nil)
+}
+
+// newHandle is a fresh handle and its wallet's key entropy.
+func (s *sandbox) newHandle() (string, []byte, error) {
+	id := make([]byte, handleChars*5/8)
+	if _, err := rand.Read(id); err != nil {
+		return "", nil, err
+	}
+	var b strings.Builder
+	b.WriteString(handlePrefix)
+	var acc, bits uint
+	for _, x := range id {
+		acc, bits = acc<<8|uint(x), bits+8
+		for bits >= 5 {
+			bits -= 5
+			b.WriteByte(handleAlphabet[acc>>bits&31])
+		}
+	}
+	h := b.String()
+	return h, s.handleEntropy(h), nil
+}
+
+func (s *sandbox) handleEntropy(handle string) []byte {
+	m := hmac.New(sha256.New, s.handleKey)
+	m.Write([]byte(handle))
+	return m.Sum(nil) // 32 bytes: a 24-word key, like create's
+}
+
+// normalizeHandle forgives what a copy tends to change: case, separators
+// and dashes, and Crockford's look-alikes (o for 0, i and l for 1).
+func normalizeHandle(t string) (string, bool) {
+	var b strings.Builder
+	for _, r := range strings.ToLower(t) {
+		switch {
+		case r == ' ' || r == '-' || r == '_' || r == '.' || (r >= 0x2010 && r <= 0x2015) || r == 0x2212:
+			continue
+		case r == 'o':
+			r = '0'
+		case r == 'i' || r == 'l':
+			r = '1'
+		}
+		b.WriteRune(r)
+	}
+	h := b.String()
+	rest, ok := strings.CutPrefix(h, handlePrefix)
+	if !ok || len(rest) != handleChars {
+		return "", false
+	}
+	for _, r := range rest {
+		if !strings.ContainsRune(handleAlphabet, r) {
+			return "", false
+		}
+	}
+	return h, true
+}
+
 // open is the wallet a token holds: an in-memory keyring with its one key.
 func (s *sandbox) open(token string) (*wallet.Wallet, string, error) {
 	bad := newError(codeBadToken, "walletToken isn't one this server issued (create_test_wallet makes one)")
-	raw, ok := strings.CutPrefix(strings.TrimSpace(token), sandboxTokenPrefix)
+	token = strings.TrimSpace(token)
+	if h, ok := normalizeHandle(token); ok {
+		return walletFromEntropy(s.handleEntropy(h))
+	}
+	raw, ok := strings.CutPrefix(token, sandboxTokenPrefix)
 	if !ok {
 		return nil, "", bad
 	}
@@ -303,14 +382,22 @@ func (s *sandbox) pendingNext(address string) uint64 {
 const benchHeader = "X-Aether-Bench-Key"
 
 // bucket is whose allowance a new wallet comes from: the benchmark's, for
-// a caller with the bench key, else the caller's address.
-func (s *sandbox) bucket(req *mcp.CallToolRequest) string {
-	if len(s.benchKey) > 0 && req != nil && req.Extra != nil && req.Extra.Header != nil {
-		if got := req.Extra.Header.Get(benchHeader); got != "" && subtle.ConstantTimeCompare([]byte(got), s.benchKey) == 1 {
-			return "bench"
+// a caller with the bench key, else the caller's address. A caller that
+// sends a key that doesn't match is refused, rather than quietly put on
+// the per-caller limit it would hit a few wallets into a run.
+func (s *sandbox) bucket(req *mcp.CallToolRequest) (string, error) {
+	if req != nil && req.Extra != nil && req.Extra.Header != nil {
+		if got := strings.TrimSpace(req.Extra.Header.Get(benchHeader)); got != "" {
+			if len(s.benchKey) == 0 {
+				return "", newError(codeBadBenchKey, "this server has no benchmark allowance: leave out "+benchHeader)
+			}
+			if subtle.ConstantTimeCompare([]byte(got), s.benchKey) != 1 {
+				return "", newError(codeBadBenchKey, benchHeader+" doesn't match this server's benchmark key")
+			}
+			return "bench", nil
 		}
 	}
-	return clientIP(req)
+	return clientIP(req), nil
 }
 
 // allow counts a new wallet against the limits, or says which it hit.
@@ -445,21 +532,19 @@ type createTestWalletOutput struct {
 }
 
 func toolCreateTestWallet(_ context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, createTestWalletOutput, error) {
-	ip := sbx.bucket(req)
+	ip, err := sbx.bucket(req)
+	if err != nil {
+		return nil, createTestWalletOutput{}, err
+	}
 	if err := sbx.allow(ip); err != nil {
 		return nil, createTestWalletOutput{}, err
 	}
-	entropy, err := bip39.NewEntropy(256)
+	token, entropy, err := sbx.newHandle()
 	if err != nil {
 		sbx.release(ip)
 		return nil, createTestWalletOutput{}, err
 	}
 	_, address, err := walletFromEntropy(entropy)
-	if err != nil {
-		sbx.release(ip)
-		return nil, createTestWalletOutput{}, err
-	}
-	token, err := sbx.seal(entropy)
 	if err != nil {
 		sbx.release(ip)
 		return nil, createTestWalletOutput{}, err

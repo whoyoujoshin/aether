@@ -47,7 +47,7 @@ func newTestSandbox(t *testing.T) (*sandbox, *fakeChain) {
 	require.NoError(t, err)
 	acc, _, err := fw.CreateAccount("funder")
 	require.NoError(t, err)
-	s := &sandbox{aead: aead, funder: fw, funderName: "funder", funderAddr: acc.Address, grant: math.NewInt(10_000),
+	s := &sandbox{aead: aead, handleKey: deriveHandleKey(secret), funder: fw, funderName: "funder", funderAddr: acc.Address, grant: math.NewInt(10_000),
 		perIP: 2, perDay: 3, now: time.Now, byIP: map[string][]time.Time{},
 		client: directory.SafeHTTPClient(true, 10*time.Second)}
 	s.listed = func(context.Context) ([]string, error) { return nil, nil }
@@ -82,6 +82,38 @@ func TestSandboxTokenIsTheWallet(t *testing.T) {
 	}
 	_, _, err = other.open(token)
 	require.Equal(t, codeBadToken, codeOf(t, err), "another server's secret can't open it")
+}
+
+func TestSandboxHandleIsTheWallet(t *testing.T) {
+	s, _ := newTestSandbox(t)
+	h, entropy, err := s.newHandle()
+	require.NoError(t, err)
+	require.Regexp(t, `^tw[0-9a-hjkmnp-tv-z]{16}$`, h)
+	_, want, err := walletFromEntropy(entropy)
+	require.NoError(t, err)
+
+	// The same handle opens the same key, and a copy with its case,
+	// dashes or Crockford look-alikes changed still does.
+	sloppy := strings.ToUpper(h[:6]) + "\u2011" + strings.NewReplacer("0", "o", "1", "l").Replace(h[6:])
+	for _, tok := range []string{h, " " + h + "\n", sloppy} {
+		_, got, err := s.open(tok)
+		require.NoError(t, err, tok)
+		require.Equal(t, want, got, tok)
+	}
+
+	// Handles are distinct, and one names a different key on another
+	// server; a handle cut short or with a stray letter opens nothing.
+	h2, _, err := s.newHandle()
+	require.NoError(t, err)
+	require.NotEqual(t, h, h2)
+	other, _ := newTestSandbox(t)
+	_, otherAddr, err := other.open(h)
+	require.NoError(t, err)
+	require.NotEqual(t, want, otherAddr)
+	for _, bad := range []string{h[:len(h)-1], h + "x", "tw" + strings.Repeat("u", 16), "xx" + h[2:]} {
+		_, _, err := s.open(bad)
+		require.Equal(t, codeBadToken, codeOf(t, err), bad)
+	}
 }
 
 func TestSandboxRunsOnlyOnTestChains(t *testing.T) {
@@ -119,7 +151,8 @@ func TestCreateTestWalletFundsItWithinLimits(t *testing.T) {
 	}
 	require.Equal(t, uint64(2), s.nextSeq)
 
-	// The token opens the address it named.
+	// The token is a short handle, and opens the address it named.
+	require.Regexp(t, `^tw[0-9a-hjkmnp-tv-z]{16}$`, a.WalletToken)
 	_, addr, err := s.open(a.WalletToken)
 	require.NoError(t, err)
 	require.Equal(t, a.Address, addr)
@@ -259,13 +292,18 @@ func TestBenchKeyHasItsOwnAllowance(t *testing.T) {
 	require.Equal(t, codeSandboxLimit, codeOf(t, err), "the bench allowance is its own limit")
 	require.Empty(t, s.created, "bench wallets don't use up the public daily allowance")
 
-	// A wrong key is just another caller, on the per-caller limit.
-	for i := 0; i < 2; i++ {
-		_, _, err := toolCreateTestWallet(ctx, bench("wrong-key-0123456789"), struct{}{})
-		require.NoError(t, err)
-	}
+	// A wrong key is refused outright, not put on the per-caller limit;
+	// a caller sending none is on that limit as before.
 	_, _, err = toolCreateTestWallet(ctx, bench("wrong-key-0123456789"), struct{}{})
-	require.Equal(t, codeSandboxLimit, codeOf(t, err))
+	require.Equal(t, codeBadBenchKey, codeOf(t, err))
+	require.Empty(t, s.byIP["203.0.113.5"], "a refused key takes no slot")
+	_, _, err = toolCreateTestWallet(ctx, fromIP("203.0.113.5"), struct{}{})
+	require.NoError(t, err)
+
+	// A server without a bench key says so to a caller that sends one.
+	s.benchKey = nil
+	_, _, err = toolCreateTestWallet(ctx, bench("bench-key-0123456789"), struct{}{})
+	require.Equal(t, codeBadBenchKey, codeOf(t, err))
 }
 
 func TestASendRightAfterAnotherTakesTheNextSequence(t *testing.T) {
