@@ -78,7 +78,7 @@ go run ./paybench run --agent openai --model gpt-5
 
 # Open models through OpenRouter (OPENROUTER_API_KEY)
 go run ./paybench run --agent openai --base-url https://openrouter.ai/api/v1 \
-  --api-key-env OPENROUTER_API_KEY --model qwen/qwen3-235b-a22b
+  --api-key-env OPENROUTER_API_KEY --model openai/gpt-oss-120b --label gpt-oss-120b
 
 # A local model through Ollama (needs tool calling)
 go run ./paybench run --agent openai --base-url http://localhost:11434/v1 --model llama3.3
@@ -87,12 +87,19 @@ go run ./paybench run --agent openai --base-url http://localhost:11434/v1 --mode
 go run ./paybench run --agent scripted --label reference
 ```
 
-In PowerShell, quote the values: `$env:AETHER_BENCH_KEY = "..."` and so on.
+In PowerShell, quote the values: `$env:AETHER_BENCH_KEY = "..."` and so on,
+and put each command on one line (PowerShell doesn't continue lines with
+`\`). The values last only as long as that window, so set them again in a
+new one. To see which models OpenRouter offers with tool calling:
+`(Invoke-RestMethod "https://openrouter.ai/api/v1/models?supported_parameters=tools").data.id`.
 
 If the model's API refuses a task's first request (a bad or missing key,
 no credit, a model the account can't use), the run stops with that error
-and writes no results, since every task would fail the same way. Other
-errors are printed under the task they hit and kept in its result.
+and writes no results, since every task would fail the same way. So does
+a run whose task can't get its funded wallet from the server (the daily
+limit, say), and a run against the public server without
+`AETHER_BENCH_KEY` doesn't start. Other errors are printed under the task
+they hit and kept in its result.
 
 Useful flags: `--label` (the name in the table; default the model),
 `--only buy-pulse,cheapest` (some tasks), `--max-turns` (30),
