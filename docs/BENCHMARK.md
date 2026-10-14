@@ -138,7 +138,15 @@ The quest task joins the public quest board as `paybench <label>`.
 
 Results are comparable only within one task-set version (`version` in
 `tasks.json`, recorded in each result). A change to a task, its prompt or
-its scoring bumps the version.
+its scoring bumps the version, and so does a change to the test wallet
+that makes the tasks easier or harder. The report scores each version
+apart.
+
+- Version 1 (2026-10-11 to 2026-10-13): wallet tokens of about 100
+  characters.
+- Version 2 (from 2026-10-14): the same tasks, with the test wallet's
+  short handles (`tw` and 16 characters). Run it once the seed's test
+  wallet hands out handles.
 
 ## Testing the harness
 

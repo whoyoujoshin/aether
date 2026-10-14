@@ -16,7 +16,9 @@ import (
 // ceiling the models are compared to.
 type scriptedAgent struct{}
 
-var tokenPattern = regexp.MustCompile(`aether-test-wallet-v1\.[A-Za-z0-9_-]+`)
+// tokenPattern is a wallet token in a prompt: a short handle, or the
+// sealed token the test wallet issued before handles.
+var tokenPattern = regexp.MustCompile(`aether-test-wallet-v1\.[A-Za-z0-9_-]+|\btw[0-9a-hjkmnp-tv-z]{16}\b`)
 var namePattern = regexp.MustCompile(`under the name "([^"]+)"`)
 
 type service struct {

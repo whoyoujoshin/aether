@@ -92,18 +92,25 @@ func renderReport(runs []Run) string {
 		}
 	}
 
-	// Per model (by label), best first.
+	// Per model (by label, and by task-set version when runs span more
+	// than one: their scores aren't comparable), best first.
+	key := func(r Run) string {
+		if len(versions) > 1 {
+			return r.Label + " (v" + r.TasksVersion + ")"
+		}
+		return r.Label
+	}
 	byModel := map[string]*tally{}
 	count := map[string]int{}
 	var models []string
 	for _, r := range runs {
-		if byModel[r.Label] == nil {
-			byModel[r.Label] = &tally{}
-			models = append(models, r.Label)
+		if byModel[key(r)] == nil {
+			byModel[key(r)] = &tally{}
+			models = append(models, key(r))
 		}
-		count[r.Label]++
+		count[key(r)]++
 		for _, res := range r.Results {
-			byModel[r.Label].add(res)
+			byModel[key(r)].add(res)
 		}
 	}
 	sort.SliceStable(models, func(i, j int) bool {
@@ -118,8 +125,8 @@ func renderReport(runs []Run) string {
 		rank[m] = i
 	}
 	sort.SliceStable(runs, func(i, j int) bool {
-		if runs[i].Label != runs[j].Label {
-			return rank[runs[i].Label] < rank[runs[j].Label]
+		if key(runs[i]) != key(runs[j]) {
+			return rank[key(runs[i])] < rank[key(runs[j])]
 		}
 		return runs[i].Started.Before(runs[j].Started)
 	})
@@ -177,7 +184,7 @@ func renderReport(runs []Run) string {
 			}
 		}
 		fmt.Fprintf(&b, "| %s | %.2f / %d | %s | %.0fs | %s / %s | %d uaeth |\n",
-			r.Label, t.points, t.measured, strings.Join(cells, " | "), secs, kilo(in), kilo(out), spent)
+			key(r), t.points, t.measured, strings.Join(cells, " | "), secs, kilo(in), kilo(out), spent)
 	}
 	b.WriteString("\n✓ full marks, ✗ none, a number for partial credit. Score is the points over the tasks measured; each task is worth 1. Time is the agents' own (not the harness's wallet setup or settling). Spent is what left the task wallets; fees are zero on the testnet.\n")
 	if anySkipped {
