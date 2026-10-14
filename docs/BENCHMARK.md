@@ -10,9 +10,14 @@ another model.
 The code is in [`bench/`](../bench): `tasks.json` (the task set) and
 `paybench/` (the harness, the agents and the scoring).
 
-**Results:** [bench/RESULTS.md](../bench/RESULTS.md). On 2026-10-11 Claude
-passed all 14 measured tasks in three runs on the testnet, as did the
-reference agent; GPT and open models are next.
+**Results:** [bench/RESULTS.md](../bench/RESULTS.md). Claude (2026-10-11)
+and GPT-5 (2026-10-13) passed every measured task in three runs each, as
+did the reference agent. The open model gpt-oss-120b passed the four
+single-step tasks every time but finished the quest in one run of three.
+Twice it copied the wallet token wrong partway through (the server answered
+`INVALID_WALLET_TOKEN`): once it stopped and asked for help, and once it
+made a wallet of its own and played the quest with that instead of the one
+it was given, which doesn't count.
 
 ## The tasks
 

@@ -228,8 +228,15 @@ func redactTokens(bz []byte, err error) []byte {
 	if err != nil {
 		log.Fatal(err)
 	}
-	return tokenPattern.ReplaceAll(bz, []byte("aether-test-wallet-v1.REDACTED"))
+	return redactPattern.ReplaceAll(bz, []byte("aether-test-wallet-v1.REDACTED"))
 }
+
+// redactPattern is tokenPattern with any dash a model may write in place
+// of "-" (a model once echoed a token with U+2011 non-breaking hyphens),
+// raw or JSON-escaped.
+var redactPattern = regexp.MustCompile(`aether` + dash + `test` + dash + `wallet` + dash + `v1\.(?:[A-Za-z0-9_]|` + dash + `)+`)
+
+const dash = `(?:-|[\x{2010}-\x{2015}\x{2212}]|\\u201[0-5]|\\u2212)`
 
 var nonSlug = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 

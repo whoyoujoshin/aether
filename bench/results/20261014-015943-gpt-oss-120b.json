@@ -1,0 +1,215 @@
+{
+  "label": "gpt-oss-120b",
+  "agent": "openai",
+  "model": "openai/gpt-oss-120b",
+  "endpoint": "https://explorer.157-245-252-221.sslip.io/sandbox/mcp",
+  "tasksVersion": "1",
+  "started": "2026-10-14T01:59:43.3247573Z",
+  "results": [
+    {
+      "task": "first-wallet",
+      "points": 1,
+      "passed": true,
+      "notes": [
+        "made a wallet, waited for its funding and reported its address"
+      ],
+      "answer": "Wallet address: aether12yjmmczzzlmz88g7emfk44f5652x92js5jslwxd4j32gehtvktuq7ln4mk  \nAETH balance: 0.01 AETH.",
+      "turns": 4,
+      "toolCalls": 3,
+      "inputTokens": 5630,
+      "outputTokens": 391,
+      "seconds": 20.4484831,
+      "spentUaeth": 0,
+      "wallet": "aether12yjmmczzzlmz88g7emfk44f5652x92js5jslwxd4j32gehtvktuq7ln4mk",
+      "calls": [
+        {
+          "tool": "create_test_wallet",
+          "args": {},
+          "result": "{\"address\":\"aether12yjmmczzzlmz88g7emfk44f5652x92js5jslwxd4j32gehtvktuq7ln4mk\",\"funding\":{\"aeth\":\"0.01\",\"amount\":\"0.01\",\"asset\":\"AETH\",\"base\":\"10000\",\"denom\":\"uaeth\",\"uaeth\":\"10000\"},\"fundingTx\":\"1053FCCC28788DC57B63655CB5BE914CCFCD5011D7EC901F72D03C7C6B344416\",\"note\":\"Testnet only, and custodial: this server can spend this wallet too. The funding lands with the next block (~60s): check get_test_wallet, then find_services and buy_service.\",\"walletToken\":\"aether-test-wallet-v1.REDACTED\"}",
+          "seconds": 0.1222555
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "aether-test-wallet-v1.REDACTED"
+          },
+          "result": "{\"address\":\"aether12yjmmczzzlmz88g7emfk44f5652x92js5jslwxd4j32gehtvktuq7ln4mk\",\"balances\":[{\"aeth\":\"0\",\"amount\":\"0\",\"asset\":\"AETH\",\"base\":\"0\",\"denom\":\"uaeth\",\"uaeth\":\"0\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":false}",
+          "seconds": 0.0843332
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "aether-test-wallet-v1.REDACTED"
+          },
+          "result": "{\"address\":\"aether12yjmmczzzlmz88g7emfk44f5652x92js5jslwxd4j32gehtvktuq7ln4mk\",\"balances\":[{\"aeth\":\"0.01\",\"amount\":\"0.01\",\"asset\":\"AETH\",\"base\":\"10000\",\"denom\":\"uaeth\",\"uaeth\":\"10000\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":true}",
+          "seconds": 0.1138644
+        }
+      ]
+    },
+    {
+      "task": "buy-pulse",
+      "points": 1,
+      "passed": true,
+      "notes": [
+        "paid \"Aether chain pulse\" 500 uaeth",
+        "reported the payment's hash",
+        "reported the service's height (287159)"
+      ],
+      "answer": "Block height: 287159  \nPayment transaction hash: A15B8426E378F3CD040B381946772524DB3A836569589EFA26614F85D56AD18B",
+      "turns": 3,
+      "toolCalls": 2,
+      "inputTokens": 4362,
+      "outputTokens": 343,
+      "seconds": 27.4990743,
+      "spentUaeth": 500,
+      "wallet": "aether1rj8859zt4pjjlgej9njkpzr6l3pgwkzptggzk8can3upm3mjtqjq5wh25j",
+      "calls": [
+        {
+          "tool": "find_services",
+          "args": {
+            "query": "Aether chain pulse"
+          },
+          "result": "{\"services\":[{\"description\":\"The Aether chain right now: height, block time, difficulty, block reward, epoch and blocks until the next validator selection.\",\"listedAtHeight\":268120,\"name\":\"Aether chain pulse\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":10,\"payments\":22,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.002018\",\"amount\":\"0.002018\",\"asset\":\"AETH\",\"base\":\"2018\",\"denom\":\"uaeth\",\"uaeth\":\"2018\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/pulse\"}]}",
+          "seconds": 0.5089254
+        },
+        {
+          "tool": "buy_service",
+          "args": {
+            "maxAmount": "0.001 AETH",
+            "url": "https://explorer.157-245-252-221.sslip.io/svc/pulse",
+            "walletToken": "aether-test-wallet-v1.REDACTED"
+          },
+          "result": "{\"amount\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"body\":\"{\\n  \\\"chainId\\\": \\\"aether-testnet-1\\\",\\n  \\\"height\\\": 287159,\\n  \\\"blockTime\\\": \\\"2026-10-14T02:01:36Z\\\",\\n  \\\"avgBlockSeconds\\\": 7.019685545599,\\n  \\\"epoch\\\": 199,\\n  \\\"epochLength\\\": 1440,\\n  \\\"selectionHeight\\\": 287999,\\n  \\\"difficulty\\\": \\\"482371\\\",\\n  \\\"blockRewardUaeth\\\": \\\"5000000\\\",\\n  \\\"activeValidators\\\": 4,\\n  \\\"topKSize\\\": 21,\\n  \\\"treasuryUaeth\\\": \\\"1734713671\\\",\\n  \\\"blocksUntilSelection\\\": 840,\\n  \\\"blockReward\\\": \\\"5 AETH\\\",\\n  \\\"treasury\\\": \\\"1734.713671 AETH\\\"\\n}\\n\",\"contentType\":\"application/json\",\"httpStatus\":200,\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"status\":\"paid\",\"txHash\":\"A15B8426E378F3CD040B381946772524DB3A836569589EFA26614F85D56AD18B\"}",
+          "seconds": 8.4934714
+        }
+      ]
+    },
+    {
+      "task": "stay-in-budget",
+      "points": 1,
+      "passed": true,
+      "notes": [
+        "spent nothing: the service is over budget"
+      ],
+      "answer": "I couldn’t retrieve the address report because the only “Aether address report” service listed in the directory costs 0.001 AETH per request, which exceeds the 0.0005 AETH budget you set. Since the price is higher than the amount you’re willing to spend, I’m unable to purchase the service for you.",
+      "turns": 3,
+      "toolCalls": 2,
+      "inputTokens": 3880,
+      "outputTokens": 378,
+      "seconds": 15.1099045,
+      "spentUaeth": 0,
+      "wallet": "aether1x7xhj7ywp828s5tut4d4fc64mlmfmg8h0qsam6ucu2yr8hklllpq7emqd7",
+      "calls": [
+        {
+          "tool": "find_services",
+          "args": {
+            "query": "Aether address report",
+            "maxPrice": "0.0005 AETH"
+          },
+          "result": "{\"services\":[]}",
+          "seconds": 0.0879643
+        },
+        {
+          "tool": "find_services",
+          "args": {
+            "query": "address report"
+          },
+          "result": "{\"services\":[{\"description\":\"Everything about one Aether address in one call: balances (AETH and USDC), recent transfers, grants, session keys, miner standing and escrows. GET ?addr=aether1...\",\"listedAtHeight\":268118,\"name\":\"Aether address report\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.001\",\"amount\":\"0.001\",\"asset\":\"AETH\",\"base\":\"1000\",\"denom\":\"uaeth\",\"uaeth\":\"1000\"},\"reputation\":{\"payers\":10,\"payments\":22,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.002018\",\"amount\":\"0.002018\",\"asset\":\"AETH\",\"base\":\"2018\",\"denom\":\"uaeth\",\"uaeth\":\"2018\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/address\"}]}",
+          "seconds": 0.1041814
+        }
+      ]
+    },
+    {
+      "task": "cheapest",
+      "points": 1,
+      "passed": true,
+      "notes": [
+        "bought exactly one call from the cheapest service"
+      ],
+      "answer": "Service: Aether hello  \nResponse: {\"message\":\"Paid and served: your payment flow works.\",\"payer\":\"aether1wdldmwnlakw36kd782739dlp8z69ahpq9h0lkuml9070gqk2pdfq7k060c\",\"paymentTx\":\"8D740B5098E9BB0BED9974C2F71270D95CCBB50CEE276814A786650CC20F4F6C\",\"servedAt\":\"2026-10-14T02:03:53Z\"}",
+      "turns": 3,
+      "toolCalls": 2,
+      "inputTokens": 6164,
+      "outputTokens": 506,
+      "seconds": 29.9610882,
+      "spentUaeth": 1,
+      "wallet": "aether1wdldmwnlakw36kd782739dlp8z69ahpq9h0lkuml9070gqk2pdfq7k060c",
+      "calls": [
+        {
+          "tool": "find_services",
+          "args": {
+            "maxPrice": "0.1 AETH"
+          },
+          "result": "{\"services\":[{\"description\":\"This epoch's proof-of-work leaderboard on Aether: miners by work, who validates now, and when the next selection happens. GET ?top=N\",\"listedAtHeight\":268121,\"name\":\"Aether miner leaderboard\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":11,\"payments\":23,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.002518\",\"amount\":\"0.002518\",\"asset\":\"AETH\",\"base\":\"2518\",\"denom\":\"uaeth\",\"uaeth\":\"2518\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/miners\"},{\"description\":\"The Aether chain right now: height, block time, difficulty, block reward, epoch and blocks until the next validator selection.\",\"listedAtHeight\":268120,\"name\":\"Aether chain pulse\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":11,\"payments\":23,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.002518\",\"amount\":\"0.002518\",\"asset\":\"AETH\",\"base\":\"2518\",\"denom\":\"uaeth\",\"uaeth\":\"2518\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/pulse\"},{\"description\":\"Checks a post-quantum ML-DSA-44 (FIPS 204) signature and returns the aether1 address of its key. POST {publicKey, signature, message}.\",\"listedAtHeight\":268119,\"name\":\"ML-DSA-44 signature check\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":11,\"payments\":23,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.002518\",\"amount\":\"0.002518\",\"asset\":\"AETH\",\"base\":\"2518\",\"denom\":\"uaeth\",\"uaeth\":\"2518\"},\"wi [truncated]",
+          "seconds": 0.2252687
+        },
+        {
+          "tool": "buy_service",
+          "args": {
+            "maxAmount": "0.000001 AETH",
+            "url": "https://explorer.157-245-252-221.sslip.io/svc/hello",
+            "walletToken": "aether-test-wallet-v1.REDACTED"
+          },
+          "result": "{\"amount\":{\"aeth\":\"0.000001\",\"amount\":\"0.000001\",\"asset\":\"AETH\",\"base\":\"1\",\"denom\":\"uaeth\",\"uaeth\":\"1\"},\"body\":\"{\\n  \\\"message\\\": \\\"Paid and served: your payment flow works.\\\",\\n  \\\"payer\\\": \\\"aether1wdldmwnlakw36kd782739dlp8z69ahpq9h0lkuml9070gqk2pdfq7k060c\\\",\\n  \\\"paymentTx\\\": \\\"8D740B5098E9BB0BED9974C2F71270D95CCBB50CEE276814A786650CC20F4F6C\\\",\\n  \\\"servedAt\\\": \\\"2026-10-14T02:03:53Z\\\"\\n}\\n\",\"contentType\":\"application/json\",\"httpStatus\":200,\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"status\":\"paid\",\"txHash\":\"8D740B5098E9BB0BED9974C2F71270D95CCBB50CEE276814A786650CC20F4F6C\"}",
+          "seconds": 8.1803221
+        }
+      ]
+    },
+    {
+      "task": "quest",
+      "points": 0.25,
+      "passed": false,
+      "notes": [
+        "quest steps done: 1 of 4 [joined]"
+      ],
+      "answer": "I’m unable to use the wallet token you provided because only wallets created through the `create_test_wallet` API are recognized by the test‑net services. To proceed with the quest (joining, buying services, making purchases, rating, etc.) I would need to create a fresh test wallet via `create_test_wallet` and then use that wallet’s token for the subsequent steps. Let me know if you’d like me to create a new test wallet and continue the quest using it.",
+      "turns": 5,
+      "toolCalls": 4,
+      "inputTokens": 14257,
+      "outputTokens": 1288,
+      "seconds": 54.749928,
+      "spentUaeth": 1,
+      "wallet": "aether10l4aanqrup24yn25zj2cpl5rl7h8cvyydqg8zwjnedearsr6h4fqet3ugg",
+      "calls": [
+        {
+          "tool": "get_quest",
+          "args": {
+            "walletToken": "aether-test-wallet-v1.REDACTED"
+          },
+          "result": "{\"address\":\"aether10l4aanqrup24yn25zj2cpl5rl7h8cvyydqg8zwjnedearsr6h4fqet3ugg\",\"board\":\"https://explorer.157-245-252-221.sslip.io/quest\",\"directoryAddress\":\"aether1q33l05h32falelyk69p79p3ypxwka6yk2sq9e2\",\"joinMemo\":\"aether-quest:\\u003cname\\u003e\",\"joined\":7,\"next\":\"Join: send_from_test_wallet with to aether1n52sw0cnykc627u79lvuh24ck0whdx6k25fluj, amount \\\"1uaeth\\\" and memo \\\"aether-quest:\\u003cname\\u003e\\\". Steps already done count once it has (it can take a block, ~60s, and the board refreshes each minute).\",\"questAddress\":\"aether1n52sw0cnykc627u79lvuh24ck0whdx6k25fluj\",\"steps\":[{\"how\":\"Send 1 uaeth to the quest address with memo aether-quest:\\u003cname\\u003e (1-32 letters, digits, spaces, . _ -). Sending it again changes the name.\",\"id\":\"joined\",\"title\":\"Join the quest\"},{\"how\":\"Pay a service listed in the directory at least its price: find_services, then buy_service (hosted test wallet) or fetch_paid (agentmcp).\",\"id\":\"bought\",\"title\":\"Buy a service\"},{\"how\":\"Five purchases from listed services, in all.\",\"id\":\"regular\",\"title\":\"Make 5 purchases\"},{\"how\":\"After paying a service, send 1 uaeth to the directory address with memo x402-rate:\\u003c1-5\\u003e:\\u003cservice url\\u003e (agentmcp: rate_service).\",\"id\":\"rated\",\"title\":\"Rate a service you bought\"},{\"how\":\"Announce a paid service whose manifest names your account as payee: cmd/paywall with --public-url, the TS/Python seller kits, or agentmcp's announce_service.\",\"id\":\"seller\",\"title\":\"List your own service\"},{\"how\":\"Another account pays your listed service at least its price.\",\"id\":\"earned\",\"title\":\"Get paid by another agent\"}],\"top\":[{\"address\":\"aether1ydnr5csutg0hmjrxqpqj3htxa0x4xyjgt2ev04nyejzu5lgemztsndh8n2\",\"done\":{\"bought\":274556,\"joined\":274556,\"rated\":274561,\"regular\":274560},\"joinedHeight\":274556,\"name\":\"paybench reference\",\"purchases\":5,\"rank\":1,\"reachedHeight\":274561,\"score\":4},{\"address\":\"aether1nvejprf6pu3hwrfywe5heegkm6n6479twf6gd0ew0lmmha7ym4sqmkyj7m\",\"done\":{\"bought\":274927,\"joined\":274927,\"rated [truncated]",
+          "seconds": 0.1546078
+        },
+        {
+          "tool": "send_from_test_wallet",
+          "args": {
+            "amount": "1uaeth",
+            "memo": "aether-quest:paybench gpt-oss-120b",
+            "to": "aether1n52sw0cnykc627u79lvuh24ck0whdx6k25fluj",
+            "walletToken": "aether-test-wallet-v1.REDACTED"
+          },
+          "result": "{\"amount\":{\"aeth\":\"0.000001\",\"amount\":\"0.000001\",\"asset\":\"AETH\",\"base\":\"1\",\"denom\":\"uaeth\",\"uaeth\":\"1\"},\"to\":\"aether1n52sw0cnykc627u79lvuh24ck0whdx6k25fluj\",\"txHash\":\"5E7C5965B742A77C2F54CC2A798667B88A711634DD0C9A6A78ED2ED0052A6535\"}",
+          "seconds": 0.1002052
+        },
+        {
+          "tool": "find_services",
+          "args": {
+            "maxPrice": "0.008 AETH"
+          },
+          "result": "{\"services\":[{\"description\":\"This epoch's proof-of-work leaderboard on Aether: miners by work, who validates now, and when the next selection happens. GET ?top=N\",\"listedAtHeight\":268121,\"name\":\"Aether miner leaderboard\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":12,\"payments\":24,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.002519\",\"amount\":\"0.002519\",\"asset\":\"AETH\",\"base\":\"2519\",\"denom\":\"uaeth\",\"uaeth\":\"2519\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/miners\"},{\"description\":\"The Aether chain right now: height, block time, difficulty, block reward, epoch and blocks until the next validator selection.\",\"listedAtHeight\":268120,\"name\":\"Aether chain pulse\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":12,\"payments\":24,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.002519\",\"amount\":\"0.002519\",\"asset\":\"AETH\",\"base\":\"2519\",\"denom\":\"uaeth\",\"uaeth\":\"2519\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/pulse\"},{\"description\":\"Checks a post-quantum ML-DSA-44 (FIPS 204) signature and returns the aether1 address of its key. POST {publicKey, signature, message}.\",\"listedAtHeight\":268119,\"name\":\"ML-DSA-44 signature check\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":12,\"payments\":24,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.002519\",\"amount\":\"0.002519\",\"asset\":\"AETH\",\"base\":\"2519\",\"denom\":\"uaeth\",\"uaeth\":\"2519\"},\"wi [truncated]",
+          "seconds": 0.2208994
+        },
+        {
+          "tool": "buy_service",
+          "args": {
+            "maxAmount": "0.008 AETH",
+            "url": "https://explorer.157-245-252-221.sslip.io/svc/hello",
+            "walletToken": "aether-test-wallet-v1.REDACTED"
+          },
+          "result": "{\"error\":{\"code\":\"INVALID_WALLET_TOKEN\",\"retryable\":false,\"message\":\"walletToken isn't one this server issued (create_test_wallet makes one)\"}}",
+          "isError": true,
+          "seconds": 0.0790604
+        }
+      ]
+    }
+  ]
+}
