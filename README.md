@@ -490,7 +490,7 @@ aetherd query governance proposal <proposal-id>
 Software in this repository is under the [MIT License](LICENSE).
 
 The Aether name, Æ mark, and assets in [`docs/brand/`](docs/brand/) are **not**
-covered by that license. See [Brand usage and trademarks](docs/brand/README.md#brand-usage-and-trademarks).
+covered by that license: see [TRADEMARKS.md](TRADEMARKS.md) and [Brand usage and trademarks](docs/brand/README.md#brand-usage-and-trademarks).
 
 ## Contributing
 
