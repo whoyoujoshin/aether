@@ -78,7 +78,9 @@ echo "healthz $health, tools/list ${tools:-missing}"
 echo "funder: $FUNDER"
 balance=$(curl -s --max-time 5 "http://127.0.0.1:1317/cosmos/bank/v1beta1/balances/$FUNDER/by_denom?denom=uaeth" | grep -o '"amount":"[0-9]*"' || true)
 [ -n "$balance" ] || balance=$(timeout 10 /root/aetherd-keys.tmp q bank balance "$FUNDER" uaeth --node "${NODE:-tcp://127.0.0.1:26657}" -o json 2>/dev/null | grep -o '"amount":"[0-9]*"' || true)
-usdc=$(curl -s --max-time 5 "http://127.0.0.1:1317/cosmos/bank/v1beta1/balances/$FUNDER/by_denom?denom=ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C" | grep -o '"amount":"[0-9]*"' || true)
+USDC_DENOM=ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C
+usdc=$(curl -s --max-time 5 "http://127.0.0.1:1317/cosmos/bank/v1beta1/balances/$FUNDER/by_denom?denom=$USDC_DENOM" | grep -o '"amount":"[0-9]*"' || true)
+[ -n "$usdc" ] || usdc=$(timeout 10 /root/aetherd-keys.tmp q bank balance "$FUNDER" "$USDC_DENOM" --node "${NODE:-tcp://127.0.0.1:26657}" -o json 2>/dev/null | grep -o '"amount":"[0-9]*"' || true)
 rm -f /root/aetherd-keys.tmp
 echo "funder balance: ${balance:-unknown (check: aetherd q bank balances $FUNDER)}"
 echo "funder USDC (base units, 1 USDC = 1000000): ${usdc:-unknown}"
