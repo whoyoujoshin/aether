@@ -20,6 +20,18 @@ CHAIN_ID=${CHAIN_ID:-aether-testnet-1}
 USDC="--usdc-path transfer/channel-2 --usdc-base-denom erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d --usdc-issuer Injective"
 LIST="$REPO/scripts/agentservices/services.txt"
 [ -f "$LIST" ] || { echo "run from the repo checkout (no $LIST)" >&2; exit 1; }
+# The payments benchmark's decoys, once decoys.sh has made their account:
+# served by agentservices and behind their own paywalls, never announced.
+DECOYS="$REPO/scripts/agentservices/decoys.txt"
+DECOY=$(cat "${DECOY_KEYDIR:-/root/aether-decoy-key}/address" 2>/dev/null || true)
+# every paywall: name|port|price|title|description|payee
+ALL=$(mktemp)
+trap 'rm -f "$ALL"' EXIT
+grep -v '^#' "$LIST" | grep . | sed "s/\$/|$PAY_TO/" > "$ALL"
+if [ -n "$DECOY" ] && [ -f "$DECOYS" ]; then
+  grep -v '^#' "$DECOYS" | grep . | sed "s/{{decoy}}/$DECOY/g; s/\$/|$DECOY/" >> "$ALL"
+  echo "== Decoys for the benchmark, naming $DECOY"
+fi
 
 echo "== Building from $(git -C "$REPO" log -1 --format='%h %s')"
 (cd "$REPO" && go build -o /root/agentservices.new ./cmd/agentservices && go build -o /root/paywall.new ./cmd/paywall && go build -o /root/facilitator.new ./cmd/facilitator)
@@ -34,7 +46,7 @@ Description=Aether paid agent services (upstream of the paywalls)
 After=network-online.target aetherd.service
 
 [Service]
-ExecStart=/root/agentservices --listen 127.0.0.1:8500 --grpc $GRPC $USDC
+ExecStart=/root/agentservices --listen 127.0.0.1:8500 --grpc $GRPC $USDC${DECOY:+ --decoy-address $DECOY}
 Environment=HOME=/root
 Restart=always
 RestartSec=2
@@ -61,7 +73,7 @@ WantedBy=multi-user.target
 UNIT
 
 units=(aether-agentservices aether-facilitator)
-while IFS='|' read -r name port price title desc; do
+while IFS='|' read -r name port price title desc payee; do
   case "$name" in ''|'#'*) continue;; esac
   unit=aether-paywall-$name
   units+=("$unit")
@@ -71,7 +83,7 @@ Description=Aether paywall: $title
 After=network-online.target aether-agentservices.service
 
 [Service]
-ExecStart=/root/paywall --listen 127.0.0.1:$port --upstream http://127.0.0.1:8500/$name --pay-to $PAY_TO --price "$price" --grpc $GRPC --chain-id $CHAIN_ID --name "$title" --description "$desc" --free /help --public-url $PUBLIC/$name $USDC
+ExecStart=/root/paywall --listen 127.0.0.1:$port --upstream http://127.0.0.1:8500/$name --pay-to $payee --price "$price" --grpc $GRPC --chain-id $CHAIN_ID --name "$title" --description "$desc" --free /help --public-url $PUBLIC/$name $USDC
 Environment=HOME=/root
 Restart=always
 RestartSec=2
@@ -80,7 +92,7 @@ NoNewPrivileges=true
 [Install]
 WantedBy=multi-user.target
 UNIT
-done < "$LIST"
+done < "$ALL"
 
 systemctl daemon-reload
 for u in "${units[@]}"; do
@@ -97,7 +109,7 @@ fail=0
 for _ in $(seq 1 10); do [ "$(code http://127.0.0.1:8403/supported)" = 200 ] && break; sleep 1; done
 printf '%-8s supported %s  healthz %s\n' facilitator "$(code http://127.0.0.1:8403/supported)" "$(code http://127.0.0.1:8403/healthz)"
 [ "$(code http://127.0.0.1:8403/healthz)" = 200 ] || fail=1
-while IFS='|' read -r name port price title desc; do
+while IFS='|' read -r name port price title desc payee; do
   case "$name" in ''|'#'*) continue;; esac
   for _ in $(seq 1 10); do [ "$(code "http://127.0.0.1:$port/help")" = 200 ] && break; sleep 1; done
   help=$(code "http://127.0.0.1:$port/help")
@@ -106,7 +118,7 @@ while IFS='|' read -r name port price title desc; do
   v2=$(hdr "http://127.0.0.1:$port/")
   printf '%-8s help %s  unpaid %s  v2 header %s  manifest %s\n' "$name" "$help" "$paid" "$v2" "$man"
   [ "$help" = 200 ] && [ "$paid" = 402 ] && [ "$v2" = 1 ] && [ "$man" = 200 ] || fail=1
-done < "$LIST"
+done < "$ALL"
 if [ $fail = 1 ]; then
   echo "Some checks failed (000: not answering). Why: journalctl -u aether-paywall-<name> -n 5 --no-pager" >&2
   exit 1

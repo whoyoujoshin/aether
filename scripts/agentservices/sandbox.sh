@@ -41,6 +41,10 @@ if [ ! -s "$KEYDIR/bench-key" ]; then
   (umask 077 && openssl rand -hex 24 > "$KEYDIR/bench-key")
 fi
 
+# The payments benchmark's decoys (decoys.sh), shown only to bench callers.
+LISTINGS=""
+[ -s "$KEYDIR/bench-listings" ] && LISTINGS="--sandbox-bench-listings $KEYDIR/bench-listings"
+
 echo "== Unit"
 cat > /etc/systemd/system/aether-sandbox.service <<UNIT
 [Unit]
@@ -48,7 +52,7 @@ Description=Aether hosted test wallet (custodial testnet wallets over MCP)
 After=network-online.target
 
 [Service]
-ExecStart=/root/agentmcp-sandbox --sandbox-http 127.0.0.1:8092 --grpc $GRPC --chain-id $CHAIN_ID --rpc "" --keyring-dir $KEYDIR --keyring-backend test --sandbox-funder sandbox-funder --sandbox-secret-file $KEYDIR/token-secret --sandbox-bench-key-file $KEYDIR/bench-key $USDC
+ExecStart=/root/agentmcp-sandbox --sandbox-http 127.0.0.1:8092 --grpc $GRPC --chain-id $CHAIN_ID --rpc "" --keyring-dir $KEYDIR --keyring-backend test --sandbox-funder sandbox-funder --sandbox-secret-file $KEYDIR/token-secret --sandbox-bench-key-file $KEYDIR/bench-key $LISTINGS $USDC
 Environment=HOME=/root
 Restart=always
 RestartSec=2
