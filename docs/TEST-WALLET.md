@@ -44,11 +44,15 @@ after a restart too.
 
 - Three new wallets a day per caller, and 200 a day in all. Reuse a token
   rather than making a new one. The payments benchmark has its own
-  allowance of 60 a day, for callers that send its key
+  allowance of 150 a day, for callers that send its key
   (`X-Aether-Bench-Key`; see [BENCHMARK.md](BENCHMARK.md)). A caller that
   sends a key that doesn't match gets `INVALID_BENCH_KEY`.
 - `buy_service` pays only services listed in the on-chain directory (what
   `find_services` returns), so the server is no open proxy.
+- For the payments benchmark only, `--sandbox-bench-listings` names extra
+  services (the benchmark's decoys) that a caller with the bench key sees
+  and pays when it names them in `X-Aether-Bench-Listings`. Nobody else
+  sees them, and they're never on chain.
 - It runs only on a test or dev chain: it refuses to start on any other.
 
 ## How it works

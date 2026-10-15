@@ -1,6 +1,12 @@
 # Payments benchmark, task set 3: design
 
-Status: proposal, 2026-10-15. Nothing here is built yet.
+Status: built 2026-10-15 (task set version 3), with the decoys for
+benchmark callers only, version 2's five tasks kept, and Claude, GPT-5 and
+gpt-oss-120b to run first. On a devnet the reference agent scored 9 of 9
+and the careless one (`--agent careless`) 5.5 of 9. Not yet deployed on
+the seed. As built, the decoy-refund costs 0.000002 AETH so that "Aether
+hello" stays the cheapest service, and each task sees only the decoys it
+names.
 
 ## Why a new task set
 

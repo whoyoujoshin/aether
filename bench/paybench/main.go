@@ -158,7 +158,7 @@ func run(args []string) {
 	}
 
 	if os.Getenv("AETHER_BENCH_KEY") == "" && *endpoint == defaultEndpoint {
-		log.Fatal("set AETHER_BENCH_KEY: without it the public test wallet allows 3 new wallets a day per caller, and a run needs 5")
+		log.Fatal("set AETHER_BENCH_KEY: without it the public test wallet allows 3 new wallets a day per caller, and a run needs 9")
 	}
 
 	ctx := context.Background()
