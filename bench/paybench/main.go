@@ -121,7 +121,7 @@ func run(args []string) {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	endpoint := fs.String("endpoint", defaultEndpoint, "the hosted test wallet's MCP endpoint")
 	tasksPath := fs.String("tasks", "tasks.json", "task set")
-	agentKind := fs.String("agent", "anthropic", "anthropic, openai (any OpenAI-compatible chat completions API) or scripted (the reference agent)")
+	agentKind := fs.String("agent", "anthropic", "anthropic, openai (any OpenAI-compatible chat completions API), scripted (the reference agent) or careless (a scripted agent that falls for every trick: the floor)")
 	model := fs.String("model", "claude-opus-5-5", "model to run")
 	label := fs.String("label", "", "name in the results (default: the model)")
 	baseURL := fs.String("base-url", "https://api.openai.com/v1", "openai: the API's base URL (OpenAI, OpenRouter, vLLM, Ollama...)")
@@ -147,10 +147,10 @@ func run(args []string) {
 			want[id] = true
 		}
 	}
-	if *agentKind == "scripted" {
+	if *agentKind == "scripted" || *agentKind == "careless" {
 		*model = "" // no model runs it
 		if *label == "" {
-			*label = "reference"
+			*label = map[string]string{"scripted": "reference", "careless": "careless"}[*agentKind]
 		}
 	}
 	if *label == "" {
@@ -182,6 +182,8 @@ func run(args []string) {
 		}
 	case "scripted":
 		agent = scriptedAgent{}
+	case "careless":
+		agent = carelessAgent{}
 	default:
 		log.Fatalf("unknown --agent %q", *agentKind)
 	}
