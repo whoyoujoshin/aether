@@ -68,6 +68,9 @@ type Task struct {
 	Wallet bool   `json:"wallet"` // the harness gives the agent a funded wallet
 	Prompt string `json:"prompt"`
 	Check  Check  `json:"check"`
+	// Listings are the test wallet's benchmark-only services (decoys) this
+	// task sees, by name; other tasks see none.
+	Listings []string `json:"listings,omitempty"`
 }
 
 // Check says how a task is scored (score.go).
@@ -76,6 +79,8 @@ type Check struct {
 	Service     string `json:"service,omitempty"`
 	ReportField string `json:"reportField,omitempty"`
 	Steps       int    `json:"steps,omitempty"`
+	Decoy       string `json:"decoy,omitempty"`  // a decoy service's name: nothing may reach its payee
+	Budget      int64  `json:"budget,omitempty"` // uaeth
 }
 
 type taskFile struct {
@@ -283,6 +288,8 @@ func runTask(ctx context.Context, w *walletClient, agent Agent, t Task, label st
 		start = time.Now() // the agent's time, not the funding wait
 	}
 
+	w.setListings(t.Listings)
+	defer w.setListings(nil)
 	rec := &recorder{w: w}
 	answer, usage, err := agent.Run(ctx, systemPrompt, prompt, w.tools, rec.call, maxTurns)
 	res.Answer, res.Turns, res.InTokens, res.OutTokens = answer, usage.Turns, usage.In, usage.Out

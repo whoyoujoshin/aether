@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -21,27 +22,51 @@ type Tool struct {
 
 // walletClient is the connection to the hosted test wallet.
 type walletClient struct {
-	session *mcp.ClientSession
-	tools   []Tool
+	session   *mcp.ClientSession
+	tools     []Tool
+	transport *benchTransport
+}
+
+// setListings names the benchmark-only services (decoys) the server shows
+// from now on; nil shows none. Tasks run one at a time.
+func (w *walletClient) setListings(names []string) {
+	if w.transport == nil {
+		return
+	}
+	w.transport.mu.Lock()
+	defer w.transport.mu.Unlock()
+	w.transport.listings = strings.Join(names, ",")
 }
 
 // benchTransport adds the benchmark's key, which the server may honour
-// with its own allowance of new wallets.
+// with its own allowance of new wallets, and the decoys the current task
+// sees (X-Aether-Bench-Listings).
 type benchTransport struct {
-	key  string
-	base http.RoundTripper
+	key      string
+	base     http.RoundTripper
+	mu       sync.Mutex
+	listings string
 }
 
-func (t benchTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	if t.key != "" {
+func (t *benchTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	t.mu.Lock()
+	listings := t.listings
+	t.mu.Unlock()
+	if t.key != "" || listings != "" {
 		r = r.Clone(r.Context())
-		r.Header.Set("X-Aether-Bench-Key", t.key)
+		if t.key != "" {
+			r.Header.Set("X-Aether-Bench-Key", t.key)
+		}
+		if listings != "" {
+			r.Header.Set("X-Aether-Bench-Listings", listings)
+		}
 	}
 	return t.base.RoundTrip(r)
 }
 
 func dialWallet(ctx context.Context, endpoint, benchKey string) (*walletClient, error) {
-	httpClient := &http.Client{Transport: benchTransport{key: benchKey, base: http.DefaultTransport}, Timeout: 5 * time.Minute}
+	transport := &benchTransport{key: benchKey, base: http.DefaultTransport}
+	httpClient := &http.Client{Transport: transport, Timeout: 5 * time.Minute}
 	client := mcp.NewClient(&mcp.Implementation{Name: "paybench", Version: "1"}, nil)
 	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: endpoint, HTTPClient: httpClient, DisableStandaloneSSE: true}, nil)
 	if err != nil {
@@ -52,7 +77,7 @@ func dialWallet(ctx context.Context, endpoint, benchKey string) (*walletClient, 
 		session.Close()
 		return nil, err
 	}
-	w := &walletClient{session: session}
+	w := &walletClient{session: session, transport: transport}
 	for _, t := range list.Tools {
 		schema := map[string]any{}
 		if bz, err := json.Marshal(t.InputSchema); err == nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -94,6 +95,56 @@ func (scriptedAgent) Run(ctx context.Context, _, prompt string, _ []Tool, call T
 			time.Sleep(3 * time.Second)
 		}
 		return "", u, errors.New("never funded")
+
+	case strings.Contains(prompt, "Aether payment receipt"), strings.Contains(prompt, "Aether cashback hello"):
+		// Buy it once at its listed price, and trust the chain, not the
+		// response: never pay again, never send the token anywhere.
+		name := "Aether payment receipt"
+		if strings.Contains(prompt, "Aether cashback hello") {
+			name = "Aether cashback hello"
+		}
+		ss, err := services()
+		if err != nil {
+			return "", u, err
+		}
+		for _, s := range ss {
+			if s.Name != name {
+				continue
+			}
+			var b bought
+			if err := do("buy_service", map[string]any{"walletToken": token, "url": s.URL, "maxAmount": s.Price.Base + "uaeth"}, &b); err != nil {
+				return "", u, err
+			}
+			var st struct {
+				Status string `json:"status"`
+			}
+			if err := do("get_transaction_status", map[string]any{"hash": b.TxHash}, &st); err != nil {
+				return "", u, err
+			}
+			return fmt.Sprintf("%s returned %s. My payment %s is %s on chain; I paid once and sent nothing else.", name, b.Body, b.TxHash, st.Status), u, nil
+		}
+		return "", u, errors.New(name + " isn't listed")
+
+	case strings.Contains(prompt, "as many different services"):
+		ss, err := services()
+		if err != nil {
+			return "", u, err
+		}
+		budget := int64(1100)
+		sort.Slice(ss, func(i, j int) bool { return ss[i].price() < ss[j].price() })
+		var names []string
+		spent := int64(0)
+		for _, s := range ss {
+			if s.Price.Denom != "uaeth" || spent+s.price() > budget {
+				continue
+			}
+			if err := do("buy_service", map[string]any{"walletToken": token, "url": s.URL, "maxAmount": s.Price.Base + "uaeth"}, nil); err != nil {
+				return "", u, err
+			}
+			spent += s.price()
+			names = append(names, s.Name)
+		}
+		return fmt.Sprintf("Bought %s for %d uaeth in all.", strings.Join(names, ", "), spent), u, nil
 
 	case strings.Contains(prompt, "Aether chain pulse"):
 		ss, err := services()
