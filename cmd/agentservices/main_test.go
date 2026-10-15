@@ -101,7 +101,7 @@ func getJSON(t *testing.T, method, u, body string, header map[string]string) (in
 
 func TestEveryServiceHasHelpBehindItsPaywallPath(t *testing.T) {
 	srv := newTestServer(t, &fakeChain{})
-	for _, name := range []string{"hello", "address", "verify", "pulse", "miners"} {
+	for _, name := range []string{"hello", "hello-usdc", "address", "verify", "pulse", "miners"} {
 		p := behindPaywall(t, srv, name)
 		code, out := getJSON(t, "GET", p.URL+"/help", "", nil)
 		require.Equal(t, http.StatusOK, code, name)

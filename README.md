@@ -16,7 +16,7 @@ Agents use the same accounts and transactions as people: there is no AI-only lan
 
 ```bash
 go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest   # Go 1.25+
-agentmcp init   # new key, testnet funds, and the MCP config for Claude / Cursor / any MCP client
+agentmcp init   # new key, testnet funds, and the MCP config for Claude, Cursor, Codex, VS Code, OpenClaw or any MCP client
 ```
 
 No Go? `agentmcp` is in every platform's archive on the [releases page](../../releases). `@latest` is the newest tested release; `@main` has unreleased changes.
@@ -28,6 +28,8 @@ No Go? `agentmcp` is in every platform's archive on the [releases page](../../re
 ```bash
 claude mcp add --transport http aether https://explorer.157-245-252-221.sslip.io/mcp   # Claude Code
 ```
+
+Every host (Claude Desktop, Cursor, Codex, VS Code, OpenClaw) for each server: [docs/CONNECT.md](docs/CONNECT.md).
 
 The same read-only tools can also run on your own machine, from the npm package, with only chain data coming from the node: `npx -y -p aether-chain-client aether-mcp` (stdio; `get_balance`, `get_transaction_status`, `find_services`). In an MCP config: `{"command": "npx", "args": ["-y", "-p", "aether-chain-client", "aether-mcp"]}`.
 
@@ -221,7 +223,7 @@ go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest   # or, in a clone
 agentmcp init
 ```
 
-`init` creates the agent's account (showing its recovery phrase once), asks the testnet faucet for funds, waits until they arrive and prints the exact `claude mcp add ...` command and the JSON config block for Claude Desktop and other MCP clients. Run it again to reuse the same account. `--faucet <url>` points it at another faucet, `--no-faucet` skips funding; it takes the same `--grpc`, `--rpc`, `--chain-id` and `--keyring-dir` flags as the server (on `aether-testnet-1`, `--grpc` and `--rpc` default to the public node). Once running, the agent can top itself up with the `request_testnet_funds` tool (testnet only; `FAUCET_RATE_LIMITED` means wait).
+`init` creates the agent's account (showing its recovery phrase once), asks the testnet faucet for funds, waits until they arrive and prints the exact `claude mcp add ...` and `codex mcp add ...` commands and the config blocks for Claude Desktop, Cursor, VS Code, OpenClaw and other MCP clients ([docs/CONNECT.md](docs/CONNECT.md)). Run it again to reuse the same account. `--faucet <url>` points it at another faucet, `--no-faucet` skips funding; it takes the same `--grpc`, `--rpc`, `--chain-id` and `--keyring-dir` flags as the server (on `aether-testnet-1`, `--grpc` and `--rpc` default to the public node). Once running, the agent can top itself up with the `request_testnet_funds` tool (testnet only; `FAUCET_RATE_LIMITED` means wait).
 
 **Claude Desktop without Go:** download `aether-wallet.mcpb` from the [latest release](../../releases) and open it. Claude Desktop asks for the spending limits and a keyring folder; the agent creates its account on first use and funds it with `request_testnet_funds`. The same bundle runs on Windows, macOS (Intel and Apple Silicon) and Linux. Its MCP Registry name is `io.github.whoyoujoshin/aether-wallet`.
 

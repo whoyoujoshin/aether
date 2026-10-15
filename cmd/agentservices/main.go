@@ -1,8 +1,9 @@
-// cmd/agentservices serves five small JSON APIs for AI agents, each
+// cmd/agentservices serves six small JSON APIs for AI agents, each
 // meant to sit behind its own cmd/paywall and be listed in the on-chain
 // service directory, so an agent has real paid services to find and buy:
 //
 //	/hello    practice: echoes who paid and with which transaction
+//	/hello-usdc  the same practice purchase, for a paywall priced in USDC
 //	/address  one report on an address: balances, recent transactions,
 //	          grants, authenticators, miner standing and escrows
 //	/verify   checks an ML-DSA-44 signature, and the address of its key
@@ -117,6 +118,12 @@ func (s *server) services() map[string]service {
 		"hello": {s.hello, helpDoc{
 			Name: "Aether hello", Method: "GET", Price: priceNote,
 			Summary: "A practice purchase: pay the smallest price and get back who paid and with which transaction, to check an agent's payment flow end to end.",
+			Example: "GET <service URL>/",
+			Returns: `{"message", "payer", "paymentTx", "servedAt"}`,
+		}},
+		"hello-usdc": {s.hello, helpDoc{
+			Name: "Aether hello (USDC)", Method: "GET", Price: priceNote,
+			Summary: "The practice purchase, priced in USDC: pay a tenth of a cent in testnet USDC (Circle's, over IBC from Injective) and get back who paid and with which transaction, to check a stablecoin payment flow end to end.",
 			Example: "GET <service URL>/",
 			Returns: `{"message", "payer", "paymentTx", "servedAt"}`,
 		}},

@@ -181,6 +181,50 @@ func TestCreateTestWalletGivesBackTheSlotIfFundingFails(t *testing.T) {
 	require.Empty(t, sbx.created)
 }
 
+func TestCreateTestWalletAddsUSDCWhileTheFunderHasIt(t *testing.T) {
+	s, f := newTestSandbox(t)
+	usdc := useUSDC(t, "", "", "")
+	s.usdc, s.usdcGrant = usdc, math.NewInt(5_000)
+	s.benchKey, s.benchPerDay = []byte("bench-key-0123456789"), 5
+	ctx := context.Background()
+	f.balances = map[string]sdk.Coins{s.funderAddr: sdk.NewCoins(sdk.NewInt64Coin("uaeth", 1_000_000), sdk.NewInt64Coin(usdc.Denom, 7_000))}
+
+	// One send carries both grants.
+	_, a, err := toolCreateTestWallet(ctx, fromIP("203.0.113.5"), struct{}{})
+	require.NoError(t, err)
+	require.NotNil(t, a.FundingUSDC)
+	require.Equal(t, "USDC", a.FundingUSDC.Asset)
+	require.Equal(t, "5000", a.FundingUSDC.Base)
+	require.Len(t, f.broadcasts, 1)
+	require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin("uaeth", 10_000), sdk.NewInt64Coin(usdc.Denom, 5_000)), sentCoins(t, f))
+
+	// A benchmark wallet gets AETH only, whatever the funder holds.
+	bench := &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: http.Header{benchHeader: {"bench-key-0123456789"}}}}
+	_, b, err := toolCreateTestWallet(ctx, bench, struct{}{})
+	require.NoError(t, err)
+	require.Nil(t, b.FundingUSDC)
+	require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin("uaeth", 10_000)), sentCoins(t, f))
+
+	// A funder short of the grant still hands out AETH.
+	f.balances[s.funderAddr] = sdk.NewCoins(sdk.NewInt64Coin("uaeth", 1_000_000), sdk.NewInt64Coin(usdc.Denom, 4_999))
+	_, c, err := toolCreateTestWallet(ctx, fromIP("198.51.100.7"), struct{}{})
+	require.NoError(t, err)
+	require.Nil(t, c.FundingUSDC)
+	require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin("uaeth", 10_000)), sentCoins(t, f))
+
+	// The balance can't see fundings still waiting for their block: if
+	// the node refuses the USDC as more than the funder has, the wallet
+	// gets AETH only rather than nothing.
+	f.balances[s.funderAddr] = sdk.NewCoins(sdk.NewInt64Coin("uaeth", 1_000_000), sdk.NewInt64Coin(usdc.Denom, 5_000))
+	f.checkTxCode, f.checkTxLog = 5, "spendable balance 0ibc/x is smaller than 5000ibc/x: insufficient funds"
+	n := len(f.broadcasts)
+	_, d, err := toolCreateTestWallet(ctx, fromIP("198.51.100.8"), struct{}{})
+	require.NoError(t, err)
+	require.Nil(t, d.FundingUSDC)
+	require.Len(t, f.broadcasts, n+2, "the refused send, then the AETH-only one")
+	require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin("uaeth", 10_000)), sentCoins(t, f))
+}
+
 func TestClientIPIsWhatTheProxyAppended(t *testing.T) {
 	require.Equal(t, "203.0.113.5", clientIP(fromIP("10.0.0.1, 203.0.113.5")))
 	req := &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: http.Header{"X-Forwarded-For": {"1.2.3.4", "203.0.113.6"}}}}

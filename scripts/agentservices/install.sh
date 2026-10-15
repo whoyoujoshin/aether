@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs (or updates) the five paid agent services on the seed:
+# Installs (or updates) the paid agent services on the seed:
 # cmd/agentservices on 127.0.0.1:8500 and one cmd/paywall per service
 # (scripts/agentservices/services.txt), each a systemd unit; and the
 # public x402 facilitator (cmd/facilitator) on 127.0.0.1:8403. The

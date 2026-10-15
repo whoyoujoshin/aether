@@ -43,6 +43,7 @@ type fakeChain struct {
 	autoInclude bool
 
 	checkTxCode uint32 // non-zero: reject the next new broadcast
+	checkTxLog  string // its raw log ("rejected" if empty)
 	loseReply   bool   // next broadcast reaches the mempool but errors
 	accountErr  error
 
@@ -90,9 +91,12 @@ func (f *fakeChain) broadcast(s wallet.SignedTx) (wallet.BroadcastResult, error)
 	case f.mempool[hash]:
 		return wallet.BroadcastResult{TxHash: hash, Code: codeTxInMempool}, nil
 	case f.checkTxCode != 0:
-		code := f.checkTxCode
-		f.checkTxCode = 0
-		return wallet.BroadcastResult{TxHash: hash, Code: code, Codespace: "sdk", RawLog: "rejected"}, nil
+		code, raw := f.checkTxCode, f.checkTxLog
+		f.checkTxCode, f.checkTxLog = 0, ""
+		if raw == "" {
+			raw = "rejected"
+		}
+		return wallet.BroadcastResult{TxHash: hash, Code: code, Codespace: "sdk", RawLog: raw}, nil
 	}
 	f.mempool[hash] = true
 	f.signed[hash] = s.Bytes

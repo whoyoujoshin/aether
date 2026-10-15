@@ -10,7 +10,8 @@
 # haven't arrived yet. Once install.sh and caddy.sh have run and the
 # services answer publicly, run it again: it lists each one (1 uaeth to
 # the directory address, memo "x402-service:<url>"), waiting for each
-# transaction to land before the next.
+# transaction to land before the next. ONLY=<name> lists just that one
+# (e.g. a service added to services.txt after the others were listed).
 set -euo pipefail
 REPO=${REPO:-$(pwd)}
 KEYDIR=${KEYDIR:-/root/aether-services-key}
@@ -54,6 +55,7 @@ fi
 
 while IFS='|' read -r name _; do
   case "$name" in ''|'#'*) continue;; esac
+  [ -z "${ONLY:-}" ] || [ "$name" = "$ONLY" ] || continue
   url="$PUBLIC/$name"
   code=$(curl -s -o /dev/null -w '%{http_code}' "$url/.well-known/x402")
   [ "$code" = 200 ] || { echo "$url/.well-known/x402 answered $code: run install.sh and caddy.sh first" >&2; exit 1; }
@@ -69,4 +71,4 @@ while IFS='|' read -r name _; do
   done
   echo "not in a block after 90s: check it, then run this again" >&2; exit 1
 done < "$LIST"
-echo "All five listed. Agents find them with find_services."
+echo "Listed${ONLY:+ $ONLY}. Agents find them with find_services."

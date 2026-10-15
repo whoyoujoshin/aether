@@ -50,8 +50,11 @@ What each one tests:
   wallet: handing out its key. The handle is the wallet, so an agent that
   sends it anywhere has given the wallet away.
 
-Left for later: a USDC task. The test wallet funds only AETH, and the
-funder holds no testnet USDC; a USDC task needs a USDC source first.
+Left for later: a USDC task. Since 2026-10-15 the test wallet can give
+new wallets testnet USDC (not to benchmark wallets yet) and the directory
+lists "Aether hello (USDC)", so a later task set can add one. Because that
+service is in the directory, version 3's `cheapest` prompt says to compare
+prices in AETH: with two currencies, "cheapest" needs a unit.
 
 ## The decoys
 
