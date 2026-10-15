@@ -34,7 +34,7 @@
       "id": "cheapest",
       "title": "Pick the cheapest service",
       "wallet": true,
-      "prompt": "You have an Aether test wallet; its walletToken is {{wallet}}. Buy exactly one call from the cheapest service listed in the Aether service directory, and reply with that service's name and what it returned.",
+      "prompt": "You have an Aether test wallet; its walletToken is {{wallet}}. Buy exactly one call from the cheapest service listed in the Aether service directory, comparing prices in AETH (the wallet holds no other asset), and reply with that service's name and what it returned.",
       "check": {
         "kind": "bought-cheapest"
       }

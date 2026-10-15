@@ -1,6 +1,6 @@
 # Paid agent services
 
-Five small paid APIs run on the seed so the on-chain service directory has
+Six small paid APIs run on the seed so the on-chain service directory has
 real services for agents to find with `find_services` and buy with
 `fetch_paid`. They're `cmd/agentservices`, one process on `127.0.0.1:8500`,
 each behind its own `cmd/paywall` and published under the explorer's host.
@@ -9,6 +9,7 @@ They read public chain data only and hold no key.
 | Service | URL | Price | What it returns |
 | --- | --- | --- | --- |
 | hello | `https://explorer.157-245-252-221.sslip.io/svc/hello` | 0.000001 AETH | who paid and with which transaction: a practice purchase |
+| hello-usdc | `…/svc/hello-usdc` | 0.001 USDC | the same practice purchase, paid in Circle's testnet USDC (over IBC from Injective) |
 | address | `…/svc/address?addr=aether1…` | 0.001 AETH | balances (AETH, USDC), recent transfers, grants, session keys, miner standing, escrows |
 | verify | `…/svc/verify` (POST) | 0.0005 AETH | whether an ML-DSA-44 signature is valid, and the key's aether1 address |
 | pulse | `…/svc/pulse` | 0.0005 AETH | height, block time, difficulty, reward, epoch, blocks until selection |
@@ -28,7 +29,7 @@ runs the public x402 facilitator, `aether-facilitator`, at `/facilitator`
 
 ```
 Caddy  explorer.157-245-252-221.sslip.io/svc/<name>  (strips /svc/<name>)
-  -> aether-paywall-<name>   127.0.0.1:8411-8415    (/root/paywall)
+  -> aether-paywall-<name>   127.0.0.1:8411-8416    (/root/paywall)
     -> aether-agentservices  127.0.0.1:8500/<name>  (/root/agentservices)
       -> aetherd gRPC localhost:9090
 ```
@@ -55,7 +56,7 @@ PAY_TO=<address from step 1> bash scripts/agentservices/install.sh
 #    /etc/caddy/Caddyfile (backup first; restored if Caddy rejects it).
 bash scripts/agentservices/caddy.sh
 
-# 4. List all five in the on-chain directory (1 uaeth each).
+# 4. List them all in the on-chain directory (1 uaeth each).
 LIST_SERVICES=yes bash scripts/agentservices/announce.sh
 ```
 
@@ -65,14 +66,21 @@ Then `find_services` on the public `/mcp` lists them.
 
 To deploy new code, check out the new `origin/main` in `/root/aether-src`
 and rerun step 2 with the same `PAY_TO`: it rebuilds the binaries and
-restarts the seven units (the six above and `aether-facilitator`). Rerun
-`caddy.sh` too the first time after it added the `/facilitator` route. Listings stay; they don't need announcing again
-unless a URL changes.
+restarts the units (agentservices, one paywall per service and
+`aether-facilitator`). Rerun `caddy.sh` too when a service is added. Listings
+stay; they don't need announcing again unless a URL changes. A service added
+later is listed alone with `ONLY=<name> LIST_SERVICES=yes bash
+scripts/agentservices/announce.sh`.
+
+`hello-usdc` was added on 2026-10-15: the only service priced in USDC, so
+an agent can try a stablecoin payment. Its paywall charges USDC only (one
+paywall, one asset); the fee is still paid in AETH. The hosted test wallet
+gives new wallets 0.01 USDC for it ([TEST-WALLET.md](TEST-WALLET.md)).
 
 ## Undoing
 
 ```bash
-systemctl disable --now aether-agentservices aether-paywall-{hello,address,verify,pulse,miners}
+systemctl disable --now aether-agentservices aether-paywall-{hello,hello-usdc,address,verify,pulse,miners}
 cp /etc/caddy/Caddyfile.bak-svc-<stamp> /etc/caddy/Caddyfile && systemctl reload caddy
 ```
 

@@ -12,6 +12,8 @@ https://explorer.157-245-252-221.sslip.io/sandbox/mcp
 claude mcp add --transport http aether-test-wallet https://explorer.157-245-252-221.sslip.io/sandbox/mcp
 ```
 
+Cursor, Codex, VS Code, OpenClaw, Claude Desktop and others: [CONNECT.md](CONNECT.md).
+
 Then try a prompt:
 
 > Create an Aether test wallet, wait until it's funded, find a paid service
@@ -27,10 +29,10 @@ full wallet, with spend limits and owner approvals) or `aether-chain-client`.
 
 | Tool | What it does |
 |---|---|
-| `create_test_wallet` | A new wallet funded with 0.01 AETH (enough for at least 10 calls to the seed's services). Returns its `walletToken`. The funding lands with the next block (~60 s) |
+| `create_test_wallet` | A new wallet funded with 0.01 AETH (enough for at least 10 calls to the seed's services) and, while the funder has some, 0.01 testnet USDC (`fundingUsdc`; ten calls of "Aether hello (USDC)"). Returns its `walletToken`. The funding lands with the next block (~60 s) |
 | `get_test_wallet` | Its address and balances, and whether the funding has landed |
 | `buy_service` | Calls a service from the on-chain directory and pays it with standard x402 (`exact`) if the price is at most `maxAmount`. Returns the response and the payment's transaction. It waits for the payment's block, so it takes up to about a minute |
-| `send_from_test_wallet` | Sends test AETH to any address, with an optional memo (joining the quest and rating a service are memo sends) |
+| `send_from_test_wallet` | Sends test AETH or USDC to any address, with an optional memo (joining the quest and rating a service are memo sends) |
 | `get_quest` | The [agent quest](QUEST.md): this wallet's progress, what to do next, and the top of the leaderboard |
 | `get_balance`, `get_transaction_status`, `find_services` | As on the read-only `/mcp` |
 
@@ -95,9 +97,21 @@ The first run creates `sandbox-funder` and the token secret in
 for example, 20 AETH from the faucet key. At most 200 wallets a day at 0.01
 AETH each is at most 2 AETH a day.
 
+New wallets also get 0.01 USDC each (`--sandbox-grant-usdc`, set by
+`sandbox.sh`; `USDC_GRANT=` changes it) while the funder holds that much.
+Without it they get AETH only, and the log says the funder is short. Benchmark
+wallets never get USDC, so each task's AETH budget stays the only money in
+its wallet. The USDC is Circle's testnet USDC on Injective, sent over IBC
+(`transfer/channel-2`): take some from Circle's faucet (`faucet.circle.com`,
+USDC on Injective testnet) and send it to the funder with `relayer.exe -send`
+as in step 7 of [INJECTIVE-TESTNET.md](INJECTIVE-TESTNET.md), or with
+`aetherd tx bank send` from an Aether address that already holds some. 10
+USDC funds 1,000 wallets. `sandbox.sh` prints the funder's USDC balance.
+
 Back up `token-secret`: losing it invalidates every token handed out.
 
 The flags, if you need to change them: `--sandbox-grant` (0.01 AETH),
+`--sandbox-grant-usdc` (off; `sandbox.sh` sets 0.01 USDC),
 `--sandbox-per-ip` (3), `--sandbox-per-day` (200), `--sandbox-bench-key-file`
 (`sandbox.sh` creates `/root/aether-sandbox-key/bench-key`) and
 `--sandbox-bench-per-day` (60). Logs:

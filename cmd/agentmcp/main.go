@@ -456,6 +456,7 @@ func main() {
 	flag.StringVar(&sandboxListen, "sandbox-http", "", "listen address for the hosted test wallet, a separate public Streamable HTTP server at /mcp that gives callers small custodial testnet wallets (test/dev chains only). It never opens the agent account; it needs --sandbox-secret-file and --sandbox-funder")
 	flag.StringVar(&sandboxFunderName, "sandbox-funder", "", "keyring account (in --keyring-dir) that funds each new test wallet")
 	flag.StringVar(&sandboxGrant, "sandbox-grant", "0.01 AETH", "what each new test wallet gets")
+	flag.StringVar(&sandboxGrantUSDC, "sandbox-grant-usdc", "", "test USDC each new test wallet also gets while the funder holds it, e.g. \"0.01 USDC\" (needs the --usdc-* flags; never to bench callers); empty: AETH only")
 	flag.StringVar(&sandboxSecretFile, "sandbox-secret-file", "", "32-byte file that encrypts test wallet tokens (created if missing; losing it invalidates every token)")
 	flag.IntVar(&sandboxPerIP, "sandbox-per-ip", 3, "new test wallets a day per caller (by X-Forwarded-For)")
 	flag.IntVar(&sandboxPerDay, "sandbox-per-day", 200, "new test wallets a day in all")
