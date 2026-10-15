@@ -47,17 +47,19 @@ with ` + "`aether1`" + `. Transactions are signed with ML-DSA-44 (post-quantum),
 so generic Cosmos wallets and secp256k1 signers don't work: use one of
 the three paths below, which do.
 
-## 1. An MCP agent (Claude, Cursor, any MCP client)
+## 1. An MCP agent (Claude, Cursor, Codex, VS Code, OpenClaw, any MCP client)
 
 ` + "```bash" + `
 go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest   # Go 1.25+
-agentmcp init   # a new key, test funds, and the MCP config to paste
+agentmcp init   # a new key, test funds, and the config to paste into your MCP host
 ` + "```" + `
 
 No Go? Download ` + "`agentmcp`" + ` or the Claude Desktop bundle
 ` + "`aether-wallet.mcpb`" + ` from the
-[releases](https://github.com/whoyoujoshin/aether/releases). Then ask the
-agent:
+[releases](https://github.com/whoyoujoshin/aether/releases). Each host's
+config, and the hosted servers that need no install:
+[CONNECT.md](https://github.com/whoyoujoshin/aether/blob/main/docs/CONNECT.md).
+Then ask the agent:
 
 > Using the aether-wallet tools: get your address and balance. If you have
 > under 1 AETH, call request_testnet_funds and wait until your balance

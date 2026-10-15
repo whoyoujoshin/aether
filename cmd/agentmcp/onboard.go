@@ -198,7 +198,18 @@ func runInit(args []string) error {
 		Args    []string `json:"args"`
 	}
 	cfg, _ := json.MarshalIndent(map[string]any{"mcpServers": map[string]server{"aether-wallet": {command, serverArgs}}}, "  ", "  ")
-	fmt.Fprintf(out, "\n  Claude Desktop and other MCP clients (add to the client's MCP config):\n  %s\n", cfg)
+	fmt.Fprintf(out, "\n  Claude Desktop, Cursor and other MCP clients (add to the client's MCP config;\n  Cursor: ~/.cursor/mcp.json, Claude Desktop: claude_desktop_config.json):\n  %s\n", cfg)
+	fmt.Fprintf(out, "\n  Codex:\n    codex mcp add aether-wallet -- %s %s\n", command, shellJoin(serverArgs))
+	type typedServer struct {
+		Type    string   `json:"type"`
+		Command string   `json:"command"`
+		Args    []string `json:"args"`
+	}
+	vscode, _ := json.MarshalIndent(map[string]any{"servers": map[string]typedServer{"aether-wallet": {"stdio", command, serverArgs}}}, "  ", "  ")
+	fmt.Fprintf(out, "\n  VS Code (.vscode/mcp.json):\n  %s\n", vscode)
+	openclaw, _ := json.MarshalIndent(map[string]any{"mcp": map[string]any{"servers": map[string]server{"aether-wallet": {command, serverArgs}}}}, "  ", "  ")
+	fmt.Fprintf(out, "\n  OpenClaw (merge into ~/.openclaw/openclaw.json):\n  %s\n", openclaw)
+	fmt.Fprintf(out, "\nEvery host, and the hosted servers that need no install: https://github.com/whoyoujoshin/aether/blob/main/docs/CONNECT.md\n")
 	fmt.Fprintf(out, "\nLimits: at most 1 AETH per payment and 5 AETH per 24h (change --per-tx-limit/--daily-limit, in uaeth).\n")
 	fmt.Fprintf(out, "For oversight add --approval-threshold \"0.5 AETH\" --approver <your address> and --notify-webhook <url>.\n")
 	return nil

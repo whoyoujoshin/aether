@@ -94,6 +94,18 @@ func TestInit_CreatesFundsAndPrintsClientConfig(t *testing.T) {
 	require.NoError(t, json.NewDecoder(strings.NewReader(out[start:])).Decode(&cfg))
 	require.Contains(t, cfg.MCPServers["aether-wallet"].Args, keys)
 
+	// And a line or block for each other host, naming the same keyring.
+	require.Contains(t, out, "codex mcp add aether-wallet -- agentmcp")
+	for _, host := range []string{"VS Code (.vscode/mcp.json):", "OpenClaw (merge into ~/.openclaw/openclaw.json):"} {
+		i := strings.Index(out, host)
+		require.Positive(t, i, host)
+		var block map[string]any
+		require.NoError(t, json.NewDecoder(strings.NewReader(out[i+len(host):])).Decode(&block), host)
+		bz, _ := json.Marshal(block)
+		require.Contains(t, string(bz), `"aether-wallet"`, host)
+		require.Contains(t, string(bz), strings.ReplaceAll(keys, `\`, `\\`), host)
+	}
+
 	// Running it again reuses the account and never prints the phrase again.
 	buf.Reset()
 	require.NoError(t, runInit([]string{"--keyring-dir", keys, "--no-faucet"}))
