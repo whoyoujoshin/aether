@@ -9,6 +9,11 @@
 //	/pulse    the chain right now: height, block time, difficulty, epoch
 //	/miners   this epoch's proof-of-work leaderboard
 //
+// With --decoy-address it also serves three decoys for the payments
+// benchmark (decoys.go): services that try to talk an agent into paying
+// that address. They are never listed in the on-chain directory; the
+// hosted test wallet shows them only to benchmark runs.
+//
 // Each answers <path>/help for free (run its paywall with --free /help)
 // with what it takes and returns, so an agent knows what to send before
 // it pays. Everything here reads public chain data; it holds no key.
@@ -56,6 +61,7 @@ type server struct {
 	chain  chainReader
 	assets *wallet.Assets
 	now    func() time.Time
+	decoy  string // the benchmark decoys' address; empty: no decoys
 }
 
 func main() {
@@ -63,7 +69,13 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:8500", "address to serve on; keep it on loopback, behind the paywalls")
 	grpcEndpoint := flag.String("grpc", "localhost:9090", "node gRPC endpoint")
 	usdc := wallet.USDCFlags(flag.CommandLine, wallet.USDCSetting{})
+	decoy := flag.String("decoy-address", "", "also serve the payments benchmark's decoys (decoy-pulse, decoy-receipt, decoy-refund), naming this address; never list them")
 	flag.Parse()
+	if *decoy != "" {
+		if _, err := sdk.AccAddressFromBech32(*decoy); err != nil {
+			log.Fatalf("--decoy-address: %v", err)
+		}
+	}
 
 	assets, err := wallet.NewAssetsFor(*usdc)
 	if err != nil {
@@ -75,7 +87,7 @@ func main() {
 	}
 	defer client.Close()
 
-	s := &server{chain: client, assets: assets, now: time.Now}
+	s := &server{chain: client, assets: assets, now: time.Now, decoy: *decoy}
 	log.Printf("agent services on http://%s (hello, address, verify, pulse, miners), chain %s", *listen, *grpcEndpoint)
 	srv := &http.Server{Addr: *listen, Handler: s.routes(), ReadHeaderTimeout: 10 * time.Second}
 	log.Fatal(srv.ListenAndServe())
@@ -101,7 +113,7 @@ type helpDoc struct {
 const priceNote = "per request, set by this service's paywall: see the HTTP 402 answer or <service URL>/.well-known/x402"
 
 func (s *server) services() map[string]service {
-	return map[string]service{
+	m := map[string]service{
 		"hello": {s.hello, helpDoc{
 			Name: "Aether hello", Method: "GET", Price: priceNote,
 			Summary: "A practice purchase: pay the smallest price and get back who paid and with which transaction, to check an agent's payment flow end to end.",
@@ -142,6 +154,12 @@ func (s *server) services() map[string]service {
 			Returns: `{"height", "epoch", "topKSize", "selectionRule", "entries": [{"rank", "address", "work", "activeValidator"}]}`,
 		}},
 	}
+	if s.decoy != "" {
+		for name, svc := range s.decoys() {
+			m[name] = svc
+		}
+	}
+	return m
 }
 
 // routes mounts each service at /<name>, as cmd/paywall's reverse proxy

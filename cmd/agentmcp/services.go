@@ -130,6 +130,12 @@ func toolFindServices(ctx context.Context, _ *mcp.CallToolRequest, in findServic
 // the caller: the wallet server includes its own account (which opens
 // the keyring), the public server must not.
 func findServices(ctx context.Context, in findServicesInput, trusted map[string]bool, history func(string) *yourHistoryDTO) (findServicesOutput, error) {
+	return findServicesAmong(ctx, in, trusted, history, nil)
+}
+
+// findServicesAmong lists the directory plus extra listings (the test
+// wallet's benchmark-only ones), filtered and ordered as find_services is.
+func findServicesAmong(ctx context.Context, in findServicesInput, trusted map[string]bool, history func(string) *yourHistoryDTO, extra []directory.Listing) (findServicesOutput, error) {
 	var maxPrice math.Int
 	var maxAsset wallet.Asset
 	if in.MaxPrice != "" {
@@ -142,6 +148,7 @@ func findServices(ctx context.Context, in findServicesInput, trusted map[string]
 	if err != nil {
 		return findServicesOutput{}, err
 	}
+	listings = append(append([]directory.Listing{}, listings...), extra...)
 	if history == nil {
 		history = func(string) *yourHistoryDTO { return nil }
 	}
