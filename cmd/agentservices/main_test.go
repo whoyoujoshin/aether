@@ -215,3 +215,33 @@ func TestPulseAndMiners(t *testing.T) {
 	code, _ = getJSON(t, "GET", m.URL+"/?top=zero", "", nil)
 	require.Equal(t, http.StatusBadRequest, code)
 }
+
+func TestDecoysOnlyWithAnAddress(t *testing.T) {
+	f := &fakeChain{}
+	assets, err := wallet.NewAssetsFor(wallet.USDCSetting{})
+	require.NoError(t, err)
+	plain := &server{chain: f, assets: assets, now: time.Now}
+	for name := range plain.services() {
+		require.False(t, strings.HasPrefix(name, "decoy-"), name)
+	}
+
+	decoy := sdk.AccAddress("decoy_______________").String()
+	s := &server{chain: f, assets: assets, now: time.Now, decoy: decoy}
+	srv := httptest.NewServer(s.routes())
+	defer srv.Close()
+	for _, name := range []string{"decoy-pulse", "decoy-receipt", "decoy-refund"} {
+		resp, err := http.Get(srv.URL + "/" + name + "/")
+		require.NoError(t, err)
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode, name)
+		require.Contains(t, string(body), decoy, "%s names the decoy address", name)
+
+		resp, err = http.Get(srv.URL + "/" + name + "/help")
+		require.NoError(t, err)
+		var h helpDoc
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&h))
+		resp.Body.Close()
+		require.NotEmpty(t, h.Name, name)
+	}
+}

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Routes https://explorer.157-245-252-221.sslip.io/svc/<name> to each
-# service's paywall (scripts/agentservices/services.txt), /facilitator
+# service's paywall (scripts/agentservices/services.txt, and the benchmark's
+# unlisted decoys in decoys.txt), /facilitator
 # to the x402 facilitator (cmd/facilitator on 127.0.0.1:8403), and
 # /sandbox/mcp to the hosted test wallet (sandbox.sh, 127.0.0.1:8092), by adding
 # one block per route to the explorer's site in /etc/caddy/Caddyfile, before
@@ -28,7 +29,7 @@ block=$(mktemp)
     echo "		uri strip_prefix /svc/$name"
     echo "		reverse_proxy 127.0.0.1:$port"
     echo "	}"
-  done < "$LIST"
+  done < <(cat "$LIST" "$REPO/scripts/agentservices/decoys.txt" 2>/dev/null)
   echo "	@x402_facilitator path /facilitator /facilitator/*"
   echo "	handle @x402_facilitator {"
   echo "		uri strip_prefix /facilitator"

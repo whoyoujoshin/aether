@@ -68,6 +68,9 @@ type Task struct {
 	Wallet bool   `json:"wallet"` // the harness gives the agent a funded wallet
 	Prompt string `json:"prompt"`
 	Check  Check  `json:"check"`
+	// Listings are the test wallet's benchmark-only services (decoys) this
+	// task sees, by name; other tasks see none.
+	Listings []string `json:"listings,omitempty"`
 }
 
 // Check says how a task is scored (score.go).
@@ -76,6 +79,8 @@ type Check struct {
 	Service     string `json:"service,omitempty"`
 	ReportField string `json:"reportField,omitempty"`
 	Steps       int    `json:"steps,omitempty"`
+	Decoy       string `json:"decoy,omitempty"`  // a decoy service's name: nothing may reach its payee
+	Budget      int64  `json:"budget,omitempty"` // uaeth
 }
 
 type taskFile struct {
@@ -116,7 +121,7 @@ func run(args []string) {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	endpoint := fs.String("endpoint", defaultEndpoint, "the hosted test wallet's MCP endpoint")
 	tasksPath := fs.String("tasks", "tasks.json", "task set")
-	agentKind := fs.String("agent", "anthropic", "anthropic, openai (any OpenAI-compatible chat completions API) or scripted (the reference agent)")
+	agentKind := fs.String("agent", "anthropic", "anthropic, openai (any OpenAI-compatible chat completions API), scripted (the reference agent) or careless (a scripted agent that falls for every trick: the floor)")
 	model := fs.String("model", "claude-opus-5-5", "model to run")
 	label := fs.String("label", "", "name in the results (default: the model)")
 	baseURL := fs.String("base-url", "https://api.openai.com/v1", "openai: the API's base URL (OpenAI, OpenRouter, vLLM, Ollama...)")
@@ -142,10 +147,10 @@ func run(args []string) {
 			want[id] = true
 		}
 	}
-	if *agentKind == "scripted" {
+	if *agentKind == "scripted" || *agentKind == "careless" {
 		*model = "" // no model runs it
 		if *label == "" {
-			*label = "reference"
+			*label = map[string]string{"scripted": "reference", "careless": "careless"}[*agentKind]
 		}
 	}
 	if *label == "" {
@@ -153,7 +158,7 @@ func run(args []string) {
 	}
 
 	if os.Getenv("AETHER_BENCH_KEY") == "" && *endpoint == defaultEndpoint {
-		log.Fatal("set AETHER_BENCH_KEY: without it the public test wallet allows 3 new wallets a day per caller, and a run needs 5")
+		log.Fatal("set AETHER_BENCH_KEY: without it the public test wallet allows 3 new wallets a day per caller, and a run needs 9")
 	}
 
 	ctx := context.Background()
@@ -177,6 +182,8 @@ func run(args []string) {
 		}
 	case "scripted":
 		agent = scriptedAgent{}
+	case "careless":
+		agent = carelessAgent{}
 	default:
 		log.Fatalf("unknown --agent %q", *agentKind)
 	}
@@ -283,6 +290,8 @@ func runTask(ctx context.Context, w *walletClient, agent Agent, t Task, label st
 		start = time.Now() // the agent's time, not the funding wait
 	}
 
+	w.setListings(t.Listings)
+	defer w.setListings(nil)
 	rec := &recorder{w: w}
 	answer, usage, err := agent.Run(ctx, systemPrompt, prompt, w.tools, rec.call, maxTurns)
 	res.Answer, res.Turns, res.InTokens, res.OutTokens = answer, usage.Turns, usage.In, usage.Out

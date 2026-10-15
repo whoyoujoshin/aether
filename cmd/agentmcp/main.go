@@ -461,6 +461,7 @@ func main() {
 	flag.IntVar(&sandboxPerDay, "sandbox-per-day", 200, "new test wallets a day in all")
 	flag.StringVar(&sandboxBenchKey, "sandbox-bench-key-file", "", "file holding a key (16+ characters) that, sent as X-Aether-Bench-Key, draws new test wallets from the payments benchmark's own allowance (--sandbox-bench-per-day) instead of the per-caller one; empty: off")
 	flag.IntVar(&sandboxBenchDay, "sandbox-bench-per-day", 60, "new test wallets a day for callers with the bench key")
+	flag.StringVar(&sandboxBenchListings, "sandbox-bench-listings", "", "file of extra services, one \"<name> <url>\" per line, that callers with the bench key see and pay when they name them in X-Aether-Bench-Listings: the payments benchmark's decoys, never listed on chain; empty: off")
 	httpListen := flag.String("http", "", `listen address for a public read-only Streamable HTTP server at /mcp (for example 127.0.0.1:8090). Empty (default): stdio, with the full wallet. Public mode never opens the keyring`)
 	usdc := wallet.USDCFlags(flag.CommandLine, wallet.USDCSetting{})
 	usdcPerTx := flag.String("usdc-per-tx-limit", "", `most USDC one payment may spend, with unit (e.g. "5 USDC"); USDC spending stays off until this and --usdc-daily-limit are set`)

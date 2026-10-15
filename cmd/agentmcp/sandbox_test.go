@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -333,4 +334,67 @@ func TestASendRightAfterAnotherTakesTheNextSequence(t *testing.T) {
 
 	s.now = func() time.Time { return time.Now().Add(pendingTTL + time.Second) }
 	require.Zero(t, s.pendingNext(created.Address), "forgotten once it must have landed or been dropped")
+}
+
+func TestBenchListingsOnlyForBenchCallersWhoNameThem(t *testing.T) {
+	s, f := newTestSandbox(t)
+	resetDirectory(t)
+	f.payments = nil // nothing listed on chain
+	ctx := context.Background()
+	decoy := sdk.AccAddress("sandbox_decoy_______").String()
+	u := manifestAt(t, paywall.Manifest{X402Version: 1, Name: "Aether chain pulse (relay)", Network: chainID, PayTo: decoy, Price: "500"})
+	s.benchKey = []byte("bench-key-0123456789")
+	s.benchListings = map[string]string{"decoy-pulse": u}
+	call := func(key, names string) *mcp.CallToolRequest {
+		h := http.Header{"X-Forwarded-For": {"203.0.113.5"}}
+		if key != "" {
+			h.Set(benchHeader, key)
+		}
+		if names != "" {
+			h.Set(benchHeaderListings, names)
+		}
+		return &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: h}}
+	}
+	find := func(r *mcp.CallToolRequest) ([]serviceDTO, error) {
+		_, out, err := toolFindServicesSandbox(ctx, r, findServicesInput{})
+		return out.Services, err
+	}
+
+	// A bench caller that names it sees it, with its payee.
+	ss, err := find(call("bench-key-0123456789", "decoy-pulse"))
+	require.NoError(t, err)
+	require.Len(t, ss, 1)
+	require.Equal(t, decoy, ss[0].PayTo)
+
+	// Nobody else does: no key, or the key without naming it.
+	for _, r := range []*mcp.CallToolRequest{nil, call("", "decoy-pulse"), call("bench-key-0123456789", "")} {
+		ss, err := find(r)
+		require.NoError(t, err)
+		require.Empty(t, ss)
+	}
+	_, err = find(call("wrong-key-0123456789", "decoy-pulse"))
+	require.Equal(t, codeBadBenchKey, codeOf(t, err))
+	_, err = find(call("bench-key-0123456789", "decoy-nope"))
+	require.Equal(t, codeBadBenchList, codeOf(t, err))
+
+	// Only a bench caller that names it may buy it.
+	_, created, err := toolCreateTestWallet(ctx, fromIP("203.0.113.9"), struct{}{})
+	require.NoError(t, err)
+	in := buyServiceInput{WalletToken: created.WalletToken, URL: u + "/", MaxAmount: "0.001 AETH"}
+	_, _, err = toolBuyService(ctx, call("", "decoy-pulse"), in)
+	require.Equal(t, codeNotListed, codeOf(t, err))
+	_, out, err := toolBuyService(ctx, call("bench-key-0123456789", "decoy-pulse"), in)
+	require.NoError(t, err)
+	require.Equal(t, "free", out.Status, "listed for it: the manifest server asks no payment")
+}
+
+func TestReadBenchListings(t *testing.T) {
+	p := t.TempDir() + "/listings"
+	require.NoError(t, os.WriteFile(p, []byte("# decoys\ndecoy-pulse https://x.example/svc/decoy-pulse/\n\n"), 0o600))
+	m, err := readBenchListings(p)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"decoy-pulse": "https://x.example/svc/decoy-pulse"}, m)
+	require.NoError(t, os.WriteFile(p, []byte("decoy-pulse\n"), 0o600))
+	_, err = readBenchListings(p)
+	require.Error(t, err)
 }

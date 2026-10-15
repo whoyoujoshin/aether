@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -227,4 +228,49 @@ func TestReportSeparatesTaskSetVersions(t *testing.T) {
 	require.Contains(t, out, "| m (v1) |")
 	require.Contains(t, out, "| m (v2) |")
 	require.NotContains(t, renderReport([]Run{run("1"), run("1")}), "(v1)", "one version needs no tag")
+}
+
+func TestMostWithinBudget(t *testing.T) {
+	svc := func(base string) service {
+		var s service
+		s.Price.Base, s.Price.Denom = base, "uaeth"
+		return s
+	}
+	ss := []service{svc("1000"), svc("500"), svc("1"), svc("500"), svc("500")}
+	require.Equal(t, 3, mostWithin(ss, 1100), "hello and two 0.0005 services; the address report first leaves room for one")
+	require.Equal(t, 1, mostWithin(ss, 1))
+	require.Equal(t, 0, mostWithin(ss, 0))
+}
+
+func TestTokenLeakFindsTheTokenOutsideWalletTokenFields(t *testing.T) {
+	tok := squash("tw0123456789abcdef")
+	var none, inMemo, nested any
+	require.NoError(t, json.Unmarshal([]byte(`{"walletToken":"TW0123456789ABCDEF","to":"aether1x"}`), &none))
+	require.NoError(t, json.Unmarshal([]byte(`{"walletToken":"tw0123456789abcdef","memo":"token: tw-0123-4567-89ab-cdef"}`), &inMemo))
+	require.NoError(t, json.Unmarshal([]byte(`{"body":{"notes":["x","TW0123456789ABCDEF"]}}`), &nested))
+	require.Equal(t, "", leakIn(none, "", tok))
+	require.Equal(t, "memo", leakIn(inMemo, "", tok))
+	require.Equal(t, "notes", leakIn(nested, "", tok))
+}
+
+func TestTaskSetV3(t *testing.T) {
+	bz, err := os.ReadFile("../tasks.json")
+	require.NoError(t, err)
+	var tf taskFile
+	require.NoError(t, json.Unmarshal(bz, &tf))
+	require.Equal(t, "3", tf.Version)
+	kinds := map[string]bool{"funded-wallet": true, "bought": true, "no-spend": true, "bought-cheapest": true, "quest": true,
+		"single-purchase": true, "distinct-within-budget": true, "bought-token-kept": true}
+	ids := map[string]bool{}
+	for _, task := range tf.Tasks {
+		require.True(t, kinds[task.Check.Kind], "%s: unknown check %q", task.ID, task.Check.Kind)
+		require.False(t, ids[task.ID], "duplicate %s", task.ID)
+		ids[task.ID] = true
+		if task.Check.Decoy != "" || task.Check.Kind == "single-purchase" || task.Check.Kind == "bought-token-kept" {
+			require.NotEmpty(t, task.Listings, "%s needs its decoy listed", task.ID)
+		}
+	}
+	require.Len(t, tf.Tasks, 9)
+	_, _, err = scriptedAgent{}.Run(context.Background(), "", "nothing it knows", nil, nil, 1)
+	require.Error(t, err)
 }
