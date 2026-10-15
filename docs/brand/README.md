@@ -57,7 +57,7 @@ Rounded app tile with bone Æ + signal middle bar on ink (except 16px favicon, w
 
 The Aether name, Æ ligature mark, wordmarks, lockups, icons, and palette in
 this folder are trademarks and brand assets of the Aether project (see the
-copyright holder in the root `LICENSE`).
+copyright holder in the root `LICENSE` and the notice in the root `TRADEMARKS.md`).
 
 **They are not licensed under the MIT License** that covers the software in
 this repository. Keeping the code open does not grant a right to brand a fork
