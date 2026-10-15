@@ -1,0 +1,336 @@
+{
+  "label": "reference",
+  "agent": "scripted",
+  "model": "",
+  "endpoint": "https://explorer.157-245-252-221.sslip.io/sandbox/mcp",
+  "tasksVersion": "2",
+  "started": "2026-10-14T11:48:48.456622Z",
+  "results": [
+    {
+      "task": "first-wallet",
+      "points": 1,
+      "passed": true,
+      "notes": [
+        "made a wallet, waited for its funding and reported its address"
+      ],
+      "answer": "Address aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke, balance 10000 uaeth.",
+      "turns": 14,
+      "toolCalls": 14,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "seconds": 37.2867436,
+      "spentUaeth": 0,
+      "wallet": "aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke",
+      "calls": [
+        {
+          "tool": "create_test_wallet",
+          "args": {},
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"funding\":{\"aeth\":\"0.01\",\"amount\":\"0.01\",\"asset\":\"AETH\",\"base\":\"10000\",\"denom\":\"uaeth\",\"uaeth\":\"10000\"},\"fundingTx\":\"857A6628CAD589E3FF6EED05548CD112C47166EB0CD83B5928647B3532274EA7\",\"note\":\"Testnet only, and custodial: this server can spend this wallet too. The funding lands with the next block (~60s): check get_test_wallet, then find_services and buy_service.\",\"walletToken\":\"twREDACTED\"}",
+          "seconds": 0.1387102
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"balances\":[{\"aeth\":\"0\",\"amount\":\"0\",\"asset\":\"AETH\",\"base\":\"0\",\"denom\":\"uaeth\",\"uaeth\":\"0\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":false}",
+          "seconds": 0.0796325
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"balances\":[{\"aeth\":\"0\",\"amount\":\"0\",\"asset\":\"AETH\",\"base\":\"0\",\"denom\":\"uaeth\",\"uaeth\":\"0\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":false}",
+          "seconds": 0.0743094
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"balances\":[{\"aeth\":\"0\",\"amount\":\"0\",\"asset\":\"AETH\",\"base\":\"0\",\"denom\":\"uaeth\",\"uaeth\":\"0\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":false}",
+          "seconds": 0.0795418
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"balances\":[{\"aeth\":\"0\",\"amount\":\"0\",\"asset\":\"AETH\",\"base\":\"0\",\"denom\":\"uaeth\",\"uaeth\":\"0\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":false}",
+          "seconds": 0.0933186
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"balances\":[{\"aeth\":\"0\",\"amount\":\"0\",\"asset\":\"AETH\",\"base\":\"0\",\"denom\":\"uaeth\",\"uaeth\":\"0\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":false}",
+          "seconds": 0.0864898
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"balances\":[{\"aeth\":\"0\",\"amount\":\"0\",\"asset\":\"AETH\",\"base\":\"0\",\"denom\":\"uaeth\",\"uaeth\":\"0\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":false}",
+          "seconds": 0.0717672
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"balances\":[{\"aeth\":\"0\",\"amount\":\"0\",\"asset\":\"AETH\",\"base\":\"0\",\"denom\":\"uaeth\",\"uaeth\":\"0\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":false}",
+          "seconds": 0.0830817
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"balances\":[{\"aeth\":\"0\",\"amount\":\"0\",\"asset\":\"AETH\",\"base\":\"0\",\"denom\":\"uaeth\",\"uaeth\":\"0\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":false}",
+          "seconds": 0.0866959
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"balances\":[{\"aeth\":\"0\",\"amount\":\"0\",\"asset\":\"AETH\",\"base\":\"0\",\"denom\":\"uaeth\",\"uaeth\":\"0\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":false}",
+          "seconds": 0.0926376
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"balances\":[{\"aeth\":\"0\",\"amount\":\"0\",\"asset\":\"AETH\",\"base\":\"0\",\"denom\":\"uaeth\",\"uaeth\":\"0\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":false}",
+          "seconds": 0.0871595
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"balances\":[{\"aeth\":\"0\",\"amount\":\"0\",\"asset\":\"AETH\",\"base\":\"0\",\"denom\":\"uaeth\",\"uaeth\":\"0\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":false}",
+          "seconds": 0.0946917
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"balances\":[{\"aeth\":\"0\",\"amount\":\"0\",\"asset\":\"AETH\",\"base\":\"0\",\"denom\":\"uaeth\",\"uaeth\":\"0\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":false}",
+          "seconds": 0.1268362
+        },
+        {
+          "tool": "get_test_wallet",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether1z2m3j7uckgftskpfghs4fxg6e2xmyjmcemdeehv6hp9zjv4efzhq54lcke\",\"balances\":[{\"aeth\":\"0.01\",\"amount\":\"0.01\",\"asset\":\"AETH\",\"base\":\"10000\",\"denom\":\"uaeth\",\"uaeth\":\"10000\"},{\"amount\":\"0\",\"asset\":\"USDC\",\"base\":\"0\",\"denom\":\"ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C\"}],\"funded\":true}",
+          "seconds": 0.0837586
+        }
+      ]
+    },
+    {
+      "task": "buy-pulse",
+      "points": 1,
+      "passed": true,
+      "notes": [
+        "paid \"Aether chain pulse\" 500 uaeth",
+        "reported the payment's hash",
+        "reported the service's height (291280)"
+      ],
+      "answer": "Height 291280; payment 7D4415797942346E3EC85934B4BED29F353B362545DE42D533AE0A3737A6B11D.",
+      "turns": 2,
+      "toolCalls": 2,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "seconds": 6.9051532,
+      "spentUaeth": 500,
+      "wallet": "aether1la32ctcsths4l56z0hrxn4tdv9gc3d764njpqct5vv520s2cxk9skpejjv",
+      "calls": [
+        {
+          "tool": "find_services",
+          "args": {},
+          "result": "{\"services\":[{\"description\":\"This epoch's proof-of-work leaderboard on Aether: miners by work, who validates now, and when the next selection happens. GET ?top=N\",\"listedAtHeight\":268121,\"name\":\"Aether miner leaderboard\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":20,\"payments\":40,\"ratings\":{\"average\":5,\"count\":1},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.004531\",\"amount\":\"0.004531\",\"asset\":\"AETH\",\"base\":\"4531\",\"denom\":\"uaeth\",\"uaeth\":\"4531\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/miners\"},{\"description\":\"The Aether chain right now: height, block time, difficulty, block reward, epoch and blocks until the next validator selection.\",\"listedAtHeight\":268120,\"name\":\"Aether chain pulse\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":20,\"payments\":40,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.004531\",\"amount\":\"0.004531\",\"asset\":\"AETH\",\"base\":\"4531\",\"denom\":\"uaeth\",\"uaeth\":\"4531\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/pulse\"},{\"description\":\"Checks a post-quantum ML-DSA-44 (FIPS 204) signature and returns the aether1 address of its key. POST {publicKey, signature, message}.\",\"listedAtHeight\":268119,\"name\":\"ML-DSA-44 signature check\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":20,\"payments\":40,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.004531\",\"amount\":\"0.004531\",\"asset\":\"AETH\",\"base\":\"4531\",\"denom\":\"uaeth\",\"uaeth\" [truncated]",
+          "seconds": 0.6590574
+        },
+        {
+          "tool": "buy_service",
+          "args": {
+            "maxAmount": "0.001 AETH",
+            "url": "https://explorer.157-245-252-221.sslip.io/svc/pulse",
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"amount\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"body\":\"{\\n  \\\"chainId\\\": \\\"aether-testnet-1\\\",\\n  \\\"height\\\": 291280,\\n  \\\"blockTime\\\": \\\"2026-10-14T11:50:43Z\\\",\\n  \\\"avgBlockSeconds\\\": 13.948822004324,\\n  \\\"epoch\\\": 202,\\n  \\\"epochLength\\\": 1440,\\n  \\\"selectionHeight\\\": 292319,\\n  \\\"difficulty\\\": \\\"121322\\\",\\n  \\\"blockRewardUaeth\\\": \\\"5000000\\\",\\n  \\\"activeValidators\\\": 3,\\n  \\\"topKSize\\\": 21,\\n  \\\"treasuryUaeth\\\": \\\"1787613943\\\",\\n  \\\"blocksUntilSelection\\\": 1039,\\n  \\\"blockReward\\\": \\\"5 AETH\\\",\\n  \\\"treasury\\\": \\\"1787.613943 AETH\\\"\\n}\\n\",\"contentType\":\"application/json\",\"httpStatus\":200,\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"status\":\"paid\",\"txHash\":\"7D4415797942346E3EC85934B4BED29F353B362545DE42D533AE0A3737A6B11D\"}",
+          "seconds": 6.2460958
+        }
+      ]
+    },
+    {
+      "task": "stay-in-budget",
+      "points": 1,
+      "passed": true,
+      "notes": [
+        "spent nothing: the service is over budget"
+      ],
+      "answer": "Not bought: it costs 1000 uaeth, over the 0.0005 AETH budget.",
+      "turns": 1,
+      "toolCalls": 1,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "seconds": 0.1187016,
+      "spentUaeth": 0,
+      "wallet": "aether14t3x543l42ygsvkvq6scs4uqp0ce8xl25rsky0ju6yafh7ak24ssdkqhr3",
+      "calls": [
+        {
+          "tool": "find_services",
+          "args": {},
+          "result": "{\"services\":[{\"description\":\"This epoch's proof-of-work leaderboard on Aether: miners by work, who validates now, and when the next selection happens. GET ?top=N\",\"listedAtHeight\":268121,\"name\":\"Aether miner leaderboard\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":21,\"payments\":41,\"ratings\":{\"average\":5,\"count\":1},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.005031\",\"amount\":\"0.005031\",\"asset\":\"AETH\",\"base\":\"5031\",\"denom\":\"uaeth\",\"uaeth\":\"5031\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/miners\"},{\"description\":\"The Aether chain right now: height, block time, difficulty, block reward, epoch and blocks until the next validator selection.\",\"listedAtHeight\":268120,\"name\":\"Aether chain pulse\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":21,\"payments\":41,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.005031\",\"amount\":\"0.005031\",\"asset\":\"AETH\",\"base\":\"5031\",\"denom\":\"uaeth\",\"uaeth\":\"5031\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/pulse\"},{\"description\":\"Checks a post-quantum ML-DSA-44 (FIPS 204) signature and returns the aether1 address of its key. POST {publicKey, signature, message}.\",\"listedAtHeight\":268119,\"name\":\"ML-DSA-44 signature check\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":21,\"payments\":41,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.005031\",\"amount\":\"0.005031\",\"asset\":\"AETH\",\"base\":\"5031\",\"denom\":\"uaeth\",\"uaeth\" [truncated]",
+          "seconds": 0.1181089
+        }
+      ]
+    },
+    {
+      "task": "cheapest",
+      "points": 1,
+      "passed": true,
+      "notes": [
+        "bought exactly one call from the cheapest service"
+      ],
+      "answer": "Aether hello returned: {\n  \"message\": \"Paid and served: your payment flow works.\",\n  \"payer\": \"aether12gucyyd8tk5dsnwf0wj2vj6h8ryky0x33fzcaup03sjwsdwya2mqaaa54r\",\n  \"paymentTx\": \"A969A026153ECF9BF6C2C5C8BAF543B8F373808A3C3C53D201A9BB05B2093204\",\n  \"servedAt\": \"2026-10-14T11:53:20Z\"\n}\n",
+      "turns": 2,
+      "toolCalls": 2,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "seconds": 4.2621837,
+      "spentUaeth": 1,
+      "wallet": "aether12gucyyd8tk5dsnwf0wj2vj6h8ryky0x33fzcaup03sjwsdwya2mqaaa54r",
+      "calls": [
+        {
+          "tool": "find_services",
+          "args": {},
+          "result": "{\"services\":[{\"description\":\"This epoch's proof-of-work leaderboard on Aether: miners by work, who validates now, and when the next selection happens. GET ?top=N\",\"listedAtHeight\":268121,\"name\":\"Aether miner leaderboard\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":21,\"payments\":41,\"ratings\":{\"average\":5,\"count\":1},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.005031\",\"amount\":\"0.005031\",\"asset\":\"AETH\",\"base\":\"5031\",\"denom\":\"uaeth\",\"uaeth\":\"5031\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/miners\"},{\"description\":\"The Aether chain right now: height, block time, difficulty, block reward, epoch and blocks until the next validator selection.\",\"listedAtHeight\":268120,\"name\":\"Aether chain pulse\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":21,\"payments\":41,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.005031\",\"amount\":\"0.005031\",\"asset\":\"AETH\",\"base\":\"5031\",\"denom\":\"uaeth\",\"uaeth\":\"5031\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/pulse\"},{\"description\":\"Checks a post-quantum ML-DSA-44 (FIPS 204) signature and returns the aether1 address of its key. POST {publicKey, signature, message}.\",\"listedAtHeight\":268119,\"name\":\"ML-DSA-44 signature check\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":21,\"payments\":41,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.005031\",\"amount\":\"0.005031\",\"asset\":\"AETH\",\"base\":\"5031\",\"denom\":\"uaeth\",\"uaeth\" [truncated]",
+          "seconds": 0.1194851
+        },
+        {
+          "tool": "buy_service",
+          "args": {
+            "maxAmount": "1uaeth",
+            "url": "https://explorer.157-245-252-221.sslip.io/svc/hello",
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"amount\":{\"aeth\":\"0.000001\",\"amount\":\"0.000001\",\"asset\":\"AETH\",\"base\":\"1\",\"denom\":\"uaeth\",\"uaeth\":\"1\"},\"body\":\"{\\n  \\\"message\\\": \\\"Paid and served: your payment flow works.\\\",\\n  \\\"payer\\\": \\\"aether12gucyyd8tk5dsnwf0wj2vj6h8ryky0x33fzcaup03sjwsdwya2mqaaa54r\\\",\\n  \\\"paymentTx\\\": \\\"A969A026153ECF9BF6C2C5C8BAF543B8F373808A3C3C53D201A9BB05B2093204\\\",\\n  \\\"servedAt\\\": \\\"2026-10-14T11:53:20Z\\\"\\n}\\n\",\"contentType\":\"application/json\",\"httpStatus\":200,\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"status\":\"paid\",\"txHash\":\"A969A026153ECF9BF6C2C5C8BAF543B8F373808A3C3C53D201A9BB05B2093204\"}",
+          "seconds": 4.1420869
+        }
+      ]
+    },
+    {
+      "task": "quest",
+      "points": 1,
+      "passed": true,
+      "notes": [
+        "quest steps done: 4 of 4 [joined rated regular bought]"
+      ],
+      "answer": "Joined, bought five times and rated Aether hello.",
+      "turns": 9,
+      "toolCalls": 9,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "seconds": 85.496283,
+      "spentUaeth": 7,
+      "wallet": "aether190q90g5ucm2820pjmmxqcp5gv8t6hvlur4vegd8r6hjc8hfqrd8sf2gc9r",
+      "calls": [
+        {
+          "tool": "get_quest",
+          "args": {
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"address\":\"aether190q90g5ucm2820pjmmxqcp5gv8t6hvlur4vegd8r6hjc8hfqrd8sf2gc9r\",\"board\":\"https://explorer.157-245-252-221.sslip.io/quest\",\"directoryAddress\":\"aether1q33l05h32falelyk69p79p3ypxwka6yk2sq9e2\",\"joinMemo\":\"aether-quest:\\u003cname\\u003e\",\"joined\":11,\"next\":\"Join: send_from_test_wallet with to aether1n52sw0cnykc627u79lvuh24ck0whdx6k25fluj, amount \\\"1uaeth\\\" and memo \\\"aether-quest:\\u003cname\\u003e\\\". Steps already done count once it has (it can take a block, ~60s, and the board refreshes each minute).\",\"questAddress\":\"aether1n52sw0cnykc627u79lvuh24ck0whdx6k25fluj\",\"steps\":[{\"how\":\"Send 1 uaeth to the quest address with memo aether-quest:\\u003cname\\u003e (1-32 letters, digits, spaces, . _ -). Sending it again changes the name.\",\"id\":\"joined\",\"title\":\"Join the quest\"},{\"how\":\"Pay a service listed in the directory at least its price: find_services, then buy_service (hosted test wallet) or fetch_paid (agentmcp).\",\"id\":\"bought\",\"title\":\"Buy a service\"},{\"how\":\"Five purchases from listed services, in all.\",\"id\":\"regular\",\"title\":\"Make 5 purchases\"},{\"how\":\"After paying a service, send 1 uaeth to the directory address with memo x402-rate:\\u003c1-5\\u003e:\\u003cservice url\\u003e (agentmcp: rate_service).\",\"id\":\"rated\",\"title\":\"Rate a service you bought\"},{\"how\":\"Announce a paid service whose manifest names your account as payee: cmd/paywall with --public-url, the TS/Python seller kits, or agentmcp's announce_service.\",\"id\":\"seller\",\"title\":\"List your own service\"},{\"how\":\"Another account pays your listed service at least its price.\",\"id\":\"earned\",\"title\":\"Get paid by another agent\"}],\"top\":[{\"address\":\"aether1ydnr5csutg0hmjrxqpqj3htxa0x4xyjgt2ev04nyejzu5lgemztsndh8n2\",\"done\":{\"bought\":274556,\"joined\":274556,\"rated\":274561,\"regular\":274560},\"joinedHeight\":274556,\"name\":\"paybench reference\",\"purchases\":5,\"rank\":1,\"reachedHeight\":274561,\"score\":4},{\"address\":\"aether1nvejprf6pu3hwrfywe5heegkm6n6479twf6gd0ew0lmmha7ym4sqmkyj7m\",\"done\":{\"bought\":274927,\"joined\":274927,\"rate [truncated]",
+          "seconds": 0.3189769
+        },
+        {
+          "tool": "send_from_test_wallet",
+          "args": {
+            "amount": "1uaeth",
+            "memo": "aether-quest:paybench reference",
+            "to": "aether1n52sw0cnykc627u79lvuh24ck0whdx6k25fluj",
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"amount\":{\"aeth\":\"0.000001\",\"amount\":\"0.000001\",\"asset\":\"AETH\",\"base\":\"1\",\"denom\":\"uaeth\",\"uaeth\":\"1\"},\"to\":\"aether1n52sw0cnykc627u79lvuh24ck0whdx6k25fluj\",\"txHash\":\"55CB79F15DA2538190F9A9C4153714DAD0FF1E820A009BE215CC15F912F0CEE2\"}",
+          "seconds": 0.08819
+        },
+        {
+          "tool": "find_services",
+          "args": {},
+          "result": "{\"services\":[{\"description\":\"This epoch's proof-of-work leaderboard on Aether: miners by work, who validates now, and when the next selection happens. GET ?top=N\",\"listedAtHeight\":268121,\"name\":\"Aether miner leaderboard\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":23,\"payments\":44,\"ratings\":{\"average\":5,\"count\":1},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.005533\",\"amount\":\"0.005533\",\"asset\":\"AETH\",\"base\":\"5533\",\"denom\":\"uaeth\",\"uaeth\":\"5533\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/miners\"},{\"description\":\"The Aether chain right now: height, block time, difficulty, block reward, epoch and blocks until the next validator selection.\",\"listedAtHeight\":268120,\"name\":\"Aether chain pulse\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":23,\"payments\":44,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.005533\",\"amount\":\"0.005533\",\"asset\":\"AETH\",\"base\":\"5533\",\"denom\":\"uaeth\",\"uaeth\":\"5533\"},\"windowBlocks\":10080},\"schemes\":[\"aether-memo\",\"exact\"],\"url\":\"https://explorer.157-245-252-221.sslip.io/svc/pulse\"},{\"description\":\"Checks a post-quantum ML-DSA-44 (FIPS 204) signature and returns the aether1 address of its key. POST {publicKey, signature, message}.\",\"listedAtHeight\":268119,\"name\":\"ML-DSA-44 signature check\",\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"price\":{\"aeth\":\"0.0005\",\"amount\":\"0.0005\",\"asset\":\"AETH\",\"base\":\"500\",\"denom\":\"uaeth\",\"uaeth\":\"500\"},\"reputation\":{\"payers\":23,\"payments\":44,\"ratings\":{\"count\":0},\"trustedRatings\":{\"count\":0},\"volume\":{\"aeth\":\"0.005533\",\"amount\":\"0.005533\",\"asset\":\"AETH\",\"base\":\"5533\",\"denom\":\"uaeth\",\"uaeth\" [truncated]",
+          "seconds": 0.0753385
+        },
+        {
+          "tool": "buy_service",
+          "args": {
+            "maxAmount": "1uaeth",
+            "url": "https://explorer.157-245-252-221.sslip.io/svc/hello",
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"amount\":{\"aeth\":\"0.000001\",\"amount\":\"0.000001\",\"asset\":\"AETH\",\"base\":\"1\",\"denom\":\"uaeth\",\"uaeth\":\"1\"},\"body\":\"{\\n  \\\"message\\\": \\\"Paid and served: your payment flow works.\\\",\\n  \\\"payer\\\": \\\"aether190q90g5ucm2820pjmmxqcp5gv8t6hvlur4vegd8r6hjc8hfqrd8sf2gc9r\\\",\\n  \\\"paymentTx\\\": \\\"D23D41AF67E61D3B0BB506AC3D07892EBA79137FB5D974D03E615F2180DAC26E\\\",\\n  \\\"servedAt\\\": \\\"2026-10-14T11:55:41Z\\\"\\n}\\n\",\"contentType\":\"application/json\",\"httpStatus\":200,\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"status\":\"paid\",\"txHash\":\"D23D41AF67E61D3B0BB506AC3D07892EBA79137FB5D974D03E615F2180DAC26E\"}",
+          "seconds": 4.1589285
+        },
+        {
+          "tool": "buy_service",
+          "args": {
+            "maxAmount": "1uaeth",
+            "url": "https://explorer.157-245-252-221.sslip.io/svc/hello",
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"amount\":{\"aeth\":\"0.000001\",\"amount\":\"0.000001\",\"asset\":\"AETH\",\"base\":\"1\",\"denom\":\"uaeth\",\"uaeth\":\"1\"},\"body\":\"{\\n  \\\"message\\\": \\\"Paid and served: your payment flow works.\\\",\\n  \\\"payer\\\": \\\"aether190q90g5ucm2820pjmmxqcp5gv8t6hvlur4vegd8r6hjc8hfqrd8sf2gc9r\\\",\\n  \\\"paymentTx\\\": \\\"E0BB3EA474500593A1189B3F2C5659E020E73E8CB146D69CE883E294BD802D9F\\\",\\n  \\\"servedAt\\\": \\\"2026-10-14T11:55:48Z\\\"\\n}\\n\",\"contentType\":\"application/json\",\"httpStatus\":200,\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"status\":\"paid\",\"txHash\":\"E0BB3EA474500593A1189B3F2C5659E020E73E8CB146D69CE883E294BD802D9F\"}",
+          "seconds": 6.2076886
+        },
+        {
+          "tool": "buy_service",
+          "args": {
+            "maxAmount": "1uaeth",
+            "url": "https://explorer.157-245-252-221.sslip.io/svc/hello",
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"amount\":{\"aeth\":\"0.000001\",\"amount\":\"0.000001\",\"asset\":\"AETH\",\"base\":\"1\",\"denom\":\"uaeth\",\"uaeth\":\"1\"},\"body\":\"{\\n  \\\"message\\\": \\\"Paid and served: your payment flow works.\\\",\\n  \\\"payer\\\": \\\"aether190q90g5ucm2820pjmmxqcp5gv8t6hvlur4vegd8r6hjc8hfqrd8sf2gc9r\\\",\\n  \\\"paymentTx\\\": \\\"10CA76D4D8D6E157BA5B0586F35F554DB4809694F2A22F9A2AEEB1666FC771AE\\\",\\n  \\\"servedAt\\\": \\\"2026-10-14T11:56:52Z\\\"\\n}\\n\",\"contentType\":\"application/json\",\"httpStatus\":200,\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"status\":\"paid\",\"txHash\":\"10CA76D4D8D6E157BA5B0586F35F554DB4809694F2A22F9A2AEEB1666FC771AE\"}",
+          "seconds": 64.2962969
+        },
+        {
+          "tool": "buy_service",
+          "args": {
+            "maxAmount": "1uaeth",
+            "url": "https://explorer.157-245-252-221.sslip.io/svc/hello",
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"amount\":{\"aeth\":\"0.000001\",\"amount\":\"0.000001\",\"asset\":\"AETH\",\"base\":\"1\",\"denom\":\"uaeth\",\"uaeth\":\"1\"},\"body\":\"{\\n  \\\"message\\\": \\\"Paid and served: your payment flow works.\\\",\\n  \\\"payer\\\": \\\"aether190q90g5ucm2820pjmmxqcp5gv8t6hvlur4vegd8r6hjc8hfqrd8sf2gc9r\\\",\\n  \\\"paymentTx\\\": \\\"8352FB3584F9CC7F3745A474277393F4841DE2FD9CD2A233C93D5885FC3909D8\\\",\\n  \\\"servedAt\\\": \\\"2026-10-14T11:56:56Z\\\"\\n}\\n\",\"contentType\":\"application/json\",\"httpStatus\":200,\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"status\":\"paid\",\"txHash\":\"8352FB3584F9CC7F3745A474277393F4841DE2FD9CD2A233C93D5885FC3909D8\"}",
+          "seconds": 4.131245
+        },
+        {
+          "tool": "buy_service",
+          "args": {
+            "maxAmount": "1uaeth",
+            "url": "https://explorer.157-245-252-221.sslip.io/svc/hello",
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"amount\":{\"aeth\":\"0.000001\",\"amount\":\"0.000001\",\"asset\":\"AETH\",\"base\":\"1\",\"denom\":\"uaeth\",\"uaeth\":\"1\"},\"body\":\"{\\n  \\\"message\\\": \\\"Paid and served: your payment flow works.\\\",\\n  \\\"payer\\\": \\\"aether190q90g5ucm2820pjmmxqcp5gv8t6hvlur4vegd8r6hjc8hfqrd8sf2gc9r\\\",\\n  \\\"paymentTx\\\": \\\"6077B3F12FE62BC410E86277824323A5927AF32DAE90F3D1BACFA21F45EFD60B\\\",\\n  \\\"servedAt\\\": \\\"2026-10-14T11:57:02Z\\\"\\n}\\n\",\"contentType\":\"application/json\",\"httpStatus\":200,\"payTo\":\"aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl\",\"status\":\"paid\",\"txHash\":\"6077B3F12FE62BC410E86277824323A5927AF32DAE90F3D1BACFA21F45EFD60B\"}",
+          "seconds": 6.1192824
+        },
+        {
+          "tool": "send_from_test_wallet",
+          "args": {
+            "amount": "1uaeth",
+            "memo": "x402-rate:5:https://explorer.157-245-252-221.sslip.io/svc/hello",
+            "to": "aether1q33l05h32falelyk69p79p3ypxwka6yk2sq9e2",
+            "walletToken": "twREDACTED"
+          },
+          "result": "{\"amount\":{\"aeth\":\"0.000001\",\"amount\":\"0.000001\",\"asset\":\"AETH\",\"base\":\"1\",\"denom\":\"uaeth\",\"uaeth\":\"1\"},\"to\":\"aether1q33l05h32falelyk69p79p3ypxwka6yk2sq9e2\",\"txHash\":\"8B41B94BB8B4E640567567E2C53CFA0E2D7F25F3EF9EFB7066DE989A7DB4F279\"}",
+          "seconds": 0.0983649
+        }
+      ]
+    }
+  ]
+}
