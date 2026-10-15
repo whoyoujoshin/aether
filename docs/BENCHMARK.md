@@ -17,7 +17,9 @@ single-step tasks every time but finished the quest in one run of three.
 Twice it copied the wallet token wrong partway through (the server answered
 `INVALID_WALLET_TOKEN`): once it stopped and asked for help, and once it
 made a wallet of its own and played the quest with that instead of the one
-it was given, which doesn't count.
+it was given, which doesn't count. So the test wallet switched to short
+handles (task set version 2), and on 2026-10-14 gpt-oss-120b passed all 15
+tasks in three runs, the quest every time.
 
 ## The tasks
 
