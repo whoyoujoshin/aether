@@ -4,7 +4,8 @@
 # send the whole output to Claude. POOL_ID=<n> also checks a pool's quote.
 set -uo pipefail
 LCD=${LCD:-https://lcd.osmotest5.osmosis.zone}
-AETH=ibc/0D80A29BCBE8A38AAE75313264A0741092566D4EF5A7FEDAD7F86E12193C2328
+# AETH on Osmosis: ibc/ + uppercase SHA-256 of transfer/<Osmosis channel>/uaeth.
+AETH=${AETH_DENOM:-ibc/0D80A29BCBE8A38AAE75313264A0741092566D4EF5A7FEDAD7F86E12193C2328}
 RELAYER=osmo1mlv24mz4ygnfnp4x4345kpjyx2mqu99x2ag3rm
 POOL_KEY_HOME=${POOL_KEY_HOME:-/root/.osmosisd-pool}
 

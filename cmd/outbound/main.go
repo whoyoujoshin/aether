@@ -47,6 +47,7 @@ func main() {
 
 		clientID = flag.String("client-id", "07-tendermint-0", "the other chain's client of Aether")
 		interval = flag.Duration("interval", 6*time.Second, "how often to look for work")
+		maxWait  = flag.Duration("max-backoff", 10*time.Minute, "after failed cycles, wait up to this long between tries (the wait doubles from --interval with each failure in a row), so an expired client or a refusing RPC isn't hammered")
 		refresh  = flag.Duration("refresh-after", time.Hour, "update the other chain's client of Aether at least this often, even with no packets: a transfer to Aether with a relative timeout (1,000 Aether blocks by default, ~1.5 h) counts from that client's latest height")
 		maxMsgs  = flag.Int("max-msgs", 20, "most packets, acknowledgements and timeouts per transaction")
 		expiryAt = flag.Duration("expiry-warning", 24*time.Hour, "report unhealthy when the client expires sooner than this")
@@ -77,22 +78,39 @@ func main() {
 	if *listen != "" && !*once {
 		go serveHealth(*listen, st, *interval, *expiryAt)
 	}
+	failures := 0
 	for {
-		cycle(aether, cparty, *clientID, *maxMsgs, *refresh, st)
+		if err := cycle(aether, cparty, *clientID, *maxMsgs, *refresh, st); err != nil {
+			failures++
+		} else {
+			failures = 0
+		}
 		if *once {
-			if st.snapshot().LastError != "" {
+			if failures > 0 {
 				os.Exit(1)
 			}
 			return
 		}
-		time.Sleep(*interval)
+		time.Sleep(backoff(*interval, *maxWait, failures))
 	}
+}
+
+// backoff is the wait before the next cycle: interval, doubled for each
+// failure in a row, at most max. A public RPC rate-limits a relayer that
+// keeps retrying every few seconds; on 2026-10-16 one retrying an expired
+// client got the seed refused by Osmosis's testnet RPCs.
+func backoff(interval, max time.Duration, failures int) time.Duration {
+	wait := interval
+	for i := 0; i < failures && wait < max; i++ {
+		wait *= 2
+	}
+	return min(wait, max)
 }
 
 // cycle relays what's pending once: up to maxMsgs packets,
 // acknowledgements and timeouts in one transaction, behind a client
 // update.
-func cycle(aether, cparty *relayer.Chain, clientID string, maxMsgs int, refreshAfter time.Duration, st *status) {
+func cycle(aether, cparty *relayer.Chain, clientID string, maxMsgs int, refreshAfter time.Duration, st *status) error {
 	plan, err := relayer.Plan(aether, cparty, clientID, cparty.FromAddrStr, maxMsgs, refreshAfter)
 	if err == nil && plan.Any() {
 		if _, err = cparty.SignAndBroadcast(plan.Msgs...); err == nil {
@@ -105,6 +123,7 @@ func cycle(aether, cparty *relayer.Chain, clientID string, maxMsgs int, refreshA
 		err = expErr
 	}
 	st.record(plan, expiry, err)
+	return err
 }
 
 type counts struct {
