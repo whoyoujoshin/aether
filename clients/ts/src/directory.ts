@@ -48,8 +48,8 @@ export interface Service {
 }
 
 export const RATE_PREFIX = "x402-rate:";
-/** How far back reputation looks, in blocks (about a week of ~60s blocks). */
-export const DEFAULT_WINDOW = 10_080;
+/** How far back reputation looks, in blocks (about a week of ~6s blocks). */
+export const DEFAULT_WINDOW = 100_800;
 
 export interface Rating {
   rater: string;
