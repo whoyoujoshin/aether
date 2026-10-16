@@ -58,7 +58,7 @@ func main() {
 	interval := flag.Duration("interval", 10*time.Minute, "how often to read the clients")
 	warnBefore := flag.Duration("warn-before", 24*time.Hour, "warn when a client expires sooner than this")
 	unreachableAfter := flag.Int("unreachable-after", 3, "failed reads in a row before a client is reported unreadable")
-	once := flag.Bool("once", false, "check once, print every client's state and exit")
+	once := flag.Bool("once", false, "check once, print every client's state and exit, posting nothing")
 	flag.Parse()
 	if len(watch) == 0 {
 		log.Fatal("nothing to watch: pass --watch <label>,<rpc>,<client-id>")
@@ -88,12 +88,14 @@ func main() {
 		return postDiscord(http.DefaultClient, *webhook, text)
 	}
 
-	w := newWatcher(watch, check, post, *warnBefore, *unreachableAfter)
 	if *once {
+		// A check by hand never posts, whatever the environment holds.
+		w := newWatcher(watch, check, func(text string) error { log.Print(text); return nil }, *warnBefore, *unreachableAfter)
 		w.round()
 		fmt.Println(w.summary())
 		return
 	}
+	w := newWatcher(watch, check, post, *warnBefore, *unreachableAfter)
 	w.round()
 	if err := post("ibcwatch is watching " + w.summary()); err != nil {
 		log.Printf("discord: %v", err)
