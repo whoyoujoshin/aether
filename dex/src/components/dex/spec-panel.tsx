@@ -34,7 +34,8 @@ export function SpecPanel() {
       <p className="text-muted">
         The prime caller is an agent. An instruction becomes one tool call in{" "}
         <span className="font-mono text-fg">src/lib/dex/agent.ts</span> — get_pool, quote_swap, swap, deposit, withdraw,
-        set_limit, set_slippage. Spends over the per-trade limit are refused. High impact returns needs_confirm and does
+        set_slippage. Spends over the per-trade limit are refused, and only the owner sets that limit. A swap settles
+        only if it still pays at least its min_receive. High impact returns needs_confirm and does
         not settle until the instruction includes confirm. The fill is still the integer AMM in{" "}
         <span className="font-mono text-fg">math.ts</span>. Nothing is signed or broadcast.
       </p>

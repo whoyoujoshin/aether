@@ -107,10 +107,15 @@ export function quoteDeposit(
   if (amountAeth <= 0n || reserveAeth <= 0n || reserveUsdc <= 0n || lpSupply <= 0n) {
     return { amountUsdc: 0n, lpOut: 0n };
   }
-  const amountUsdc = (amountAeth * reserveUsdc) / reserveAeth;
-  if (amountUsdc <= 0n) return { amountUsdc: 0n, lpOut: 0n };
+  // Shares follow the AETH side, rounded down; the USDC side is rounded up,
+  // so a deposit never adds less than its shares are worth.
+  const amountUsdc = ceilDiv(amountAeth * reserveUsdc, reserveAeth);
   const lpOut = (amountAeth * lpSupply) / reserveAeth;
   return { amountUsdc, lpOut };
+}
+
+function ceilDiv(a: bigint, b: bigint): bigint {
+  return (a + b - 1n) / b;
 }
 
 /** Largest AETH deposit the wallet can match at the current ratio. */
@@ -123,7 +128,7 @@ export function maxDepositAeth(
   if (reserveAeth <= 0n || reserveUsdc <= 0n || walletAeth <= 0n || walletUsdc <= 0n) return 0n;
   const fromUsdc = (walletUsdc * reserveAeth) / reserveUsdc;
   let cap = walletAeth < fromUsdc ? walletAeth : fromUsdc;
-  if (cap > 0n && (cap * reserveUsdc) / reserveAeth > walletUsdc) cap -= 1n;
+  if (cap > 0n && ceilDiv(cap * reserveUsdc, reserveAeth) > walletUsdc) cap -= 1n;
   return cap < 0n ? 0n : cap;
 }
 

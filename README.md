@@ -33,6 +33,8 @@ claude mcp add --transport http aether https://explorer.157-245-252-221.sslip.io
 
 Every host (Claude Desktop, Cursor, Codex, VS Code, OpenClaw) for each server: [docs/CONNECT.md](docs/CONNECT.md).
 
+Block time, finality, fees and paid-request latency, measured on the testnet and set next to Base and Solana: [docs/NUMBERS.md](docs/NUMBERS.md).
+
 The same read-only tools can also run on your own machine, from the npm package, with only chain data coming from the node: `npx -y -p aether-chain-client aether-mcp` (stdio; `get_balance`, `get_transaction_status`, `find_services`). In an MCP config: `{"command": "npx", "args": ["-y", "-p", "aether-chain-client", "aether-mcp"]}`.
 
 The local wallet below gives the agent a spend-capped wallet as MCP tools: balance, send, invoice and wait-for-payment, paying for HTTP 402 APIs, and the service directory (full list and guarantees in [AI agent wallet](#ai-agent-wallet-mcp)).
@@ -333,7 +335,7 @@ An unpaid request gets `402 Payment Required` in the [x402](https://www.x402.org
 
 **Charging USDC.** `--price "0.05 USDC" --usdc-channel <Aether's channel to Noble>` charges Noble's USDC over exactly that channel instead (or `--usdc-path` and `--usdc-base-denom` for USDC that arrives another route). One proxy charges one asset: deposits, balances, pull allowances, collections, withdrawals and `--min-deposit`/`--pull-credit` are all in it. The 402's `asset` field is the USDC denom (`ibc/...`), `extra.symbol`/`extra.amount` state the price in USDC (`amountAeth` is only for AETH prices), the manifest carries the same, and a receipt's `amount` gets the denom appended (`50000ibc/...`) so it can't be read as uaeth. AETH services read exactly as before. `agentmcp`'s `fetch_paid` pays a USDC price by any scheme (its `maxAmount`, `prepay` and `pullAllowance` must be in USDC, else `ASSET_MISMATCH`).
 
-With ~60s blocks a paid request waits about one block; a payment is served whenever it lands within the invoice's 24h lifetime, so slow confirmation never forfeits it.
+With ~6s blocks a paid request waits about one block; a payment is served whenever it lands within the invoice's 24h lifetime, so slow confirmation never forfeits it.
 
 **Prepaid, for agents.** With `--prepaid-ledger <file>` the proxy also offers `aether-prepaid`: an agent deposits once (memo `prepaid:<its address>` — anyone can fund it, e.g. a person funding their bot), then signs each request with its ML-DSA key and the price is deducted instantly. Each request ID is charged once, so a retry is never charged twice. The seller holds unspent balances in that file (back it up); agents should deposit only what they'd trust that service with. People paying occasionally just use the per-request scheme.
 
@@ -349,7 +351,7 @@ The upstream must be reachable only through the proxy.
 
 Paid services list themselves on chain, so agents can find them without a central registry. `cmd/paywall` serves a manifest at `/.well-known/x402` (`--name`, `--description`), and `paywall list --url <public URL> --key <payee key> --keyring-dir <dir>` lists it: it checks the manifest names that key's account as payee, then sends 1 uaeth from it to the directory address with memo `x402-service:<url>` (`--delist` sends `x402-delist:<url>`, which removes it). A listing appears only if the manifest at that URL names the announcer as payee, so nobody can list someone else's service. Agents use `find_services`; the explorer shows them on its **Services** page. Manifests come from URLs anyone can announce, so fetching them refuses private and internal addresses (`--directory-allow-private` for local devnets only).
 
-**Reputation.** Each listing comes with what the chain shows of its use over the last ~10,080 blocks: payments to its payee, from how many accounts, how much. Buyers rate a service by sending 1 uaeth to the directory address with memo `x402-rate:<1-5>:<url>`; a rating counts only if the rater paid that service first, and each account's latest rating replaces its earlier ones. Fees are zero, so a seller *can* manufacture payments and ratings from accounts it controls — treat those numbers as hints. What it can't fake is a rating from an account you trust, or your own experience: `find_services` reports trusted ratings and the agent's own purchase history separately, and ranks by them with `orderBy: "trusted"`.
+**Reputation.** Each listing comes with what the chain shows of its use over the last 100,800 blocks (about a week): payments to its payee, from how many accounts, how much. Buyers rate a service by sending 1 uaeth to the directory address with memo `x402-rate:<1-5>:<url>`; a rating counts only if the rater paid that service first, and each account's latest rating replaces its earlier ones. Fees are zero, so a seller *can* manufacture payments and ratings from accounts it controls — treat those numbers as hints. What it can't fake is a rating from an account you trust, or your own experience: `find_services` reports trusted ratings and the agent's own purchase history separately, and ranks by them with `orderBy: "trusted"`.
 
 ### On-chain agent permissions (x/authz, x/feegrant)
 

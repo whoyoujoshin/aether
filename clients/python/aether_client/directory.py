@@ -24,7 +24,7 @@ DIRECTORY_ADDRESS = bech32.encode(PREFIX, hashlib.sha256(b"aether-x402-directory
 
 
 RATE_PREFIX = "x402-rate:"
-DEFAULT_WINDOW = 10_080  # blocks reputation looks back: about a week of ~60s blocks
+DEFAULT_WINDOW = 100_800  # blocks reputation looks back: about a week of ~6s blocks
 
 
 @dataclass

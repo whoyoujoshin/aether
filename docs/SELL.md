@@ -75,7 +75,7 @@ paywall list --url https://api.example.com/weather --key payee --keyring-dir ./p
 
 It reads your manifest first and stops if the directory wouldn't accept it
 (for instance, if `--pay-to` isn't this key's account), then sends the
-listing and waits for its block (about a minute). Agents see it within a
+listing and waits for its block (a few seconds). Agents see it within a
 few minutes. `paywall list --delist …` withdraws it.
 
 Check it with `find_services` from any of the MCP servers above, or on
@@ -124,5 +124,5 @@ directory address `paywall` prints).
   directory shows payments and ratings from the last week of blocks.
 - **Receipts, prepaid balances, pull payments and withdrawals:** flags on
   `paywall`; see the [README](../README.md#paid-apis-x402).
-- **Payments wait for their block,** about a minute; a block is final once
+- **Payments wait for their block,** about 6 seconds; a block is final once
   committed (no confirmations to count, no reorgs).

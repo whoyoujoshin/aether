@@ -75,7 +75,8 @@ Prices come from the on-chain directory, so the agent has to look them up.
   tokens, time and AETH spent. `paybench report` turns runs into a table.
 
 A run uses nine test wallets (0.01 AETH each, from the server's funder)
-and takes 25 to 35 minutes, since testnet blocks are about a minute apart.
+and takes 25 to 35 minutes, most of it the models' own time and the
+harness's waits for the last transactions to settle.
 
 ## Running it
 

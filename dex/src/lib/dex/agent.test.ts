@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AGENT_LIMIT_AETH, RESERVE_AETH, RESERVE_USDC, TEST_VECTOR, WALLET_AETH, WALLET_USDC } from "./constants.ts";
-import { decide, parseInstruction } from "./agent.ts";
+import { INSTRUCTION_HINT, decide, parseInstruction, runInstruction } from "./agent.ts";
+import { getDexState, resetDemo, swap } from "./store.ts";
 import type { DexState } from "./types.ts";
 
 function fixture(limitAeth = AGENT_LIMIT_AETH): DexState {
@@ -61,4 +62,29 @@ test("high impact waits for confirm", () => {
 test("unknown instruction is rejected", () => {
   const parsed = parseInstruction("buy the dip");
   assert.ok("error" in parsed);
+});
+
+test("the agent has no tool to change its own limit", () => {
+  const parsed = parseInstruction("limit 5000 aeth");
+  assert.ok("error" in parsed);
+  assert.ok(!INSTRUCTION_HINT.includes("limit"));
+});
+
+test("a swap settles only at or above its min_receive", () => {
+  resetDemo();
+  const before = getDexState();
+  const refused = swap("aeth", TEST_VECTOR.amountIn, TEST_VECTOR.amountOut + 1n);
+  assert.deepEqual(refused, { ok: false, error: "slippage_exceeded" });
+  assert.equal(getDexState(), before);
+  assert.deepEqual(swap("aeth", TEST_VECTOR.amountIn, TEST_VECTOR.amountOut), { ok: true, amountOut: TEST_VECTOR.amountOut });
+  resetDemo();
+});
+
+test("a swap the agent runs carries its min_receive to the store", () => {
+  resetDemo();
+  const turn = runInstruction("swap 1 aeth to usdc");
+  assert.equal(turn.result.ok, true);
+  assert.equal(turn.call?.args.min_receive, ((TEST_VECTOR.amountOut * 9_950n) / 10_000n).toString());
+  assert.equal(getDexState().walletUsdc, (WALLET_USDC + TEST_VECTOR.amountOut).toString());
+  resetDemo();
 });

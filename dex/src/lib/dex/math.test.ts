@@ -5,6 +5,7 @@ import {
   FEE_BPS,
   applySwap,
   isqrt,
+  maxDepositAeth,
   priceImpactBps,
   quoteDeposit,
   quoteExactIn,
@@ -67,4 +68,23 @@ test("deposit then withdraw rounds in favor of the pool", () => {
 test("non-positive input quotes zero", () => {
   assert.equal(quoteExactIn(0n, RESERVE_AETH, RESERVE_USDC), 0n);
   assert.equal(quoteExactIn(-1n, RESERVE_AETH, RESERVE_USDC), 0n);
+});
+
+test("a deposit never adds less than its shares are worth", () => {
+  const supply = isqrt(RESERVE_AETH * RESERVE_USDC);
+  // 7 uaeth mints 4 shares, worth 2.53 base units of USDC: it pays 3, not 2.
+  assert.deepEqual(quoteDeposit(7n, RESERVE_AETH, RESERVE_USDC, supply), { amountUsdc: 3n, lpOut: 4n });
+  const reserveAeth = RESERVE_AETH + 1_234_567n;
+  const reserveUsdc = RESERVE_USDC - 493_201n;
+  for (const amountAeth of [2n, 7n, 1_000_003n, 999_999_999n]) {
+    const { amountUsdc, lpOut } = quoteDeposit(amountAeth, reserveAeth, reserveUsdc, supply);
+    assert.ok(amountUsdc * supply >= lpOut * reserveUsdc, `usdc side, ${amountAeth}`);
+    assert.ok(amountAeth * supply >= lpOut * reserveAeth, `aeth side, ${amountAeth}`);
+  }
+});
+
+test("the largest deposit the wallet can match is affordable", () => {
+  const cap = maxDepositAeth(1_000_000n, 399_999n, RESERVE_AETH, RESERVE_USDC);
+  assert.ok(quoteDeposit(cap, RESERVE_AETH, RESERVE_USDC, 1n).amountUsdc <= 399_999n);
+  assert.ok(quoteDeposit(cap + 1n, RESERVE_AETH, RESERVE_USDC, 1n).amountUsdc > 399_999n);
 });

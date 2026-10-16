@@ -29,8 +29,8 @@ import (
 const RatePrefix = "x402-rate:"
 
 // DefaultWindow is how far back reputation looks, in blocks (about a
-// week of ~60s blocks).
-const DefaultWindow = 10_080
+// week of ~6s blocks).
+const DefaultWindow = 100_800
 
 // Rating is one account's latest rating of a service.
 type Rating struct {

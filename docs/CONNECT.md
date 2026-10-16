@@ -60,6 +60,64 @@ Then try a prompt:
 > under 0.001 AETH and buy one call from it. Show me what you got and the
 > payment's transaction.
 
+## In your own agent's code
+
+The same URL works from the agent SDKs. A paid call waits for its block
+(a few seconds, longer if the chain is slow), so give the MCP client a
+timeout of a few minutes.
+
+**Claude Agent SDK** (Python, `pip install claude-agent-sdk`). MCP tools
+need permission, given here by `allowed_tools`:
+
+```python
+import asyncio
+from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage
+
+async def main():
+    options = ClaudeAgentOptions(
+        mcp_servers={"aether-test-wallet": {"type": "http", "url": "https://explorer.157-245-252-221.sslip.io/sandbox/mcp"}},
+        allowed_tools=["mcp__aether-test-wallet__*"],
+    )
+    async for message in query(prompt="Create an Aether test wallet and buy one call from a paid service under 0.001 AETH.", options=options):
+        if isinstance(message, ResultMessage) and message.subtype == "success":
+            print(message.result)
+
+asyncio.run(main())
+```
+
+In TypeScript (`@anthropic-ai/claude-agent-sdk`), the same options are
+`mcpServers` and `allowedTools` on `query({ prompt, options })`.
+
+**OpenAI Agents SDK** (Python, `pip install openai-agents`). Its MCP
+client gives up on a call after 5 seconds unless told otherwise:
+
+```python
+import asyncio
+from agents import Agent, Runner
+from agents.mcp import MCPServerStreamableHttp
+
+async def main():
+    async with MCPServerStreamableHttp(
+        name="aether-test-wallet",
+        params={"url": "https://explorer.157-245-252-221.sslip.io/sandbox/mcp"},
+        client_session_timeout_seconds=180,
+        cache_tools_list=True,
+    ) as aether:
+        agent = Agent(name="Buyer", instructions="Pay for services with the Aether test wallet.", mcp_servers=[aether])
+        result = await Runner.run(agent, "Create an Aether test wallet and buy one call from a paid service under 0.001 AETH.")
+        print(result.final_output)
+
+asyncio.run(main())
+```
+
+In TypeScript (`@openai/agents`): `new MCPServerStreamableHttp({ name,
+url, clientSessionTimeoutSeconds: 180 })`, then `await aether.connect()`
+and pass it in the agent's `mcpServers`.
+
+For your own wallet, the `mcpServers` block `agentmcp init` prints goes
+into `mcp_servers` as it is; in the OpenAI SDK, use `MCPServerStdio` with
+the same `command` and `args`.
+
 ## Your own wallet
 
 ```bash

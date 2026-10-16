@@ -519,7 +519,7 @@ func toolGetTransactionStatus(_ context.Context, _ *mcp.CallToolRequest, in getT
 
 type waitForTransactionInput struct {
 	Hash           string `json:"hash" jsonschema:"transaction hash to wait for"`
-	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"how long to wait (default 90, max 300); blocks are ~60s apart"`
+	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"how long to wait (default 90, max 300); blocks are ~6s apart"`
 }
 
 func clampWait(seconds int) time.Duration {
@@ -563,7 +563,7 @@ type waitForPaymentInput struct {
 	Memo           string `json:"memo" jsonschema:"the exact memo the payer was asked to attach, e.g. an invoice from create_invoice. Use a unique memo per request so one payment can't satisfy two"`
 	MinAmount      string `json:"minAmount" jsonschema:"minimum amount that counts as paid, WITH its unit, which also picks the asset: e.g. \"0.5 AETH\", \"500000uaeth\" or \"2 USDC\""`
 	SinceHeight    int64  `json:"sinceHeight,omitempty" jsonschema:"only look at blocks from this height on: pass create_invoice's sinceHeight (or a previous call's resumeFromHeight). Omitted, the agent's whole history is scanned"`
-	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"how long to wait (default 90, max 300); blocks are ~60s apart"`
+	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" jsonschema:"how long to wait (default 90, max 300); blocks are ~6s apart"`
 }
 
 type waitForPaymentOutput struct {

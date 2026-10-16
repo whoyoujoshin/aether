@@ -831,7 +831,7 @@ class Paywall:
                     print(f"paywall: saving withdrawal {account}/{wid}: {e}")
                 return respond(200, w, "paid back")
             if status == "pending":
-                return respond(200, w, "sent; in a block within about a minute")
+                return respond(200, w, "sent; in a block within seconds")
             if status == "failed":
                 try:
                     ledger.cancel_withdrawal(account, wid)

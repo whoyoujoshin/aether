@@ -610,7 +610,7 @@ func newServer() *mcp.Server {
 
 	mcp.AddTool(server, annotate(&mcp.Tool{
 		Name:        "wait_for_transaction",
-		Description: "Wait until a transaction is confirmed or failed (blocks are ~60s apart). Returns pending if the timeout passes first; call again to keep waiting.",
+		Description: "Wait until a transaction is confirmed or failed (blocks are ~6s apart). Returns pending if the timeout passes first; call again to keep waiting.",
 	}), coded(toolWaitForTransaction))
 
 	mcp.AddTool(server, annotate(&mcp.Tool{
