@@ -66,6 +66,10 @@ On the seed, in this order:
      -cparty-gas-prices 0.05uosmo \
      -keyring-backend test 2>&1 | tee /root/osmosis-handshake-20261016.log
    ```
+   The relayer retries each request the RPC or gRPC gateway refuses
+   (HTTP 403, 429, 502, 503, or a connection that never opens) for about
+   four minutes, so an RPC that refuses some of its requests is no reason
+   to wait; only one that refuses everything for four minutes stops it.
    It ends with `round trip complete`. If it fails partway, send the log
    before running it again (a rerun opens another set of clients).
 4. **The new AETH denom on Osmosis**, from Osmosis's side of the new
