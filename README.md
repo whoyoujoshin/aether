@@ -69,6 +69,7 @@ Try paying with no install: the [hosted test wallet](docs/TEST-WALLET.md) (`http
 | Escrow between accounts (`x/escrow`: release, refund, arbiter, deadline) | Live since block 161,000 ([docs/ESCROW.md](docs/ESCROW.md)) |
 | Ligase: someone on another chain funds, releases and withdraws Aether escrows with IBC transfers carrying an instruction; such instructions can never move AETH | Live since block 161,000; proven on a two-chain devnet ([docs/LIGASE.md](docs/LIGASE.md)) |
 | Helicase: the block proposer relays IBC packets, acknowledgements and timeouts onto Aether, unsigned and proof-checked, so no relayer signs on Aether; `cmd/outbound` relays the other way with the other chain's own keys | Live since block 161,000; both directions proven unattended on a two-chain devnet ([docs/HELICASE.md](docs/HELICASE.md)) |
+| DEX | Reference desk in [dex/](dex/). Local integer AMM for agents. Not a chain module. Nothing is broadcast. |
 | Independent professional security audit | Not yet performed |
 
 See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and [Roadmap](../../wiki/Roadmap).
@@ -214,6 +215,11 @@ To redeploy the live explorer from `main`, run `bash scripts/deploy-explorer.sh`
 
 
 The Faucet page talks to the faucet through the explorer: run it with `--faucet-api http://127.0.0.1:8080` (the faucet must trust the explorer's address in `--trusted-proxies`, localhost by default). The Validators globe shows what `--node-locations` publishes; see [docs/EXPLORER-LOCATIONS.md](docs/EXPLORER-LOCATIONS.md).
+
+## DEX
+
+An agent desk for a reference AETH/USDC pool lives in [dex/](dex/). Instructions become tool calls against a local integer AMM (30 bps, per-trade spend cap, high-impact swaps wait for `confirm`). It is not an `x/dex` module and it does not broadcast. Run it with `cd dex && npm install && npm test && npm run dev`.
+
 ## AI agent wallet (MCP)
 
 An MCP server exposing wallet operations as tool calls, so an AI agent can pay and get paid directly instead of only a human clicking through a UI.
