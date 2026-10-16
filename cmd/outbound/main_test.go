@@ -43,3 +43,14 @@ func TestStatusRecord(t *testing.T) {
 	st.record(&relayer.PlanResult{}, time.Time{}, nil)
 	require.Empty(t, st.snapshot().LastError, "a successful cycle clears the error")
 }
+
+func TestBackoff(t *testing.T) {
+	for _, c := range []struct {
+		failures int
+		want     time.Duration
+	}{{0, 6 * time.Second}, {1, 12 * time.Second}, {3, 48 * time.Second}, {7, 10 * time.Minute}, {1000, 10 * time.Minute}} {
+		if got := backoff(6*time.Second, 10*time.Minute, c.failures); got != c.want {
+			t.Errorf("backoff after %d failures = %s, want %s", c.failures, got, c.want)
+		}
+	}
+}
