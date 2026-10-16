@@ -63,7 +63,8 @@ Then try a prompt:
 ## In your own agent's code
 
 The same URL works from the agent SDKs. A paid call waits for its block
-(about a minute), so give the MCP client a timeout of a few minutes.
+(a few seconds, longer if the chain is slow), so give the MCP client a
+timeout of a few minutes.
 
 **Claude Agent SDK** (Python, `pip install claude-agent-sdk`). MCP tools
 need permission, given here by `allowed_tools`:

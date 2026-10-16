@@ -237,7 +237,7 @@ func (p *Paywall) withdraw(w http.ResponseWriter, account, id string, amount *ma
 			respond(http.StatusOK, wd, "paid back")
 			return
 		case PayoutPending:
-			respond(http.StatusOK, wd, "sent; in a block within about a minute")
+			respond(http.StatusOK, wd, "sent; in a block within seconds")
 			return
 		case PayoutFailed:
 			if err := ledger.CancelWithdrawal(account, id); err != nil {

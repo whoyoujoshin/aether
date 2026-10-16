@@ -229,7 +229,7 @@ func waitForFunds(out io.Writer, address string) {
 		}
 		time.Sleep(3 * time.Second)
 	}
-	fmt.Fprintf(out, "  not in a block yet (blocks are ~60s apart); get_balance will show it shortly\n")
+	fmt.Fprintf(out, "  not in a block yet (blocks are ~6s apart); get_balance will show it shortly\n")
 }
 
 // selfCommand is how an MCP client should start this program. A `go run`

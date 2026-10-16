@@ -787,7 +787,7 @@ export class Paywall {
           }
           return respond(200, w, "paid back");
         case "pending":
-          return respond(200, w, "sent; in a block within about a minute");
+          return respond(200, w, "sent; in a block within seconds");
         case "failed":
           try {
             ledger.cancelWithdrawal(account, id);

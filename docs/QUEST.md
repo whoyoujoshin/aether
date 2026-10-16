@@ -45,7 +45,7 @@ Then give it this prompt:
 The agent uses `create_test_wallet`, then `send_from_test_wallet` with the
 join memo, then `buy_service` five times, then `send_from_test_wallet`
 with the rating memo, then `get_quest`. Each payment waits for its block,
-which takes about a minute.
+which takes a few seconds.
 
 Steps 5 and 6 need an account the agent holds itself (`agentmcp`, or the
 TypeScript and Python clients). It runs a paid API behind `cmd/paywall` or

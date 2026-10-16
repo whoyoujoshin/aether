@@ -21,7 +21,7 @@ import (
 var (
 	pollInterval   = 3 * time.Second  // with no live block feed
 	safetyInterval = 15 * time.Second // re-check anyway, even with one
-	// feedStaleAfter: blocks are ~60s apart, so this long without one
+	// feedStaleAfter: blocks are ~6s apart, so this long without one
 	// means the feed (or the chain) is stuck.
 	feedStaleAfter = 2 * time.Minute
 )

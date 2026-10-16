@@ -100,7 +100,7 @@ func questFor(ctx context.Context, address, joinHow string) (getQuestOutput, err
 	}
 	out.You = b.Find(address)
 	if out.You == nil {
-		out.Next = fmt.Sprintf("Join: %s. Steps already done count once it has (it can take a block, ~60s, and the board refreshes each minute).", joinHow)
+		out.Next = fmt.Sprintf("Join: %s. Steps already done count once it has (it can take a block, ~6s, and the board refreshes each minute).", joinHow)
 		return out, nil
 	}
 	for _, s := range b.Steps {

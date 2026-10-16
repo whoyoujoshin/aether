@@ -14,7 +14,7 @@
 //
 // Unlike x402's "exact" scheme on EVM chains, the client broadcasts the
 // payment itself and nothing is signed for the server to settle, so no
-// facilitator is involved. The cost is latency: with ~60s blocks, a
+// facilitator is involved. The cost is latency: with ~6s blocks, a
 // paid request waits about a block for confirmation.
 //
 // For agents making many small requests, a server can also offer the

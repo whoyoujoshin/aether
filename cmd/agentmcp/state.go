@@ -226,7 +226,7 @@ func (st *agentState) hasSpend(txHash string) bool {
 
 // nextSequence accounts for this server's own transactions still in
 // the mempool: the chain reports the committed sequence, so without
-// this a second payment within one block time (~60s) would reuse the
+// this a second payment within one block time (~6s) would reuse the
 // first one's sequence and be rejected.
 func (st *agentState) nextSequence(from string, chainSeq uint64) uint64 {
 	next := chainSeq
