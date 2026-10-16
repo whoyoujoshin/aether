@@ -74,6 +74,8 @@ Cursor and most clients), Codex's `codex mcp add` line, VS Code's
 `.vscode/mcp.json` and OpenClaw's `mcp.servers` block, each with the
 spend caps set. Run it again to print them again for the same key.
 
+Selling to agents instead? See [SELL.md](SELL.md).
+
 The read-only tools can also run locally from npm, with no key:
 `npx -y -p aether-chain-client aether-mcp`, or in an `mcpServers` block
 `{"command": "npx", "args": ["-y", "-p", "aether-chain-client", "aether-mcp"]}`.
