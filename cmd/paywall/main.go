@@ -27,6 +27,11 @@
 //
 // run where the payee key is, then pass the file as --receipt-delegation.
 //
+// Once it answers at its public URL, list it in the on-chain service
+// directory (or withdraw it with --delist) from the payee's key:
+//
+//	paywall list --url <public URL> --key <payee key> --keyring-dir <dir>
+//
 // The upstream must not be reachable except through this proxy, or
 // clients can skip paying. Paid requests reach it with X-PAYMENT
 // removed and X-Aether-Payer / X-Aether-Payment-Tx added.
@@ -90,6 +95,10 @@ func main() {
 	exact := flag.Bool("exact", true, "also accept the standard x402 v2 exact scheme (network cosmos:<chain-id>), from any x402 v2 client, settled through this node")
 	keyringDir := flag.String("keyring-dir", "", "keyring directory holding --payout-key and --receipt-key")
 	keyringBackend := flag.String("keyring-backend", "test", "keyring backend holding --payout-key and --receipt-key")
+	if len(os.Args) > 1 && os.Args[1] == "list" {
+		listService(os.Args[2:])
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "delegate-receipts" {
 		delegateReceipts(os.Args[2:])
 		return
@@ -224,8 +233,8 @@ func main() {
 		if err != nil {
 			log.Fatalf("invalid --public-url: %v", err)
 		}
-		log.Printf("paywall: to list this service in the directory, send %d uaeth from %s:\n  aetherd tx bank send <%s key> %s %duaeth --note %q --chain-id %s",
-			directory.AnnounceAmount, *payTo, *payTo, directory.Address(), directory.AnnounceAmount, directory.AnnouncePrefix+u, *chainID)
+		log.Printf("paywall: to list this service in the directory, run where %s's key is:\n  paywall list --url %s --key <its key name> --keyring-dir <dir> --chain-id %s\n(or send %d uaeth to %s with memo %q)",
+			*payTo, u, *chainID, directory.AnnounceAmount, directory.Address(), directory.AnnouncePrefix+u)
 	}
 	if cfg.Pull != nil {
 		go pw.RunCollector(context.Background())

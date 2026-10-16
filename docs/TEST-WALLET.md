@@ -97,6 +97,8 @@ The first run creates `sandbox-funder` and the token secret in
 for example, 20 AETH from the faucet key. At most 200 wallets a day at 0.01
 AETH each is at most 2 AETH a day.
 
+An agent needs no AETH to pay in USDC: fees are zero on the testnet. A test wallet emptied of its AETH still paid "Aether hello (USDC)" 0.001 USDC by standard x402 (checked on a devnet with the seed's zero minimum gas price, 2026-10-16).
+
 New wallets also get 0.01 USDC each (`--sandbox-grant-usdc`, set by
 `sandbox.sh`; `USDC_GRANT=` changes it) while the funder holds that much.
 Without it they get AETH only, and the log says the funder is short. Benchmark
