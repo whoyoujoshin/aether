@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -55,16 +56,27 @@ func (t retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		if !refused || attempt >= len(t.waits) {
 			return resp, err
 		}
+		why := ""
 		if resp != nil {
+			why = resp.Status
 			_, _ = io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
+		} else {
+			why = err.Error()
 		}
+		logRetry(req.URL.Host, why, attempt, t.waits)
 		select {
 		case <-req.Context().Done():
 			return nil, req.Context().Err()
 		case <-time.After(t.waits[attempt]):
 		}
 	}
+}
+
+// logRetry says a request was refused and when the next try goes, so a
+// run that is waiting out a refusing RPC doesn't look stuck.
+func logRetry(host, why string, attempt int, waits []time.Duration) {
+	log.Printf("%s refused a request (%s): try %d of %d in %s", host, why, attempt+2, len(waits)+1, waits[attempt])
 }
 
 func refusedStatus(code int) bool {
@@ -93,6 +105,11 @@ func retryUnary(waits []time.Duration) grpc.UnaryClientInterceptor {
 			if err == nil || attempt >= len(waits) || !refusedGRPC(err) {
 				return err
 			}
+			target := "grpc"
+			if cc != nil {
+				target = cc.Target()
+			}
+			logRetry(target, status.Code(err).String(), attempt, waits)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()

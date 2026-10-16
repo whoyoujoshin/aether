@@ -96,6 +96,83 @@ On the seed, in this order:
    [IBC.md](IBC.md), [OSMOSIS-POOL.md](OSMOSIS-POOL.md) and CLAUDE.md.
    After that, the probe takes `AETH_DENOM=<new denom>`.
 
+### If Osmosis refuses the seed: open it from DardenPC
+
+On 2026-10-16 (12:51 to 12:55 PM CT) the seed's handshake got HTTP 403 on
+every try for the full four minutes of retries and stopped before
+creating anything. The clients belong to the chains, not to the machine
+that opens them, so the handshake can run from DardenPC instead, against
+peer-1's own node. That is how the Injective path was opened
+([INJECTIVE-TESTNET.md](INJECTIVE-TESTNET.md)). Run these in PowerShell
+on DardenPC.
+
+1. **Check that Osmosis answers DardenPC.** All 24 should print 200:
+   ```powershell
+   1..24 | ForEach-Object {
+     try { (Invoke-WebRequest https://rpc.testnet.osmosis.zone/status -UseBasicParsing).StatusCode }
+     catch { $_.Exception.Response.StatusCode.value__ }
+     Start-Sleep 2
+   }
+   ```
+   If most are 403 here too, stop and tell Claude.
+2. **Build `relayer.exe`** with the retries (`6af88df` or later; it logs
+   each retry). `counterpartyd.exe` from the Injective setup is enough to
+   make the key in step 3.
+   ```powershell
+   cd C:\aether-data
+   git fetch origin; git checkout origin/main
+   go build -o C:\aether-bin\relayer.exe .\cmd\relayer
+   ```
+3. **An Osmosis key on DardenPC,** in its own home, then both addresses:
+   ```powershell
+   C:\aether-bin\counterpartyd.exe keys add relayer --keyring-backend test --home C:\aether-relayer\osmosis
+   C:\aether-bin\relayer.exe -show-addresses -aether-home C:\aether-relayer\aether -cparty-home C:\aether-relayer\osmosis -cparty-bech32-prefix osmo
+   ```
+   Write down the mnemonic. The Aether address is the `relayer` key that
+   opened the Injective path. Use the `osmo1…` address from `relayer.exe`:
+   `counterpartyd` shows the same key with a `cparty1…` prefix.
+4. **Fund both.**
+   - **OSMO:** send testnet OSMO to the `osmo1…` address from Osmosis's
+     testnet faucet (`faucet.testnet.osmosis.zone`), in a browser on
+     DardenPC. 5 OSMO covers the handshake and months of client updates
+     at `0.05uosmo`.
+   - **AETH:** the Aether key needs at least 1 AETH. Check it with:
+     ```powershell
+     C:\aether-bin\aetherd-new.exe query bank balances <aether1… address> --node tcp://127.0.0.1:26667
+     ```
+     Top it up from your wallet if it's below 1 AETH.
+5. **Open the path:**
+   ```powershell
+   C:\aether-bin\relayer.exe `
+     -aether-rpc http://127.0.0.1:26667 -aether-grpc 127.0.0.1:9091 `
+     -aether-chain-id aether-testnet-1 `
+     -aether-key relayer -aether-home C:\aether-relayer\aether -aether-gas-prices 0.0001uaeth `
+     -cparty-rpc https://rpc.testnet.osmosis.zone `
+     -cparty-grpc grpc.testnet.osmosis.zone:443 `
+     -cparty-chain-id osmo-test-5 -cparty-bech32-prefix osmo `
+     -cparty-key relayer -cparty-home C:\aether-relayer\osmosis `
+     -cparty-gas-prices 0.05uosmo `
+     -keyring-backend test 2>&1 | Tee-Object C:\aether-relayer\osmosis-handshake.log
+   ```
+   It ends with `round trip complete`. If it stops before creating
+   anything (for example on the gRPC address), fix that and run it again.
+   If it stops after `created client`, don't rerun it: send the log to
+   Claude.
+6. **Send Claude the log.** Step 4 above gives the new denom from it.
+
+Opening the path is only half the job. Once it's open, two things have to
+keep relaying, each from a machine Osmosis accepts:
+- **Onto Osmosis:** `outbound.exe` must refresh Osmosis's new client of
+  Aether within about two days of the handshake, or that client expires
+  too. If Osmosis still refuses the seed, it runs on DardenPC as a second
+  scheduled task, next to "Aether Outbound Injective", with its own health
+  port and the Osmosis key from step 3.
+- **Onto Aether:** Helicase must follow Aether's new client of Osmosis on
+  a validator that Osmosis answers, within its 80-hour trusting period.
+  If Osmosis refuses the seed, sync3 and sync4 alone may be enough.
+  Otherwise peer-1 has to follow it, which needs a peer-1 build that
+  takes comma lists (`52e881a` or later; it runs `2c32e6a`).
+
 The gate (step 0) was governance proposals #3 and #4, both passed on
 4 October: `max_age_num_blocks` = 2,880 and `bond_cooldown` = 51,840
 (see docs/IBC.md).
