@@ -2,7 +2,7 @@
 
 Agent desk for a reference AETH/USDC pool. The prime caller is an agent. An instruction becomes one tool call. Settlement is the integer constant-product math in this folder. Nothing is signed or broadcast, and this is not an `x/dex` module.
 
-The pool starts at 50,000 AETH and 20,000 USDC (0.40 USDC per AETH). The fee is 30 bps, kept in the reserves. The agent account starts at 12,000 AETH and 4,800 USDC, with a per-trade cap of 2,000 AETH and 800 USDC. A swap over that cap returns `over_per_tx_limit` and does not move funds. Price impact of 5% or more returns `needs_confirm` until the instruction ends in `confirm`.
+The pool starts at 50,000 AETH and 20,000 USDC (0.40 USDC per AETH). The fee is 30 bps, kept in the reserves. The agent account starts at 12,000 AETH and 4,800 USDC, with a per-trade cap of 2,000 AETH and 800 USDC. A swap over that cap returns `over_per_tx_limit` and does not move funds. Only the owner sets the cap, in the desk's owner form: no agent instruction changes it. Price impact of 5% or more returns `needs_confirm` until the instruction ends in `confirm`. A swap settles only if the fill at commit still pays its `min_receive`; otherwise it returns `slippage_exceeded`. A deposit's USDC is rounded up, so it never adds less than its shares are worth.
 
 ```text
 pool
@@ -11,7 +11,6 @@ swap 250 aeth to usdc
 swap 5000 aeth to usdc confirm
 deposit 100 aeth
 withdraw 100
-limit 5000 aeth
 slippage 0.10
 ```
 

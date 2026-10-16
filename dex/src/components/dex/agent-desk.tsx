@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { INSTRUCTION_HINT, runInstruction } from "@/lib/dex/agent";
-import { formatBase, formatPercentFromBps } from "@/lib/dex/format";
-import { setSlippage, useDex } from "@/lib/dex/store";
+import { baseToInput, formatBase, formatPercentFromBps, parseBase } from "@/lib/dex/format";
+import { setAgentLimit, setSlippage, useDex } from "@/lib/dex/store";
 import { panel, primaryBtn } from "./chrome";
 
 const PRESETS = [
@@ -98,6 +98,8 @@ export function AgentDesk() {
         </div>
       </div>
 
+      <OwnerLimits aeth={dex.agentLimitAeth} usdc={dex.agentLimitUsdc} />
+
       {turn ? (
         <div className="mt-4 grid gap-3">
           <CallBlock title="Call" body={JSON.stringify(turn.call, null, 2)} />
@@ -126,6 +128,52 @@ export function AgentDesk() {
         </ol>
       ) : null}
     </form>
+  );
+}
+
+/** The owner sets the per-trade limit here. It is not an agent tool, so the agent can't raise its own cap. */
+function OwnerLimits({ aeth, usdc }: { aeth: string; usdc: string }) {
+  const [aethText, setAethText] = useState(baseToInput(BigInt(aeth)));
+  const [usdcText, setUsdcText] = useState(baseToInput(BigInt(usdc)));
+  const aethLimit = parseBase(aethText);
+  const usdcLimit = parseBase(usdcText);
+  const valid = aethLimit !== null && aethLimit > 0n && usdcLimit !== null && usdcLimit > 0n;
+  return (
+    <fieldset className="mt-4 border-t border-line pt-4">
+      <legend className="text-xs text-muted">Owner: per-trade limit (not an agent tool)</legend>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <label className="text-xs text-muted">
+          AETH
+          <input
+            value={aethText}
+            inputMode="decimal"
+            onChange={(event) => setAethText(event.target.value)}
+            className="mt-1 h-11 w-full rounded-sm border border-line bg-surface-2 px-3 font-mono text-sm text-fg outline-none"
+          />
+        </label>
+        <label className="text-xs text-muted">
+          USDC
+          <input
+            value={usdcText}
+            inputMode="decimal"
+            onChange={(event) => setUsdcText(event.target.value)}
+            className="mt-1 h-11 w-full rounded-sm border border-line bg-surface-2 px-3 font-mono text-sm text-fg outline-none"
+          />
+        </label>
+      </div>
+      <button
+        type="button"
+        disabled={!valid}
+        onClick={() => {
+          if (!valid) return;
+          setAgentLimit("aeth", aethLimit);
+          setAgentLimit("usdc", usdcLimit);
+        }}
+        className="mt-2 h-11 w-full rounded-sm border border-line text-sm text-muted hover:text-fg disabled:opacity-50"
+      >
+        Set limit
+      </button>
+    </fieldset>
   );
 }
 

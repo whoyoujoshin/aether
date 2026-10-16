@@ -151,11 +151,10 @@ function pushMid(prices: PricePoint[], reserveAeth: bigint, reserveUsdc: bigint)
 }
 
 /**
- * Applies the quote as the fill. A chain handler would recompute in the
- * transaction and reject when `amountOut < minAmountOut`. This process has
- * one trader, so the quote cannot move between preview and commit.
+ * Recomputes the fill at commit and refuses it below `minAmountOut`, as a
+ * chain handler would: the reserves may have moved since the quote.
  */
-export function swap(tokenIn: Asset, amountIn: bigint): ActionResult {
+export function swap(tokenIn: Asset, amountIn: bigint, minAmountOut: bigint): ActionResult {
   if (amountIn <= 0n) return { ok: false, error: "Enter an amount" };
   const walletIn = BigInt(tokenIn === "aeth" ? state.walletAeth : state.walletUsdc);
   if (amountIn > walletIn) {
@@ -168,6 +167,9 @@ export function swap(tokenIn: Asset, amountIn: bigint): ActionResult {
     filled = applySwap(reserveIn, reserveOut, amountIn);
   } catch {
     return { ok: false, error: "Pool can't fill that size" };
+  }
+  if (filled.amountOut < minAmountOut) {
+    return { ok: false, error: "slippage_exceeded" };
   }
   const reserveAeth = tokenIn === "aeth" ? filled.reserveIn : filled.reserveOut;
   const reserveUsdc = tokenIn === "aeth" ? filled.reserveOut : filled.reserveIn;

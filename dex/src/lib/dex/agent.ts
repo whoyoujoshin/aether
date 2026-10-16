@@ -2,7 +2,8 @@
  * Tool surface for the DEX agent. An instruction becomes one call.
  * Settlement still goes through the integer AMM. The agent refuses a
  * spend over its per-tx limit, and a high-impact swap unless the
- * instruction ends in `confirm`.
+ * instruction ends in `confirm`. The limit is the owner's: no tool
+ * changes it.
  */
 
 import { AGENT_LIMIT_AETH, AGENT_LIMIT_USDC, HIGH_IMPACT_BPS, USDC_IBC_DENOM } from "./constants.ts";
@@ -16,11 +17,11 @@ import {
   quoteWithdraw,
   spotPriceE6,
 } from "./math.ts";
-import { appendTurn, deposit, getDexState, setAgentLimit, setSlippage, swap, withdraw } from "./store.ts";
+import { appendTurn, deposit, getDexState, setSlippage, swap, withdraw, type ActionResult } from "./store.ts";
 import type { AgentTurn, Asset, DexState } from "./types.ts";
 
 export const INSTRUCTION_HINT =
-  "pool | quote <amount> <aeth|usdc> to <aeth|usdc> | swap <amount> <aeth|usdc> to <aeth|usdc> [confirm] | deposit <amount> aeth | withdraw <25|50|75|100> | limit <amount> <aeth|usdc> | slippage <0.10|0.50|1.00>";
+  "pool | quote <amount> <aeth|usdc> to <aeth|usdc> | swap <amount> <aeth|usdc> to <aeth|usdc> [confirm] | deposit <amount> aeth | withdraw <25|50|75|100> | slippage <0.10|0.50|1.00>";
 
 const ASSET = "aeth|usdc";
 const AMOUNT = "\\d+(?:\\.\\d+)?";
@@ -29,10 +30,9 @@ type ToolCall = NonNullable<AgentTurn["call"]>;
 type Result = AgentTurn["result"];
 
 type Effect =
-  | { type: "swap"; tokenIn: Asset; amountIn: bigint }
+  | { type: "swap"; tokenIn: Asset; amountIn: bigint; minAmountOut: bigint }
   | { type: "deposit"; amountAeth: bigint }
   | { type: "withdraw"; lpIn: bigint }
-  | { type: "limit"; asset: Asset; amount: bigint }
   | { type: "slippage"; bps: 10 | 50 | 100 };
 
 type Decision = { call: ToolCall; result: Result; effect: Effect | null };
@@ -69,13 +69,6 @@ export function parseInstruction(input: string): ToolCall | { error: string } {
 
   const wd = /^withdraw\s+(25|50|75|100)%?$/.exec(text);
   if (wd) return { tool: "withdraw", args: { percent: Number(wd[1]) } };
-
-  const limit = new RegExp(`^limit\\s+(${AMOUNT})\\s+(${ASSET})$`).exec(text);
-  if (limit) {
-    const amount = parseBase(limit[1] ?? "");
-    if (amount === null || amount <= 0n) return { error: "bad_amount" };
-    return { tool: "set_limit", args: { asset: limit[2] ?? "aeth", amount: amount.toString() } };
-  }
 
   const slip = /^slippage\s+(0\.10|0\.50|1\.00|0\.1|0\.5|1)$/.exec(text);
   if (slip) {
@@ -140,12 +133,6 @@ export function decide(call: ToolCall, state: DexState): Decision {
     };
   }
 
-  if (call.tool === "set_limit") {
-    const asset = call.args.asset === "usdc" ? "usdc" : "aeth";
-    const amount = BigInt(String(call.args.amount ?? "0"));
-    return { call, effect: { type: "limit", asset, amount }, result: { ok: true, asset, amount: amount.toString(), display: formatBase(amount) } };
-  }
-
   if (call.tool === "set_slippage") {
     const bps = call.args.slippage_bps;
     if (bps !== 10 && bps !== 50 && bps !== 100) return { call, effect: null, result: { ok: false, error: "bad_slippage" } };
@@ -188,7 +175,7 @@ function decideSwap(call: ToolCall, state: DexState): Decision {
   if (impact >= HIGH_IMPACT_BPS && !confirm) {
     return { call: withMin(call, floor), effect: null, result: { ok: false, error: "needs_confirm", price_impact_bps: Number(impact), min_receive: floor.toString() } };
   }
-  return { call: withMin(call, floor), effect: { type: "swap", tokenIn: offer, amountIn }, result: quoted };
+  return { call: withMin(call, floor), effect: { type: "swap", tokenIn: offer, amountIn, minAmountOut: floor }, result: quoted };
 }
 
 function withMin(call: ToolCall, floor: bigint): ToolCall {
@@ -207,17 +194,23 @@ export function runInstruction(raw: string): AgentTurn {
     });
   }
   const decision = decide(parsed, getDexState());
-  if (decision.effect?.type === "swap") swap(decision.effect.tokenIn, decision.effect.amountIn);
-  if (decision.effect?.type === "deposit") deposit(decision.effect.amountAeth);
-  if (decision.effect?.type === "withdraw") withdraw(decision.effect.lpIn);
-  if (decision.effect?.type === "limit") setAgentLimit(decision.effect.asset, decision.effect.amount);
-  if (decision.effect?.type === "slippage") setSlippage(decision.effect.bps);
+  const applied = apply(decision.effect);
   return appendTurn({
     ts: Date.now(),
     instruction,
     call: decision.call,
-    result: decision.result,
+    // The store recomputes at commit; its refusal is the answer.
+    result: applied && !applied.ok ? { ok: false, error: applied.error } : decision.result,
   });
+}
+
+function apply(effect: Effect | null): ActionResult | null {
+  if (!effect) return null;
+  if (effect.type === "swap") return swap(effect.tokenIn, effect.amountIn, effect.minAmountOut);
+  if (effect.type === "deposit") return deposit(effect.amountAeth);
+  if (effect.type === "withdraw") return withdraw(effect.lpIn);
+  setSlippage(effect.bps);
+  return null;
 }
 
 export function denom(asset: Asset): string {
