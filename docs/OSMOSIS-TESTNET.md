@@ -26,6 +26,72 @@ actually used; the step text keeps the procedure for a rebuild.
 - **Key homes on the seed:** `/root/relayer-keys` (Aether) and `/root/.osmosisd-relayer` (Osmosis), both on the test keyring.
 - **Helicase:** runs on sync3, sync4 and the seed; not yet on peer-1.
 
+## 2026-10-16: Osmosis's client of Aether expired; reopening
+
+`07-tendermint-5277` (Osmosis's client of Aether) expired around
+2026-10-13. `rpc.osmotest5.osmosis.zone` had started answering the seed
+with HTTP 403, so `cmd/outbound` couldn't refresh it, and nothing alerted
+anyone. An expired client can't be updated, and reviving one on Osmosis
+takes an Osmosis governance proposal, which isn't ours to pass. So the
+path is reopened with a new client, connection and channel. **AETH gets
+a new denom on Osmosis.** AETH already there through `channel-11841`
+stays there.
+
+On the seed, in this order:
+
+1. **Settle what's in flight on the old channel first.** Helicase
+   refunds transfers that time out on `channel-1` (the 400 AETH sent on
+   2026-10-16) using Aether's client of Osmosis, `07-tendermint-1`.
+   Leave Helicase on that client until faucet-v3 has its AETH back, or
+   until `aetherd q ibc client status 07-tendermint-1` says `Expired`.
+2. **Check the new endpoints:**
+   ```bash
+   curl -s https://rpc.testnet.osmosis.zone/status | jq -r .result.node_info.network   # osmo-test-5
+   curl -s 'https://rpc.testnet.osmosis.zone/tx_search?query="tx.height>1"&per_page=1' | jq -r .result.total_count
+   ```
+3. **Open the path** with `cmd/relayer` built from main. The relayer reads
+   both chains over gRPC before it creates anything, so a gRPC address
+   that doesn't work fails cleanly. If it does, try
+   `grpc.osmotest5.osmosis.zone:443` instead.
+   ```bash
+   cd /root/aether-src && git pull && go build -o /root/aether-relayer ./cmd/relayer
+   /root/aether-relayer \
+     -aether-rpc http://127.0.0.1:26657 -aether-grpc 127.0.0.1:9090 \
+     -aether-chain-id aether-testnet-1 \
+     -aether-key relayer -aether-home /root/relayer-keys -aether-gas-prices 0.0001uaeth \
+     -cparty-rpc https://rpc.testnet.osmosis.zone \
+     -cparty-grpc grpc.testnet.osmosis.zone:443 \
+     -cparty-chain-id osmo-test-5 -cparty-bech32-prefix osmo \
+     -cparty-key relayer -cparty-home /root/.osmosisd-relayer \
+     -cparty-gas-prices 0.05uosmo \
+     -keyring-backend test 2>&1 | tee /root/osmosis-handshake-20261016.log
+   ```
+   It ends with `round trip complete`. If it fails partway, send the log
+   before running it again (a rerun opens another set of clients).
+4. **The new AETH denom on Osmosis**, from Osmosis's side of the new
+   channel:
+   ```bash
+   printf 'transfer/<Osmosis channel>/uaeth' | sha256sum | awk '{print "ibc/" toupper($1)}'
+   ```
+5. **`cmd/outbound`** (`aether-outbound-osmosis.service`): set
+   `--cparty-rpc https://rpc.testnet.osmosis.zone`, the gRPC address that
+   worked in step 3, and `--client-id <Osmosis's new client of Aether>`.
+   Then `systemctl daemon-reload && systemctl restart aether-outbound-osmosis`
+   and `curl -s 127.0.0.1:8095/healthz | jq`.
+6. **Helicase**, only after step 1: in `app.toml` on the seed, sync3
+   and sync4 (back it up first), set
+   `counterparty-rpc = "https://rpc.testnet.osmosis.zone"` and
+   `client-id = "<Aether's new client of Osmosis>"`. Restart one node at
+   a time, and only while the other three are signing. Each must show
+   `helicase started` and no repeated `helicase cycle failed` before the
+   next.
+7. **Explorer:** in `aether-explorer.service`, change the Osmosis entry of
+   `--ibc-rpc` to `https://rpc.testnet.osmosis.zone` and restart it.
+8. **Send Claude** the log, both new client IDs, both channel IDs, the
+   new denom and the `/healthz` output. Claude updates this page,
+   [IBC.md](IBC.md), [OSMOSIS-POOL.md](OSMOSIS-POOL.md) and CLAUDE.md.
+   After that, the probe takes `AETH_DENOM=<new denom>`.
+
 The gate (step 0) was governance proposals #3 and #4, both passed on
 4 October: `max_age_num_blocks` = 2,880 and `bond_cooldown` = 51,840
 (see docs/IBC.md).
