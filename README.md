@@ -25,6 +25,8 @@ No Go? `agentmcp` is in every platform's archive on the [releases page](../../re
 
 [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=aether&config=eyJ1cmwiOiJodHRwczovL2V4cGxvcmVyLjE1Ny0yNDUtMjUyLTIyMS5zc2xpcC5pby9tY3AifQ==)
 
+[![Aether Wallet MCP server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/whoyoujoshin/aether/badges/card.svg)](https://glama.ai/mcp/servers/whoyoujoshin/aether)
+
 ```bash
 claude mcp add --transport http aether https://explorer.157-245-252-221.sslip.io/mcp   # Claude Code
 ```
