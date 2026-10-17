@@ -1,17 +1,17 @@
 package pow
 
 import (
-	"encoding/json"
 	"context"
+	"cosmossdk.io/math"
+	"encoding/json"
+	abci "github.com/cometbft/cometbft/abci/types"
+	crypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
-	abci "github.com/cometbft/cometbft/abci/types"
-	"cosmossdk.io/math"
-	crypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 )
 
 var (
@@ -88,30 +88,30 @@ func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.
 	am.keeper.SetBeaconRoundsPerBlock(ctx, genState.Params.BeaconRoundsPerBlock)
 
 	// This ValidatorUpdate is a genuinely dummy placeholder -- a zeroed
-// ed25519 key with an arbitrary large power -- never actually used as
-// real validator data. At genesis specifically, CometBFT's own
-// consensus engine takes its authoritative initial validator set
-// directly from genesis.json's own "validators" section, not from a
-// module's InitGenesis return value; this return is functionally
-// inert at genesis. The REAL validator tracking (including the
-// genesis/bootstrap validator specifically) happens separately, in
-// app.go's InitChainer, via Keeper.BootstrapValidator -- see that
-// function's own documentation for the real logic. This dummy value
-// is kept only because InitGenesis's signature requires returning
-// SOME []abci.ValidatorUpdate; it is confirmed harmless in practice
-// but is fragile/confusing for any future tooling or explorer that
-// might naively parse InitGenesis's return value expecting it to
-// reflect real validator state.
-return []abci.ValidatorUpdate{
-	{
-		PubKey: crypto.PublicKey{
-			Sum: &crypto.PublicKey_Ed25519{
-				Ed25519: make([]byte, 32),
+	// ed25519 key with an arbitrary large power -- never actually used as
+	// real validator data. At genesis specifically, CometBFT's own
+	// consensus engine takes its authoritative initial validator set
+	// directly from genesis.json's own "validators" section, not from a
+	// module's InitGenesis return value; this return is functionally
+	// inert at genesis. The REAL validator tracking (including the
+	// genesis/bootstrap validator specifically) happens separately, in
+	// app.go's InitChainer, via Keeper.BootstrapValidator -- see that
+	// function's own documentation for the real logic. This dummy value
+	// is kept only because InitGenesis's signature requires returning
+	// SOME []abci.ValidatorUpdate; it is confirmed harmless in practice
+	// but is fragile/confusing for any future tooling or explorer that
+	// might naively parse InitGenesis's return value expecting it to
+	// reflect real validator state.
+	return []abci.ValidatorUpdate{
+		{
+			PubKey: crypto.PublicKey{
+				Sum: &crypto.PublicKey_Ed25519{
+					Ed25519: make([]byte, 32),
+				},
 			},
+			Power: 1000000000000,
 		},
-		Power: 1000000000000,
-	},
-}
+	}
 }
 
 func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.RawMessage {
@@ -162,7 +162,7 @@ func (am AppModule) endBlockUpdates(sdkCtx sdk.Context) []abci.ValidatorUpdate {
 				updates = append(updates, update)
 			}
 		}
-				am.keeper.ClearPendingRemoval(sdkCtx, minerAddr)
+		am.keeper.ClearPendingRemoval(sdkCtx, minerAddr)
 	}
 
 	// Immediate revocation of an OLD consensus key's real CometBFT

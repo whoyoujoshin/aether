@@ -3,11 +3,11 @@ package mldsa_test
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	"github.com/cometbft/cometbft/crypto/tmhash"
-	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
+	"github.com/stretchr/testify/require"
+	"github.com/whoyoujoshin/aether/crypto/mldsa"
 )
 
 func TestGenPrivKey_ProducesValidKey(t *testing.T) {
@@ -117,12 +117,12 @@ func TestPubKey_Address_IncorporatesTypeNameNotJustRawKeyBytes(t *testing.T) {
 	// bytes, or two different key types with coincidentally identical
 	// key bytes could collide on the same address.
 	priv, err := mldsa.GenPrivKey()
-require.NoError(t, err)
-pub, ok := priv.PubKey().(*mldsa.PubKey)
-require.True(t, ok)
+	require.NoError(t, err)
+	pub, ok := priv.PubKey().(*mldsa.PubKey)
+	require.True(t, ok)
 
-rawKeyHash := tmhash.SumTruncated(pub.Key) // the OLD, provisional scheme
-realAddress := pub.Address()
+	rawKeyHash := tmhash.SumTruncated(pub.Key) // the OLD, provisional scheme
+	realAddress := pub.Address()
 
 	require.NotEqual(t, []byte(realAddress), rawKeyHash,
 		"address must not simply be a bare hash of the raw key bytes alone")

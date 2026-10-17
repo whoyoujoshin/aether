@@ -1,12 +1,12 @@
 package pow
 
 import (
-	"crypto/sha256"
-	"testing"
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"math/big"
+	"testing"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
@@ -170,7 +170,7 @@ func TestGetExpectedIndex_ResultAlwaysWithinRange(t *testing.T) {
 
 func TestGetExpectedIndex_DifferentChainIDsProduceDifferentIndicesForSameNonce(t *testing.T) {
 	h := uint32(8)
-	a := getExpectedIndex(42, 1, h)      // Namecoin's real chain ID
+	a := getExpectedIndex(42, 1, h)     // Namecoin's real chain ID
 	b := getExpectedIndex(42, 17776, h) // Aether's chain ID
 	require.NotEqual(t, a, b, "different chain IDs should (typically) diverge for the same nonce, confirming chainID actually factors into the computation")
 }
@@ -294,10 +294,10 @@ func TestReadVarInt_TruncatedDataFails(t *testing.T) {
 
 func buildTestCoinbaseTx(scriptSig []byte) []byte {
 	buf := make([]byte, 0)
-	buf = append(buf, 0x01, 0x00, 0x00, 0x00) // version = 1, LE
-	buf = append(buf, 0x01)                   // input count = 1 (single-byte varint)
+	buf = append(buf, 0x01, 0x00, 0x00, 0x00)            // version = 1, LE
+	buf = append(buf, 0x01)                              // input count = 1 (single-byte varint)
 	buf = append(buf, bytes.Repeat([]byte{0x00}, 32)...) // prev_txid, all zero
-	buf = append(buf, 0xFF, 0xFF, 0xFF, 0xFF) // prev_vout = 0xFFFFFFFF
+	buf = append(buf, 0xFF, 0xFF, 0xFF, 0xFF)            // prev_vout = 0xFFFFFFFF
 
 	// scriptSig length as single-byte varint (test scripts kept short)
 	buf = append(buf, byte(len(scriptSig)))
@@ -305,7 +305,7 @@ func buildTestCoinbaseTx(scriptSig []byte) []byte {
 
 	buf = append(buf, 0xFF, 0xFF, 0xFF, 0xFF) // sequence
 	buf = append(buf, 0x00)                   // output count = 0 (irrelevant for this test)
-	buf = append(buf, 0x00, 0x00, 0x00, 0x00)  // locktime
+	buf = append(buf, 0x00, 0x00, 0x00, 0x00) // locktime
 
 	return buf
 }
@@ -364,12 +364,12 @@ func buildValidAuxPowWithVersion(t *testing.T, auxBlockHash []byte, difficulty u
 	// leaf unchanged -- so the committed root equals auxBlockHash
 	// itself. Reverse it, since extractCommitment reverses it back.
 	// buildTestScriptSig reverses whatever we give it exactly once,
-// matching the real spec's single endian-conversion step -- pass
-// auxBlockHash directly, unreversed. (Corrected: a prior version
-// pre-reversed it here too, a double-reversal that only appeared
-// correct because CheckAuxPow had its own separate, compensating
-// extra-reversal bug -- see the fix in CheckAuxPow itself.)
-scriptSig := buildTestScriptSig([]byte("miner-arbitrary-data"), auxBlockHash, 1, nonce) // size = 1<<0 = 1
+	// matching the real spec's single endian-conversion step -- pass
+	// auxBlockHash directly, unreversed. (Corrected: a prior version
+	// pre-reversed it here too, a double-reversal that only appeared
+	// correct because CheckAuxPow had its own separate, compensating
+	// extra-reversal bug -- see the fix in CheckAuxPow itself.)
+	scriptSig := buildTestScriptSig([]byte("miner-arbitrary-data"), auxBlockHash, 1, nonce) // size = 1<<0 = 1
 
 	coinbaseTx := buildTestCoinbaseTx(scriptSig)
 
@@ -471,6 +471,7 @@ func TestCheckAuxPow_ExcessiveChainBranchLengthFails(t *testing.T) {
 	err := CheckAuxPow(auxPow, difficulty, MergedMiningActivationHeight)
 	require.Error(t, err)
 }
+
 // Before MergedMiningActivationHeight the parent's raw hash is read
 // big-endian, as it always was: a proof ground that way still passes
 // there, so history replays unchanged.

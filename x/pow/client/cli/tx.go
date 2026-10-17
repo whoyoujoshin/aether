@@ -3,10 +3,10 @@ package cli
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
-	"strconv"
 	"encoding/json"
+	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -187,18 +187,18 @@ func NewSubmitPoWCmd() *cobra.Command {
 			}
 
 			msg := &pow.MsgSubmitPoW{
-	Miner: clientCtx.GetFromAddress().String(),
-	Submission: &pow.MsgSubmitPoW_Native{
-		Native: &pow.NativeSubmission{
-			Height:     height,
-			Timestamp:  timestamp,
-			PrevHash:   prevHash,
-			MerkleRoot: merkleRoot,
-			Nonce:      nonce,
-			Difficulty: difficulty,
-		},
-	},
-}
+				Miner: clientCtx.GetFromAddress().String(),
+				Submission: &pow.MsgSubmitPoW_Native{
+					Native: &pow.NativeSubmission{
+						Height:     height,
+						Timestamp:  timestamp,
+						PrevHash:   prevHash,
+						MerkleRoot: merkleRoot,
+						Nonce:      nonce,
+						Difficulty: difficulty,
+					},
+				},
+			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},

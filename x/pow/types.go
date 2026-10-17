@@ -6,23 +6,23 @@ import (
 )
 
 const (
-	ModuleName = "pow"
-	StoreKey   = ModuleName
-	LivenessWindowSize     = 60
-	LivenessMissThreshold  = 0.5 // 50% -- more than this within the window triggers removal
+	ModuleName            = "pow"
+	StoreKey              = ModuleName
+	LivenessWindowSize    = 60
+	LivenessMissThreshold = 0.5 // 50% -- more than this within the window triggers removal
 )
 
 type Params struct {
-	TargetBlockTime   int64 `json:"target_block_time" yaml:"target_block_time"`
-	InitialDifficulty int   `json:"initial_difficulty" yaml:"initial_difficulty"`
-	MinDifficulty     int   `json:"min_difficulty" yaml:"min_difficulty"`
-	MaxDifficulty     int   `json:"max_difficulty" yaml:"max_difficulty"`
-	Difficulty        int   `json:"difficulty" yaml:"difficulty"`
-	BlockReward       int   `json:"block_reward" yaml:"block_reward"`
-	EpochLength       int64 `json:"epoch_length" yaml:"epoch_length"`   // Blocks per validator-selection epoch; see randomness-beacon design doc §4
-	TopKSize          int64 `json:"top_k_size" yaml:"top_k_size"`       // Max number of validators selected per epoch; see randomness-beacon design doc §4
-	BondCooldown int64 `json:"bond_cooldown" yaml:"bond_cooldown"` // Blocks an active validator's rewards stay escrowed before automatic release
-	RecencyWindowK int64 `json:"recency_window_k" yaml:"recency_window_k"` // Max blocks between a mining header's claimed ancestor and current height
+	TargetBlockTime      int64 `json:"target_block_time" yaml:"target_block_time"`
+	InitialDifficulty    int   `json:"initial_difficulty" yaml:"initial_difficulty"`
+	MinDifficulty        int   `json:"min_difficulty" yaml:"min_difficulty"`
+	MaxDifficulty        int   `json:"max_difficulty" yaml:"max_difficulty"`
+	Difficulty           int   `json:"difficulty" yaml:"difficulty"`
+	BlockReward          int   `json:"block_reward" yaml:"block_reward"`
+	EpochLength          int64 `json:"epoch_length" yaml:"epoch_length"`                       // Blocks per validator-selection epoch; see randomness-beacon design doc §4
+	TopKSize             int64 `json:"top_k_size" yaml:"top_k_size"`                           // Max number of validators selected per epoch; see randomness-beacon design doc §4
+	BondCooldown         int64 `json:"bond_cooldown" yaml:"bond_cooldown"`                     // Blocks an active validator's rewards stay escrowed before automatic release
+	RecencyWindowK       int64 `json:"recency_window_k" yaml:"recency_window_k"`               // Max blocks between a mining header's claimed ancestor and current height
 	BeaconRoundsPerBlock int64 `json:"beacon_rounds_per_block" yaml:"beacon_rounds_per_block"` // Sequential SHA-256 mixing rounds run per block by the randomness beacon; see beacon.go and RandomnessBeaconActivationHeight
 }
 
@@ -45,67 +45,68 @@ func DefaultGenesisState() GenesisState {
 		Params: Params{
 			TargetBlockTime:   60,
 			InitialDifficulty: 285_960, // Retuned for real Scrypt (Litecoin params: N=1024, r=1, p=1),
-                             // measured at ~4,767 hashes/sec single-threaded -- averages
-                             // ~60s per nonce, matching TargetBlockTime. The old 1<<20
-                             // value was tuned against SHA-256's raw speed and meant
-                             // something entirely different under Scrypt's memory-hardness.
-			MinDifficulty:     1_024,    // ~0.2s average at measured throughput -- an easy floor,
-                             // giving AdjustDifficulty real room to move down.
-			MaxDifficulty:     100_000_000, // ~5.8 hours average at measured throughput -- generous
-                                // headroom for faster hardware / more miners joining later.
-			Difficulty:        285_960,     // Starts equal to InitialDifficulty.
+			// measured at ~4,767 hashes/sec single-threaded -- averages
+			// ~60s per nonce, matching TargetBlockTime. The old 1<<20
+			// value was tuned against SHA-256's raw speed and meant
+			// something entirely different under Scrypt's memory-hardness.
+			MinDifficulty: 1_024, // ~0.2s average at measured throughput -- an easy floor,
+			// giving AdjustDifficulty real room to move down.
+			MaxDifficulty: 100_000_000, // ~5.8 hours average at measured throughput -- generous
+			// headroom for faster hardware / more miners joining later.
+			Difficulty:  285_960,   // Starts equal to InitialDifficulty.
 			BlockReward: 5_000_000, // 5,000,000 uaeth = 5.00 AETH -- matches Year 1 of the locked
-                        // decay schedule (InitialBlockReward/BlockRewardDecayYears/
-                        // TailBlockReward/BlockRewardDecayFactor below). This genesis
-                        // value is itself inert on a real chain: GetBlockReward falls
-                        // through to ComputeScheduledBlockReward's real height-based
-                        // decay curve unless something has explicitly called
-                        // SetBlockReward, which module.go's InitGenesis no longer does.
-			EpochLength:       1440, // ~24h at 60s target blocks
-			TopKSize:          21,   // BFT-performance sweet spot; see design doc §4
-			BondCooldown: BondCooldownProduction,
+			// decay schedule (InitialBlockReward/BlockRewardDecayYears/
+			// TailBlockReward/BlockRewardDecayFactor below). This genesis
+			// value is itself inert on a real chain: GetBlockReward falls
+			// through to ComputeScheduledBlockReward's real height-based
+			// decay curve unless something has explicitly called
+			// SetBlockReward, which module.go's InitGenesis no longer does.
+			EpochLength:    1440, // ~24h at 60s target blocks
+			TopKSize:       21,   // BFT-performance sweet spot; see design doc §4
+			BondCooldown:   BondCooldownProduction,
 			RecencyWindowK: 60, // widened from the original 10 after live testing showed
-                    // real Scrypt mining introduces genuine multi-minute
-                    // submission variance -- 10 was too tight and rejected
-                    // honest, valid submissions. See liveness-detection-decision.md.
+			// real Scrypt mining introduces genuine multi-minute
+			// submission variance -- 10 was too tight and rejected
+			// honest, valid submissions. See liveness-detection-decision.md.
 			BeaconRoundsPerBlock: 5_000, // sub-millisecond SHA-256 cost per block; see beacon.go's
-                                 // AdvanceBeacon doc comment for why this stays small on
-                                 // purpose (the delay comes from spanning real blocks
-                                 // across an epoch, not from a large per-block round count).
+			// AdvanceBeacon doc comment for why this stays small on
+			// purpose (the delay comes from spanning real blocks
+			// across an epoch, not from a large per-block round count).
 		},
 	}
 }
+
 var (
-	KeyParams        = []byte("params")
-	KeyDifficulty    = []byte("difficulty")
-	KeyBlockReward   = []byte("block_reward")
-	KeyLastBlockTime = []byte("last_block_time")
-	KeyMinDifficulty = []byte("min_difficulty")
-	KeyMaxDifficulty = []byte("max_difficulty")
-	KeyTargetBlockTime = []byte("target_block_time")
-	KeyValidatorPubkeyPrefix = []byte("validator_pubkey/")
-	KeyEpochLength     = []byte("epoch_length")
-	KeyEpochWorkPrefix = []byte("epoch_work/")
-	KeyActiveValidatorPrefix = []byte("active_validator/")
-	KeyConsensusToMinerPrefix = []byte("consensus_to_miner/")
-	KeyBannedPrefix           = []byte("banned/")
-	KeyEscrowPrefix       = []byte("escrow/")
-	KeyEscrowUnlockPrefix = []byte("escrow_unlock/")
-	KeyBondCooldown       = []byte("bond_cooldown")
-	KeyPendingRemovalPrefix = []byte("pending_removal/")
-	KeyRecentHashPrefix       = []byte("recent_hash/")
-	KeyRecentDifficultyPrefix = []byte("recent_difficulty/")
-	KeyAcceptedWorkPrefix     = []byte("accepted_work/")
-	KeyRecencyWindowK = []byte("recency_window_k")
-	KeyValidatorEnteredAtPrefix = []byte("validator_entered_at/")
-	KeyLivenessBitmapPrefix = []byte("liveness_bitmap/") // validator addr -> [60]byte (0/1 per slot)
-	KeyLivenessIndexPrefix  = []byte("liveness_index/")  // validator addr -> current write index (0-59)
-	KeyLivenessMissedPrefix = []byte("liveness_missed/") // validator addr -> current miss count in window
+	KeyParams                       = []byte("params")
+	KeyDifficulty                   = []byte("difficulty")
+	KeyBlockReward                  = []byte("block_reward")
+	KeyLastBlockTime                = []byte("last_block_time")
+	KeyMinDifficulty                = []byte("min_difficulty")
+	KeyMaxDifficulty                = []byte("max_difficulty")
+	KeyTargetBlockTime              = []byte("target_block_time")
+	KeyValidatorPubkeyPrefix        = []byte("validator_pubkey/")
+	KeyEpochLength                  = []byte("epoch_length")
+	KeyEpochWorkPrefix              = []byte("epoch_work/")
+	KeyActiveValidatorPrefix        = []byte("active_validator/")
+	KeyConsensusToMinerPrefix       = []byte("consensus_to_miner/")
+	KeyBannedPrefix                 = []byte("banned/")
+	KeyEscrowPrefix                 = []byte("escrow/")
+	KeyEscrowUnlockPrefix           = []byte("escrow_unlock/")
+	KeyBondCooldown                 = []byte("bond_cooldown")
+	KeyPendingRemovalPrefix         = []byte("pending_removal/")
+	KeyRecentHashPrefix             = []byte("recent_hash/")
+	KeyRecentDifficultyPrefix       = []byte("recent_difficulty/")
+	KeyAcceptedWorkPrefix           = []byte("accepted_work/")
+	KeyRecencyWindowK               = []byte("recency_window_k")
+	KeyValidatorEnteredAtPrefix     = []byte("validator_entered_at/")
+	KeyLivenessBitmapPrefix         = []byte("liveness_bitmap/") // validator addr -> [60]byte (0/1 per slot)
+	KeyLivenessIndexPrefix          = []byte("liveness_index/")  // validator addr -> current write index (0-59)
+	KeyLivenessMissedPrefix         = []byte("liveness_missed/") // validator addr -> current miss count in window
 	KeyLastAcceptedSubmissionHeight = []byte("last_accepted_submission_height")
-	KeyPendingKeyRevocationPrefix = []byte("pending_key_revocation/") // miner addr -> old consensus pubkey bytes
-	KeyBeaconRoundsPerBlock = []byte("beacon_rounds_per_block")
-	KeyBeaconStatePrefix    = []byte("beacon_state/") // epoch (big-endian) -> in-progress accumulator, cleared on finalization
-	KeyBeaconSeedPrefix     = []byte("beacon_seed/")  // epoch (big-endian) -> finalized seed, kept forever
+	KeyPendingKeyRevocationPrefix   = []byte("pending_key_revocation/") // miner addr -> old consensus pubkey bytes
+	KeyBeaconRoundsPerBlock         = []byte("beacon_rounds_per_block")
+	KeyBeaconStatePrefix            = []byte("beacon_state/") // epoch (big-endian) -> in-progress accumulator, cleared on finalization
+	KeyBeaconSeedPrefix             = []byte("beacon_seed/")  // epoch (big-endian) -> finalized seed, kept forever
 )
 
 // Locked block-reward decay schedule. These are permanent protocol
@@ -136,7 +137,7 @@ var (
 const (
 	InitialBlockReward    int64 = 5_000_000 // 5.00 AETH, in uaeth
 	BlockRewardDecayYears int64 = 8
-	TailBlockReward       int64 = 200_000 // 0.20 AETH, in uaeth, permanent from year 9 onward
+	TailBlockReward       int64 = 200_000    // 0.20 AETH, in uaeth, permanent from year 9 onward
 	SecondsPerYear        int64 = 31_557_600 // 365.25 days -- a fixed constant, not computed from wall-clock time
 )
 

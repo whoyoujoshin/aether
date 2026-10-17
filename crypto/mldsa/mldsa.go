@@ -1,22 +1,22 @@
 package mldsa
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
 	"fmt"
-	"crypto/rand"
 
-	"github.com/cloudflare/circl/sign/mldsa/mldsa44"
-	"github.com/cosmos/cosmos-sdk/crypto/types"
 	sdkerrors "cosmossdk.io/errors"
+	"github.com/cloudflare/circl/sign/mldsa/mldsa44"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/crypto/types"
 	"github.com/cosmos/cosmos-sdk/types/address"
 	"github.com/cosmos/gogoproto/proto"
-	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 )
 
 const (
 	// PubKeyName is the amino/proto type name for this key, used for
 	// registration and Type().
-	PubKeyName = "aether/mldsa44/PubKey"
+	PubKeyName  = "aether/mldsa44/PubKey"
 	PrivKeyName = "aether/mldsa44/PrivKey"
 
 	// KeyType is the short string identifier returned by Type().

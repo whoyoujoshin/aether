@@ -1,25 +1,25 @@
 package pow
 
 import (
-	"encoding/json"
 	"bytes"
+	"encoding/json"
 	"sort"
 	"time"
 
+	"cosmossdk.io/core/comet"
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
 	storetypes "cosmossdk.io/store/types"
-	"github.com/cosmos/cosmos-sdk/codec"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/whoyoujoshin/aether/x/pow/types"
+	abci "github.com/cometbft/cometbft/abci/types"
 	cometcrypto "github.com/cometbft/cometbft/crypto"
 	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
 	cometencoding "github.com/cometbft/cometbft/crypto/encoding"
-	abci "github.com/cometbft/cometbft/abci/types"
 	cryptoproto "github.com/cometbft/cometbft/proto/tendermint/crypto"
+	"github.com/cosmos/cosmos-sdk/codec"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/whoyoujoshin/aether/x/pow/types"
 	"github.com/whoyoujoshin/aether/x/treasury"
 	"golang.org/x/crypto/scrypt"
-	"cosmossdk.io/core/comet"
 )
 
 type Keeper struct {
@@ -460,26 +460,26 @@ func (k Keeper) DistributeReward(ctx sdk.Context, miner sdk.AccAddress, reward m
 	validatorShareTotal := treasuryCut.MulRaw(13).QuoRaw(15)
 	actuallyCredited := k.CreditTreasuryShareToValidators(ctx, validatorShareTotal)
 	feeCollectorAmount := treasuryCut.Sub(actuallyCredited)
-if !feeCollectorAmount.IsZero() {
-	feeCollectorCoins := sdk.NewCoins(sdk.NewCoin("uaeth", feeCollectorAmount))
-	// Redirected from the fee collector (which had no real consumer --
-	// no staking module distributes from it, nothing else spends it) to
-	// x/treasury instead, giving governance's treasury-spend proposals
-	// genuine, honest inflow to work with. Does not touch the validator
-	// incentive split above (still exactly 13/15 to active validators).
-	if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, ModuleName, treasury.ModuleName, feeCollectorCoins); err != nil {
-		return err
+	if !feeCollectorAmount.IsZero() {
+		feeCollectorCoins := sdk.NewCoins(sdk.NewCoin("uaeth", feeCollectorAmount))
+		// Redirected from the fee collector (which had no real consumer --
+		// no staking module distributes from it, nothing else spends it) to
+		// x/treasury instead, giving governance's treasury-spend proposals
+		// genuine, honest inflow to work with. Does not touch the validator
+		// incentive split above (still exactly 13/15 to active validators).
+		if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, ModuleName, treasury.ModuleName, feeCollectorCoins); err != nil {
+			return err
+		}
+		k.treasuryKeeper.FundTreasury(ctx, feeCollectorAmount)
 	}
-	k.treasuryKeeper.FundTreasury(ctx, feeCollectorAmount)
-}
 	k.logger.Info("block reward distributed",
-	"miner", miner.String(),
-	"miner_amount", minerAmount.String(),
-	"treasury_cut", treasuryCut.String(),
-	"validator_share", actuallyCredited.String(),
-	"treasury_fund_amount", feeCollectorAmount.String(),
-	"escrowed", k.IsActiveValidator(ctx, miner),
-)
+		"miner", miner.String(),
+		"miner_amount", minerAmount.String(),
+		"treasury_cut", treasuryCut.String(),
+		"validator_share", actuallyCredited.String(),
+		"treasury_fund_amount", feeCollectorAmount.String(),
+		"escrowed", k.IsActiveValidator(ctx, miner),
+	)
 	return nil
 }
 
@@ -1132,18 +1132,18 @@ func (k Keeper) RecordValidatorSigning(ctx sdk.Context, minerAddr sdk.AccAddress
 	store.Set(indexKey, sdk.Uint64ToBigEndian(uint64(index)))
 	store.Set(missedKey, sdk.Uint64ToBigEndian(uint64(missed)))
 
-// Pure integer comparison -- confirmed mathematically exact
-// equivalent to "missed/LivenessWindowSize > LivenessMissThreshold"
-// (0.5) for all integer values of missed from 0 to LivenessWindowSize.
-// Avoids float64 in this consensus-critical path entirely, matching
-// this project's consistent principle (see BlockRewardDecayFactor's
-// own doc comment in types.go for another instance of it) of never
-// relying on floating-point arithmetic where deterministic
-// integer/Dec math is available -- the practical risk here was
-// genuinely low (small-integer division is bit-exact under IEEE 754
-// across real platforms), but there's no reason to make an exception
-// to the rule when an exact integer equivalent costs nothing.
-return missed*2 > LivenessWindowSize
+	// Pure integer comparison -- confirmed mathematically exact
+	// equivalent to "missed/LivenessWindowSize > LivenessMissThreshold"
+	// (0.5) for all integer values of missed from 0 to LivenessWindowSize.
+	// Avoids float64 in this consensus-critical path entirely, matching
+	// this project's consistent principle (see BlockRewardDecayFactor's
+	// own doc comment in types.go for another instance of it) of never
+	// relying on floating-point arithmetic where deterministic
+	// integer/Dec math is available -- the practical risk here was
+	// genuinely low (small-integer division is bit-exact under IEEE 754
+	// across real platforms), but there's no reason to make an exception
+	// to the rule when an exact integer equivalent costs nothing.
+	return missed*2 > LivenessWindowSize
 }
 
 // ClearValidatorLiveness resets a validator's liveness tracking
@@ -1184,12 +1184,12 @@ func (k Keeper) CheckValidatorLiveness(ctx sdk.Context) {
 		shouldRemove := k.RecordValidatorSigning(ctx, minerAddr, signed)
 
 		if shouldRemove {
-	k.logger.Info("validator exceeded liveness miss threshold, removing from active set (downtime, not equivocation -- no ban, no escrow forfeiture)",
-		"miner", minerAddr.String(), "window_size", LivenessWindowSize, "threshold", LivenessMissThreshold)
-	k.RemoveActiveValidator(ctx, minerAddr)
-	k.MarkPendingRemoval(ctx, minerAddr)
-	k.ClearValidatorLiveness(ctx, minerAddr)
-}
+			k.logger.Info("validator exceeded liveness miss threshold, removing from active set (downtime, not equivocation -- no ban, no escrow forfeiture)",
+				"miner", minerAddr.String(), "window_size", LivenessWindowSize, "threshold", LivenessMissThreshold)
+			k.RemoveActiveValidator(ctx, minerAddr)
+			k.MarkPendingRemoval(ctx, minerAddr)
+			k.ClearValidatorLiveness(ctx, minerAddr)
+		}
 	}
 }
 

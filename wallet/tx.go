@@ -9,8 +9,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/client/tx"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 
 	"github.com/whoyoujoshin/aether/app"
 )
@@ -124,7 +124,7 @@ func (c *Client) BroadcastTx(signed SignedTx) (BroadcastResult, error) {
 }
 
 var _ client.TxBuilder // referenced only to confirm the import resolves; TxBuilder itself is used via factory.BuildUnsignedTx's return type
-var _ keyring.Keyring   // referenced only to confirm the import resolves; used via Wallet.kr's type
+var _ keyring.Keyring  // referenced only to confirm the import resolves; used via Wallet.kr's type
 
 // BuildAndSignMsgTx builds and signs a transaction wrapping an
 // arbitrary sdk.Msg -- a more general form of BuildAndSignSendTx, for

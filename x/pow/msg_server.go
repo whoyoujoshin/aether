@@ -1,15 +1,15 @@
 package pow
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"crypto/sha256"
 
 	sdkerrors "cosmossdk.io/errors"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"crypto/ed25519"
-	"github.com/whoyoujoshin/aether/x/pow/types"
 	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/whoyoujoshin/aether/x/pow/types"
 )
 
 type msgServer struct {

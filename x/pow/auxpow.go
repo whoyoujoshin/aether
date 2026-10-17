@@ -118,13 +118,13 @@ const parentHeaderSize = 80
 // parentHeader holds the parsed fields of a Litecoin/Dogecoin block
 // header, per auxpow-binary-format-reference.md section 1.
 type parentHeader struct {
-	Version       uint32
-	HashPrevBlock []byte
+	Version        uint32
+	HashPrevBlock  []byte
 	HashMerkleRoot []byte
-	Time          uint32
-	Bits          uint32
-	Nonce         uint32
-	raw           []byte // the original 80 bytes, needed to compute the header's own hash
+	Time           uint32
+	Bits           uint32
+	Nonce          uint32
+	raw            []byte // the original 80 bytes, needed to compute the header's own hash
 }
 
 // parseParentHeader deserializes a raw 80-byte Litecoin/Dogecoin
@@ -270,18 +270,18 @@ func CheckAuxPow(data *AuxPowData, currentDifficulty uint64, height int64) error
 	// 3. Aether's own block hash must genuinely be committed via the
 	// chain merkle branch.
 	// extractCommitment already reverses the embedded root hash back out
-// of wire order into internal order -- commitment.RootHash is
-// directly comparable to checkMerkleBranch's output with no further
-// reversal needed. (Found via live testing: an earlier version of
-// this function reversed a second time here, which only appeared
-// correct because the unit test's own construction helper had a
-// separate, compensating double-reversal bug that canceled it out --
-// exactly the kind of bug only an independently-built live test tool
-// can catch, since it doesn't share the same mistaken assumption.)
-reconstructedChainRoot := checkMerkleBranch(auxBlockHash, data.ChainBranch.Hashes, data.ChainBranch.Index)
-if !bytes.Equal(reconstructedChainRoot, commitment.RootHash) {
-	return errors.New("chain merkle branch does not reconstruct the committed aux block hash")
-}
+	// of wire order into internal order -- commitment.RootHash is
+	// directly comparable to checkMerkleBranch's output with no further
+	// reversal needed. (Found via live testing: an earlier version of
+	// this function reversed a second time here, which only appeared
+	// correct because the unit test's own construction helper had a
+	// separate, compensating double-reversal bug that canceled it out --
+	// exactly the kind of bug only an independently-built live test tool
+	// can catch, since it doesn't share the same mistaken assumption.)
+	reconstructedChainRoot := checkMerkleBranch(auxBlockHash, data.ChainBranch.Hashes, data.ChainBranch.Index)
+	if !bytes.Equal(reconstructedChainRoot, commitment.RootHash) {
+		return errors.New("chain merkle branch does not reconstruct the committed aux block hash")
+	}
 
 	// 4. The commitment's declared size must match the actual branch
 	// depth.

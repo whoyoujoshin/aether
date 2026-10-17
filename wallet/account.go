@@ -1,8 +1,8 @@
 package wallet
 
 import (
-	"os"
 	"errors"
+	"os"
 
 	"github.com/cosmos/go-bip39"
 
@@ -96,8 +96,8 @@ func (w *Wallet) CreateAccount(name string) (Account, string, error) {
 // deterministically reproduces the same one key.
 func (w *Wallet) ImportAccount(name, mnemonic string) (Account, error) {
 	if !bip39.IsMnemonicValid(mnemonic) {
-	return Account{}, errors.New("invalid mnemonic")
-}
+		return Account{}, errors.New("invalid mnemonic")
+	}
 
 	record, err := w.kr.NewAccount(name, mnemonic, "", "", mldsa.Algo)
 	if err != nil {
@@ -133,6 +133,7 @@ func (w *Wallet) GetAccount(name string) (Account, error) {
 func (w *Wallet) DeleteAccount(name string) error {
 	return w.kr.Delete(name)
 }
+
 // SignBytes signs an arbitrary message with the named account's key,
 // returning the signature and public key -- for off-chain
 // authorization such as a paywall's prepaid requests. Callers must
