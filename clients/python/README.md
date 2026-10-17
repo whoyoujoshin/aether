@@ -27,6 +27,13 @@ rate_service(client, key, "https://api.example.com", 5)  # only raters who paid 
 back = withdraw_prepaid(client, key, "https://api.example.com", withdrawal_id="w1")  # unspent prepaid balance
 ```
 
+## Standard x402
+
+`aether_client.x402.ExactAetherScheme` pays the standard x402 v2 `exact` scheme with the
+`x402` package's clients (`x402ClientSync`, `x402_requests`); the setup is in
+[docs/X402.md](https://github.com/whoyoujoshin/aether/blob/main/docs/X402.md#paying). It signs a
+send of exactly what the 402 asks, and the server's facilitator broadcasts it.
+
 ## AI agent frameworks
 
 `AetherToolkit` gives an agent six tools: check a balance, check a transaction,
