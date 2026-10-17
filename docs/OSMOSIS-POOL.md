@@ -90,8 +90,8 @@ Helicase relays it onto Osmosis within a minute or two.
 from Osmosis's testnet faucet in a browser):
 
 ```bash
-/root/osmosisd tx bank send <relayer key name> <osmo1… pool address> 50000000uosmo \
-  --keyring-backend test --home <the relayer's osmosisd home> \
+/root/osmosisd tx bank send relayer <osmo1… pool address> 50000000uosmo \
+  --keyring-backend test --home /root/.osmosisd-relayer \
   --chain-id osmo-test-5 --node https://rpc.testnet.osmosis.zone:443 \
   --gas auto --gas-adjustment 1.4 --gas-prices 0.05uosmo -y
 ```
