@@ -178,6 +178,13 @@ func TestATransportFailureIsNotMeasured(t *testing.T) {
 	require.False(t, notMeasured(toolErr), "a tool's own error is the agent's to handle")
 	require.False(t, notMeasured(recovered), "an agent that got past it is scored")
 
+	apiCut := Result{Task: "t2", Error: `Post "https://api.openai.com/v1/chat/completions": read tcp 10.0.0.1:51081->172.66.0.243:443: wsarecv: An existing connection was forcibly closed by the remote host.`}
+	require.True(t, notMeasured(apiCut), "the model's API dropping the connection says nothing about the agent")
+	slow := Result{Task: "t2", Error: `Post "https://api.openai.com/v1/chat/completions": context deadline exceeded`}
+	require.False(t, notMeasured(slow), "running out of time is the agent's")
+	require.False(t, notMeasured(Result{Task: "t2", Error: "stopped after 30 turns"}))
+	require.False(t, notMeasured(Result{Task: "t2", Points: 1, Passed: true, Error: apiCut.Error}), "a task finished anyway is scored")
+
 	out := renderReport([]Run{
 		{Label: "m", Results: []Result{{Task: "t1", Points: 1, Passed: true}, cut}},
 		{Label: "m", Results: []Result{{Task: "t1", Points: 1, Passed: true}, {Task: "t2", Points: 1, Passed: true}}},
