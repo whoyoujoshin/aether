@@ -1,8 +1,9 @@
 use cosmwasm_std::{
-    coin, Coin, CosmosMsg, DepsMut, Env, Event, IbcMsg, IbcTimeout, MessageInfo, Reply, Response,
+    coin, Coin, CosmosMsg, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Reply, Response,
     SubMsg, SubMsgResult, Uint128,
 };
 use osmosis_std::types::cosmos::base::v1beta1::Coin as ProtoCoin;
+use osmosis_std::types::ibc::applications::transfer::v1::MsgTransferResponse;
 use osmosis_std::types::osmosis::poolmanager::v1beta1::{
     MsgSwapExactAmountIn, MsgSwapExactAmountInResponse, SwapAmountInRoute,
 };
@@ -277,26 +278,23 @@ pub fn parse_swap_output(reply: &Reply) -> Result<Uint128, ContractError> {
         .map_err(|_| ContractError::MissingSwapOutput)
 }
 
-/// The return packet's sequence, from ibc-go's send_packet event.
+const TRANSFER_RESPONSE_TYPE: &str = "/ibc.applications.transfer.v1.MsgTransferResponse";
+
+/// The return packet's sequence, from the MsgTransferResponse in
+/// msg_responses or, failing that, data. Not from events: wasmd (0.53 on
+/// Osmosis v31) passes no events to the reply of a non-wasm submessage.
 pub fn sequence_from_reply(reply: &Reply) -> Option<u64> {
     let SubMsgResult::Ok(resp) = &reply.result else {
         return None;
     };
-    for event in &resp.events {
-        if let Some(seq) = sequence_from_event(event) {
-            return Some(seq);
-        }
-    }
-    None
-}
-
-fn sequence_from_event(event: &Event) -> Option<u64> {
-    if event.ty != "send_packet" {
-        return None;
-    }
-    event
-        .attributes
+    #[allow(deprecated)]
+    let data = resp
+        .msg_responses
         .iter()
-        .find(|a| a.key == "packet_sequence")
-        .and_then(|a| a.value.parse::<u64>().ok())
+        .find(|r| r.type_url == TRANSFER_RESPONSE_TYPE)
+        .map(|r| r.value.clone())
+        .or_else(|| resp.data.clone())?;
+    let parsed: MsgTransferResponse = data.try_into().ok()?;
+    // Sequences start at 1; a 0 means the response was empty.
+    (parsed.sequence > 0).then_some(parsed.sequence)
 }

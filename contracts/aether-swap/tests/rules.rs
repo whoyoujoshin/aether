@@ -346,25 +346,92 @@ fn return_transfer_failure_fails_the_swap() {
 }
 
 #[test]
-fn sequence_comes_from_send_packet_only() {
+fn sequence_comes_from_msg_responses() {
     use aether_swap::execute::sequence_from_reply;
-    use cosmwasm_std::{Binary, Event, Reply, SubMsgResponse, SubMsgResult};
+    use cosmwasm_std::{Binary, Event, MsgResponse, Reply, SubMsgResponse, SubMsgResult};
+    use osmosis_std::types::ibc::applications::transfer::v1::MsgTransferResponse;
 
-    let reply_with = |events: Vec<Event>| {
-        #[allow(deprecated)]
+    let resp: Binary = MsgTransferResponse { sequence: 41 }.into();
+    #[allow(deprecated)]
+    let reply_with = |data: Option<Binary>, msg_responses: Vec<MsgResponse>| Reply {
+        id: 2,
+        payload: Binary::default(),
+        gas_used: 0,
+        // wasmd 0.53 (Osmosis v31) passes no events to a non-wasm
+        // submessage's reply; a send_packet event here would be ignored.
+        result: SubMsgResult::Ok(SubMsgResponse {
+            events: vec![Event::new("send_packet").add_attribute("packet_sequence", "7")],
+            data,
+            msg_responses,
+        }),
+    };
+    let from_msg_responses = reply_with(
+        None,
+        vec![MsgResponse {
+            type_url: "/ibc.applications.transfer.v1.MsgTransferResponse".to_string(),
+            value: resp.clone(),
+        }],
+    );
+    assert_eq!(sequence_from_reply(&from_msg_responses), Some(41));
+    assert_eq!(sequence_from_reply(&reply_with(Some(resp), vec![])), Some(41));
+    assert_eq!(sequence_from_reply(&reply_with(None, vec![])), None);
+}
+
+#[test]
+fn transfer_reply_records_inflight() {
+    use aether_swap::contract::{reply, TRANSFER_REPLY_ID};
+    use aether_swap::state::{PendingTransfer, PENDING_TRANSFER};
+    use cosmwasm_std::{Binary, MsgResponse, Reply, SubMsgResponse, SubMsgResult};
+    use osmosis_std::types::ibc::applications::transfer::v1::MsgTransferResponse;
+
+    let mut deps = setup();
+    PENDING_TRANSFER
+        .save(
+            deps.as_mut().storage,
+            &PendingTransfer {
+                recipient: RECIPIENT.to_string(),
+                amount: Uint128::new(394_472),
+            },
+        )
+        .unwrap();
+    // The reply as wasmd 0.53 builds it for an IbcMsg::Transfer: no events,
+    // the response in msg_responses and data.
+    let resp: Binary = MsgTransferResponse { sequence: 3 }.into();
+    #[allow(deprecated)]
+    let res = reply(
+        deps.as_mut(),
+        mock_env(),
         Reply {
-            id: 2,
+            id: TRANSFER_REPLY_ID,
             payload: Binary::default(),
             gas_used: 0,
-            result: SubMsgResult::Ok(SubMsgResponse { events, data: None, msg_responses: vec![] }),
-        }
-    };
-    let other = Event::new("acc_seq").add_attribute("sequence", "3");
-    let send = Event::new("send_packet")
-        .add_attribute("packet_src_channel", CHANNEL)
-        .add_attribute("packet_sequence", "41");
-    assert_eq!(sequence_from_reply(&reply_with(vec![other.clone(), send])), Some(41));
-    assert_eq!(sequence_from_reply(&reply_with(vec![other])), None);
+            result: SubMsgResult::Ok(SubMsgResponse {
+                events: vec![],
+                data: Some(resp.clone()),
+                msg_responses: vec![MsgResponse {
+                    type_url: "/ibc.applications.transfer.v1.MsgTransferResponse".to_string(),
+                    value: resp,
+                }],
+            }),
+        },
+    )
+    .unwrap();
+    assert!(res.attributes.iter().any(|a| a.key == "sequence" && a.value == "3"));
+    let inflight = INFLIGHT.load(deps.as_ref().storage, (CHANNEL, 3)).unwrap();
+    assert_eq!(inflight.recipient, RECIPIENT);
+    assert_eq!(inflight.amount, Uint128::new(394_472));
+}
+
+#[test]
+fn migrate_keeps_state() {
+    use aether_swap::contract::migrate;
+    use aether_swap::msg::MigrateMsg;
+
+    let mut deps = setup();
+    OWED.save(deps.as_mut().storage, RECIPIENT, &Uint128::new(50)).unwrap();
+    migrate(deps.as_mut(), mock_env(), MigrateMsg {}).unwrap();
+    assert_eq!(CONFIG.load(deps.as_ref().storage).unwrap().pool_id, 1);
+    assert_eq!(OWED.load(deps.as_ref().storage, RECIPIENT).unwrap(), Uint128::new(50));
 }
 
 #[test]

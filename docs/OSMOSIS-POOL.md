@@ -7,9 +7,10 @@ reopened on 2026-10-17 (Aether `channel-3` ↔ Osmosis `channel-11852`,
 Aether's chain code. The `dex/` desk is the reference model for the
 tools; this is the real liquidity.
 
-**Status:** live since 2026-10-17 as **pool 1370** (see below). Agent
-access (step 5) is next: the swap contract is `contracts/aether-swap`, not
-yet deployed.
+**Status:** live since 2026-10-17 as **pool 1370** (see below). The swap
+contract is deployed (`osmo14qlp…nv5hn`, code 13375) but its first real
+swap was refunded; a fix waits to be migrated in (see "Swap contract").
+The quote tool is next.
 
 ## Pool 1370
 
@@ -164,6 +165,35 @@ PATH=/root:$PATH POOL_ID=<n> bash /root/osmosis-probe.sh
 `create-pool` is refused because new balancer pools are closed, stop
 there. The fallback is a concentrated-liquidity pool with one
 full-range position, and Claude will write those commands.
+
+## Swap contract
+
+`contracts/aether-swap`, deployed 2026-10-17 by Gitty from main `a87337c`
+(built on his workstation with Rust 1.81: 341,267 bytes, sha256
+`e18f729e…b303`). Store `E1E44DCA…2F388E`, **code 13375**; instantiate
+`64EB706E…C6ACA0`; contract
+`osmo14qlp2rly8gy322slcs0tvuus5e5rc4390llet43mw23reg0vdnfs0nv5hn`, with
+the pool key as both config admin and wasm admin, on pool 1370 and
+`channel-11852`, timeout 600 s.
+
+Two 1 AETH test swaps from faucet-v3, both refunded in full:
+
+- **min_output 0.5 OSMO** (must fail): Aether tx `5EC27F51…4CCB1E` at
+  326,004; error ack "calculated amount is lesser than min amount", AETH
+  back in ~16 s.
+- **min_output 0.38 OSMO** (should pass): Aether tx `F8CD253E…F96376A` at
+  326,017. The swap ran (999,000 in after the 0.1% taker fee, 394,472 uosmo
+  out) and the contract sent the return transfer, then its reply failed:
+  "return transfer reply did not include a packet sequence". The execute
+  rolled back and Aether refunded the AETH ~22 s after sending. Cause:
+  the contract read the sequence from the `send_packet` event, and wasmd
+  0.53 gives a non-wasm submessage's reply no events. The fix reads
+  `MsgTransferResponse` from `msg_responses` and adds `migrate`.
+
+**Never build on a validator.** The first attempt compiled on sync3:
+rustc took ~3 GB of its 3.9 GB (no swap), sync3 stopped signing, and with
+peer-1 already out the chain halted at 325,902 from 13:23 to ~13:50 UTC.
+Killing rustc ended it; nothing was restarted or lost.
 
 ## 5. Agent access
 

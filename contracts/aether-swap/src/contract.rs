@@ -5,7 +5,9 @@ use cosmwasm_std::{
 
 use crate::error::ContractError;
 use crate::execute::{retry_return, swap_and_return, update_config};
-use crate::msg::{ConfigResponse, ExecuteMsg, InstantiateMsg, OwedResponse, QueryMsg, SudoMsg};
+use crate::msg::{
+    ConfigResponse, ExecuteMsg, InstantiateMsg, MigrateMsg, OwedResponse, QueryMsg, SudoMsg,
+};
 use crate::state::{Config, CONFIG, DEFAULT_TIMEOUT_SECONDS, OWED};
 use crate::sudo::handle_lifecycle;
 
@@ -72,6 +74,14 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
             format!("unknown reply id {id}"),
         ))),
     }
+}
+
+/// Run by the wasm admin's `MsgMigrateContract` on the new code. The state
+/// layout is unchanged, so this only checks that the config is there.
+#[entry_point]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+    CONFIG.load(deps.storage)?;
+    Ok(Response::new().add_attribute("action", "migrate"))
 }
 
 #[entry_point]
