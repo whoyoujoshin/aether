@@ -43,6 +43,10 @@ pub enum IBCLifecycleComplete {
     IBCTimeout { channel: String, sequence: u64 },
 }
 
+/// Migrations keep the stored config, owed amounts and in-flight returns.
+#[cw_serde]
+pub struct MigrateMsg {}
+
 #[cw_serde]
 pub enum SudoMsg {
     #[serde(rename = "ibc_lifecycle_complete")]

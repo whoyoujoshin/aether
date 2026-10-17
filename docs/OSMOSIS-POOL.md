@@ -7,8 +7,35 @@ reopened on 2026-10-17 (Aether `channel-3` ↔ Osmosis `channel-11852`,
 Aether's chain code. The `dex/` desk is the reference model for the
 tools; this is the real liquidity.
 
-**Status:** probed 2026-10-17 on sync3; the pool is next (step 2). Nothing
-has been created on Osmosis yet.
+**Status:** live since 2026-10-17 as **pool 1370** (see below). The swap
+contract is deployed (`osmo14qlp…nv5hn`, code 13375) but its first real
+swap was refunded; a fix waits to be migrated in (see "Swap contract").
+The quote tool is next.
+
+## Pool 1370
+
+Created by Gitty on sync3, 2026-10-17. Every step worked first time;
+balancer pools were open, so the concentrated-liquidity fallback wasn't
+needed.
+
+| | |
+|---|---|
+| Pool | `1370`, balancer, weights 1:1, swap fee 0.3%, exit fee 0 |
+| Pool address | `osmo14fltplmxyrlsj20d34kxfc55ungs0smtyw3u7d7z9w3mlevkhz2qday49j` |
+| Reserves at creation | 100 AETH (`ibc/8277E155…3BE1`) : 40 OSMO, so 1 AETH = 0.4 OSMO |
+| Shares | 1e20 `gamm/pool/1370`, all held by the pool key |
+| Pool key | `osmo1g3a5hcpa46lkdtwpag9g5hrn7fqpn99q7dmngl`, keyring test in `/root/.osmosisd-pool` on sync3; mnemonic only in `/root/.osmosisd-pool-mnemonic.txt` (mode 600) there |
+| OSMO in | 50 OSMO from the relayer, tx `5B424340…3157D5` (Osmosis 76,504,555); the relayer kept 145.14 OSMO |
+| AETH in | 100 AETH from faucet-v3 over `channel-3` (packet 4), Aether tx `DCD769AB…A639CC` at 325,643, received on Osmosis ~25 s later in `FC75459F…AE2AF3` (76,504,611); faucet-v3 went from 480.0 to 380.0 AETH |
+| create-pool | `BEBF31BE…C32D860` (Osmosis 76,504,677) |
+| Left on the pool key | 8.97 OSMO (50 − 40 − the 1 OSMO fee − gas) |
+
+The probe's quote for 1 AETH in was 0.394472 OSMO. That fits Osmosis
+taking its 0.1% taker fee from the input before the pool's 0.3%:
+40 × 0.996003 / (100 + 0.996003) = 0.394476. So a swap costs about 0.4% in
+fees, before price impact; a quote tool must use Osmosis's own estimate,
+not the pool's swap fee alone. The probe's log is
+`/root/osmosis-probe-pool-20261017.log` on sync3.
 
 ## The pair: AETH / OSMO
 
@@ -138,6 +165,35 @@ PATH=/root:$PATH POOL_ID=<n> bash /root/osmosis-probe.sh
 `create-pool` is refused because new balancer pools are closed, stop
 there. The fallback is a concentrated-liquidity pool with one
 full-range position, and Claude will write those commands.
+
+## Swap contract
+
+`contracts/aether-swap`, deployed 2026-10-17 by Gitty from main `a87337c`
+(built on Gitty's own machine with Rust 1.81: 341,267 bytes, sha256
+`e18f729e…b303`). Store `E1E44DCA…2F388E`, **code 13375**; instantiate
+`64EB706E…C6ACA0`; contract
+`osmo14qlp2rly8gy322slcs0tvuus5e5rc4390llet43mw23reg0vdnfs0nv5hn`, with
+the pool key as both config admin and wasm admin, on pool 1370 and
+`channel-11852`, timeout 600 s.
+
+Two 1 AETH test swaps from faucet-v3, both refunded in full:
+
+- **min_output 0.5 OSMO** (must fail): Aether tx `5EC27F51…4CCB1E` at
+  326,004; error ack "calculated amount is lesser than min amount", AETH
+  back in ~16 s.
+- **min_output 0.38 OSMO** (should pass): Aether tx `F8CD253E…F96376A` at
+  326,017. The swap ran (999,000 in after the 0.1% taker fee, 394,472 uosmo
+  out) and the contract sent the return transfer, then its reply failed:
+  "return transfer reply did not include a packet sequence". The execute
+  rolled back and Aether refunded the AETH ~22 s after sending. Cause:
+  the contract read the sequence from the `send_packet` event, and wasmd
+  0.53 gives a non-wasm submessage's reply no events. The fix reads
+  `MsgTransferResponse` from `msg_responses` and adds `migrate`.
+
+**Never build on a validator.** The first attempt compiled on sync3:
+rustc took ~3 GB of its 3.9 GB (no swap), sync3 stopped signing, and with
+peer-1 already out the chain halted at 325,902 from 13:23 to ~13:50 UTC.
+Killing rustc ended it; nothing was restarted or lost.
 
 ## 5. Agent access
 

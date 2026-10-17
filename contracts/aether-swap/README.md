@@ -54,6 +54,11 @@ ibc-hooks callback and the OSMO is recorded as owed to `recipient`.
 
 ## Build
 
+Never build on a validator. On 2026-10-17 rustc took about 3 GB compiling
+osmosis-std on sync3 (3.9 GB, no swap); it stopped signing and, with
+peer-1 out, the chain halted for 27 minutes. Build on a workstation and
+copy the `.wasm` over.
+
 The chain's wasm VM refuses the bulk-memory opcodes Rust 1.82 and later emit,
 so build with Rust 1.81 (`Cargo.lock` is resolved for it) or the optimizer.
 
@@ -100,6 +105,13 @@ osmosisd tx wasm instantiate <code_id> '{
   --gas auto --gas-adjustment 1.4 --gas-prices 0.05uosmo -y
 ```
 
+## Migrate
+
+The wasm admin (the pool key on testnet) stores the new code, then
+`osmosisd tx wasm migrate <contract> <new code id> '{}'`. `migrate` keeps
+the config, owed amounts and in-flight returns. Code 13375 has no
+`migrate`, which doesn't matter: a migration runs the new code's.
+
 ## What the admin can do
 
 Change the pool id and the default timeout. Nothing else. Owed OSMO can
@@ -130,10 +142,12 @@ test app has no channel) fails as a whole.
   reply data encoding differs on the live chain, `parse_swap_output` will
   return `MissingSwapOutput` and the swap will fail (Aether refunds). It
   reads `msg_responses` (CosmWasm 2 chains) first, then the older `data`.
-- **Sequence extraction.** The packet sequence is read from ibc-go's
-  `send_packet` event (`packet_sequence`). If the live chain doesn't
-  return it, the reply fails with `MissingSequence`, the whole execute
-  fails and Aether refunds: safe, but no swap goes through until fixed.
+- **Sequence extraction.** The packet sequence is read from the
+  `MsgTransferResponse` in the reply's `msg_responses` (then `data`).
+  Never from events: wasmd 0.53 (Osmosis v31) gives a non-wasm
+  submessage's reply no events. The first deploy (code 13375) read
+  `send_packet`, so its first real swap failed with `MissingSequence`
+  and Aether refunded the AETH.
 - **ibc-hooks** is confirmed on: a memo to an address with no contract,
   sent from Aether on 2026-10-17, was acknowledged with "no such contract"
   and refunded on Aether within about 15 s.
