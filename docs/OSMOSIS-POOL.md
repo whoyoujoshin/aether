@@ -2,7 +2,7 @@
 
 A real AETH pool on `osmo-test-5`, so AETH has a market price an agent
 can quote and, in a later step, swap against. It uses the IBC path that
-is already live (Aether `channel-1` ↔ Osmosis `channel-11841`,
+reopened on 2026-10-17 (Aether `channel-3` ↔ Osmosis `channel-11852`,
 [OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md)) and needs no change to
 Aether's chain code. The `dex/` desk is the reference model for the
 tools; this is the real liquidity.
@@ -13,7 +13,7 @@ tools; this is the real liquidity.
 
 | | Denom on Osmosis |
 |---|---|
-| AETH | `ibc/0D80A29BCBE8A38AAE75313264A0741092566D4EF5A7FEDAD7F86E12193C2328` |
+| AETH | `ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1` |
 | OSMO | `uosmo` |
 
 **Not USDC:**
@@ -24,10 +24,30 @@ OSMO is on every Osmosis testnet account and comes from Osmosis's faucet. An AET
 
 The price is a testnet price: whatever ratio the first deposit sets.
 
-## 1. Probe (read-only, on the seed)
+Every step that talks to Osmosis runs on **sync3**: since 2026-10-16
+Osmosis's testnet endpoints refuse the seed, and sync3 is where
+`cmd/outbound` runs. sync3 needs `osmosisd` for steps 2 and 4; copy the
+seed's binary over if it has none.
+
+**Expected, from an outside survey (Grok, 2026-10-16), for the probe to
+confirm:**
+- **Pool creation fee:** 10 OSMO, read from the live LCDs.
+- **CosmWasm uploads:** open to anyone on testnet. Mainnet needs governance.
+- **ibc-hooks:** documented as enabled on Osmosis, but not confirmed
+  through the public LCD. Step 5 relies on it, so a test memo proves it
+  before any contract goes up.
+- **Endpoints:** only Osmosis's own, `rpc.testnet` and `rpc.osmotest5`,
+  answer. They share a prune point (about 1.87 million blocks kept), so
+  they're likely one backend under two names. Polkachu's testnet RPC no
+  longer resolves, and Reliable Ninjas' is down.
+
+## 1. Probe (read-only, on sync3)
+
+It needs only `curl` and `jq`, so sync3 doesn't need the repo:
 
 ```bash
-cd /root/aether-src && git pull && bash scripts/osmosis-pool/probe.sh
+curl -fsSL https://raw.githubusercontent.com/whoyoujoshin/aether/main/scripts/osmosis-pool/probe.sh -o /root/osmosis-probe.sh
+bash /root/osmosis-probe.sh 2>&1 | tee /root/osmosis-probe-$(date +%Y%m%d).log
 ```
 
 **Send Claude the whole output.** It shows what decides the next steps:
@@ -52,7 +72,7 @@ osmosisd keys show aether-pool -a --keyring-backend test --home /root/.osmosisd-
 the amount is set once the probe is in):
 
 ```bash
-aetherd tx ibc-transfer transfer transfer channel-1 <osmo1… pool address> 1000000000uaeth \
+aetherd tx ibc-transfer transfer transfer channel-3 <osmo1… pool address> 1000000000uaeth \
   --from faucet-v3 --keyring-backend test --home /root/.aether \
   --chain-id aether-testnet-1 --fees 0uaeth --gas auto -y
 ```
@@ -71,8 +91,8 @@ fee as the `dex/` desk. `osmosisd` takes the amounts in base units:
 ```bash
 cat > /root/aether-pool.json <<'JSON'
 {
-  "weights": "1ibc/0D80A29BCBE8A38AAE75313264A0741092566D4EF5A7FEDAD7F86E12193C2328,1uosmo",
-  "initial-deposit": "1000000000ibc/0D80A29BCBE8A38AAE75313264A0741092566D4EF5A7FEDAD7F86E12193C2328,<OSMO amount>uosmo",
+  "weights": "1ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1,1uosmo",
+  "initial-deposit": "1000000000ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1,<OSMO amount>uosmo",
   "swap-fee": "0.003",
   "exit-fee": "0.000",
   "future-governor": ""
@@ -105,7 +125,7 @@ Two parts, in this order:
    `agentmcp`. It reads the pool's reserves and Osmosis's own swap estimate
    from Osmosis's API. Nothing to sign, so this ships first, built against
    the real responses from step 4.
-2. **Swap from Aether.** The agent sends AETH over `channel-1` with a memo.
+2. **Swap from Aether.** The agent sends AETH over `channel-3` with a memo.
    On Osmosis, a contract swaps it in the pool and sends the OSMO back to
    the agent's Aether address. If the swap fails, the transfer fails and
    the AETH is refunded on Aether. Osmosis runs such memos through its

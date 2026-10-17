@@ -211,7 +211,7 @@ the other three are signing, and never run two copies.
 **a. Check the other three are signing.** This must print 4:
 
 ```powershell
-((Invoke-RestMethod http://127.0.0.1:26667/block).result.block.last_commit.signatures | Where-Object block_id_flag -eq 2).Count
+@((Invoke-RestMethod http://127.0.0.1:26667/block).result.block.last_commit.signatures | Where-Object block_id_flag -eq 2).Count
 ```
 
 **b. Add Helicase to `C:\aether-peer1\config\app.toml`.** Put this at
@@ -251,7 +251,7 @@ height moving, and then a count of 1:
 ```powershell
 (Invoke-RestMethod http://127.0.0.1:26667/status).result.sync_info | Select-Object latest_block_height, catching_up
 $me = (Invoke-RestMethod http://127.0.0.1:26667/status).result.validator_info.address
-((Invoke-RestMethod http://127.0.0.1:26667/block).result.block.last_commit.signatures | Where-Object validator_address -eq $me).Count
+@((Invoke-RestMethod http://127.0.0.1:26667/block).result.block.last_commit.signatures | Where-Object validator_address -eq $me).Count
 ```
 
 Its log should show `helicase started` twice, once per client. A few

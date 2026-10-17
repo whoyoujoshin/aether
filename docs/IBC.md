@@ -185,5 +185,12 @@ opened right after the October upgrade activated:
 - **Osmosis's end:** `connection-4605`, `transfer/channel-11841` over client `07-tendermint-5277`.
 - **Relaying:** Helicase relays onto Aether, and `cmd/outbound` on the seed relays onto Osmosis.
 
+Osmosis's client of Aether expired around 2026-10-13, so that path is
+closed. **The second path, 2026-10-17**, opened from sync3:
+
+- **Aether's end:** `connection-3`, `transfer/channel-3` over client `07-tendermint-3`.
+- **Osmosis's end:** `connection-4615`, `transfer/channel-11852` over client `07-tendermint-5287`.
+- **Relaying:** `cmd/outbound` on sync3 relays onto Osmosis; Helicase on sync3 and sync4 is to relay onto Aether.
+
 IDs, trusting periods and the end-to-end check are in
 [OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md).
