@@ -49,6 +49,7 @@ var toolLabels = map[string]toolLabel{
 	"list_escrows":               {title: "List escrows", effect: readOnly},
 	"get_test_wallet":            {title: "Get test wallet", effect: readOnly},
 	"get_quest":                  {title: "Get agent quest", effect: readOnly},
+	"quote_swap":                 {title: "Quote AETH to OSMO swap", effect: readOnly},
 
 	"request_testnet_funds": {title: "Request testnet funds", effect: additive},
 	"create_invoice":        {title: "Create invoice", effect: additive},
