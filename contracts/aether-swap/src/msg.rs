@@ -72,3 +72,7 @@ pub struct OwedResponse {
     pub recipient: String,
     pub amount: Uint128,
 }
+
+/// Empty. A migration runs the new code's migrate; this version has nothing to move.
+#[cw_serde]
+pub struct MigrateMsg {}

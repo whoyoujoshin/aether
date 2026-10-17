@@ -5,4 +5,4 @@ pub mod msg;
 pub mod state;
 pub mod sudo;
 
-pub use crate::contract::{execute, instantiate, query, reply, sudo};
+pub use crate::contract::{execute, instantiate, migrate, query, reply, sudo};

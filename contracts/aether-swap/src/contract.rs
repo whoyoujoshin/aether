@@ -3,11 +3,18 @@ use cosmwasm_std::{
     StdResult,
 };
 
+use cw2::set_contract_version;
+
 use crate::error::ContractError;
 use crate::execute::{retry_return, swap_and_return, update_config};
-use crate::msg::{ConfigResponse, ExecuteMsg, InstantiateMsg, OwedResponse, QueryMsg, SudoMsg};
+use crate::msg::{
+    ConfigResponse, ExecuteMsg, InstantiateMsg, MigrateMsg, OwedResponse, QueryMsg, SudoMsg,
+};
 use crate::state::{Config, CONFIG, DEFAULT_TIMEOUT_SECONDS, OWED};
 use crate::sudo::handle_lifecycle;
+
+pub const CONTRACT_NAME: &str = "crates.io:aether-swap";
+pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub const SWAP_REPLY_ID: u64 = 1;
 pub const TRANSFER_REPLY_ID: u64 = 2;
@@ -25,6 +32,7 @@ pub fn instantiate(
         )));
     }
     let admin = deps.api.addr_validate(&msg.admin)?;
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     let default_timeout_seconds = msg
         .default_timeout_seconds
         .unwrap_or(DEFAULT_TIMEOUT_SECONDS);
@@ -79,6 +87,18 @@ pub fn sudo(deps: DepsMut, _env: Env, msg: SudoMsg) -> Result<Response, Contract
     match msg {
         SudoMsg::IBCLifecycleComplete(event) => handle_lifecycle(deps, event),
     }
+}
+
+
+#[entry_point]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+    // Refuses a different contract name, or a stored version that is not
+    // strictly older than this build. Then records this version.
+    let stored = cw2::ensure_from_older_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    Ok(Response::new()
+        .add_attribute("action", "migrate")
+        .add_attribute("from_version", stored.to_string())
+        .add_attribute("to_version", CONTRACT_VERSION))
 }
 
 #[entry_point]
