@@ -112,6 +112,11 @@ The wasm admin (the pool key on testnet) stores the new code, then
 the config, owed amounts and in-flight returns. Code 13375 has no
 `migrate`, which doesn't matter: a migration runs the new code's.
 
+On osmo-test-5 the contract is
+`osmo14qlp2rly8gy322slcs0tvuus5e5rc4390llet43mw23reg0vdnfs0nv5hn`, migrated
+from code 13375 to 13376 on 2026-10-17; its first swap from Aether came
+back in about 22 s (`docs/OSMOSIS-POOL.md`).
+
 ## What the admin can do
 
 Change the pool id and the default timeout. Nothing else. Owed OSMO can

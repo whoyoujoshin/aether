@@ -8,9 +8,9 @@ Aether's chain code. The `dex/` desk is the reference model for the
 tools; this is the real liquidity.
 
 **Status:** live since 2026-10-17 as **pool 1370** (see below). The swap
-contract is deployed (`osmo14qlp…nv5hn`, code 13375) but its first real
-swap was refunded; a fix waits to be migrated in (see "Swap contract").
-The quote tool is next.
+contract `osmo14qlp…nv5hn` (code 13376) swaps AETH sent from Aether and
+returns the OSMO: the first round trip took about 22 s (see "Swap
+contract"). The quote tool is next.
 
 ## Pool 1370
 
@@ -189,6 +189,25 @@ Two 1 AETH test swaps from faucet-v3, both refunded in full:
   the contract read the sequence from the `send_packet` event, and wasmd
   0.53 gives a non-wasm submessage's reply no events. The fix reads
   `MsgTransferResponse` from `msg_responses` and adds `migrate`.
+
+**Migrated to code 13376** the same day (15:35–15:37 UTC), built by Gitty
+off the validators from `9a6f198` with Rust 1.81 (347,769 bytes, sha256
+`3c7e0812…bb76d7`, matching the on-chain checksum). Store `A4AA47F8…09B663`,
+migrate `47FE67D7…5ACABD`; same address, config unchanged.
+
+**First round trip**, the same 1 AETH from faucet-v3 at min_output 0.38 OSMO:
+
+| Step | Tx | |
+|---|---|---|
+| Out, Aether | `5A898E4E…539ACC` at 327,019 (packet 7) | |
+| Swap on Osmosis | `616A47A5…56C4C8` (76,519,178) | ~13 s later; 999,000 in, 394,472 uosmo out, success ack |
+| Return in, Aether | `4992773D…EB7F` at 327,023 (Osmosis `channel-11852` packet 3) | ack `{"result":"AQ=="}`; packet 7's ack in the same block, `4D012032…955E6E` |
+| Return's ack, Osmosis | `EF64DB26…94CE88` | |
+
+About 22 s from sending to the OSMO arriving. faucet-v3 went from 380.0 AETH
+and no OSMO to 379.0 AETH and 0.394472 OSMO (`ibc/47BD2091…9E23`). Owed to
+faucet-v3 stayed 0, the contract holds nothing, no commitments are pending
+on either channel, and the pool now holds about 101 AETH : 39.61 OSMO.
 
 **Never build on a validator.** The first attempt compiled on sync3:
 rustc took ~3 GB of its 3.9 GB (no swap), sync3 stopped signing, and with
