@@ -2,9 +2,11 @@
 name = "aether-swap"
 version = "0.1.0"
 edition = "2021"
+# 1.81 is the newest Rust whose wasm32 output the chain's VM accepts (1.82+
+# emits bulk-memory). Cargo.lock is resolved for it.
 rust-version = "1.81"
 description = "IBC-hooks swap-and-return contract for Aether on Osmosis testnet"
-license = "Apache-2.0"
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

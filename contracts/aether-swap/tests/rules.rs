@@ -3,7 +3,7 @@
 
 use cosmwasm_std::{
     coin,
-    testing::{mock_env, mock_info, MockApi, MockQuerier, MockStorage},
+    testing::{message_info, mock_env, MockApi, MockQuerier, MockStorage},
     Addr, CosmosMsg, IbcMsg, OwnedDeps, Uint128,
 };
 
@@ -31,7 +31,7 @@ fn setup() -> OwnedDeps<MockStorage, MockApi, MockQuerier> {
     instantiate(
         deps.as_mut(),
         mock_env(),
-        mock_info(OSMO, &[]),
+        message_info(&Addr::unchecked(OSMO), &[]),
         InstantiateMsg {
             aeth_denom: AETH.to_string(),
             channel_to_aether: CHANNEL.to_string(),
@@ -50,7 +50,7 @@ fn wrong_denom_is_refused() {
     let err = execute(
         deps.as_mut(),
         mock_env(),
-        mock_info("anyone", &[coin(10, "uosmo")]),
+        message_info(&Addr::unchecked("anyone"), &[coin(10, "uosmo")]),
         ExecuteMsg::SwapAndReturn {
             min_output: Uint128::new(1),
             recipient: RECIPIENT.to_string(),
@@ -67,7 +67,7 @@ fn two_coins_are_refused() {
     let err = execute(
         deps.as_mut(),
         mock_env(),
-        mock_info("anyone", &[coin(10, AETH), coin(1, "uosmo")]),
+        message_info(&Addr::unchecked("anyone"), &[coin(10, AETH), coin(1, "uosmo")]),
         ExecuteMsg::SwapAndReturn {
             min_output: Uint128::new(1),
             recipient: RECIPIENT.to_string(),
@@ -84,7 +84,7 @@ fn non_aether_recipient_is_refused() {
     let err = execute(
         deps.as_mut(),
         mock_env(),
-        mock_info("anyone", &[coin(10, AETH)]),
+        message_info(&Addr::unchecked("anyone"), &[coin(10, AETH)]),
         ExecuteMsg::SwapAndReturn {
             min_output: Uint128::new(1),
             recipient: OSMO.to_string(),
@@ -101,7 +101,7 @@ fn bad_checksum_is_refused() {
     let err = execute(
         deps.as_mut(),
         mock_env(),
-        mock_info("anyone", &[coin(10, AETH)]),
+        message_info(&Addr::unchecked("anyone"), &[coin(10, AETH)]),
         ExecuteMsg::SwapAndReturn {
             min_output: Uint128::new(1),
             recipient: "aether1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq".to_string(),
@@ -118,7 +118,7 @@ fn zero_min_output_is_refused() {
     let err = execute(
         deps.as_mut(),
         mock_env(),
-        mock_info("anyone", &[coin(10, AETH)]),
+        message_info(&Addr::unchecked("anyone"), &[coin(10, AETH)]),
         ExecuteMsg::SwapAndReturn {
             min_output: Uint128::zero(),
             recipient: RECIPIENT.to_string(),
@@ -156,7 +156,7 @@ fn timeout_then_retry_sends_only_to_that_recipient() {
     let err = execute(
         deps.as_mut(),
         mock_env(),
-        mock_info(OSMO, &[]),
+        message_info(&Addr::unchecked(OSMO), &[]),
         ExecuteMsg::RetryReturn {
             recipient: OSMO.to_string(),
         },
@@ -167,7 +167,7 @@ fn timeout_then_retry_sends_only_to_that_recipient() {
     let err = execute(
         deps.as_mut(),
         mock_env(),
-        mock_info(OSMO, &[]),
+        message_info(&Addr::unchecked(OSMO), &[]),
         ExecuteMsg::RetryReturn {
             recipient: "aether1qqqsyqcyq5rqwzqfpg9scrgwpugpzysn8pzh54".to_string(),
         },
@@ -181,7 +181,7 @@ fn timeout_then_retry_sends_only_to_that_recipient() {
     let res = execute(
         deps.as_mut(),
         mock_env(),
-        mock_info("anyone", &[]),
+        message_info(&Addr::unchecked("anyone"), &[]),
         ExecuteMsg::RetryReturn {
             recipient: RECIPIENT.to_string(),
         },
@@ -218,7 +218,7 @@ fn admin_cannot_move_owed_funds() {
     execute(
         deps.as_mut(),
         mock_env(),
-        mock_info(OSMO, &[]),
+        message_info(&Addr::unchecked(OSMO), &[]),
         ExecuteMsg::UpdateConfig {
             pool_id: Some(9),
             default_timeout_seconds: Some(120),
@@ -237,7 +237,7 @@ fn admin_cannot_move_owed_funds() {
     let err = execute(
         deps.as_mut(),
         mock_env(),
-        mock_info("osmo1other", &[]),
+        message_info(&Addr::unchecked("osmo1other"), &[]),
         ExecuteMsg::UpdateConfig {
             pool_id: Some(1),
             default_timeout_seconds: None,
@@ -441,7 +441,7 @@ fn timeouts_are_bounded() {
         let err = execute(
             deps.as_mut(),
             mock_env(),
-            mock_info(OSMO, &[coin(100, AETH)]),
+            message_info(&Addr::unchecked(OSMO), &[coin(100, AETH)]),
             ExecuteMsg::SwapAndReturn {
                 min_output: Uint128::new(1),
                 recipient: RECIPIENT.to_string(),
@@ -454,7 +454,7 @@ fn timeouts_are_bounded() {
     let err = execute(
         deps.as_mut(),
         mock_env(),
-        mock_info(OSMO, &[]),
+        message_info(&Addr::unchecked(OSMO), &[]),
         ExecuteMsg::UpdateConfig { pool_id: None, default_timeout_seconds: Some(0) },
     )
     .unwrap_err();

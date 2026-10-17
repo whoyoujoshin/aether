@@ -5,7 +5,7 @@
 //! Build the wasm first (`cargo wasm` or the optimizer), then:
 //!
 //! ```text
-//! WASM=target/wasm32-unknown-unknown/release/aether_swap.wasm cargo test --test swap
+//! WASM=target/wasm32-unknown-unknown/release/aether_swap.wasm cargo test --features integration --test swap
 //! ```
 //!
 //! A successful swap's return transfer is checked on the emitted message.
