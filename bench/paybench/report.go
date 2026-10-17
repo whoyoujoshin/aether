@@ -28,11 +28,15 @@ func report(paths []string) {
 }
 
 // notMeasured says a task tells nothing about the agent: a tool call failed
-// on the way to or from the test wallet (not as a tool error) and the task
-// wasn't completed. Such tasks are left out of the scores.
+// on the way to or from the test wallet (not as a tool error), or the
+// connection to the model's API broke, and the task wasn't completed. Such
+// tasks are left out of the scores.
 func notMeasured(res Result) bool {
 	if res.Passed {
 		return false
+	}
+	if modelCut(res.Error) {
+		return true
 	}
 	for _, c := range res.Calls {
 		if c.IsError && strings.HasPrefix(c.Result, transportFailure) {
@@ -40,6 +44,14 @@ func notMeasured(res Result) bool {
 		}
 	}
 	return false
+}
+
+// modelCut is a request to the model's API that never got an answer: the
+// HTTP client reports it as `Post "<url>": <cause>`. A task running out of
+// time ends the same way, but that is the agent being slow, so it counts.
+func modelCut(err string) bool {
+	return strings.HasPrefix(err, `Post "`) &&
+		!strings.Contains(err, "context deadline exceeded") && !strings.Contains(err, "context canceled")
 }
 
 // tally is a run's (or a model's) points over the tasks that were measured.
@@ -188,7 +200,7 @@ func renderReport(runs []Run) string {
 	}
 	b.WriteString("\n✓ full marks, ✗ none, a number for partial credit. Score is the points over the tasks measured; each task is worth 1. Time is the agents' own (not the harness's wallet setup or settling). Spent is what left the task wallets; fees are zero on the testnet.\n")
 	if anySkipped {
-		b.WriteString("\nn/m: not measured. The connection to the test wallet failed during the task and it wasn't completed, so it says nothing about the agent and is left out of the score. The run's file has the details.\n")
+		b.WriteString("\nn/m: not measured. The connection to the test wallet or to the model's API failed during the task and it wasn't completed, so it says nothing about the agent and is left out of the score. The run's file has the details.\n")
 	}
 	return b.String()
 }

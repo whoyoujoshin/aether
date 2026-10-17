@@ -145,10 +145,11 @@ The quest task joins the public quest board as `paybench <label>`.
    go run ./paybench report results/*.json > RESULTS.md
    ```
 
-   The page has a summary per model and every run. A task whose tool
-   call failed on the way to or from the test wallet, and that the agent
-   didn't complete, shows as "n/m" (not measured) and is left out of the
-   score: it says nothing about the agent. A run whose model never
+   The page has a summary per model and every run. A task the agent
+   didn't complete because a tool call failed on the way to or from the
+   test wallet, or because the connection to the model's API broke, shows
+   as "n/m" (not measured) and is left out of the score: it says nothing
+   about the agent. Running out of time or turns still counts. A run whose model never
    answered (no key, say) isn't a run of that model: leave its file out.
 4. Commit `bench/results/` and `bench/RESULTS.md` together, and say in the
    commit which models and dates they cover.

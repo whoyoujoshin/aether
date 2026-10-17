@@ -670,7 +670,7 @@ func toolCreateTestWallet(_ context.Context, req *mcp.CallToolRequest, _ struct{
 	}
 	out := createTestWalletOutput{
 		WalletToken: token, Address: address, Funding: newAmountDTO(sbx.grant), FundingTx: hash,
-		Note: "Testnet only, and custodial: this server can spend this wallet too. The funding lands with the next block (~60s): check get_test_wallet, then find_services and buy_service.",
+		Note: "Testnet only, and custodial: this server can spend this wallet too. The funding lands with the next block (~6s): check get_test_wallet, then find_services and buy_service.",
 	}
 	if usdc.IsPositive() {
 		d := newAssetAmountDTO(sbx.usdc, usdc)
