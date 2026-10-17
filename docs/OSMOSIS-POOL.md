@@ -7,7 +7,8 @@ reopened on 2026-10-17 (Aether `channel-3` ↔ Osmosis `channel-11852`,
 Aether's chain code. The `dex/` desk is the reference model for the
 tools; this is the real liquidity.
 
-**Status:** planned. Step 1 is read-only; nothing has been created.
+**Status:** probed 2026-10-17 on sync3; the pool is next (step 2). Nothing
+has been created on Osmosis yet.
 
 ## The pair: AETH / OSMO
 
@@ -26,20 +27,25 @@ The price is a testnet price: whatever ratio the first deposit sets.
 
 Every step that talks to Osmosis runs on **sync3**: since 2026-10-16
 Osmosis's testnet endpoints refuse the seed, and sync3 is where
-`cmd/outbound` runs. sync3 needs `osmosisd` for steps 2 and 4; copy the
-seed's binary over if it has none.
+`cmd/outbound` runs. sync3 has `osmosisd` v31.0.3 at `/root/osmosisd`
+(not on `PATH`), and reaches Osmosis at `https://rpc.testnet.osmosis.zone:443`.
+The AETH send in step 3 is an Aether transaction, so it runs on the seed,
+where `faucet-v3`'s key is.
 
-**Expected, from an outside survey (Grok, 2026-10-16), for the probe to
-confirm:**
-- **Pool creation fee:** 10 OSMO, read from the live LCDs.
-- **CosmWasm uploads:** open to anyone on testnet. Mainnet needs governance.
-- **ibc-hooks:** documented as enabled on Osmosis, but not confirmed
-  through the public LCD. Step 5 relies on it, so a test memo proves it
-  before any contract goes up.
-- **Endpoints:** only Osmosis's own, `rpc.testnet` and `rpc.osmotest5`,
-  answer. They share a prune point (about 1.87 million blocks kept), so
-  they're likely one backend under two names. Polkachu's testnet RPC no
-  longer resolves, and Reliable Ninjas' is down.
+**What the probe found (sync3, 2026-10-17):**
+- **Osmosis:** `v31.0.0-rc1`.
+- **Pool creation fee:** 1 OSMO (`1000000uosmo`). An outside survey (Grok,
+  2026-10-16) had said 10.
+- **Concentrated-liquidity pools:** anyone may create one.
+- **CosmWasm:** upload and instantiate are open to everybody.
+- **AETH on Osmosis:** none yet (supply 0 of the new denom).
+- **The relayer** (`osmo1mlv24mz4ygnfnp4x4345kpjyx2mqu99x2ag3rm`) holds
+  about 195 OSMO; keep at least 100 there for `cmd/outbound`'s gas.
+- **ibc-hooks is on.** Gitty sent 1000uaeth from Aether over `channel-3`
+  with a wasm memo to an address with no contract (Aether tx `95798716…EC0C`,
+  height 325,271). Osmosis ran the memo, acknowledged with the error "no
+  such contract", and Aether refunded the transfer within about 15 s. That
+  is the behaviour step 5 relies on: a failed swap refunds the AETH.
 
 ## 1. Probe (read-only, on sync3)
 
@@ -61,55 +67,71 @@ bash /root/osmosis-probe.sh 2>&1 | tee /root/osmosis-probe-$(date +%Y%m%d).log
 Keep the pool's funds apart from the relayer's gas money:
 
 ```bash
-osmosisd keys add aether-pool --keyring-backend test --home /root/.osmosisd-pool 2>&1 | tee /root/.osmosisd-pool-mnemonic.txt
+/root/osmosisd keys add aether-pool --keyring-backend test --home /root/.osmosisd-pool 2>&1 | tee /root/.osmosisd-pool-mnemonic.txt
 chmod 600 /root/.osmosisd-pool-mnemonic.txt
-osmosisd keys show aether-pool -a --keyring-backend test --home /root/.osmosisd-pool
+/root/osmosisd keys show aether-pool -a --keyring-backend test --home /root/.osmosisd-pool
 ```
 
 ## 3. Fund it
 
-**AETH**, over the live channel from the faucet's key (1,000 AETH shown;
-the amount is set once the probe is in):
+**AETH, 100 AETH, on the seed** from the faucet's key, over the live
+channel. Check `faucet-v3` first and keep most of it for the faucet:
 
 ```bash
-aetherd tx ibc-transfer transfer transfer channel-3 <osmo1… pool address> 1000000000uaeth \
+aetherd q bank balances $(aetherd keys show faucet-v3 -a --keyring-backend test --home /root/.aether) --node tcp://127.0.0.1:26657
+aetherd tx ibc-transfer transfer transfer channel-3 <osmo1… pool address> 100000000uaeth \
   --from faucet-v3 --keyring-backend test --home /root/.aether \
   --chain-id aether-testnet-1 --fees 0uaeth --gas auto -y
 ```
 
-It lands on Osmosis within a minute or two (`cmd/outbound` relays it).
+Helicase relays it onto Osmosis within a minute or two.
 
-**OSMO:** from Osmosis's testnet faucet in a browser, to the pool
-address. Fund the relayer only from what is above its 100 OSMO. Leave
-room for the pool creation fee from step 1 and for gas.
+**OSMO, 50 OSMO, on sync3**, from the relayer, which keeps about 145 (or
+from Osmosis's testnet faucet in a browser):
+
+```bash
+/root/osmosisd tx bank send <relayer key name> <osmo1… pool address> 50000000uosmo \
+  --keyring-backend test --home <the relayer's osmosisd home> \
+  --chain-id osmo-test-5 --node https://rpc.testnet.osmosis.zone:443 \
+  --gas auto --gas-adjustment 1.4 --gas-prices 0.05uosmo -y
+```
+
+Then check both arrived:
+
+```bash
+/root/osmosisd q bank balances <osmo1… pool address> --node https://rpc.testnet.osmosis.zone:443
+```
 
 ## 4. Create the pool
 
 A balancer pool with equal weights and a 0.3% swap fee, the same curve and
-fee as the `dex/` desk. `osmosisd` takes the amounts in base units:
+fee as the `dex/` desk. The first deposit sets the price: 100 AETH against
+40 OSMO makes 1 AETH = 0.4 OSMO, and leaves the pool key about 10 OSMO
+for the 1 OSMO creation fee and gas. `osmosisd` takes the amounts in base
+units:
 
 ```bash
 cat > /root/aether-pool.json <<'JSON'
 {
   "weights": "1ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1,1uosmo",
-  "initial-deposit": "1000000000ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1,<OSMO amount>uosmo",
+  "initial-deposit": "100000000ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1,40000000uosmo",
   "swap-fee": "0.003",
   "exit-fee": "0.000",
   "future-governor": ""
 }
 JSON
-osmosisd tx gamm create-pool --pool-file /root/aether-pool.json \
+/root/osmosisd tx gamm create-pool --pool-file /root/aether-pool.json \
   --from aether-pool --keyring-backend test --home /root/.osmosisd-pool \
-  --chain-id osmo-test-5 --node https://rpc.osmotest5.osmosis.zone:443 \
+  --chain-id osmo-test-5 --node https://rpc.testnet.osmosis.zone:443 \
   --gas auto --gas-adjustment 1.4 --gas-prices 0.05uosmo -y
 ```
 
 Then find the pool ID and check it quotes:
 
 ```bash
-osmosisd q tx <txhash> --node https://rpc.osmotest5.osmosis.zone:443 -o json \
+/root/osmosisd q tx <txhash> --node https://rpc.testnet.osmosis.zone:443 -o json \
   | jq -r '.events[] | select(.type=="pool_created") | .attributes[] | select(.key=="pool_id") | .value'
-POOL_ID=<n> bash scripts/osmosis-pool/probe.sh
+PATH=/root:$PATH POOL_ID=<n> bash /root/osmosis-probe.sh
 ```
 
 **Send Claude the pool ID and the probe's last two sections.** If
@@ -133,10 +155,9 @@ Two parts, in this order:
    - **Osmosis's own crosschain-swaps contract won't work for us.** It
      looks up channels and address prefixes in a registry that Osmosis
      maintains, and Aether isn't in it.
-   - **Step 1's upload access decides whether we can deploy our own.**
-     Upload is either open to anyone or limited to approved addresses. If
-     it's limited, ask Osmosis for an upload, or for Aether to be added
-     to that registry.
+   - **We can deploy our own:** the probe found upload and instantiate
+     open to everybody, and the ibc-hooks test above showed Osmosis runs
+     the memo and Aether refunds a failed one.
 
    Agents spend AETH through this path, so it gets the same caps as every
    other spend (owner-set, per payment and per day). It also gets a
