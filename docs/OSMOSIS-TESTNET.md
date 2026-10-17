@@ -96,82 +96,66 @@ On the seed, in this order:
    [IBC.md](IBC.md), [OSMOSIS-POOL.md](OSMOSIS-POOL.md) and CLAUDE.md.
    After that, the probe takes `AETH_DENOM=<new denom>`.
 
-### If Osmosis refuses the seed: open it from DardenPC
+### If Osmosis refuses the seed: open it from sync3
 
 On 2026-10-16 (12:51 to 12:55 PM CT) the seed's handshake got HTTP 403 on
 every try for the full four minutes of retries and stopped before
-creating anything. The clients belong to the chains, not to the machine
-that opens them, so the handshake can run from DardenPC instead, against
-peer-1's own node. That is how the Injective path was opened
-([INJECTIVE-TESTNET.md](INJECTIVE-TESTNET.md)). Run these in PowerShell
-on DardenPC.
+creating anything. The next morning sync3 and sync4 each got 24 of 24
+answers from `rpc.testnet.osmosis.zone`, while the seed got none from
+the third-party Osmosis RPCs either (Polkachu didn't connect, publicnode
+answered 404). The clients belong to the chains, not to the machine that
+opens them, so everything that talks to Osmosis moves to sync3: the
+handshake, then `cmd/outbound`. sync3's own node serves the Aether side.
 
-1. **Check that Osmosis answers DardenPC.** All 24 should print 200:
-   ```powershell
-   1..24 | ForEach-Object {
-     try { (Invoke-WebRequest https://rpc.testnet.osmosis.zone/status -UseBasicParsing).StatusCode }
-     catch { $_.Exception.Response.StatusCode.value__ }
-     Start-Sleep 2
-   }
+1. **Build on the seed from main** (`b10e31b` or later: the relayer
+   retries refused requests and logs each try; outbound backs off), then
+   copy the binaries and both relayer key homes to sync3:
+   ```bash
+   cd /root/aether-src && git pull
+   go build -o /root/aether-relayer ./cmd/relayer && go build -o /root/aether-outbound ./cmd/outbound
+   scp /root/aether-relayer /root/aether-outbound root@<sync3>:/root/
+   scp -r /root/relayer-keys /root/.osmosisd-relayer root@<sync3>:/root/
+   systemctl disable aether-outbound-osmosis   # stopped already; now it can't start again on the seed
    ```
-   If most are 403 here too, stop and tell Claude.
-2. **Build `relayer.exe`** with the retries (`6af88df` or later; it logs
-   each retry). `counterpartyd.exe` from the Injective setup is enough to
-   make the key in step 3.
-   ```powershell
-   cd C:\aether-data
-   git fetch origin; git checkout origin/main
-   go build -o C:\aether-bin\relayer.exe .\cmd\relayer
+   From here the Osmosis key signs only on sync3. Two machines signing
+   with one key race its account sequence.
+2. **Check sync3's node** is the one the relayer will use: chain
+   `aether-testnet-1`, not catching up, gRPC on 9090, and the `kv` tx
+   indexer, which the relayer needs to find its own transactions.
+   ```bash
+   curl -s 127.0.0.1:26657/status | jq -r '.result.node_info.network, .result.sync_info.catching_up'
+   grep -A2 '^\[tx_index\]' /root/.aether/config/config.toml      # indexer = "kv"
+   grep -A3 '^\[grpc\]' /root/.aether/config/app.toml              # enable = true, address ...:9090
    ```
-3. **An Osmosis key on DardenPC,** in its own home, then both addresses:
-   ```powershell
-   C:\aether-bin\counterpartyd.exe keys add relayer --keyring-backend test --home C:\aether-relayer\osmosis
-   C:\aether-bin\relayer.exe -show-addresses -aether-home C:\aether-relayer\aether -cparty-home C:\aether-relayer\osmosis -cparty-bech32-prefix osmo
-   ```
-   Write down the mnemonic. The Aether address is the `relayer` key that
-   opened the Injective path. Use the `osmo1…` address from `relayer.exe`:
-   `counterpartyd` shows the same key with a `cparty1…` prefix.
-4. **Fund both.**
-   - **OSMO:** send testnet OSMO to the `osmo1…` address from Osmosis's
-     testnet faucet (`faucet.testnet.osmosis.zone`), in a browser on
-     DardenPC. 5 OSMO covers the handshake and months of client updates
-     at `0.05uosmo`.
-   - **AETH:** the Aether key needs at least 1 AETH. Check it with:
-     ```powershell
-     C:\aether-bin\aetherd-new.exe query bank balances <aether1… address> --node tcp://127.0.0.1:26667
-     ```
-     Top it up from your wallet if it's below 1 AETH.
-5. **Open the path:**
-   ```powershell
-   C:\aether-bin\relayer.exe `
-     -aether-rpc http://127.0.0.1:26667 -aether-grpc 127.0.0.1:9091 `
-     -aether-chain-id aether-testnet-1 `
-     -aether-key relayer -aether-home C:\aether-relayer\aether -aether-gas-prices 0.0001uaeth `
-     -cparty-rpc https://rpc.testnet.osmosis.zone `
-     -cparty-grpc grpc.testnet.osmosis.zone:443 `
-     -cparty-chain-id osmo-test-5 -cparty-bech32-prefix osmo `
-     -cparty-key relayer -cparty-home C:\aether-relayer\osmosis `
-     -cparty-gas-prices 0.05uosmo `
-     -keyring-backend test 2>&1 | Tee-Object C:\aether-relayer\osmosis-handshake.log
-   ```
-   It ends with `round trip complete`. If it stops before creating
-   anything (for example on the gRPC address), fix that and run it again.
-   If it stops after `created client`, don't rerun it: send the log to
-   Claude.
-6. **Send Claude the log.** Step 4 above gives the new denom from it.
+   Use sync3's real home if it isn't `/root/.aether`, and its real ports
+   below if they differ.
+3. **Open the path, on sync3:** step 3's command as it stands, with the
+   log at `/root/osmosis-handshake-$(date +%Y%m%d).log`. It ends with
+   `round trip complete`. If it stops before `created client`, fix the
+   cause and run it again. If it stops after that, don't rerun it: send
+   the log to Claude.
+4. **`cmd/outbound` on sync3:** copy the seed's
+   `/etc/systemd/system/aether-outbound-osmosis.service` to sync3. Set
+   `--client-id` to Osmosis's new client of Aether, the RPC and gRPC that
+   worked in step 3, and the key homes from step 1. Then
+   `systemctl daemon-reload && systemctl enable --now aether-outbound-osmosis`
+   and `curl -s 127.0.0.1:8095/healthz | jq`. Do this the same day:
+   Osmosis's new client of Aether expires in about two days without it.
+5. **Helicase** (step 6), one node at a time, only while the other three
+   are signing:
+   - **sync3 and sync4:** point it at Aether's new client of Osmosis.
+   - **The seed:** take Osmosis out of its `[helicase]`. Helicase asks
+     Osmosis for updates every 2 seconds and doesn't back off when
+     refused. If Osmosis's refusal resets with each request, it will
+     never lift while the seed keeps asking. sync3 and sync4 cover
+     Osmosis without it.
+6. **ibcwatch** stays on the seed. Its line for Osmosis's client of
+   Aether can't read Osmosis from there; Claude will settle where that
+   line runs once the new client exists.
 
-Opening the path is only half the job. Once it's open, two things have to
-keep relaying, each from a machine Osmosis accepts:
-- **Onto Osmosis:** `outbound.exe` must refresh Osmosis's new client of
-  Aether within about two days of the handshake, or that client expires
-  too. If Osmosis still refuses the seed, it runs on DardenPC as a second
-  scheduled task, next to "Aether Outbound Injective", with its own health
-  port and the Osmosis key from step 3.
-- **Onto Aether:** Helicase must follow Aether's new client of Osmosis on
-  a validator that Osmosis answers, within its 80-hour trusting period.
-  If Osmosis refuses the seed, sync3 and sync4 alone may be enough.
-  Otherwise peer-1 has to follow it, which needs a peer-1 build that
-  takes comma lists (`52e881a` or later; it runs `2c32e6a`).
+If sync3 is refused too, the same steps work from DardenPC against
+peer-1's node (`http://127.0.0.1:26667`, `127.0.0.1:9091`), as the
+Injective path was opened ([INJECTIVE-TESTNET.md](INJECTIVE-TESTNET.md)).
 
 The gate (step 0) was governance proposals #3 and #4, both passed on
 4 October: `max_age_num_blocks` = 2,880 and `bond_cooldown` = 51,840
