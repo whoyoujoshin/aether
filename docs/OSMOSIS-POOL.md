@@ -169,7 +169,7 @@ full-range position, and Claude will write those commands.
 ## Swap contract
 
 `contracts/aether-swap`, deployed 2026-10-17 by Gitty from main `a87337c`
-(built on his workstation with Rust 1.81: 341,267 bytes, sha256
+(built on Gitty's own machine with Rust 1.81: 341,267 bytes, sha256
 `e18f729e…b303`). Store `E1E44DCA…2F388E`, **code 13375**; instantiate
 `64EB706E…C6ACA0`; contract
 `osmo14qlp2rly8gy322slcs0tvuus5e5rc4390llet43mw23reg0vdnfs0nv5hn`, with
