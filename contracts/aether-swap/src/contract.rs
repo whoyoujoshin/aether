@@ -25,6 +25,10 @@ pub fn instantiate(
         )));
     }
     let admin = deps.api.addr_validate(&msg.admin)?;
+    let default_timeout_seconds = msg
+        .default_timeout_seconds
+        .unwrap_or(DEFAULT_TIMEOUT_SECONDS);
+    crate::execute::check_timeout(default_timeout_seconds)?;
     CONFIG.save(
         deps.storage,
         &Config {
@@ -32,9 +36,7 @@ pub fn instantiate(
             channel_to_aether: msg.channel_to_aether,
             pool_id: msg.pool_id,
             admin,
-            default_timeout_seconds: msg
-                .default_timeout_seconds
-                .unwrap_or(DEFAULT_TIMEOUT_SECONDS),
+            default_timeout_seconds,
         },
     )?;
     Ok(Response::new().add_attribute("action", "instantiate"))

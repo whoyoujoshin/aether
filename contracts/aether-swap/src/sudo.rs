@@ -1,4 +1,4 @@
-use cosmwasm_std::{DepsMut, Response, Uint128};
+use cosmwasm_std::{DepsMut, Response};
 
 use crate::error::ContractError;
 use crate::msg::IBCLifecycleComplete;
@@ -49,6 +49,7 @@ mod tests {
     use super::*;
     use crate::msg::IBCLifecycleComplete;
     use crate::state::Inflight;
+    use cosmwasm_std::Uint128;
     use cosmwasm_std::testing::mock_dependencies;
 
     fn record(deps: &mut cosmwasm_std::OwnedDeps<cosmwasm_std::MemoryStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>) {

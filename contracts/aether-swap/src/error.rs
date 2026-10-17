@@ -1,10 +1,13 @@
-use cosmwasm_std::StdError;
+use cosmwasm_std::{OverflowError, StdError};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
+
+    #[error("{0}")]
+    Overflow(#[from] OverflowError),
 
     #[error("exactly one coin is required")]
     WrongCoinCount,
@@ -35,6 +38,9 @@ pub enum ContractError {
 
     #[error("nothing owed to {recipient}")]
     NothingOwed { recipient: String },
+
+    #[error("timeout_seconds {seconds} is outside {min}..={max}")]
+    BadTimeout { seconds: u64, min: u64, max: u64 },
 
     #[error("unauthorized")]
     Unauthorized,

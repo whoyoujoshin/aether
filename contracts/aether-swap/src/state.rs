@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Coin, Uint128};
+use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::{Item, Map};
 
 pub const CONFIG: Item<Config> = Item::new("config");
@@ -44,5 +44,7 @@ pub struct Inflight {
 }
 
 pub const DEFAULT_TIMEOUT_SECONDS: u64 = 600;
+pub const MIN_TIMEOUT_SECONDS: u64 = 60;
+pub const MAX_TIMEOUT_SECONDS: u64 = 86_400;
 pub const OSMO_DENOM: &str = "uosmo";
 pub const AETHER_HRP: &str = "aether";

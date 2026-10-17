@@ -34,7 +34,7 @@ fn swap_below_min_output_fails() {
     let app = OsmosisTestApp::new();
     let alice = app
         .init_account(&[
-            Coin::new(1_000_000_000u128, "uosmo"),
+            Coin::new(100_000_000_000u128, "uosmo"),
             Coin::new(1_000_000_000u128, AETH),
         ])
         .unwrap();
@@ -99,7 +99,7 @@ fn successful_swap_reaches_return_transfer() {
     let app = OsmosisTestApp::new();
     let alice = app
         .init_account(&[
-            Coin::new(1_000_000_000u128, "uosmo"),
+            Coin::new(100_000_000_000u128, "uosmo"),
             Coin::new(1_000_000_000u128, AETH),
         ])
         .unwrap();

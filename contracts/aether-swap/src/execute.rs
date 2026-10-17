@@ -10,8 +10,8 @@ use osmosis_std::types::osmosis::poolmanager::v1beta1::{
 use crate::contract::{SWAP_REPLY_ID, TRANSFER_REPLY_ID};
 use crate::error::ContractError;
 use crate::state::{
-    Config, Inflight, PendingSwap, PendingTransfer, CONFIG, INFLIGHT, OSMO_DENOM, OWED,
-    PENDING_SWAP, PENDING_TRANSFER,
+    Config, Inflight, PendingSwap, PendingTransfer, CONFIG, INFLIGHT, MAX_TIMEOUT_SECONDS,
+    MIN_TIMEOUT_SECONDS, OSMO_DENOM, OWED, PENDING_SWAP, PENDING_TRANSFER,
 };
 
 /// Accept exactly one AETH coin, swap it, and (in the reply) send the OSMO back.
@@ -31,6 +31,7 @@ pub fn swap_and_return(
     validate_aether_address(&recipient)?;
 
     let timeout_seconds = timeout_seconds.unwrap_or(cfg.default_timeout_seconds);
+    check_timeout(timeout_seconds)?;
     PENDING_SWAP.save(
         deps.storage,
         &PendingSwap {
@@ -95,7 +96,10 @@ pub fn handle_swap_reply(
         .add_attribute("action", "swap_reply")
         .add_attribute("output", output)
         .add_attribute("recipient", pending.recipient)
-        .add_submessage(SubMsg::reply_always(transfer, TRANSFER_REPLY_ID)))
+        // On success only: if the transfer can't even be sent (channel closed,
+        // client expired), the whole execute fails, so the swap is undone and
+        // Aether refunds the AETH. Timeouts and error acks arrive later via sudo.
+        .add_submessage(SubMsg::reply_on_success(transfer, TRANSFER_REPLY_ID)))
 }
 
 pub fn handle_transfer_reply(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
@@ -103,21 +107,6 @@ pub fn handle_transfer_reply(deps: DepsMut, reply: Reply) -> Result<Response, Co
         .may_load(deps.storage)?
         .ok_or(ContractError::NoPendingTransfer)?;
     PENDING_TRANSFER.remove(deps.storage);
-
-    // Immediate failure of the transfer submessage (channel missing, etc.).
-    // The OSMO is already in the contract; record it as owed so only the
-    // recipient can recover it. Timeouts and error acks arrive later via sudo.
-    if !reply.result.is_ok() {
-        let previous = OWED
-            .may_load(deps.storage, &pending.recipient)?
-            .unwrap_or_default();
-        let total = previous.checked_add(pending.amount)?;
-        OWED.save(deps.storage, &pending.recipient, &total)?;
-        return Ok(Response::new()
-            .add_attribute("action", "return_failed_owed")
-            .add_attribute("recipient", pending.recipient)
-            .add_attribute("amount", total));
-    }
 
     let cfg = CONFIG.load(deps.storage)?;
     let sequence = sequence_from_reply(&reply).ok_or(ContractError::MissingSequence)?;
@@ -169,7 +158,8 @@ pub fn retry_return(
         .add_attribute("action", "retry_return")
         .add_attribute("recipient", recipient)
         .add_attribute("amount", owed)
-        .add_submessage(SubMsg::reply_always(transfer, TRANSFER_REPLY_ID)))
+        // A send that fails at once reverts this call, which keeps OWED.
+        .add_submessage(SubMsg::reply_on_success(transfer, TRANSFER_REPLY_ID)))
 }
 
 pub fn update_config(
@@ -186,6 +176,7 @@ pub fn update_config(
         cfg.pool_id = pool_id;
     }
     if let Some(seconds) = default_timeout_seconds {
+        check_timeout(seconds)?;
         cfg.default_timeout_seconds = seconds;
     }
     CONFIG.save(deps.storage, &cfg)?;
@@ -213,6 +204,19 @@ pub fn return_transfer(
             env.contract.address
         )),
     })
+}
+
+/// A return transfer's timeout: long enough for the relayer to carry it, short
+/// enough that a stalled one comes back as owed the same day.
+pub fn check_timeout(seconds: u64) -> Result<(), ContractError> {
+    if !(MIN_TIMEOUT_SECONDS..=MAX_TIMEOUT_SECONDS).contains(&seconds) {
+        return Err(ContractError::BadTimeout {
+            seconds,
+            min: MIN_TIMEOUT_SECONDS,
+            max: MAX_TIMEOUT_SECONDS,
+        });
+    }
+    Ok(())
 }
 
 fn exactly_one_aeth(funds: &[Coin], aeth_denom: &str) -> Result<Coin, ContractError> {
@@ -247,15 +251,23 @@ pub fn validate_aether_address(recipient: &str) -> Result<(), ContractError> {
     }
 }
 
-fn parse_swap_output(reply: &Reply) -> Result<Uint128, ContractError> {
+const SWAP_RESPONSE_TYPE: &str = "/osmosis.poolmanager.v1beta1.MsgSwapExactAmountInResponse";
+
+/// The swap's output, from msg_responses (CosmWasm 2 chains) or, on older
+/// ones such as osmosis-test-tube 27, the deprecated data field.
+pub fn parse_swap_output(reply: &Reply) -> Result<Uint128, ContractError> {
     let SubMsgResult::Ok(resp) = &reply.result else {
         return Err(ContractError::MissingSwapOutput);
     };
-    let Some(data) = &resp.data else {
-        return Err(ContractError::MissingSwapOutput);
-    };
+    #[allow(deprecated)]
+    let data = resp
+        .msg_responses
+        .iter()
+        .find(|r| r.type_url == SWAP_RESPONSE_TYPE)
+        .map(|r| r.value.clone())
+        .or_else(|| resp.data.clone())
+        .ok_or(ContractError::MissingSwapOutput)?;
     let parsed: MsgSwapExactAmountInResponse = data
-        .clone()
         .try_into()
         .map_err(|e: cosmwasm_std::StdError| ContractError::Std(e))?;
     parsed
@@ -265,7 +277,8 @@ fn parse_swap_output(reply: &Reply) -> Result<Uint128, ContractError> {
         .map_err(|_| ContractError::MissingSwapOutput)
 }
 
-fn sequence_from_reply(reply: &Reply) -> Option<u64> {
+/// The return packet's sequence, from ibc-go's send_packet event.
+pub fn sequence_from_reply(reply: &Reply) -> Option<u64> {
     let SubMsgResult::Ok(resp) = &reply.result else {
         return None;
     };
@@ -278,15 +291,12 @@ fn sequence_from_reply(reply: &Reply) -> Option<u64> {
 }
 
 fn sequence_from_event(event: &Event) -> Option<u64> {
-    for attr in &event.attributes {
-        if matches!(
-            attr.key.as_str(),
-            "packet_sequence" | "sequence" | "packet_sequence_number"
-        ) {
-            if let Ok(n) = attr.value.parse::<u64>() {
-                return Some(n);
-            }
-        }
+    if event.ty != "send_packet" {
+        return None;
     }
-    None
+    event
+        .attributes
+        .iter()
+        .find(|a| a.key == "packet_sequence")
+        .and_then(|a| a.value.parse::<u64>().ok())
 }

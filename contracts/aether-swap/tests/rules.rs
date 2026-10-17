@@ -293,3 +293,103 @@ fn swap_reply_emits_return_transfer() {
         other => panic!("expected IBC transfer, got {other:?}"),
     }
 }
+
+#[test]
+fn return_transfer_failure_fails_the_swap() {
+    use aether_swap::contract::reply;
+    use aether_swap::state::{PendingSwap, PENDING_SWAP};
+    use cosmwasm_std::{Binary, MsgResponse, Reply, ReplyOn, SubMsgResponse, SubMsgResult};
+    use osmosis_std::types::osmosis::poolmanager::v1beta1::MsgSwapExactAmountInResponse;
+
+    let mut deps = setup();
+    PENDING_SWAP
+        .save(
+            deps.as_mut().storage,
+            &PendingSwap {
+                recipient: RECIPIENT.to_string(),
+                timeout_seconds: 600,
+            },
+        )
+        .unwrap();
+    let out: Binary = MsgSwapExactAmountInResponse {
+        token_out_amount: "98".to_string(),
+    }
+    .into();
+    #[allow(deprecated)]
+    let res = reply(
+        deps.as_mut(),
+        mock_env(),
+        Reply {
+            id: aether_swap::contract::SWAP_REPLY_ID,
+            payload: Binary::default(),
+            gas_used: 0,
+            result: SubMsgResult::Ok(SubMsgResponse {
+                events: vec![],
+                data: None,
+                msg_responses: vec![MsgResponse {
+                    type_url: "/osmosis.poolmanager.v1beta1.MsgSwapExactAmountInResponse".to_string(),
+                    value: out,
+                }],
+            }),
+        },
+    )
+    .unwrap();
+    // The output is read from msg_responses, and the return transfer replies
+    // only on success: a send that fails at once fails the whole execute, so
+    // Aether refunds the AETH instead of the OSMO sitting here as owed.
+    assert_eq!(res.messages.len(), 1);
+    assert_eq!(res.messages[0].reply_on, ReplyOn::Success);
+    match &res.messages[0].msg {
+        CosmosMsg::Ibc(IbcMsg::Transfer { amount, .. }) => assert_eq!(amount.amount, Uint128::new(98)),
+        other => panic!("expected IBC transfer, got {other:?}"),
+    }
+}
+
+#[test]
+fn sequence_comes_from_send_packet_only() {
+    use aether_swap::execute::sequence_from_reply;
+    use cosmwasm_std::{Binary, Event, Reply, SubMsgResponse, SubMsgResult};
+
+    let reply_with = |events: Vec<Event>| {
+        #[allow(deprecated)]
+        Reply {
+            id: 2,
+            payload: Binary::default(),
+            gas_used: 0,
+            result: SubMsgResult::Ok(SubMsgResponse { events, data: None, msg_responses: vec![] }),
+        }
+    };
+    let other = Event::new("acc_seq").add_attribute("sequence", "3");
+    let send = Event::new("send_packet")
+        .add_attribute("packet_src_channel", CHANNEL)
+        .add_attribute("packet_sequence", "41");
+    assert_eq!(sequence_from_reply(&reply_with(vec![other.clone(), send])), Some(41));
+    assert_eq!(sequence_from_reply(&reply_with(vec![other])), None);
+}
+
+#[test]
+fn timeouts_are_bounded() {
+    let mut deps = setup();
+    for seconds in [0u64, 59, 86_401, u64::MAX] {
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info(OSMO, &[coin(100, AETH)]),
+            ExecuteMsg::SwapAndReturn {
+                min_output: Uint128::new(1),
+                recipient: RECIPIENT.to_string(),
+                timeout_seconds: Some(seconds),
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::BadTimeout { .. }), "{seconds}: {err:?}");
+    }
+    let err = execute(
+        deps.as_mut(),
+        mock_env(),
+        mock_info(OSMO, &[]),
+        ExecuteMsg::UpdateConfig { pool_id: None, default_timeout_seconds: Some(0) },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::BadTimeout { .. }));
+}
