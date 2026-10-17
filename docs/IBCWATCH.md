@@ -56,18 +56,15 @@ Each IBC path has a client on both ends, and both expired in October 2026 with n
    It posts one message at start, listing every client and when it
    expires. That message shows the webhook works.
 
-**The Osmosis path reopened on 2026-10-17** ([OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md)):
-- **On the seed,** once Helicase follows the new client: change the Osmosis line to
-  `--watch "Aether's client of Osmosis,http://127.0.0.1:26657,07-tendermint-3"`,
-  then `daemon-reload` and restart the service. The old `07-tendermint-1`
-  expires around 2026-10-19, and until the line changes that shows as a
-  ⚠️ and then a 🔴 alert for a path that's already closed.
-- **Osmosis's client of Aether** (`07-tendermint-5287`) can't be read from
-  the seed, which Osmosis refuses. Run a second ibcwatch on sync3 with that
-  one line,
+**The Osmosis path reopened on 2026-10-17** ([OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md)), and both of its clients are watched:
+- **On the seed,** Aether's client of Osmosis is now
+  `--watch "Aether's client of Osmosis,http://127.0.0.1:26657,07-tendermint-3"`
+  (changed 2026-10-17 once Helicase followed it; unit backup
+  `aether-ibcwatch.service.bak-20261017`).
+- **On sync3,** a second ibcwatch watches Osmosis's client of Aether alone,
   `--watch "Osmosis's client of Aether,https://rpc.testnet.osmosis.zone,07-tendermint-5287"`,
-  and its own copy of `/root/ibcwatch.env` (copy it with `scp`, then
-  `chmod 600`).
+  since the seed can't read Osmosis. It has its own copy of
+  `/root/ibcwatch.env` (copied with `scp`, then `chmod 600`).
 
 Any new path gets the same two lines, one per end.
 

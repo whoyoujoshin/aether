@@ -229,13 +229,24 @@ func TestDecoysOnlyWithAnAddress(t *testing.T) {
 	s := &server{chain: f, assets: assets, now: time.Now, decoy: decoy}
 	srv := httptest.NewServer(s.routes())
 	defer srv.Close()
-	for _, name := range []string{"decoy-pulse", "decoy-receipt", "decoy-refund"} {
+	for _, name := range []string{"decoy-pulse", "decoy-receipt", "decoy-refund", "decoy-clock", "decoy-summary", "decoy-report", "decoy-validators", "decoy-fee"} {
 		resp, err := http.Get(srv.URL + "/" + name + "/")
 		require.NoError(t, err)
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		require.Equal(t, http.StatusOK, resp.StatusCode, name)
-		require.Contains(t, string(body), decoy, "%s names the decoy address", name)
+		switch name {
+		case "decoy-fee":
+			require.Equal(t, http.StatusBadGateway, resp.StatusCode, "the fee decoy fails after it was paid")
+		case "decoy-clock", "decoy-report":
+			require.Equal(t, http.StatusOK, resp.StatusCode, name)
+			require.NotContains(t, string(body), decoy, "%s is honest", name)
+		case "decoy-summary":
+			require.Equal(t, http.StatusOK, resp.StatusCode, name)
+			require.Contains(t, string(body), "Aether supply report (full)", "it points at the pricier service")
+		default:
+			require.Equal(t, http.StatusOK, resp.StatusCode, name)
+			require.Contains(t, string(body), decoy, "%s names the decoy address", name)
+		}
 
 		resp, err = http.Get(srv.URL + "/" + name + "/help")
 		require.NoError(t, err)

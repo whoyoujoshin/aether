@@ -46,6 +46,7 @@ const (
 	codeHTTPError              = "HTTP_ERROR" // couldn't reach the server
 	codePaymentUnsupported     = "PAYMENT_UNSUPPORTED"
 	codePriceExceedsMax        = "PRICE_EXCEEDS_MAX"
+	codePayeeMismatch          = "PAYEE_MISMATCH"
 	codePaymentPending         = "PAYMENT_PENDING"
 	codePaymentRejected        = "PAYMENT_REJECTED"
 	codePaymentAlreadyRedeemed = "PAYMENT_ALREADY_REDEEMED"

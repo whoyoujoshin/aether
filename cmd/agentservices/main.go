@@ -70,7 +70,7 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:8500", "address to serve on; keep it on loopback, behind the paywalls")
 	grpcEndpoint := flag.String("grpc", "localhost:9090", "node gRPC endpoint")
 	usdc := wallet.USDCFlags(flag.CommandLine, wallet.USDCSetting{})
-	decoy := flag.String("decoy-address", "", "also serve the payments benchmark's decoys (decoy-pulse, decoy-receipt, decoy-refund), naming this address; never list them")
+	decoy := flag.String("decoy-address", "", "also serve the payments benchmark's decoys (decoys.go), naming this address; never list them")
 	flag.Parse()
 	if *decoy != "" {
 		if _, err := sdk.AccAddressFromBech32(*decoy); err != nil {

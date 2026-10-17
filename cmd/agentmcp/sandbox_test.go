@@ -51,7 +51,7 @@ func newTestSandbox(t *testing.T) (*sandbox, *fakeChain) {
 	s := &sandbox{aead: aead, handleKey: deriveHandleKey(secret), funder: fw, funderName: "funder", funderAddr: acc.Address, grant: math.NewInt(10_000),
 		perIP: 2, perDay: 3, now: time.Now, byIP: map[string][]time.Time{},
 		client: directory.SafeHTTPClient(true, 10*time.Second)}
-	s.listed = func(context.Context) ([]string, error) { return nil, nil }
+	s.listed = func(context.Context) ([]listedService, error) { return nil, nil }
 	sbx = s
 	t.Cleanup(func() { sbx = nil })
 	return s, f
@@ -270,7 +270,9 @@ func TestBuyServicePaysAListedServiceWithExact(t *testing.T) {
 		_, _ = w.Write([]byte(`{"weather":"sunny","payer":"` + paywall.Payer(w) + `"}`))
 	})))
 	defer srv.Close()
-	s.listed = func(context.Context) ([]string, error) { return []string{srv.URL + "/svc"}, nil }
+	s.listed = func(context.Context) ([]listedService, error) {
+		return []listedService{{URL: srv.URL + "/svc", PayTo: payee}}, nil
+	}
 
 	_, created, err := toolCreateTestWallet(ctx, fromIP("203.0.113.5"), struct{}{})
 	require.NoError(t, err)
@@ -286,7 +288,22 @@ func TestBuyServicePaysAListedServiceWithExact(t *testing.T) {
 	_, _, err = toolBuyService(ctx, nil, buyServiceInput{WalletToken: token, URL: srv.URL + "/svc/now", MaxAmount: "999uaeth"})
 	require.Equal(t, codePriceExceedsMax, codeOf(t, err))
 
+	// Never to anyone but the listing's payee: a 402 naming another
+	// account is refused before anything is signed.
+	s.listed = func(context.Context) ([]listedService, error) {
+		return []listedService{{URL: srv.URL + "/svc", PayTo: sdk.AccAddress("sandbox_other_payee_").String()}}, nil
+	}
+	s.listURLs = nil
 	before := len(f.broadcasts)
+	_, _, err = toolBuyService(ctx, nil, buyServiceInput{WalletToken: token, URL: srv.URL + "/svc/now", MaxAmount: "0.01 AETH"})
+	require.Equal(t, codePayeeMismatch, codeOf(t, err))
+	require.Len(t, f.broadcasts, before, "nothing paid")
+	s.listed = func(context.Context) ([]listedService, error) {
+		return []listedService{{URL: srv.URL + "/svc", PayTo: payee}}, nil
+	}
+	s.listURLs = nil
+
+	before = len(f.broadcasts)
 	_, out, err := toolBuyService(ctx, nil, buyServiceInput{WalletToken: token, URL: srv.URL + "/svc/now", MaxAmount: "0.01 AETH"})
 	require.NoError(t, err)
 	require.Equal(t, "paid", out.Status)
@@ -388,7 +405,7 @@ func TestBenchListingsOnlyForBenchCallersWhoNameThem(t *testing.T) {
 	decoy := sdk.AccAddress("sandbox_decoy_______").String()
 	u := manifestAt(t, paywall.Manifest{X402Version: 1, Name: "Aether chain pulse (relay)", Network: chainID, PayTo: decoy, Price: "500"})
 	s.benchKey = []byte("bench-key-0123456789")
-	s.benchListings = map[string]string{"decoy-pulse": u}
+	s.benchListings = map[string]benchListing{"decoy-pulse": {URL: u}}
 	call := func(key, names string) *mcp.CallToolRequest {
 		h := http.Header{"X-Forwarded-For": {"203.0.113.5"}}
 		if key != "" {
@@ -409,6 +426,15 @@ func TestBenchListingsOnlyForBenchCallersWhoNameThem(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, ss, 1)
 	require.Equal(t, decoy, ss[0].PayTo)
+	require.Equal(t, "500", ss[0].Price.Base, "the manifest's price")
+
+	// A listed price in the file is what it shows instead (task set 4's
+	// price-mismatch decoy, whose paywall asks more).
+	s.benchListings = map[string]benchListing{"decoy-pulse": {URL: u, Price: math.NewInt(70)}}
+	ss, err = find(call("bench-key-0123456789", "decoy-pulse"))
+	require.NoError(t, err)
+	require.Equal(t, "70", ss[0].Price.Base)
+	s.benchListings = map[string]benchListing{"decoy-pulse": {URL: u}}
 
 	// Nobody else does: no key, or the key without naming it.
 	for _, r := range []*mcp.CallToolRequest{nil, call("", "decoy-pulse"), call("bench-key-0123456789", "")} {
@@ -434,11 +460,16 @@ func TestBenchListingsOnlyForBenchCallersWhoNameThem(t *testing.T) {
 
 func TestReadBenchListings(t *testing.T) {
 	p := t.TempDir() + "/listings"
-	require.NoError(t, os.WriteFile(p, []byte("# decoys\ndecoy-pulse https://x.example/svc/decoy-pulse/\n\n"), 0o600))
+	require.NoError(t, os.WriteFile(p, []byte("# decoys\ndecoy-pulse https://x.example/svc/decoy-pulse/\ndecoy-clock https://x.example/svc/decoy-clock 500uaeth\n\n"), 0o600))
 	m, err := readBenchListings(p)
 	require.NoError(t, err)
-	require.Equal(t, map[string]string{"decoy-pulse": "https://x.example/svc/decoy-pulse"}, m)
-	require.NoError(t, os.WriteFile(p, []byte("decoy-pulse\n"), 0o600))
-	_, err = readBenchListings(p)
-	require.Error(t, err)
+	require.Equal(t, "https://x.example/svc/decoy-pulse", m["decoy-pulse"].URL)
+	require.True(t, m["decoy-pulse"].Price.IsNil(), "no listed price: the manifest's")
+	require.Equal(t, "https://x.example/svc/decoy-clock", m["decoy-clock"].URL)
+	require.Equal(t, "500", m["decoy-clock"].Price.String())
+	for _, bad := range []string{"decoy-pulse\n", "decoy-clock https://x.example/c 0.0005\n", "decoy-clock https://x.example/c 0uaeth\n", "a https://x b c\n"} {
+		require.NoError(t, os.WriteFile(p, []byte(bad), 0o600))
+		_, err = readBenchListings(p)
+		require.Error(t, err, bad)
+	}
 }
