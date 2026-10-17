@@ -24,10 +24,30 @@ OSMO is on every Osmosis testnet account and comes from Osmosis's faucet. An AET
 
 The price is a testnet price: whatever ratio the first deposit sets.
 
-## 1. Probe (read-only, on the seed)
+Every step that talks to Osmosis runs on **sync3**: since 2026-10-16
+Osmosis's testnet endpoints refuse the seed, and sync3 is where
+`cmd/outbound` runs. sync3 needs `osmosisd` for steps 2 and 4; copy the
+seed's binary over if it has none.
+
+**Expected, from an outside survey (Grok, 2026-10-16), for the probe to
+confirm:**
+- **Pool creation fee:** 10 OSMO, read from the live LCDs.
+- **CosmWasm uploads:** open to anyone on testnet. Mainnet needs governance.
+- **ibc-hooks:** documented as enabled on Osmosis, but not confirmed
+  through the public LCD. Step 5 relies on it, so a test memo proves it
+  before any contract goes up.
+- **Endpoints:** only Osmosis's own, `rpc.testnet` and `rpc.osmotest5`,
+  answer. They share a prune point (about 1.87 million blocks kept), so
+  they're likely one backend under two names. Polkachu's testnet RPC no
+  longer resolves, and Reliable Ninjas' is down.
+
+## 1. Probe (read-only, on sync3)
+
+It needs only `curl` and `jq`, so sync3 doesn't need the repo:
 
 ```bash
-cd /root/aether-src && git pull && bash scripts/osmosis-pool/probe.sh
+curl -fsSL https://raw.githubusercontent.com/whoyoujoshin/aether/main/scripts/osmosis-pool/probe.sh -o /root/osmosis-probe.sh
+bash /root/osmosis-probe.sh 2>&1 | tee /root/osmosis-probe-$(date +%Y%m%d).log
 ```
 
 **Send Claude the whole output.** It shows what decides the next steps:

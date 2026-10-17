@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Read-only. What Osmosis testnet allows, before creating the AETH pool
-# (docs/OSMOSIS-POOL.md). Run on the seed, which can reach Osmosis, and
+# (docs/OSMOSIS-POOL.md). Run on sync3, which Osmosis answers (it refuses the seed), and
 # send the whole output to Claude. POOL_ID=<n> also checks a pool's quote.
 set -uo pipefail
 LCD=${LCD:-https://lcd.osmotest5.osmosis.zone}
