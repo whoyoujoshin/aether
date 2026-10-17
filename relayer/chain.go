@@ -21,6 +21,7 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
+	jsonrpcclient "github.com/cometbft/cometbft/rpc/jsonrpc/client"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -31,6 +32,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec/address"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 
 	"github.com/whoyoujoshin/aether/crypto/ethsecp256k1"
@@ -88,13 +90,22 @@ func grpcDial(addr string) (string, credentials.TransportCredentials) {
 // NewChain dials rpcAddr/grpcAddr and builds a client.Context + tx.Factory
 // signing as fromName out of kr. gasPrices is a coin string like
 // "0.0001uaeth" or "" for a chain with no minimum gas price.
+//
+// Requests the RPC's gateway refuses (403, 429, 502, 503) or that never
+// connect are retried for about four minutes (see retry.go), so one
+// flaky public RPC doesn't stop a handshake halfway.
 func NewChain(name, rpcAddr, grpcAddr, chainID, bech32Prefix string, cdc codec.Codec, txConfig client.TxConfig, kr keyring.Keyring, fromName, gasPrices string) (*Chain, error) {
-	rpcClient, err := rpchttp.New(rpcAddr, "/websocket")
+	httpClient, err := jsonrpcclient.DefaultHTTPClient(rpcAddr)
+	if err != nil {
+		return nil, fmt.Errorf("%s: rpc %s: %w", name, rpcAddr, err)
+	}
+	httpClient.Transport = retryTransport{base: httpClient.Transport, waits: retryWaits}
+	rpcClient, err := rpchttp.NewWithClient(rpcAddr, "/websocket", httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("%s: dialing rpc %s: %w", name, rpcAddr, err)
 	}
 	target, creds := grpcDial(grpcAddr)
-	grpcConn, err := grpc.NewClient(target, grpc.WithTransportCredentials(creds))
+	grpcConn, err := grpc.NewClient(target, grpc.WithTransportCredentials(creds), grpc.WithUnaryInterceptor(retryUnary(retryWaits)))
 	if err != nil {
 		return nil, fmt.Errorf("%s: dialing grpc %s: %w", name, grpcAddr, err)
 	}
@@ -193,7 +204,9 @@ func (c *Chain) SignAndBroadcast(msgs ...sdk.Msg) ([]abci.Event, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: broadcasting tx: %w", c.Name, err)
 	}
-	if res.Code != 0 {
+	// Code 19 is the node saying it already has this tx: a retried
+	// broadcast whose first try got through after all.
+	if res.Code != 0 && res.Code != sdkerrors.ErrTxInMempoolCache.ABCICode() {
 		return nil, fmt.Errorf("%s: tx %s rejected: code %d: %s", c.Name, res.TxHash, res.Code, res.RawLog)
 	}
 	return c.waitForTx(res.TxHash)

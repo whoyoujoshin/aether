@@ -66,6 +66,10 @@ On the seed, in this order:
      -cparty-gas-prices 0.05uosmo \
      -keyring-backend test 2>&1 | tee /root/osmosis-handshake-20261016.log
    ```
+   The relayer retries each request the RPC or gRPC gateway refuses
+   (HTTP 403, 429, 502, 503, or a connection that never opens) for about
+   four minutes, so an RPC that refuses some of its requests is no reason
+   to wait; only one that refuses everything for four minutes stops it.
    It ends with `round trip complete`. If it fails partway, send the log
    before running it again (a rerun opens another set of clients).
 4. **The new AETH denom on Osmosis**, from Osmosis's side of the new
@@ -91,6 +95,67 @@ On the seed, in this order:
    new denom and the `/healthz` output. Claude updates this page,
    [IBC.md](IBC.md), [OSMOSIS-POOL.md](OSMOSIS-POOL.md) and CLAUDE.md.
    After that, the probe takes `AETH_DENOM=<new denom>`.
+
+### If Osmosis refuses the seed: open it from sync3
+
+On 2026-10-16 (12:51 to 12:55 PM CT) the seed's handshake got HTTP 403 on
+every try for the full four minutes of retries and stopped before
+creating anything. The next morning sync3 and sync4 each got 24 of 24
+answers from `rpc.testnet.osmosis.zone`, while the seed got none from
+the third-party Osmosis RPCs either (Polkachu didn't connect, publicnode
+answered 404). The clients belong to the chains, not to the machine that
+opens them, so everything that talks to Osmosis moves to sync3: the
+handshake, then `cmd/outbound`. sync3's own node serves the Aether side.
+
+1. **Build on the seed from main** (`b10e31b` or later: the relayer
+   retries refused requests and logs each try; outbound backs off), then
+   copy the binaries and both relayer key homes to sync3:
+   ```bash
+   cd /root/aether-src && git pull
+   go build -o /root/aether-relayer ./cmd/relayer && go build -o /root/aether-outbound ./cmd/outbound
+   scp /root/aether-relayer /root/aether-outbound root@<sync3>:/root/
+   scp -r /root/relayer-keys /root/.osmosisd-relayer root@<sync3>:/root/
+   systemctl disable aether-outbound-osmosis   # stopped already; now it can't start again on the seed
+   ```
+   From here the Osmosis key signs only on sync3. Two machines signing
+   with one key race its account sequence.
+2. **Check sync3's node** is the one the relayer will use: chain
+   `aether-testnet-1`, not catching up, gRPC on 9090, and the `kv` tx
+   indexer, which the relayer needs to find its own transactions.
+   ```bash
+   curl -s 127.0.0.1:26657/status | jq -r '.result.node_info.network, .result.sync_info.catching_up'
+   grep -A2 '^\[tx_index\]' /root/.aether/config/config.toml      # indexer = "kv"
+   grep -A3 '^\[grpc\]' /root/.aether/config/app.toml              # enable = true, address ...:9090
+   ```
+   Use sync3's real home if it isn't `/root/.aether`, and its real ports
+   below if they differ.
+3. **Open the path, on sync3:** step 3's command as it stands, with the
+   log at `/root/osmosis-handshake-$(date +%Y%m%d).log`. It ends with
+   `round trip complete`. If it stops before `created client`, fix the
+   cause and run it again. If it stops after that, don't rerun it: send
+   the log to Claude.
+4. **`cmd/outbound` on sync3:** copy the seed's
+   `/etc/systemd/system/aether-outbound-osmosis.service` to sync3. Set
+   `--client-id` to Osmosis's new client of Aether, the RPC and gRPC that
+   worked in step 3, and the key homes from step 1. Then
+   `systemctl daemon-reload && systemctl enable --now aether-outbound-osmosis`
+   and `curl -s 127.0.0.1:8095/healthz | jq`. Do this the same day:
+   Osmosis's new client of Aether expires in about two days without it.
+5. **Helicase** (step 6), one node at a time, only while the other three
+   are signing:
+   - **sync3 and sync4:** point it at Aether's new client of Osmosis.
+   - **The seed:** take Osmosis out of its `[helicase]`. Helicase asks
+     Osmosis for updates every 2 seconds and doesn't back off when
+     refused. If Osmosis's refusal resets with each request, it will
+     never lift while the seed keeps asking. sync3 and sync4 cover
+     Osmosis without it.
+6. **ibcwatch** stays on the seed. Its line for Osmosis's client of
+   Aether can't read Osmosis from there; Claude will settle where that
+   line runs once the new client exists.
+
+If sync3 is refused too, the same steps work from DardenPC against
+peer-1's node (`http://127.0.0.1:26667`, `127.0.0.1:9091`), as the
+Injective path was opened ([INJECTIVE-TESTNET.md](INJECTIVE-TESTNET.md)).
 
 The gate (step 0) was governance proposals #3 and #4, both passed on
 4 October: `max_age_num_blocks` = 2,880 and `bond_cooldown` = 51,840
