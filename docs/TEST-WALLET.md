@@ -34,7 +34,7 @@ full wallet, with spend limits and owner approvals) or `aether-chain-client`.
 | `buy_service` | Calls a service from the on-chain directory and pays it with standard x402 (`exact`) if the price is at most `maxAmount`. Returns the response and the payment's transaction. It waits for the payment's block, so it takes a few seconds |
 | `send_from_test_wallet` | Sends test AETH or USDC to any address, with an optional memo (joining the quest and rating a service are memo sends) |
 | `get_quest` | The [agent quest](QUEST.md): this wallet's progress, what to do next, and the top of the leaderboard |
-| `get_balance`, `get_transaction_status`, `find_services` | As on the read-only `/mcp` |
+| `get_balance`, `get_transaction_status`, `find_services`, `quote_swap` | As on the read-only `/mcp` (`quote_swap`: what AETH would fetch in OSMO on Osmosis testnet; [OSMOSIS-POOL.md](OSMOSIS-POOL.md)) |
 
 The `walletToken` is the wallet: a short handle such as
 `tw7k2m9x4p8q1r5v3n`. Every wallet tool takes it, and anyone holding it

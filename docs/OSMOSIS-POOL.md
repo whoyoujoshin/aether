@@ -218,10 +218,28 @@ Killing rustc ended it; nothing was restarted or lost.
 
 Two parts, in this order:
 
-1. **Quote (read-only).** A tool on the public `/mcp`, the test wallet and
-   `agentmcp`. It reads the pool's reserves and Osmosis's own swap estimate
-   from Osmosis's API. Nothing to sign, so this ships first, built against
-   the real responses from step 4.
+1. **Quote (read-only): `quote_swap`.** On the public `/mcp`, the test
+   wallet and `agentmcp`. Given an AETH amount (and optionally
+   `slippagePercent`, default 1), it returns:
+   - the OSMO the swap would return, from Osmosis's own estimate, so its
+     0.1% taker fee is counted;
+   - the price before the swap and the price it gets;
+   - `costPercent`, fees and price impact together;
+   - a `minOutput` for that slippage;
+   - the denom the OSMO arrives as on Aether (`ibc/47BD…9E23`).
+
+   It reads `/osmosis/poolmanager/v1beta1/pools/1370` and
+   `…/1370/estimate/single_pool_swap_exact_amount_in` from the
+   `--osmosis-rest` endpoints, tried in order. On aether-testnet-1 the
+   default is `lcd.osmotest5.osmosis.zone`, then `lcd.testnet.osmosis.zone`;
+   `off` turns the tool off. `--osmosis-pool` sets the pool, default 1370.
+
+   Each answer is kept for 10 s, and a server asks Osmosis at most 30
+   times a minute, whoever is calling, so a busy public `/mcp` can't get
+   itself banned the way the seed's relayer once was. Over that, it
+   answers `QUOTE_UNAVAILABLE` with `retryAfterSeconds`. The tests use
+   the pool and estimate responses recorded at creation (1 AETH:
+   394,472 uosmo, cost 1.38%).
 2. **Swap from Aether.** The agent sends AETH over `channel-3` with a memo.
    On Osmosis, a contract swaps it in the pool and sends the OSMO back to
    the agent's Aether address. If the swap fails, the transfer fails and

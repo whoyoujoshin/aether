@@ -72,12 +72,16 @@ const (
 	codeAssetNotEnabled = "ASSET_NOT_ENABLED"
 	// fetch_paid: the service charges one asset and maxAmount is in another
 	codeAssetMismatch = "ASSET_MISMATCH"
+	// quote_swap
+	codeQuoteUnavailable  = "QUOTE_UNAVAILABLE"   // Osmosis didn't answer, or this server is pacing its calls
+	codeSwapNotConfigured = "SWAP_NOT_CONFIGURED" // no Osmosis pool set for this chain
 )
 
 var retryableCodes = map[string]bool{
 	codeNodeUnreachable:    true,
 	codeBroadcastUncertain: true,
 	codeHTTPError:          true,
+	codeQuoteUnavailable:   true,
 	codePaymentPending:     true,
 	codeWithdrawalFailed:   true,
 }
