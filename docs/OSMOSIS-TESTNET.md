@@ -6,7 +6,7 @@ Rewritten 2026-10-03 for how relaying works now (Helicase onto Aether,
 `cmd/outbound` onto Osmosis). **Executed 4 to 5 October 2026; the path is
 live.**
 
-## Status: reopened 2026-10-17 from sync3; Helicase not yet switched
+## Status: live both ways since 2026-10-17 04:26 UTC
 
 The second path was opened on 2026-10-17 (about 02:50 UTC, Aether tip
 319,366) by `cmd/relayer` on sync3, after Osmosis kept refusing the
@@ -14,15 +14,17 @@ seed. The round trip of 12,345 uaeth went out and back.
 
 | | Aether (`aether-testnet-1`) | Osmosis (`osmo-test-5`) |
 |---|---|---|
-| Client | `07-tendermint-3` (of Osmosis; Helicase is to update it) | `07-tendermint-5287` (of Aether; `cmd/outbound` on sync3 updates it) |
+| Client | `07-tendermint-3` (of Osmosis; Helicase on sync3 and sync4 updates it) | `07-tendermint-5287` (of Aether; `cmd/outbound` on sync3 updates it) |
 | Connection | `connection-3` | `connection-4615` |
 | Channel | `transfer/channel-3` | `transfer/channel-11852` |
 | Trusting period | 80 h (Osmosis unbonds in 120 h) | ~54 h (Aether's 80 h 39 min unbonding × 2/3) |
 
 - **AETH on Osmosis:** `ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1` (sha256 of `transfer/channel-11852/uaeth`).
 - **Onto Osmosis:** `aether-outbound-osmosis` runs on sync3 (`--client-id 07-tendermint-5287`, gRPC `grpc.testnet.osmosis.zone:443`). It is disabled on the seed.
-- **Onto Aether: not yet.** Helicase on the seed, sync3 and sync4 still follows `07-tendermint-1` over `rpc.osmotest5.osmosis.zone`. Until sync3 and sync4 follow `07-tendermint-3`, nothing relays Osmosis's packets or acknowledgements onto Aether, so don't send over `channel-3` yet. `07-tendermint-3` expires about 2026-10-20 10:00 UTC unless Helicase updates it first.
-- **Relayer accounts and key homes:** as before (below), now on sync3.
+- **Onto Aether:** Helicase on sync3 and sync4 follows `07-tendermint-3` over `https://rpc.testnet.osmosis.zone` (switched 04:18 and 04:20 UTC, one node at a time with all four signing; `app.toml.bak-20261017` on each). The seed's `[helicase]` is empty, so the seed no longer polls Osmosis.
+- **End to end (2026-10-17):** 1 AETH out over `channel-3` (`8D3A5809…3647`, Aether 320,239) landed on Osmosis in about 24 s; back from Osmosis (`FF01743A…0C99`, Osmosis 76,461,302) in about 19 s. Afterwards no packet commitments were pending on either end.
+- **Relayer accounts and key homes:** as before (below), now on sync3, which also has `osmosisd` v31.0.3 at `/root/osmosisd` (copied from the seed) to sign with the Osmosis relayer key.
+- **Alerts:** the seed's ibcwatch watches `07-tendermint-3`; a second ibcwatch on sync3 watches Osmosis's `07-tendermint-5287`.
 
 ## First path: 2026-10-04 to 2026-10-13 (closed)
 
