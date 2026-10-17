@@ -1,3 +1,4 @@
+#![cfg(feature = "integration")]
 //! Swap tests against a real Osmosis app.
 //!
 //! These need osmosis-test-tube's native library and a compiled wasm.
