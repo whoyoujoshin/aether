@@ -122,9 +122,14 @@ why it stays on testnet only.
 ## Tests
 
 ```bash
-cargo test --lib --test rules
-WASM=target/wasm32-unknown-unknown/release/aether_swap.wasm cargo test --test swap
+cargo test --locked --lib --test rules
+WASM=target/wasm32-unknown-unknown/release/aether_swap.wasm cargo test --features integration --test swap
 ```
+
+`tests/swap.rs` builds Osmosis from source, so it sits behind the
+`integration` feature and CI (`.github/workflows/contract.yml`) skips it.
+CI runs the rules tests, builds the wasm with Rust 1.81 and checks it with
+`cosmwasm-check` 2.1.4, which rejects a bulk-memory build.
 
 `tests/rules.rs` covers denom, coin count, recipient checksum and prefix,
 the timeout-to-owed path, `retry_return` refusing a different recipient,

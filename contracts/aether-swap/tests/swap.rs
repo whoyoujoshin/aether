@@ -1,10 +1,11 @@
+#![cfg(feature = "integration")]
 //! Swap tests against a real Osmosis app.
 //!
 //! These need osmosis-test-tube's native library and a compiled wasm.
 //! Build the wasm first (`cargo wasm` or the optimizer), then:
 //!
 //! ```text
-//! WASM=target/wasm32-unknown-unknown/release/aether_swap.wasm cargo test --test swap
+//! WASM=target/wasm32-unknown-unknown/release/aether_swap.wasm cargo test --features integration --test swap
 //! ```
 //!
 //! A successful swap's return transfer is checked on the emitted message.

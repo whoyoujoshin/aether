@@ -1,9 +1,8 @@
 package app
 
 import (
-	
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "cosmossdk.io/errors"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/auth/signing"
 
 	"github.com/whoyoujoshin/aether/crypto/mldsa"

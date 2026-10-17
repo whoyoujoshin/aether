@@ -1,0 +1,55 @@
+name: aether-swap contract
+
+# Tests and checks the Osmosis swap contract. Rust 1.81.0 only:
+# newer rustc emits bulk-memory, which the chain's CosmWasm VM refuses.
+on:
+  push:
+    paths:
+      - 'contracts/aether-swap/**'
+      - '.github/workflows/contract.yml'
+  pull_request:
+    paths:
+      - 'contracts/aether-swap/**'
+      - '.github/workflows/contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Test and check wasm
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts/aether-swap
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.81.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/aether-swap/target
+          key: ${{ runner.os }}-cargo-1.81.0-${{ hashFiles('contracts/aether-swap/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.81.0-
+
+      - name: Unit and rules tests
+        run: cargo test --locked --lib --test rules
+
+      - name: Build wasm
+        env:
+          RUSTFLAGS: '-C link-arg=-s'
+        run: cargo build --locked --release --lib --target wasm32-unknown-unknown
+
+      - name: Install cosmwasm-check 2.1.4
+        run: cargo install cosmwasm-check --version 2.1.4 --locked
+        working-directory: ${{ github.workspace }}
+
+      - name: Check wasm
+        run: cosmwasm-check target/wasm32-unknown-unknown/release/aether_swap.wasm

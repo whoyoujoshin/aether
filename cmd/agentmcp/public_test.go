@@ -102,12 +102,11 @@ func TestPublicFindServicesDoesNotOpenKeyring(t *testing.T) {
 	prevKR, prevTrust := keyringDir, trustedRaters
 	keyringDir = kr
 	trustedRaters = nil
-	fired := sync.Once{}
-	fired.Do(func() {})
-	dirOnce = fired
 	dir = &directory.Directory{
 		Scan: func() ([]wallet.IncomingPayment, error) { return nil, nil },
 	}
+	// Fire the existing Once in place. Assigning a used sync.Once copies it.
+	dirOnce.Do(func() {})
 	t.Cleanup(func() {
 		dir, dirOnce = nil, sync.Once{}
 		keyringDir, trustedRaters = prevKR, prevTrust

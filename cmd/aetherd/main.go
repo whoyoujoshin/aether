@@ -9,35 +9,34 @@ import (
 	"github.com/spf13/cobra"
 
 	"cosmossdk.io/log"
+	feegrantcli "cosmossdk.io/x/feegrant/client/cli"
 	cmtcfg "github.com/cometbft/cometbft/config"
 	dbm "github.com/cosmos/cosmos-db"
-	"github.com/cosmos/cosmos-sdk/client/keys"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
+	"github.com/cosmos/cosmos-sdk/client/keys"
+	"github.com/cosmos/cosmos-sdk/client/rpc"
+	addresscodec "github.com/cosmos/cosmos-sdk/codec/address"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/cosmos/cosmos-sdk/server"
 	svrcmd "github.com/cosmos/cosmos-sdk/server/cmd"
 	serverconfig "github.com/cosmos/cosmos-sdk/server/config"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
-	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
 	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
-	powcli "github.com/whoyoujoshin/aether/x/pow/client/cli"
-	governancecli "github.com/whoyoujoshin/aether/x/governance/client/cli"
-	treasurycli "github.com/whoyoujoshin/aether/x/treasury/client/cli"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	authzcli "github.com/cosmos/cosmos-sdk/x/authz/client/cli"
+	bankcli "github.com/cosmos/cosmos-sdk/x/bank/client/cli"
+	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
+	icacli "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/client/cli"
+	ibctransfercli "github.com/cosmos/ibc-go/v8/modules/apps/transfer/client/cli"
+	ibccli "github.com/cosmos/ibc-go/v8/modules/core/client/cli"
+	"github.com/whoyoujoshin/aether/app"
+	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	accountauthcli "github.com/whoyoujoshin/aether/x/accountauth/client/cli"
 	escrowcli "github.com/whoyoujoshin/aether/x/escrow/client/cli"
-	"github.com/whoyoujoshin/aether/app"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	"github.com/cosmos/cosmos-sdk/client/rpc"
-	"github.com/cosmos/cosmos-sdk/crypto/keyring"
-	"github.com/whoyoujoshin/aether/crypto/mldsa"
-	bankcli "github.com/cosmos/cosmos-sdk/x/bank/client/cli"
-	authzcli "github.com/cosmos/cosmos-sdk/x/authz/client/cli"
-	feegrantcli "cosmossdk.io/x/feegrant/client/cli"
-	addresscodec "github.com/cosmos/cosmos-sdk/codec/address"
-	ibccli "github.com/cosmos/ibc-go/v8/modules/core/client/cli"
-	ibctransfercli "github.com/cosmos/ibc-go/v8/modules/apps/transfer/client/cli"
-	icacli "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/client/cli"
-
+	governancecli "github.com/whoyoujoshin/aether/x/governance/client/cli"
+	powcli "github.com/whoyoujoshin/aether/x/pow/client/cli"
+	treasurycli "github.com/whoyoujoshin/aether/x/treasury/client/cli"
 )
 
 var encodingConfig = app.MakeEncodingConfig()
@@ -79,19 +78,19 @@ func main() {
 	}
 
 	keysCmd := keys.Commands()
-for _, subCmd := range keysCmd.Commands() {
-	if subCmd.Name() == "add" {
-		keysCmd.RemoveCommand(subCmd)
-		break
+	for _, subCmd := range keysCmd.Commands() {
+		if subCmd.Name() == "add" {
+			keysCmd.RemoveCommand(subCmd)
+			break
+		}
 	}
-}
-keysCmd.AddCommand(NewAddMLDSAKeyCmd())
+	keysCmd.AddCommand(NewAddMLDSAKeyCmd())
 
-rootCmd.AddCommand(
-	genutilcli.InitCmd(app.ModuleBasics, app.DefaultNodeHome),
-	keysCmd,
-)
-server.AddCommands(
+	rootCmd.AddCommand(
+		genutilcli.InitCmd(app.ModuleBasics, app.DefaultNodeHome),
+		keysCmd,
+	)
+	server.AddCommands(
 		rootCmd,
 		app.DefaultNodeHome,
 		createApp,
@@ -99,7 +98,7 @@ server.AddCommands(
 		addHelicaseFlags,
 	)
 
-txCmd := &cobra.Command{
+	txCmd := &cobra.Command{
 		Use:                        "tx",
 		Short:                      "Transactions subcommands",
 		DisableFlagParsing:         true,
@@ -107,22 +106,22 @@ txCmd := &cobra.Command{
 		RunE:                       client.ValidateCmd,
 	}
 	txCmd.AddCommand(
-	authcmd.GetSignCommand(),
-	authcmd.GetBroadcastCommand(),
-	powcli.NewTxCmd(),
-	governancecli.NewTxCmd(),
-	bankcli.NewTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
-	authzcli.GetTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
-	feegrantcli.GetTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
-	ibccli.GetTxCmd(),
-	ibctransfercli.NewTxCmd(),
-	icacli.NewTxCmd(),
-	accountauthcli.NewTxCmd(),
-	escrowcli.NewTxCmd(),
-)
+		authcmd.GetSignCommand(),
+		authcmd.GetBroadcastCommand(),
+		powcli.NewTxCmd(),
+		governancecli.NewTxCmd(),
+		bankcli.NewTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
+		authzcli.GetTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
+		feegrantcli.GetTxCmd(addresscodec.NewBech32Codec(app.Bech32MainPrefix)),
+		ibccli.GetTxCmd(),
+		ibctransfercli.NewTxCmd(),
+		icacli.NewTxCmd(),
+		accountauthcli.NewTxCmd(),
+		escrowcli.NewTxCmd(),
+	)
 	setDefaultGas(txCmd, defaultGasLimit)
 	rootCmd.AddCommand(txCmd)
-	
+
 	queryCmd := &cobra.Command{
 		Use:                        "query",
 		Aliases:                    []string{"q"},

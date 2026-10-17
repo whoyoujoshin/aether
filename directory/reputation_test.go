@@ -28,9 +28,9 @@ func TestRatings_LatestPerRaterAndWellFormed(t *testing.T) {
 	got := Ratings([]wallet.IncomingPayment{
 		pay(5, alice, "x402-rate:2:https://w.example", 1, 0),
 		pay(6, alice, "x402-rate:5:https://W.example/", 1, 0), // replaces alice's 2
-		pay(7, bob, "x402-rate:1:https://w.example", 1, 5),     // failed tx
-		pay(8, bob, "x402-rate:9:https://w.example", 1, 0),     // bad score
-		pay(9, bob, "x402-rate:3:https://w.example", 0, 0),     // unpaid
+		pay(7, bob, "x402-rate:1:https://w.example", 1, 5),    // failed tx
+		pay(8, bob, "x402-rate:9:https://w.example", 1, 0),    // bad score
+		pay(9, bob, "x402-rate:3:https://w.example", 0, 0),    // unpaid
 		pay(10, bob, "x402-rate:3:not a url", 1, 0),
 		pay(11, bob, "x402-rate:4:https://w.example", 1, 0),
 		pay(2, bob, "x402-rate:4:https://old.example", 1, 0), // before the window
@@ -45,7 +45,7 @@ func TestAssess_OnlyRatingsFromPayingBuyersCount(t *testing.T) {
 	paid := []wallet.IncomingPayment{
 		pay(10, alice, "inv-1", 20_000, 0),
 		pay(11, alice, "inv-2", 20_000, 0),
-		pay(12, bob, "inv-3", 20_000, 5), // failed: not a payment
+		pay(12, bob, "inv-3", 20_000, 5),  // failed: not a payment
 		pay(13, payee, "self", 99_000, 0), // paying yourself isn't a customer
 		pay(20, carol, "inv-4", 20_000, 0),
 	}
