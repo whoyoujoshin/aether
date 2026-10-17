@@ -2,7 +2,7 @@
 
 A real AETH pool on `osmo-test-5`, so AETH has a market price an agent
 can quote and, in a later step, swap against. It uses the IBC path that
-is already live (Aether `channel-1` ↔ Osmosis `channel-11841`,
+reopened on 2026-10-17 (Aether `channel-3` ↔ Osmosis `channel-11852`,
 [OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md)) and needs no change to
 Aether's chain code. The `dex/` desk is the reference model for the
 tools; this is the real liquidity.
@@ -13,7 +13,7 @@ tools; this is the real liquidity.
 
 | | Denom on Osmosis |
 |---|---|
-| AETH | `ibc/0D80A29BCBE8A38AAE75313264A0741092566D4EF5A7FEDAD7F86E12193C2328` |
+| AETH | `ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1` |
 | OSMO | `uosmo` |
 
 **Not USDC:**
@@ -52,7 +52,7 @@ osmosisd keys show aether-pool -a --keyring-backend test --home /root/.osmosisd-
 the amount is set once the probe is in):
 
 ```bash
-aetherd tx ibc-transfer transfer transfer channel-1 <osmo1… pool address> 1000000000uaeth \
+aetherd tx ibc-transfer transfer transfer channel-3 <osmo1… pool address> 1000000000uaeth \
   --from faucet-v3 --keyring-backend test --home /root/.aether \
   --chain-id aether-testnet-1 --fees 0uaeth --gas auto -y
 ```
@@ -71,8 +71,8 @@ fee as the `dex/` desk. `osmosisd` takes the amounts in base units:
 ```bash
 cat > /root/aether-pool.json <<'JSON'
 {
-  "weights": "1ibc/0D80A29BCBE8A38AAE75313264A0741092566D4EF5A7FEDAD7F86E12193C2328,1uosmo",
-  "initial-deposit": "1000000000ibc/0D80A29BCBE8A38AAE75313264A0741092566D4EF5A7FEDAD7F86E12193C2328,<OSMO amount>uosmo",
+  "weights": "1ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1,1uosmo",
+  "initial-deposit": "1000000000ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1,<OSMO amount>uosmo",
   "swap-fee": "0.003",
   "exit-fee": "0.000",
   "future-governor": ""
@@ -105,7 +105,7 @@ Two parts, in this order:
    `agentmcp`. It reads the pool's reserves and Osmosis's own swap estimate
    from Osmosis's API. Nothing to sign, so this ships first, built against
    the real responses from step 4.
-2. **Swap from Aether.** The agent sends AETH over `channel-1` with a memo.
+2. **Swap from Aether.** The agent sends AETH over `channel-3` with a memo.
    On Osmosis, a contract swaps it in the pool and sends the OSMO back to
    the agent's Aether address. If the swap fails, the transfer fails and
    the AETH is refunded on Aether. Osmosis runs such memos through its

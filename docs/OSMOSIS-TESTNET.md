@@ -6,9 +6,27 @@ Rewritten 2026-10-03 for how relaying works now (Helicase onto Aether,
 `cmd/outbound` onto Osmosis). **Executed 4 to 5 October 2026; the path is
 live.**
 
-## Status: live since 2026-10-04 21:58 CT
+## Status: reopened 2026-10-17 from sync3; Helicase not yet switched
 
-Gitty ran steps 1 to 4 after the October upgrade activated at block
+The second path was opened on 2026-10-17 (about 02:50 UTC, Aether tip
+319,366) by `cmd/relayer` on sync3, after Osmosis kept refusing the
+seed. The round trip of 12,345 uaeth went out and back.
+
+| | Aether (`aether-testnet-1`) | Osmosis (`osmo-test-5`) |
+|---|---|---|
+| Client | `07-tendermint-3` (of Osmosis; Helicase is to update it) | `07-tendermint-5287` (of Aether; `cmd/outbound` on sync3 updates it) |
+| Connection | `connection-3` | `connection-4615` |
+| Channel | `transfer/channel-3` | `transfer/channel-11852` |
+| Trusting period | 80 h (Osmosis unbonds in 120 h) | ~54 h (Aether's 80 h 39 min unbonding × 2/3) |
+
+- **AETH on Osmosis:** `ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1` (sha256 of `transfer/channel-11852/uaeth`).
+- **Onto Osmosis:** `aether-outbound-osmosis` runs on sync3 (`--client-id 07-tendermint-5287`, gRPC `grpc.testnet.osmosis.zone:443`). It is disabled on the seed.
+- **Onto Aether: not yet.** Helicase on the seed, sync3 and sync4 still follows `07-tendermint-1` over `rpc.osmotest5.osmosis.zone`. Until sync3 and sync4 follow `07-tendermint-3`, nothing relays Osmosis's packets or acknowledgements onto Aether, so don't send over `channel-3` yet. `07-tendermint-3` expires about 2026-10-20 10:00 UTC unless Helicase updates it first.
+- **Relayer accounts and key homes:** as before (below), now on sync3.
+
+## First path: 2026-10-04 to 2026-10-13 (closed)
+
+**Live from 2026-10-04 21:58 CT.** Gitty ran steps 1 to 4 after the October upgrade activated at block
 205,000, and steps 5 to 8 that night. Everything below is what was
 actually used; the step text keeps the procedure for a rebuild.
 

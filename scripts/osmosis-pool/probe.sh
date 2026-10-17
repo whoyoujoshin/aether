@@ -5,7 +5,7 @@
 set -uo pipefail
 LCD=${LCD:-https://lcd.osmotest5.osmosis.zone}
 # AETH on Osmosis: ibc/ + uppercase SHA-256 of transfer/<Osmosis channel>/uaeth.
-AETH=${AETH_DENOM:-ibc/0D80A29BCBE8A38AAE75313264A0741092566D4EF5A7FEDAD7F86E12193C2328}
+AETH=${AETH_DENOM:-ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1}
 RELAYER=osmo1mlv24mz4ygnfnp4x4345kpjyx2mqu99x2ag3rm
 POOL_KEY_HOME=${POOL_KEY_HOME:-/root/.osmosisd-pool}
 
