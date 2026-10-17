@@ -14,9 +14,10 @@
 // starting the next, until interrupted (Ctrl+C).
 //
 // Usage:
-//   go run ./cmd/powminer --miner aether1... --rpc http://host:26657 --grpc host:9090
-//   go run ./cmd/powminer --miner aether1... --from realminer --auto-submit --loop \
-//     --rpc http://157.245.252.221:26657 --grpc 157.245.252.221:9090
+//
+//	go run ./cmd/powminer --miner aether1... --rpc http://host:26657 --grpc host:9090
+//	go run ./cmd/powminer --miner aether1... --from realminer --auto-submit --loop \
+//	  --rpc http://157.245.252.221:26657 --grpc 157.245.252.221:9090
 package main
 
 import (
@@ -30,10 +31,10 @@ import (
 
 	"flag"
 
+	cometrpchttp "github.com/cometbft/cometbft/rpc/client/http"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	cometrpchttp "github.com/cometbft/cometbft/rpc/client/http"
 	"golang.org/x/crypto/scrypt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

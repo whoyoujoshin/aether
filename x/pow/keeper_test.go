@@ -2,28 +2,28 @@ package pow_test
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
-	"fmt"
 
+	"cosmossdk.io/core/comet"
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
+	"cosmossdk.io/store"
 	"cosmossdk.io/store/metrics"
 	storetypes "cosmossdk.io/store/types"
+	"crypto/ed25519"
+	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
+	cometencoding "github.com/cometbft/cometbft/crypto/encoding"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	"cosmossdk.io/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
-	"crypto/ed25519"
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/pow/testutil"
 	"github.com/whoyoujoshin/aether/x/pow/types"
-	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
-	cometencoding "github.com/cometbft/cometbft/crypto/encoding"
-	"cosmossdk.io/core/comet"
 	"github.com/whoyoujoshin/aether/x/treasury"
 )
 
@@ -554,18 +554,18 @@ func TestSubmitPoW_Success_RecordsMiningWorkForCurrentEpoch(t *testing.T) {
 
 	minerAddr, addrStr := validMinerAddr(t)
 	msg := &pow.MsgSubmitPoW{
-Miner: addrStr,
-Submission: &pow.MsgSubmitPoW_Native{
-Native: &pow.NativeSubmission{
-Height:     50,
-Timestamp:  time.Now().Unix(),
-PrevHash:   realHash,
-MerkleRoot: []byte("merkle"),
-Nonce:      1,
-Difficulty: 1,
-},
-},
-}
+		Miner: addrStr,
+		Submission: &pow.MsgSubmitPoW_Native{
+			Native: &pow.NativeSubmission{
+				Height:     50,
+				Timestamp:  time.Now().Unix(),
+				PrevHash:   realHash,
+				MerkleRoot: []byte("merkle"),
+				Nonce:      1,
+				Difficulty: 1,
+			},
+		},
+	}
 
 	_, err := srv.SubmitPoW(ctx, msg)
 	require.NoError(t, err)

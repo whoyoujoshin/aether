@@ -4,12 +4,12 @@ import (
 	"errors"
 	"testing"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	consensustypes "github.com/cosmos/cosmos-sdk/x/consensus/types"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/whoyoujoshin/aether/x/governance"

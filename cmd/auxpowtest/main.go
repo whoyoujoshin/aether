@@ -10,12 +10,14 @@
 // real JSON output consumable by `aetherd tx pow submit-auxpow`.
 //
 // Usage:
-//   go run ./cmd/auxpowtest --difficulty 4 --output auxpow.json
+//
+//	go run ./cmd/auxpowtest --difficulty 4 --output auxpow.json
 //
 // With --auxpowd it acts as a merge-mining pool against cmd/auxpowd
 // instead (pool.go):
-//   go run ./cmd/auxpowtest --auxpowd http://127.0.0.1:8336 --rpc-user pool \
-//     --rpc-password ... --reward-address aether1... --rounds 3
+//
+//	go run ./cmd/auxpowtest --auxpowd http://127.0.0.1:8336 --rpc-user pool \
+//	  --rpc-password ... --reward-address aether1... --rounds 3
 //
 // --byte-order picks how the parent's scrypt hash is read against the
 // difficulty, and must match the rule the chain applies at the height

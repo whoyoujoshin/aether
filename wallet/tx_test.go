@@ -48,7 +48,7 @@ func TestWallet_BuildSignAndBroadcast_RealTransferSucceeds(t *testing.T) {
 
 	// Fund the sender via the real faucet HTTP service.
 	requestFaucetFunds(t, sender.Address)
-time.Sleep(8 * time.Second) // let the faucet's tx actually land on-chain
+	time.Sleep(8 * time.Second) // let the faucet's tx actually land on-chain
 
 	client, err := wallet.NewClient("localhost:9090")
 	require.NoError(t, err)
@@ -76,12 +76,12 @@ time.Sleep(8 * time.Second) // let the faucet's tx actually land on-chain
 	require.NoError(t, err)
 	require.NotEmpty(t, signed.Bytes)
 
-result, err := client.BroadcastTx(signed)
-require.NoError(t, err)
-t.Logf("broadcast result: code=%d hash=%s log=%s", result.Code, result.TxHash, result.RawLog)
-require.Equal(t, uint32(0), result.Code, "transaction must genuinely succeed on-chain: %s", result.RawLog)
+	result, err := client.BroadcastTx(signed)
+	require.NoError(t, err)
+	t.Logf("broadcast result: code=%d hash=%s log=%s", result.Code, result.TxHash, result.RawLog)
+	require.Equal(t, uint32(0), result.Code, "transaction must genuinely succeed on-chain: %s", result.RawLog)
 
-time.Sleep(8 * time.Second) // let the send tx actually land on-chain
+	time.Sleep(8 * time.Second) // let the send tx actually land on-chain
 
 	recipientBalance, err := client.GetBalance(recipient.Address)
 	require.NoError(t, err)

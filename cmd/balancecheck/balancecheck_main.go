@@ -7,7 +7,8 @@
 // (localhost:9090 by default) using the generated bank query client.
 //
 // Usage:
-//   go run ./cmd/balancecheck --address cosmos1yt20n0mn2wurrfs7zn8p854p4mvw74ue2aakmz
+//
+//	go run ./cmd/balancecheck --address cosmos1yt20n0mn2wurrfs7zn8p854p4mvw74ue2aakmz
 package main
 
 import (
@@ -20,10 +21,10 @@ import (
 	"strconv"
 
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	"github.com/whoyoujoshin/aether/app"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
-	"github.com/whoyoujoshin/aether/app"
 )
 
 func init() {

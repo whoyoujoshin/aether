@@ -1,14 +1,14 @@
 package governance
 
 import (
+	sdkerrors "cosmossdk.io/errors"
+	"cosmossdk.io/log"
+	"cosmossdk.io/math"
+	"cosmossdk.io/store/types"
+	storetypes "cosmossdk.io/store/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"cosmossdk.io/store/types"
-	storetypes "cosmossdk.io/store/types"
-	"cosmossdk.io/math"
-	sdkerrors "cosmossdk.io/errors"
-	"cosmossdk.io/log"
 )
 
 type Keeper struct {
@@ -405,9 +405,9 @@ func (k Keeper) TallyVotes(ctx sdk.Context, proposalID uint64) TallyResult {
 		}
 
 		weight, err := math.LegacyNewDecFromStr(vote.Weight)
-if err != nil {
-	continue
-}
+		if err != nil {
+			continue
+		}
 
 		result.ValidVoterCount++
 		switch vote.Option {
@@ -455,27 +455,27 @@ func (k Keeper) ResolveProposal(ctx sdk.Context, proposal Proposal, quorumThresh
 		}
 
 		yesRatio := result.YesPower.Quo(nonAbstainPower)
-if yesRatio.GTE(math.LegacyNewDec(2).QuoInt64(3)) {
-	if ctx.BlockHeight() >= ParamChangeGovernanceActivationHeight {
-		return k.resolvePassedProposal(ctx, proposal)
-	}
+		if yesRatio.GTE(math.LegacyNewDec(2).QuoInt64(3)) {
+			if ctx.BlockHeight() >= ParamChangeGovernanceActivationHeight {
+				return k.resolvePassedProposal(ctx, proposal)
+			}
 
-	proposal.Status = ProposalStatus_PROPOSAL_STATUS_PASSED
-	k.SetProposal(ctx, proposal)
+			proposal.Status = ProposalStatus_PROPOSAL_STATUS_PASSED
+			k.SetProposal(ctx, proposal)
 
-	if err := k.executeTreasurySpend(ctx, proposal); err != nil {
-		// The proposal has already genuinely passed by community vote --
-		// a failure here (e.g. treasury genuinely lacks sufficient funds)
-		// is an execution problem, not a reason to silently pretend the
-		// vote didn't happen. Logged, not swallowed; the proposal stays
-		// marked PASSED (the vote outcome is a fact regardless of
-		// execution success) and deposit still refunds, since the
-		// depositors did nothing wrong.
-		k.Logger(ctx).Error("proposal passed but treasury execution failed", "proposal_id", proposal.Id, "error", err)
-	}
+			if err := k.executeTreasurySpend(ctx, proposal); err != nil {
+				// The proposal has already genuinely passed by community vote --
+				// a failure here (e.g. treasury genuinely lacks sufficient funds)
+				// is an execution problem, not a reason to silently pretend the
+				// vote didn't happen. Logged, not swallowed; the proposal stays
+				// marked PASSED (the vote outcome is a fact regardless of
+				// execution success) and deposit still refunds, since the
+				// depositors did nothing wrong.
+				k.Logger(ctx).Error("proposal passed but treasury execution failed", "proposal_id", proposal.Id, "error", err)
+			}
 
-	return k.refundDeposits(ctx, proposal.Id)
-}
+			return k.refundDeposits(ctx, proposal.Id)
+		}
 	}
 
 	proposal.Status = ProposalStatus_PROPOSAL_STATUS_REJECTED
