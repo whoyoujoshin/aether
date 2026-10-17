@@ -1,0 +1,29 @@
+[package]
+name = "aether-swap"
+version = "0.1.0"
+edition = "2021"
+description = "IBC-hooks swap-and-return contract for Aether on Osmosis testnet"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+library = []
+
+[dependencies]
+cosmwasm-std = { version = "=2.1.4", features = ["stargate"] }
+cosmwasm-schema = "=2.1.4"
+cw-storage-plus = "2.0.0"
+schemars = "0.8"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+thiserror = "1"
+bech32 = "0.11"
+# Chain is osmosisd v31.0.0-rc1. The latest published bindings are 0.27.0
+# (Osmosis ~v27). MsgSwapExactAmountIn in poolmanager v1beta1 is unchanged
+# through v31, so 0.27.0 is the correct pin until a v31 crate is published.
+osmosis-std = "=0.27.0"
+
+[dev-dependencies]
+osmosis-test-tube = "=27.0.1"
+cosmwasm-std = { version = "=2.1.4", features = ["stargate"] }
