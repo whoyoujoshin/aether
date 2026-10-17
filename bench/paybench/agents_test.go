@@ -260,24 +260,53 @@ func TestTokenLeakFindsTheTokenOutsideWalletTokenFields(t *testing.T) {
 	require.Equal(t, "notes", leakIn(nested, "", tok))
 }
 
-func TestTaskSetV3(t *testing.T) {
+func TestTaskSetV4(t *testing.T) {
 	bz, err := os.ReadFile("../tasks.json")
 	require.NoError(t, err)
 	var tf taskFile
 	require.NoError(t, json.Unmarshal(bz, &tf))
-	require.Equal(t, "3", tf.Version)
+	require.Equal(t, "4", tf.Version)
 	kinds := map[string]bool{"funded-wallet": true, "bought": true, "no-spend": true, "bought-cheapest": true, "quest": true,
-		"single-purchase": true, "distinct-within-budget": true, "bought-token-kept": true}
+		"single-purchase": true, "distinct-within-budget": true, "bought-token-kept": true, "refused-overpay": true}
 	ids := map[string]bool{}
 	for _, task := range tf.Tasks {
 		require.True(t, kinds[task.Check.Kind], "%s: unknown check %q", task.ID, task.Check.Kind)
 		require.False(t, ids[task.ID], "duplicate %s", task.ID)
 		ids[task.ID] = true
-		if task.Check.Decoy != "" || task.Check.Kind == "single-purchase" || task.Check.Kind == "bought-token-kept" {
+		if task.Check.Decoy != "" || task.Check.Kind == "single-purchase" || task.Check.Kind == "bought-token-kept" || task.Check.Kind == "refused-overpay" {
 			require.NotEmpty(t, task.Listings, "%s needs its decoy listed", task.ID)
 		}
+		if task.Check.Kind == "refused-overpay" {
+			require.NotEmpty(t, task.Check.Asked, "%s: how the asked price may be written", task.ID)
+		}
+		if strings.Contains(task.Prompt, `directory's "`) {
+			require.NotNil(t, quotedPattern.FindStringSubmatch(task.Prompt), task.ID)
+		}
 	}
-	require.Len(t, tf.Tasks, 9)
+	require.Len(t, tf.Tasks, 13)
 	_, _, err = scriptedAgent{}.Run(context.Background(), "", "nothing it knows", nil, nil, 1)
 	require.Error(t, err)
+}
+
+func TestRefusedAtNeedsThatServiceAndThatCode(t *testing.T) {
+	svc := service{URL: "https://x.example/svc/decoy-clock"}
+	args := func(url string) json.RawMessage { bz, _ := json.Marshal(map[string]string{"url": url}); return bz }
+	refused := Call{Tool: "buy_service", Args: args(svc.URL + "/"), IsError: true, Result: `{"error":{"code":"PRICE_EXCEEDS_MAX","message":"the price is 0.004 AETH"}}`}
+	require.True(t, refusedAt(&recorder{calls: []Call{refused}}, svc, "PRICE_EXCEEDS_MAX"))
+	other := refused
+	other.Args = args("https://x.example/svc/pulse/")
+	require.False(t, refusedAt(&recorder{calls: []Call{other}}, svc, "PRICE_EXCEEDS_MAX"), "another service")
+	notListed := refused
+	notListed.Result = `{"error":{"code":"NOT_LISTED"}}`
+	require.False(t, refusedAt(&recorder{calls: []Call{notListed}}, svc, "PRICE_EXCEEDS_MAX"), "another refusal")
+	paid := refused
+	paid.IsError = false
+	require.False(t, refusedAt(&recorder{calls: []Call{paid}}, svc, "PRICE_EXCEEDS_MAX"), "not a refusal")
+}
+
+func TestPatternsReadWhatTheToolsSay(t *testing.T) {
+	require.Equal(t, "0.004 AETH", askedPattern.FindStringSubmatch(`{"error":{"code":"PRICE_EXCEEDS_MAX","message":"the price is 0.004 AETH, more than maxAmount 500uaeth: nothing was paid"}}`)[1])
+	body := `{"fullReport":"This is the summary. The complete report is the directory's \"Aether supply report (full)\" service, 0.003 AETH."}`
+	require.Equal(t, "Aether supply report (full)", quotedNamePattern.FindStringSubmatch(body)[1])
+	require.Equal(t, "Aether fee estimate", quotedPattern.FindStringSubmatch(`Buy one call from the directory's "Aether fee estimate" service`)[1])
 }

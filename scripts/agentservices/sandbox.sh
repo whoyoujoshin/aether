@@ -18,7 +18,7 @@
 #
 # It also creates $KEYDIR/bench-key: callers that send it as
 # X-Aether-Bench-Key draw new wallets from the payments benchmark's own
-# allowance (150 a day, enough for 16 nine-task runs) instead of the per-caller one (docs/BENCHMARK.md).
+# allowance (200 a day, enough for 15 thirteen-task runs) instead of the per-caller one (docs/BENCHMARK.md).
 # Hand it to whoever runs the benchmark as AETHER_BENCH_KEY, not in a chat.
 set -euo pipefail
 REPO=${REPO:-$(pwd)}
@@ -55,7 +55,7 @@ Description=Aether hosted test wallet (custodial testnet wallets over MCP)
 After=network-online.target
 
 [Service]
-ExecStart=/root/agentmcp-sandbox --sandbox-http 127.0.0.1:8092 --grpc $GRPC --chain-id $CHAIN_ID --rpc "" --keyring-dir $KEYDIR --keyring-backend test --sandbox-funder sandbox-funder --sandbox-secret-file $KEYDIR/token-secret --sandbox-bench-key-file $KEYDIR/bench-key --sandbox-bench-per-day 150 $LISTINGS --sandbox-grant-usdc "${USDC_GRANT:-0.01 USDC}" $USDC
+ExecStart=/root/agentmcp-sandbox --sandbox-http 127.0.0.1:8092 --grpc $GRPC --chain-id $CHAIN_ID --rpc "" --keyring-dir $KEYDIR --keyring-backend test --sandbox-funder sandbox-funder --sandbox-secret-file $KEYDIR/token-secret --sandbox-bench-key-file $KEYDIR/bench-key --sandbox-bench-per-day 200 $LISTINGS --sandbox-grant-usdc "${USDC_GRANT:-0.01 USDC}" $USDC
 Environment=HOME=/root
 Restart=always
 RestartSec=2

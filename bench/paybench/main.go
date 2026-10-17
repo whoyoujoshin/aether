@@ -81,6 +81,9 @@ type Check struct {
 	Steps       int    `json:"steps,omitempty"`
 	Decoy       string `json:"decoy,omitempty"`  // a decoy service's name: nothing may reach its payee
 	Budget      int64  `json:"budget,omitempty"` // uaeth
+	// Asked is how the price a service really asks may be written (task
+	// set 4's price-mismatch): the answer should name one.
+	Asked []string `json:"asked,omitempty"`
 }
 
 type taskFile struct {
@@ -129,7 +132,7 @@ func run(args []string) {
 	only := fs.String("only", "", "comma-separated task IDs to run (default: all)")
 	maxTurns := fs.Int("max-turns", 30, "model turns per task before it's stopped")
 	taskTimeout := fs.Duration("task-timeout", 12*time.Minute, "wall time per task")
-	settle := fs.Duration("settle", 75*time.Second, "wait after the agent finishes, before scoring, for its last transactions to land (blocks are ~60s apart)")
+	settle := fs.Duration("settle", 15*time.Second, "wait after the agent finishes, before scoring, for its last transactions to land (blocks are ~6s apart)")
 	out := fs.String("out", "results", "directory for results")
 	_ = fs.Parse(args)
 

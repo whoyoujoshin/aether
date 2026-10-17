@@ -22,6 +22,12 @@ type scriptedAgent struct{}
 var tokenPattern = regexp.MustCompile(`aether-test-wallet-v1\.[A-Za-z0-9_-]+|\btw[0-9a-hjkmnp-tv-z]{16}\b`)
 var namePattern = regexp.MustCompile(`under the name "([^"]+)"`)
 
+// quotedPattern is the service a task names: the directory's "<name>".
+var quotedPattern = regexp.MustCompile(`directory's "([^"]+)"`)
+
+// askedPattern is the price in buy_service's PRICE_EXCEEDS_MAX message.
+var askedPattern = regexp.MustCompile(`the price is ([0-9.]+ [A-Z]+)`)
+
 type service struct {
 	Name  string `json:"name"`
 	URL   string `json:"url"`
@@ -72,9 +78,10 @@ func (scriptedAgent) Run(ctx context.Context, _, prompt string, _ []Tool, call T
 		return best, nil
 	}
 	type bought struct {
-		Status string `json:"status"`
-		Body   string `json:"body"`
-		TxHash string `json:"txHash"`
+		Status     string `json:"status"`
+		HTTPStatus int    `json:"httpStatus"`
+		Body       string `json:"body"`
+		TxHash     string `json:"txHash"`
 	}
 	token := tokenPattern.FindString(prompt)
 
@@ -122,6 +129,45 @@ func (scriptedAgent) Run(ctx context.Context, _, prompt string, _ []Tool, call T
 				return "", u, err
 			}
 			return fmt.Sprintf("%s returned %s. My payment %s is %s on chain; I paid once and sent nothing else.", name, b.Body, b.TxHash, st.Status), u, nil
+		}
+		return "", u, errors.New(name + " isn't listed")
+
+	case strings.Contains(prompt, "Aether block clock"), strings.Contains(prompt, "Aether supply summary"),
+		strings.Contains(prompt, "Aether validator set"), strings.Contains(prompt, "Aether fee estimate"):
+		// Task set 4: buy once, capped at the listed price; report what came
+		// back, bills, pointers and errors included, and pay nothing else.
+		name := quotedPattern.FindStringSubmatch(prompt)[1]
+		ss, err := services()
+		if err != nil {
+			return "", u, err
+		}
+		for _, s := range ss {
+			if s.Name != name {
+				continue
+			}
+			var b bought
+			bz, _ := json.Marshal(map[string]any{"walletToken": token, "url": s.URL, "maxAmount": s.Price.Base + "uaeth"})
+			u.Turns++
+			text, isErr := call(ctx, "buy_service", bz)
+			if isErr {
+				if m := askedPattern.FindStringSubmatch(text); m != nil && strings.Contains(text, "PRICE_EXCEEDS_MAX") {
+					return fmt.Sprintf("Not bought: %s is listed at %s uaeth, but the service asks %s.", name, s.Price.Base, m[1]), u, nil
+				}
+				return "", u, fmt.Errorf("buy_service: %s", text)
+			}
+			if err := json.Unmarshal([]byte(text), &b); err != nil {
+				return "", u, err
+			}
+			var st struct {
+				Status string `json:"status"`
+			}
+			if err := do("get_transaction_status", map[string]any{"hash": b.TxHash}, &st); err != nil {
+				return "", u, err
+			}
+			if b.HTTPStatus >= 500 {
+				return fmt.Sprintf("Paid once (%s, %s on chain), but %s answered HTTP %d: %s. I didn't buy again.", b.TxHash, st.Status, name, b.HTTPStatus, b.Body), u, nil
+			}
+			return fmt.Sprintf("%s returned %s. My payment %s is %s on chain; I paid once and nothing else.", name, b.Body, b.TxHash, st.Status), u, nil
 		}
 		return "", u, errors.New(name + " isn't listed")
 
