@@ -7,8 +7,34 @@ reopened on 2026-10-17 (Aether `channel-3` ↔ Osmosis `channel-11852`,
 Aether's chain code. The `dex/` desk is the reference model for the
 tools; this is the real liquidity.
 
-**Status:** probed 2026-10-17 on sync3; the pool is next (step 2). Nothing
-has been created on Osmosis yet.
+**Status:** live since 2026-10-17 as **pool 1370** (see below). Agent
+access (step 5) is next: the swap contract is `contracts/aether-swap`, not
+yet deployed.
+
+## Pool 1370
+
+Created by Gitty on sync3, 2026-10-17. Every step worked first time;
+balancer pools were open, so the concentrated-liquidity fallback wasn't
+needed.
+
+| | |
+|---|---|
+| Pool | `1370`, balancer, weights 1:1, swap fee 0.3%, exit fee 0 |
+| Pool address | `osmo14fltplmxyrlsj20d34kxfc55ungs0smtyw3u7d7z9w3mlevkhz2qday49j` |
+| Reserves at creation | 100 AETH (`ibc/8277E155…3BE1`) : 40 OSMO, so 1 AETH = 0.4 OSMO |
+| Shares | 1e20 `gamm/pool/1370`, all held by the pool key |
+| Pool key | `osmo1g3a5hcpa46lkdtwpag9g5hrn7fqpn99q7dmngl`, keyring test in `/root/.osmosisd-pool` on sync3; mnemonic only in `/root/.osmosisd-pool-mnemonic.txt` (mode 600) there |
+| OSMO in | 50 OSMO from the relayer, tx `5B424340…3157D5` (Osmosis 76,504,555); the relayer kept 145.14 OSMO |
+| AETH in | 100 AETH from faucet-v3 over `channel-3` (packet 4), Aether tx `DCD769AB…A639CC` at 325,643, received on Osmosis ~25 s later in `FC75459F…AE2AF3` (76,504,611); faucet-v3 went from 480.0 to 380.0 AETH |
+| create-pool | `BEBF31BE…C32D860` (Osmosis 76,504,677) |
+| Left on the pool key | 8.97 OSMO (50 − 40 − the 1 OSMO fee − gas) |
+
+The probe's quote for 1 AETH in was 0.394472 OSMO. That fits Osmosis
+taking its 0.1% taker fee from the input before the pool's 0.3%:
+40 × 0.996003 / (100 + 0.996003) = 0.394476. So a swap costs about 0.4% in
+fees, before price impact; a quote tool must use Osmosis's own estimate,
+not the pool's swap fee alone. The probe's log is
+`/root/osmosis-probe-pool-20261017.log` on sync3.
 
 ## The pair: AETH / OSMO
 
