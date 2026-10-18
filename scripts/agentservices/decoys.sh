@@ -5,7 +5,11 @@
 # of bench-only listings. Run as root from the repo checkout, then rerun
 # install.sh, caddy.sh and sandbox.sh, which pick both up:
 #
-#   cd /root/aether-src && bash scripts/agentservices/decoys.sh
+#   cd /root/aether-src && PREBUILT=/root/prebuilt-<commit> bash scripts/agentservices/decoys.sh
+#
+# It needs aetherd only for its keys and send commands: the seed is a
+# validator, so it takes the one in PREBUILT (scripts/prebuild.sh) and
+# won't compile where aetherd runs unless ALLOW_BUILD_ON_VALIDATOR=yes.
 #
 # SWEEP=yes sends what the decoy account holds back to the test wallet's
 # funder (keeping a little for the fee). The decoys are never announced in
@@ -20,8 +24,11 @@ CHAIN_ID=${CHAIN_ID:-aether-testnet-1}
 LIST="$REPO/scripts/agentservices/decoys.txt"
 [ -f "$LIST" ] || { echo "run from the repo checkout (no $LIST)" >&2; exit 1; }
 [ -d "$SANDBOX_KEYDIR" ] || { echo "no $SANDBOX_KEYDIR: run sandbox.sh first" >&2; exit 1; }
+. "$(dirname "$0")/../lib/prebuilt.sh"
+prebuilt_check
+no_build_on_validator
 
-(cd "$REPO" && go build -o /root/aetherd-keys.tmp ./cmd/aetherd)
+place_bin aetherd /root/aetherd-keys.tmp ./cmd/aetherd
 trap 'rm -f /root/aetherd-keys.tmp' EXIT
 kr=(--keyring-backend test --keyring-dir "$DECOY_KEYDIR")
 mkdir -p "$DECOY_KEYDIR" && chmod 700 "$DECOY_KEYDIR"
@@ -61,4 +68,4 @@ if [ "${SWEEP:-}" = yes ]; then
     echo "== Nothing to sweep (${bal}uaeth)"
   fi
 fi
-echo "Next: bash scripts/agentservices/install.sh (PAY_TO as before), caddy.sh, then sandbox.sh."
+echo "Next, with the same PREBUILT: install.sh (PAY_TO as before), caddy.sh, then sandbox.sh."
