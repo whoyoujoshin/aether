@@ -40,7 +40,7 @@ test("quote_swap: the request, the cache, pacing and fallback", async () => {
   const calls: string[] = [];
   let now = 1_000_000;
   const q = new SwapQuoter({ rest: ["http://down.test", "http://osmosis.test/"], now: () => now, fetch: (async (input: string | URL, init?: RequestInit) => {
-    if (String(input).startsWith("http://down.test")) return new Response("", { status: 403 });
+    if (new URL(String(input)).hostname === "down.test") return new Response("", { status: 403 });
     return osmosis(v, calls)(input, init);
   }) as typeof fetch });
   await q.quote({ amount: "1 AETH" });

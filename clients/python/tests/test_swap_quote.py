@@ -50,7 +50,7 @@ def test_request_cache_pacing_fallback():
     good = osmosis(v, calls)
 
     def fetch(url):
-        if url.startswith("http://down.test"):
+        if urllib.parse.urlsplit(url).hostname == "down.test":
             return 403, ""
         return good(url)
 
