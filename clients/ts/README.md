@@ -28,9 +28,9 @@ const back = await withdrawPrepaid(client, key, "https://api.example.com", { wit
 
 ## AI agents
 
-`AetherToolkit` turns a client and key into six tools for a model: balance,
-transaction status, the service directory, a payment, a paid API call and the
-testnet faucet. Spending is capped in code (per payment and per rolling 24 hours,
+`AetherToolkit` turns a client and key into seven tools for a model: balance,
+transaction status, the service directory, a quote for swapping AETH into OSMO
+on Osmosis testnet, a payment, a paid API call and the testnet faucet. Spending is capped in code (per payment and per rolling 24 hours,
 checked before anything is signed), a send's `idempotency_key` never pays twice,
 and a failure comes back as `{error: {code, message}}` for the model to read.
 
@@ -64,8 +64,10 @@ adapter) and GOAT 0.5 (and its Vercel AI adapter). For ElizaOS, use
 ## Read-only MCP server
 
 `aether-mcp` is a read-only Aether MCP server over stdio, in this package: the
-public `/mcp`'s `get_balance`, `get_transaction_status` and `find_services`, run
-on your own machine. It holds no key and can't send anything.
+public `/mcp`'s `get_balance`, `get_transaction_status`, `find_services` and
+`quote_swap`, run on your own machine. It holds no key and can't send anything.
+`quote_swap` reads Osmosis testnet's own estimate for the AETH/OSMO pool (1370);
+the swap itself is agentmcp's `swap_aeth`.
 
 ```json
 { "mcpServers": { "aether": { "command": "npx", "args": ["-y", "-p", "aether-chain-client", "aether-mcp"] } } }

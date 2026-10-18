@@ -36,9 +36,10 @@ send of exactly what the 402 asks, and the server's facilitator broadcasts it.
 
 ## AI agent frameworks
 
-`AetherToolkit` gives an agent six tools: check a balance, check a transaction,
-find paid APIs in the on-chain directory, send a payment, call a paid API (paying
-it), and ask the testnet faucet for funds. Each framework gets them in its own form:
+`AetherToolkit` gives an agent seven tools: check a balance, check a transaction,
+find paid APIs in the on-chain directory, quote an AETH to OSMO swap on Osmosis
+testnet, send a payment, call a paid API (paying it), and ask the testnet faucet
+for funds. Each framework gets them in its own form:
 
 ```bash
 pip install "aether-chain-client[langchain]"      # or [openai-agents], [crewai], [llamaindex]
@@ -67,7 +68,12 @@ result = kit.call(name, arguments)   # ... and the answer to the model's tool ca
 - **No double payments.** `send_payment` takes an `idempotency_key`; the same key
   returns the first result instead of paying again.
 - **Read-only without a key.** `AetherToolkit(client)` offers only the balance,
-  transaction and directory tools.
+  transaction, directory and swap-quote tools.
+- **Swap quotes.** `aether_quote_swap` reads Osmosis's own estimate for the AETH/OSMO
+  pool (1370) and gives the OSMO out, the cost in fees and price impact, and a
+  `minOutput` for a slippage. It is on for `aether-testnet-1`; `osmosis_rest=[...]`
+  names other Osmosis REST endpoints and `osmosis_rest=[]` turns it off. It only
+  quotes: the swap itself is agentmcp's `swap_aeth` (see `docs/OSMOSIS-POOL.md`).
 - **Errors are results.** A failed call returns `{"error": {"code", "message"}}`, so
   the model sees what went wrong instead of the run stopping.
 - **Untrusted text stays data.** Memos, service names and descriptions and API
