@@ -35,3 +35,8 @@ aether_monitor.py
 
 # scripts/prebuild.sh output
 /dist/
+
+# The binary `go build` leaves in a cmd/<name> folder (extensionless files).
+/cmd/*/*
+!/cmd/*/*.*
+!/cmd/*/*/

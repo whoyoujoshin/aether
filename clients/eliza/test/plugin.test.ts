@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import type { IAgentRuntime, Memory, Content } from "@elizaos/core";
 import { AETH, AetherClient, AetherToolkit, Key } from "aether-chain-client";
@@ -41,11 +42,11 @@ async function setup(withKey: boolean, replies: string[]) {
   return { plugin, runtime, prompts, action, sent, key };
 }
 
-test("the plugin offers six actions and a wallet provider", async () => {
+test("the plugin offers seven actions and a wallet provider", async () => {
   const { plugin, runtime, action, key } = await setup(true, []);
   assert.equal(plugin.name, "aether");
   assert.deepEqual(plugin.actions!.map((a) => a.name), [
-    "AETHER_GET_BALANCE", "AETHER_TRANSACTION_STATUS", "AETHER_FIND_PAID_SERVICES", "AETHER_SEND_PAYMENT", "AETHER_CALL_PAID_API", "AETHER_REQUEST_TESTNET_FUNDS",
+    "AETHER_GET_BALANCE", "AETHER_TRANSACTION_STATUS", "AETHER_FIND_PAID_SERVICES", "AETHER_SEND_PAYMENT", "AETHER_CALL_PAID_API", "AETHER_REQUEST_TESTNET_FUNDS", "AETHER_QUOTE_SWAP",
   ]);
   for (const a of plugin.actions!) {
     assert.ok(a.description.length > 20, a.name);
@@ -125,4 +126,30 @@ test("parseArgs takes the first JSON object", () => {
   assert.deepEqual(parseArgs('Here: {"a": "b"} done'), { a: "b" });
   assert.equal(parseArgs("no json"), undefined);
   assert.equal(parseArgs("[1]"), undefined);
+});
+
+
+test("quote_swap: the reply shows the quote and says it isn't a swap", async () => {
+  // Osmosis's recorded answers for pool 1370 (clients/testdata/swapquote.json, first vector).
+  const v = JSON.parse(readFileSync(new URL("../../../testdata/swapquote.json", import.meta.url), "utf8")).vectors[0];
+  const osmosis = (async (input: string | URL) => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/osmosis/poolmanager/v1beta1/pools/1370") return new Response(JSON.stringify(v.pool));
+    if (path === "/osmosis/poolmanager/v1beta1/1370/estimate/single_pool_swap_exact_amount_in") return new Response(JSON.stringify(v.estimate));
+    return new Response("not found", { status: 404 });
+  }) as typeof fetch;
+  const kit = new AetherToolkit(new AetherClient({ rpc: "http://127.0.0.1:1" }), undefined, { faucetUrl: null, osmosisRest: ["http://osmosis.test"], fetch: osmosis });
+  const plugin = createAetherPlugin({ toolkit: () => kit });
+  const { runtime } = fakeRuntime({}, ['{"amount": "1 AETH"}', '{"amount": "5 USDC"}']);
+  await plugin.init!({}, runtime);
+  const quote = plugin.actions!.find((a) => a.name === "AETHER_QUOTE_SWAP")!;
+  assert.equal(await quote.validate(runtime, msg("quote")), true, "read-only: offered without a key");
+
+  const r = await quote.handler(runtime, msg("what would 1 AETH get me in OSMO?"), undefined, {}, undefined);
+  assert.equal(r!.success, true);
+  assert.equal(r!.text, "Quote (not a swap): 1 AETH would return about 0.394472 OSMO (cost 1.38%). minOutput 0.390527 OSMO. The pool moves; this is an estimate only.");
+
+  const bad = await quote.handler(runtime, msg("quote 5 USDC", "2"), undefined, {}, undefined);
+  assert.equal(bad!.success, false);
+  assert.match(bad!.text!, /INVALID_AMOUNT/);
 });
