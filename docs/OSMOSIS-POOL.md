@@ -240,6 +240,11 @@ Two parts, in this order:
    answers `QUOTE_UNAVAILABLE` with `retryAfterSeconds`. The tests use
    the pool and estimate responses recorded at creation (1 AETH:
    394,472 uosmo, cost 1.38%).
+
+   Live on the seed's public `/mcp` and test wallet since 2026-10-18
+   00:06 UTC (agentmcp `6093c26`, built off the validators). Both
+   quoted 1 AETH at 386,750 uosmo, `minOutput` 382,882 at 1%, matching
+   the pool after the test swap (about 101 AETH : 39.61 OSMO).
 2. **Swap from Aether.** The agent sends AETH over `channel-3` with a memo.
    On Osmosis, a contract swaps it in the pool and sends the OSMO back to
    the agent's Aether address. If the swap fails, the transfer fails and
