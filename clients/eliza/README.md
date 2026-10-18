@@ -4,8 +4,7 @@ An [ElizaOS](https://github.com/elizaOS/eliza) plugin that gives an agent an
 [Aether](https://github.com/whoyoujoshin/aether) wallet: it can pay for APIs that
 charge per request (HTTP 402, x402), send AETH and USDC, check balances and
 transactions, find paid services in Aether's on-chain directory and quote AETH to
-OSMO swaps, within
-spending limits enforced in code.
+OSMO swaps, within spending limits enforced in code.
 
 ```bash
 npm install elizaos-plugin-aether
