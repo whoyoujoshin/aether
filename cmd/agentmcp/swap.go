@@ -162,11 +162,7 @@ func swapAeth(ctx context.Context, in swapAethInput) (swapAethOutput, error) {
 		}
 		explicitMin = v
 	}
-	maxCost := in.MaxCostPercent
-	if maxCost == 0 {
-		maxCost = swapDefaultMaxCost
-	}
-	if maxCost < 0 || maxCost > 100 {
+	if in.MaxCostPercent < 0 || in.MaxCostPercent > 100 {
 		return out, newError(codeInvalidArgument, "maxCostPercent must be between 0 and 100")
 	}
 	deadline := time.Now().Add(clampWait(in.WaitSeconds))
@@ -213,24 +209,13 @@ func swapAeth(ctx context.Context, in swapAethInput) (swapAethOutput, error) {
 		if err := checkLimits(st, wallet.AETH, amount); err != nil {
 			return out, err
 		}
-		var quote *quoteSwapOutput
-		if q, err := quoteSwap(ctx, quoteSwapInput{Amount: in.Amount, SlippagePercent: in.SlippagePercent}); err == nil {
-			quote = &q
-		} else if explicitMin.IsNil() {
-			return out, err // no quote and no minOutput: nothing to protect the swap with
-		}
-		minOut := explicitMin
-		if quote != nil {
-			if cost, ok := new(big.Rat).SetString(quote.CostPercent); ok && cost.Cmp(new(big.Rat).SetFloat64(maxCost)) > 0 {
-				out.Quote = quote
-				return out, newError(codeSwapCostTooHigh, fmt.Sprintf("this swap would cost %s%% in fees and price impact, more than maxCostPercent %g: swap less, or raise maxCostPercent", quote.CostPercent, maxCost))
-			}
-			if minOut.IsNil() {
-				minOut, _ = math.NewIntFromString(quote.MinOutput.Uosmo)
-			}
+		minOut, quote, err := swapMinOutput(ctx, in.Amount, in.SlippagePercent, in.MinOutput, in.MaxCostPercent)
+		out.Quote = quote
+		if err != nil {
+			return out, err
 		}
 		var sendErr error
-		rec, sendErr = signSwap(c, in, amount, contract, minOut, !explicitMin.IsNil(), &out)
+		rec, sendErr = signSwap(c, in, amount, contract, minOut, in.MinOutput != "", &out)
 		if sendErr != nil || rec == nil {
 			if sendErr != nil && rec != nil {
 				if ae, ok := sendErr.(*agentError); ok {

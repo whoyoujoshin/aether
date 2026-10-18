@@ -63,7 +63,7 @@ func TestToolAnnotations(t *testing.T) {
 			sandboxDestructive = append(sandboxDestructive, tool.Name)
 		}
 	}
-	require.ElementsMatch(t, []string{"send_from_test_wallet", "buy_service"}, sandboxDestructive)
+	require.ElementsMatch(t, []string{"send_from_test_wallet", "buy_service", "swap_from_test_wallet"}, sandboxDestructive)
 
 	// The public endpoint holds no key: all of it is read-only.
 	public := listTools(t, newPublicServer())

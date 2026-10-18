@@ -45,7 +45,7 @@ var agentmcpTools = []string{
 // --sandbox-http, cmd/agentmcp/sandbox.go); the same test keeps them in step.
 var testWalletTools = []string{
 	"create_test_wallet", "get_test_wallet", "send_from_test_wallet", "buy_service", "get_quest",
-	"get_balance", "get_transaction_status", "find_services", "quote_swap",
+	"get_balance", "get_transaction_status", "find_services", "quote_swap", "swap_from_test_wallet",
 }
 
 // publicTestWallet is the hosted test wallet's URL (--public-test-wallet).

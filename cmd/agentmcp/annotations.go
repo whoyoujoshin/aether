@@ -67,6 +67,7 @@ var toolLabels = map[string]toolLabel{
 
 	"send_from_test_wallet": {title: "Send from test wallet", effect: destructive},
 	"buy_service":           {title: "Buy service", effect: destructive},
+	"swap_from_test_wallet": {title: "Swap from test wallet", effect: destructive},
 }
 
 // annotate sets t's title and annotations from toolLabels.

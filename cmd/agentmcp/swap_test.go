@@ -67,6 +67,12 @@ func (s *swapFake) broadcast(signed wallet.SignedTx) (wallet.BroadcastResult, er
 			continue
 		}
 		s.transfers = append(s.transfers, m)
+		// The chain shows the transfer into the channel's escrow account.
+		s.fakeChain.mu.Lock()
+		if d := s.fakeChain.blocks[res.TxHash]; d != nil {
+			d.From, d.Transfers = m.Sender, append(d.Transfers, wallet.Transfer{From: m.Sender, To: "escrow", Amount: m.Token.String()})
+		}
+		s.fakeChain.mu.Unlock()
 		seq := s.nextSeq
 		s.nextSeq++
 		s.sent[res.TxHash] = seq
@@ -279,4 +285,75 @@ func TestSwapAeth_Refusals(t *testing.T) {
 func TestSwapMemo(t *testing.T) {
 	require.Equal(t, `{"wasm":{"contract":"osmo1c","msg":{"swap_and_return":{"min_output":"5","recipient":"aether1r"}}}}`, swapMemo("osmo1c", "5", "aether1r"))
 	_ = math.ZeroInt()
+}
+
+func setupSandboxSwap(t *testing.T) (*swapFake, string, string) {
+	t.Helper()
+	sb, f := newTestSandbox(t)
+	f.autoInclude = true
+	f.balances = map[string]sdk.Coins{}
+	s := &swapFake{fakeChain: f, poolOut: 394472, nextSeq: 7, sent: map[string]uint64{}, outcomes: map[uint64]*wallet.PacketOutcome{}}
+	dialChain = func() (chain, error) { return s, nil }
+	o := newFakeOsmosis(t)
+	useOsmosis(t, o.URL)
+	h, entropy, err := sb.newHandle()
+	require.NoError(t, err)
+	_, address, err := walletFromEntropy(entropy)
+	require.NoError(t, err)
+	return s, h, address
+}
+
+func sandboxSwap(t *testing.T, in swapFromTestWalletInput) (swapAethOutput, error) {
+	t.Helper()
+	if in.WaitSeconds == 0 {
+		in.WaitSeconds = 5
+	}
+	_, out, err := toolSwapFromTestWallet(context.Background(), nil, in)
+	return out, err
+}
+
+func TestSwapFromTestWallet(t *testing.T) {
+	s, token, address := setupSandboxSwap(t)
+
+	out, err := sandboxSwap(t, swapFromTestWalletInput{WalletToken: token, Amount: "1 AETH"})
+	require.NoError(t, err)
+	require.Equal(t, statusSwapped, out.Status, out.Message)
+	require.Equal(t, "394472", out.Received.Uosmo)
+	require.Equal(t, "390527", out.MinOutput.Uosmo)
+	require.Len(t, s.transfers, 1)
+	require.Equal(t, address, s.transfers[0].Sender)
+	require.Equal(t, testnetSwapContract, s.transfers[0].Receiver)
+	require.JSONEq(t, `{"wasm":{"contract":"`+testnetSwapContract+`","msg":{"swap_and_return":{"min_output":"390527","recipient":"`+address+`"}}}}`, s.transfers[0].Memo)
+
+	// Refunded when the pool can't clear minOutput.
+	s.poolOut = 380000
+	out, err = sandboxSwap(t, swapFromTestWalletInput{WalletToken: token, Amount: "1 AETH"})
+	require.NoError(t, err)
+	require.Equal(t, statusSwapRefunded, out.Status)
+	require.NotEmpty(t, out.Error)
+}
+
+func TestSwapFromTestWallet_FollowUp(t *testing.T) {
+	s, token, _ := setupSandboxSwap(t)
+	s.inFlight = true
+	out, err := sandboxSwap(t, swapFromTestWalletInput{WalletToken: token, Amount: "1 AETH", WaitSeconds: 1})
+	require.NoError(t, err)
+	require.Equal(t, statusSwapInFlight, out.Status)
+
+	s.mu.Lock()
+	s.settle(s.transfers[0], out.PacketSequence)
+	s.mu.Unlock()
+	again, err := sandboxSwap(t, swapFromTestWalletInput{WalletToken: token, TxHash: out.TxHash})
+	require.NoError(t, err)
+	require.Equal(t, statusSwapped, again.Status)
+	require.Equal(t, "394472", again.Received.Uosmo)
+	require.Len(t, s.transfers, 1, "following up sends nothing")
+
+	// Only the wallet that sent it may follow it up, and not with an amount too.
+	other, _, err := sbx.newHandle()
+	require.NoError(t, err)
+	_, err = sandboxSwap(t, swapFromTestWalletInput{WalletToken: other, TxHash: out.TxHash})
+	requireCode(t, err, codeInvalidArgument)
+	_, err = sandboxSwap(t, swapFromTestWalletInput{WalletToken: token, TxHash: out.TxHash, Amount: "1 AETH"})
+	requireCode(t, err, codeInvalidArgument)
 }

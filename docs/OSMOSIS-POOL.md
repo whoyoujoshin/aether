@@ -290,6 +290,12 @@ Two parts, in this order:
    - **`in_flight`** or **`pending`**. Calling again with the same key
      keeps following the same swap and never sends a second one.
 
+   **`swap_from_test_wallet`** does the same from a hosted test wallet.
+   It checks the same quote, `minOutput` and `maxCostPercent`, but has no
+   owner limits: the wallet's balance is its only limit. Test wallets
+   have no idempotency keys, so a swap still in flight is followed up by
+   passing its `txHash`, which must be one that wallet sent.
+
 ## Risks
 
 - **Testnet resets:** if Osmosis testnet is wiped, the pool goes with it, and the channel is rebuilt first ([OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md)).
