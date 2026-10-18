@@ -75,6 +75,8 @@ const (
 	// quote_swap
 	codeQuoteUnavailable  = "QUOTE_UNAVAILABLE"   // Osmosis didn't answer, or this server is pacing its calls
 	codeSwapNotConfigured = "SWAP_NOT_CONFIGURED" // no Osmosis pool set for this chain
+	// swap_aeth: the quote's fees and price impact exceed maxCostPercent
+	codeSwapCostTooHigh = "SWAP_COST_TOO_HIGH"
 )
 
 var retryableCodes = map[string]bool{

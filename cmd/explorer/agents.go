@@ -36,7 +36,7 @@ var agentmcpTools = []string{
 	"create_invoice", "wait_for_payment",
 	"fetch_paid", "list_purchases", "list_prepaid_balances", "withdraw_prepaid",
 	"find_services", "rate_service", "announce_service",
-	"get_quest", "quote_swap",
+	"get_quest", "quote_swap", "swap_aeth",
 	"get_miner_status",
 	"create_escrow", "release_escrow", "refund_escrow", "get_escrow", "list_escrows",
 }

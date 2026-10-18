@@ -47,7 +47,7 @@ func (e spendEvent) denom() string {
 type sendRecord struct {
 	// Kind is "" for a payment, sendKindPullGrant for an aether-pull
 	// allowance (not a payment: nothing moves until the seller collects),
-	// or sendKindEscrowCreate / sendKindEscrowSettle.
+	// sendKindEscrowCreate / sendKindEscrowSettle, or sendKindSwap.
 	Kind      string    `json:"kind,omitempty"`
 	From      string    `json:"from"`              // the signer: this agent
 	Granter   string    `json:"granter,omitempty"` // whose funds, in grant mode
@@ -62,6 +62,8 @@ type sendRecord struct {
 	CreatedAt time.Time `json:"createdAt"`
 	// Escrow is set for create_escrow / release_escrow / refund_escrow.
 	Escrow *escrowParams `json:"escrow,omitempty"`
+	// Swap is set for swap_aeth.
+	Swap *swapParams `json:"swap,omitempty"`
 }
 
 type agentState struct {

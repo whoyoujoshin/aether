@@ -262,6 +262,34 @@ Two parts, in this order:
    minimum-to-receive in the memo, so a moved price fails the swap instead
    of filling it badly.
 
+   **`swap_aeth`** (agentmcp, the local wallet) does this. Given an AETH
+   `amount` and an `idempotencyKey`, it:
+   - **quotes first**, as `quote_swap` does. It refuses with
+     `SWAP_COST_TOO_HIGH` if fees and price impact exceed `maxCostPercent`
+     (default 3), and takes `minOutput` as the quote less `slippagePercent`
+     (default 1). An explicit `minOutput` in uosmo can replace that, and
+     then the swap works without a quote;
+   - **checks the limits and the owner's approval**, the same as
+     `send_aeth`. It isn't available in grant mode: a bank-send grant
+     doesn't cap an IBC transfer;
+   - **signs and sends** a `MsgTransfer` of the AETH over `channel-3` to
+     the contract, with the memo
+     `{"wasm":{"contract":…,"msg":{"swap_and_return":{"min_output":…,"recipient":<this agent>}}}}`
+     and a 10-minute timeout;
+   - **follows the packet** until `waitSeconds` (default 90): its sequence
+     from `send_packet`, then its commitment, then the acknowledgement or
+     timeout on Aether, read from that relay transaction's events by
+     `msg_index`. A success acknowledgement means Osmosis swapped it and
+     sent the OSMO back. The tool then waits for this agent's OSMO
+     (`ibc/47BD…9E23`) to rise.
+
+   It ends in one of these states:
+   - **`swapped`**, with `received`, the OSMO that arrived;
+   - **`refunded`**, with Osmosis's error (an error acknowledgement or a
+     timeout). The AETH came back, so it is taken off the daily budget;
+   - **`in_flight`** or **`pending`**. Calling again with the same key
+     keeps following the same swap and never sends a second one.
+
 ## Risks
 
 - **Testnet resets:** if Osmosis testnet is wiped, the pool goes with it, and the channel is rebuilt first ([OSMOSIS-TESTNET.md](OSMOSIS-TESTNET.md)).
