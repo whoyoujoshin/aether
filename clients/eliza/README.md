@@ -3,7 +3,8 @@
 An [ElizaOS](https://github.com/elizaOS/eliza) plugin that gives an agent an
 [Aether](https://github.com/whoyoujoshin/aether) wallet: it can pay for APIs that
 charge per request (HTTP 402, x402), send AETH and USDC, check balances and
-transactions, and find paid services in Aether's on-chain directory, within
+transactions, find paid services in Aether's on-chain directory and quote AETH to
+OSMO swaps, within
 spending limits enforced in code.
 
 ```bash
@@ -42,6 +43,7 @@ Then ask the agent to get itself some testnet AETH: it asks the faucet.
 | `AETHER_SEND_PAYMENT` | Sends AETH (or USDC) to an address | yes |
 | `AETHER_CALL_PAID_API` | Calls an API, pays what it asks up to a maximum, returns the answer | yes |
 | `AETHER_REQUEST_TESTNET_FUNDS` | Asks the testnet faucet for starter AETH | no |
+| `AETHER_QUOTE_SWAP` | Quotes swapping AETH for OSMO in the AETH/OSMO pool on Osmosis testnet (OSMO out, cost, a minOutput); quotes only, never swaps | no |
 
 The `AETHER_WALLET` provider tells the agent its address and what's left of its budget.
 

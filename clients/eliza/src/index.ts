@@ -106,11 +106,8 @@ const DEFS: ActionDef[] = [
     tool: "aether_quote_swap", action: "AETHER_QUOTE_SWAP",
     similes: ["SWAP_QUOTE", "QUOTE_AETH_TO_OSMO", "AETH_OSMO_QUOTE"],
     reply: (r) => {
-      const inA = (r.in as any)?.aeth ?? "?";
-      const outO = (r.out as any)?.osmo ?? "?";
-      const cost = r.costPercent ?? "?";
-      const minO = (r.minOutput as any)?.osmo ?? "?";
-      return `Quote (not a swap): ${inA} AETH would return about ${outO} OSMO (cost ${cost}%). minOutput ${minO} OSMO. The pool moves; this is an estimate only.`;
+      const [inA, outO, minO] = [r.in, r.out, r.minOutput] as Row[];
+      return `Quote (not a swap): ${inA.aeth} AETH would return about ${outO.osmo} OSMO (cost ${r.costPercent}%). minOutput ${minO.osmo} OSMO. The pool moves; this is an estimate only.`;
     },
     examples: [["What would 1 AETH get me in OSMO?", "Quoting the AETH/OSMO pool."]],
   },
@@ -195,7 +192,7 @@ export const walletProvider: Provider = {
     const kit = toolkits.get(runtime);
     if (!kit) return { text: "" };
     if (!kit.key) {
-      return { text: "Aether: read-only (no wallet key). You can check balances and transactions and search paid services.", values: { aetherAddress: "" } };
+      return { text: "Aether: read-only (no wallet key). You can check balances and transactions, search paid services and quote AETH to OSMO swaps.", values: { aetherAddress: "" } };
     }
     const s = kit.spendingStatus();
     return {
