@@ -13,8 +13,11 @@
 # most 200 wallets a day). Each also gets 0.01 test USDC while the funder
 # holds some (--sandbox-grant-usdc; benchmark wallets never do): send the
 # funder Circle's testnet USDC over IBC from Injective (docs/TEST-WALLET.md).
-# It builds its own binary, /root/agentmcp-sandbox,
-# so the public read-only /mcp's /root/agentmcp is never touched.
+# It installs its own binary, /root/agentmcp-sandbox,
+# so the public read-only /mcp's /root/agentmcp is never touched. The seed
+# is a validator, so build on a workstation (scripts/prebuild.sh) and pass
+# PREBUILT=<that folder>; it won't compile where aetherd runs unless
+# ALLOW_BUILD_ON_VALIDATOR=yes.
 #
 # It also creates $KEYDIR/bench-key: callers that send it as
 # X-Aether-Bench-Key draw new wallets from the payments benchmark's own
@@ -27,9 +30,13 @@ CHAIN_ID=${CHAIN_ID:-aether-testnet-1}
 KEYDIR=${KEYDIR:-/root/aether-sandbox-key}
 USDC="--usdc-path transfer/channel-2 --usdc-base-denom erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d --usdc-issuer Injective"
 [ -f "$REPO/cmd/agentmcp/sandbox.go" ] || { echo "run from the repo checkout (no cmd/agentmcp/sandbox.go)" >&2; exit 1; }
+. "$(dirname "$0")/../lib/prebuilt.sh"
+prebuilt_check
+no_build_on_validator
 
-echo "== Building from $(git -C "$REPO" log -1 --format='%h %s')"
-(cd "$REPO" && go build -o /root/agentmcp-sandbox.new ./cmd/agentmcp && go build -o /root/aetherd-keys.tmp ./cmd/aetherd)
+[ -n "${PREBUILT:-}" ] || echo "== Building from $(git -C "$REPO" log -1 --format='%h %s')"
+place_bin agentmcp /root/agentmcp-sandbox.new ./cmd/agentmcp
+place_bin aetherd /root/aetherd-keys.tmp ./cmd/aetherd
 mv /root/agentmcp-sandbox.new /root/agentmcp-sandbox
 
 mkdir -p "$KEYDIR" && chmod 700 "$KEYDIR"

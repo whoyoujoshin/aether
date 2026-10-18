@@ -32,3 +32,6 @@ auxpow.json
 
 # Personal monitoring script, not part of the project proper
 aether_monitor.py
+
+# scripts/prebuild.sh output
+/dist/
