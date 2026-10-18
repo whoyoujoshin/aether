@@ -45,6 +45,13 @@ function ratOf(s: string): [bigint, bigint] | undefined {
   return [n, 10n ** BigInt(frac.length)];
 }
 
+/** u without surrounding space or trailing slashes (a loop: /\/+$/ backtracks on long runs of "/"). */
+function trimSlashes(u: string): string {
+  let s = u.trim();
+  while (s.endsWith("/")) s = s.slice(0, -1);
+  return s;
+}
+
 /** A 6-decimal base amount in whole units, trailing zeros trimmed. */
 function formatMicro(n: bigint): string {
   return fixed(n, 1_000_000n, 6).replace(/0+$/, "").replace(/\.$/, "");
@@ -78,7 +85,7 @@ export class SwapQuoter {
   private upstream: number[] = [];
 
   constructor(opts: SwapQuoterOptions = {}) {
-    this.rest = (opts.rest ?? TESTNET_OSMOSIS_REST).map((u) => u.trim().replace(/\/+$/, "")).filter(Boolean);
+    this.rest = (opts.rest ?? TESTNET_OSMOSIS_REST).map(trimSlashes).filter(Boolean);
     this.pool = opts.pool ?? TESTNET_OSMOSIS_POOL;
     this.fetch = opts.fetch ?? fetch;
     this.now = opts.now ?? Date.now;
