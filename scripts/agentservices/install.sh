@@ -9,8 +9,10 @@
 #
 #   cd /root/aether-src && PAY_TO=aether1... bash scripts/agentservices/install.sh
 #
-# It builds from the current checkout, never touches aetherd, and checks
-# each service answers its free /help through its paywall.
+# It builds from the current checkout (or installs PREBUILT=<folder from
+# scripts/prebuild.sh>: the seed is a validator, so it won't compile where
+# aetherd runs unless ALLOW_BUILD_ON_VALIDATOR=yes), never touches aetherd,
+# and checks each service answers its free /help through its paywall.
 set -euo pipefail
 REPO=${REPO:-$(pwd)}
 PAY_TO=${PAY_TO:?set PAY_TO to the payee address (bash scripts/agentservices/announce.sh shows it)}
@@ -33,8 +35,13 @@ if [ -n "$DECOY" ] && [ -f "$DECOYS" ]; then
   echo "== Decoys for the benchmark, naming $DECOY"
 fi
 
-echo "== Building from $(git -C "$REPO" log -1 --format='%h %s')"
-(cd "$REPO" && go build -o /root/agentservices.new ./cmd/agentservices && go build -o /root/paywall.new ./cmd/paywall && go build -o /root/facilitator.new ./cmd/facilitator)
+. "$(dirname "$0")/../lib/prebuilt.sh"
+prebuilt_check
+no_build_on_validator
+[ -n "${PREBUILT:-}" ] || echo "== Building from $(git -C "$REPO" log -1 --format='%h %s')"
+place_bin agentservices /root/agentservices.new ./cmd/agentservices
+place_bin paywall /root/paywall.new ./cmd/paywall
+place_bin facilitator /root/facilitator.new ./cmd/facilitator
 mv /root/agentservices.new /root/agentservices
 mv /root/paywall.new /root/paywall
 mv /root/facilitator.new /root/facilitator

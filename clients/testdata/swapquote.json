@@ -1,0 +1,231 @@
+{
+  "note": "Osmosis testnet's answers for pool 1370 and what quote_swap returns for them. cmd/agentmcp (TestQuoteSwap_SharedVectors, UPDATE_SWAPQUOTE=1 to regenerate), clients/ts and clients/python test against this file.",
+  "vectors": [
+    {
+      "name": "1 AETH at creation (recorded by the pool probe)",
+      "pool": {
+        "pool": {
+          "@type": "/osmosis.gamm.v1beta1.Pool",
+          "address": "osmo14fltplmxyrlsj20d34kxfc55ungs0smtyw3u7d7z9w3mlevkhz2qday49j",
+          "id": "1370",
+          "pool_params": {
+            "swap_fee": "0.003000000000000000",
+            "exit_fee": "0.000000000000000000",
+            "smooth_weight_change_params": null
+          },
+          "future_pool_governor": "",
+          "total_shares": {
+            "denom": "gamm/pool/1370",
+            "amount": "100000000000000000000"
+          },
+          "pool_assets": [
+            {
+              "token": {
+                "denom": "ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1",
+                "amount": "100000000"
+              },
+              "weight": "1073741824"
+            },
+            {
+              "token": {
+                "denom": "uosmo",
+                "amount": "40000000"
+              },
+              "weight": "1073741824"
+            }
+          ],
+          "total_weight": "2147483648"
+        }
+      },
+      "estimate": {
+        "token_out_amount": "394472"
+      },
+      "input": {
+        "amount": "1 AETH"
+      },
+      "want": {
+        "cost_percent": "1.38",
+        "denom_on_aether": "ibc/47BD209179859CDE4A2806763D7189B6E6FE13A17880FE2B42DE1E6C1E329E23",
+        "min_output_uosmo": "390527",
+        "out_osmo": "0.394472",
+        "out_uosmo": "394472",
+        "price": "0.394472",
+        "reserves_aeth": "100",
+        "reserves_osmo": "40",
+        "slippage_percent": "1.00",
+        "spot_price": "0.400000",
+        "swap_fee_percent": "0.30"
+      }
+    },
+    {
+      "name": "same, 0.5% slippage in uaeth",
+      "pool": {
+        "pool": {
+          "@type": "/osmosis.gamm.v1beta1.Pool",
+          "address": "osmo14fltplmxyrlsj20d34kxfc55ungs0smtyw3u7d7z9w3mlevkhz2qday49j",
+          "id": "1370",
+          "pool_params": {
+            "swap_fee": "0.003000000000000000",
+            "exit_fee": "0.000000000000000000",
+            "smooth_weight_change_params": null
+          },
+          "future_pool_governor": "",
+          "total_shares": {
+            "denom": "gamm/pool/1370",
+            "amount": "100000000000000000000"
+          },
+          "pool_assets": [
+            {
+              "token": {
+                "denom": "ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1",
+                "amount": "100000000"
+              },
+              "weight": "1073741824"
+            },
+            {
+              "token": {
+                "denom": "uosmo",
+                "amount": "40000000"
+              },
+              "weight": "1073741824"
+            }
+          ],
+          "total_weight": "2147483648"
+        }
+      },
+      "estimate": {
+        "token_out_amount": "394472"
+      },
+      "input": {
+        "amount": "1000000uaeth",
+        "slippagePercent": 0.5
+      },
+      "want": {
+        "cost_percent": "1.38",
+        "denom_on_aether": "ibc/47BD209179859CDE4A2806763D7189B6E6FE13A17880FE2B42DE1E6C1E329E23",
+        "min_output_uosmo": "392499",
+        "out_osmo": "0.394472",
+        "out_uosmo": "394472",
+        "price": "0.394472",
+        "reserves_aeth": "100",
+        "reserves_osmo": "40",
+        "slippage_percent": "0.50",
+        "spot_price": "0.400000",
+        "swap_fee_percent": "0.30"
+      }
+    },
+    {
+      "name": "1 AETH after the first swap (live quote, 2026-10-18)",
+      "pool": {
+        "pool": {
+          "@type": "/osmosis.gamm.v1beta1.Pool",
+          "address": "osmo14fltplmxyrlsj20d34kxfc55ungs0smtyw3u7d7z9w3mlevkhz2qday49j",
+          "id": "1370",
+          "pool_params": {
+            "swap_fee": "0.003000000000000000",
+            "exit_fee": "0.000000000000000000",
+            "smooth_weight_change_params": null
+          },
+          "future_pool_governor": "",
+          "total_shares": {
+            "denom": "gamm/pool/1370",
+            "amount": "100000000000000000000"
+          },
+          "pool_assets": [
+            {
+              "token": {
+                "denom": "ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1",
+                "amount": "100999000"
+              },
+              "weight": "1073741824"
+            },
+            {
+              "token": {
+                "denom": "uosmo",
+                "amount": "39605528"
+              },
+              "weight": "1073741824"
+            }
+          ],
+          "total_weight": "2147483648"
+        }
+      },
+      "estimate": {
+        "token_out_amount": "386750"
+      },
+      "input": {
+        "amount": "1 AETH"
+      },
+      "want": {
+        "cost_percent": "1.37",
+        "denom_on_aether": "ibc/47BD209179859CDE4A2806763D7189B6E6FE13A17880FE2B42DE1E6C1E329E23",
+        "min_output_uosmo": "382882",
+        "out_osmo": "0.38675",
+        "out_uosmo": "386750",
+        "price": "0.386750",
+        "reserves_aeth": "100.999",
+        "reserves_osmo": "39.605528",
+        "slippage_percent": "1.00",
+        "spot_price": "0.392138",
+        "swap_fee_percent": "0.30"
+      }
+    },
+    {
+      "name": "0.0123 AETH, 2.5% slippage (estimate made up, to test rounding)",
+      "pool": {
+        "pool": {
+          "@type": "/osmosis.gamm.v1beta1.Pool",
+          "address": "osmo14fltplmxyrlsj20d34kxfc55ungs0smtyw3u7d7z9w3mlevkhz2qday49j",
+          "id": "1370",
+          "pool_params": {
+            "swap_fee": "0.003000000000000000",
+            "exit_fee": "0.000000000000000000",
+            "smooth_weight_change_params": null
+          },
+          "future_pool_governor": "",
+          "total_shares": {
+            "denom": "gamm/pool/1370",
+            "amount": "100000000000000000000"
+          },
+          "pool_assets": [
+            {
+              "token": {
+                "denom": "ibc/8277E1557EB379889BA54DFD0F19EDCFF907E4B3414E6B99D098F241CAED3BE1",
+                "amount": "100999000"
+              },
+              "weight": "1073741824"
+            },
+            {
+              "token": {
+                "denom": "uosmo",
+                "amount": "39605528"
+              },
+              "weight": "1073741824"
+            }
+          ],
+          "total_weight": "2147483648"
+        }
+      },
+      "estimate": {
+        "token_out_amount": "4785"
+      },
+      "input": {
+        "amount": "0.0123 AETH",
+        "slippagePercent": 2.5
+      },
+      "want": {
+        "cost_percent": "0.79",
+        "denom_on_aether": "ibc/47BD209179859CDE4A2806763D7189B6E6FE13A17880FE2B42DE1E6C1E329E23",
+        "min_output_uosmo": "4665",
+        "out_osmo": "0.004785",
+        "out_uosmo": "4785",
+        "price": "0.389024",
+        "reserves_aeth": "100.999",
+        "reserves_osmo": "39.605528",
+        "slippage_percent": "2.50",
+        "spot_price": "0.392138",
+        "swap_fee_percent": "0.30"
+      }
+    }
+  ]
+}

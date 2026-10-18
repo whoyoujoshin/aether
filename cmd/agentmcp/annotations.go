@@ -63,9 +63,11 @@ var toolLabels = map[string]toolLabel{
 	"create_escrow":  {title: "Create escrow", effect: destructive},
 	"release_escrow": {title: "Release escrow", effect: destructive},
 	"refund_escrow":  {title: "Refund escrow", effect: destructive},
+	"swap_aeth":      {title: "Swap AETH for OSMO", effect: destructive, idempotent: true},
 
 	"send_from_test_wallet": {title: "Send from test wallet", effect: destructive},
 	"buy_service":           {title: "Buy service", effect: destructive},
+	"swap_from_test_wallet": {title: "Swap from test wallet", effect: destructive},
 }
 
 // annotate sets t's title and annotations from toolLabels.

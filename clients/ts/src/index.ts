@@ -19,6 +19,7 @@ export type { Ledger, Withdrawal } from "./ledger.js";
 export { RECEIPT_HEADER, checkReceipt, createReceiptDelegation, decodeReceipt, delegationSigningMessage, receiptSigningMessage, signReceipt, verifyReceipt } from "./receipt.js";
 export type { Receipt, ReceiptDelegation, ReceiptExpectation } from "./receipt.js";
 export { AetherToolkit, manifestPrice, TESTNET_FAUCET } from "./agentTools.js";
+export { SwapQuoter, TESTNET_OSMOSIS_POOL, TESTNET_OSMOSIS_REST, AETH_ON_OSMOSIS, OSMO_ON_AETHER } from "./swapQuote.js";
 export type { AetherToolkitOptions, ToolSpec, ToolResult } from "./agentTools.js";
 export { serveMcp, handleMcpMessage, mcpTools, MCP_PROTOCOL_VERSIONS } from "./mcpServer.js";
 export { ExactAetherScheme, x402Network } from "./x402.js";

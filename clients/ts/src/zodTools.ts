@@ -16,7 +16,7 @@ export function zodSchema(spec: ToolSpec): z.ZodObject<z.ZodRawShape> {
   const required = new Set(spec.parameters.required ?? []);
   const shape: z.ZodRawShape = {};
   for (const [name, p] of Object.entries(spec.parameters.properties)) {
-    const s = z.string().describe(p.description);
+    const s = (p.type === "number" ? z.number() : z.string()).describe(p.description);
     shape[name] = required.has(name) ? s : s.nullish(); // some models send null for "not given"
   }
   return z.object(shape).strict();

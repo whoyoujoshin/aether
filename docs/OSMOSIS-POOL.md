@@ -240,6 +240,11 @@ Two parts, in this order:
    answers `QUOTE_UNAVAILABLE` with `retryAfterSeconds`. The tests use
    the pool and estimate responses recorded at creation (1 AETH:
    394,472 uosmo, cost 1.38%).
+
+   Live on the seed's public `/mcp` and test wallet since 2026-10-18
+   00:06 UTC (agentmcp `6093c26`, built off the validators). Both
+   quoted 1 AETH at 386,750 uosmo, `minOutput` 382,882 at 1%, matching
+   the pool after the test swap (about 101 AETH : 39.61 OSMO).
 2. **Swap from Aether.** The agent sends AETH over `channel-3` with a memo.
    On Osmosis, a contract swaps it in the pool and sends the OSMO back to
    the agent's Aether address. If the swap fails, the transfer fails and
@@ -256,6 +261,40 @@ Two parts, in this order:
    other spend (owner-set, per payment and per day). It also gets a
    minimum-to-receive in the memo, so a moved price fails the swap instead
    of filling it badly.
+
+   **`swap_aeth`** (agentmcp, the local wallet) does this. Given an AETH
+   `amount` and an `idempotencyKey`, it:
+   - **quotes first**, as `quote_swap` does. It refuses with
+     `SWAP_COST_TOO_HIGH` if fees and price impact exceed `maxCostPercent`
+     (default 3), and takes `minOutput` as the quote less `slippagePercent`
+     (default 1). An explicit `minOutput` in uosmo can replace that, and
+     then the swap works without a quote;
+   - **checks the limits and the owner's approval**, the same as
+     `send_aeth`. It isn't available in grant mode: a bank-send grant
+     doesn't cap an IBC transfer;
+   - **signs and sends** a `MsgTransfer` of the AETH over `channel-3` to
+     the contract, with the memo
+     `{"wasm":{"contract":…,"msg":{"swap_and_return":{"min_output":…,"recipient":<this agent>}}}}`
+     and a 10-minute timeout;
+   - **follows the packet** until `waitSeconds` (default 90): its sequence
+     from `send_packet`, then its commitment, then the acknowledgement or
+     timeout on Aether, read from that relay transaction's events by
+     `msg_index`. A success acknowledgement means Osmosis swapped it and
+     sent the OSMO back. The tool then waits for this agent's OSMO
+     (`ibc/47BD…9E23`) to rise.
+
+   It ends in one of these states:
+   - **`swapped`**, with `received`, the OSMO that arrived;
+   - **`refunded`**, with Osmosis's error (an error acknowledgement or a
+     timeout). The AETH came back, so it is taken off the daily budget;
+   - **`in_flight`** or **`pending`**. Calling again with the same key
+     keeps following the same swap and never sends a second one.
+
+   **`swap_from_test_wallet`** does the same from a hosted test wallet.
+   It checks the same quote, `minOutput` and `maxCostPercent`, but has no
+   owner limits: the wallet's balance is its only limit. Test wallets
+   have no idempotency keys, so a swap still in flight is followed up by
+   passing its `txHash`, which must be one that wallet sent.
 
 ## Risks
 
