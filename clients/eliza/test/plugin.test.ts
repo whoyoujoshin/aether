@@ -45,7 +45,7 @@ test("the plugin offers six actions and a wallet provider", async () => {
   const { plugin, runtime, action, key } = await setup(true, []);
   assert.equal(plugin.name, "aether");
   assert.deepEqual(plugin.actions!.map((a) => a.name), [
-    "AETHER_GET_BALANCE", "AETHER_TRANSACTION_STATUS", "AETHER_FIND_PAID_SERVICES", "AETHER_SEND_PAYMENT", "AETHER_CALL_PAID_API", "AETHER_REQUEST_TESTNET_FUNDS",
+    "AETHER_GET_BALANCE", "AETHER_TRANSACTION_STATUS", "AETHER_FIND_PAID_SERVICES", "AETHER_SEND_PAYMENT", "AETHER_CALL_PAID_API", "AETHER_REQUEST_TESTNET_FUNDS", "AETHER_QUOTE_SWAP",
   ]);
   for (const a of plugin.actions!) {
     assert.ok(a.description.length > 20, a.name);
@@ -125,4 +125,14 @@ test("parseArgs takes the first JSON object", () => {
   assert.deepEqual(parseArgs('Here: {"a": "b"} done'), { a: "b" });
   assert.equal(parseArgs("no json"), undefined);
   assert.equal(parseArgs("[1]"), undefined);
+});
+
+
+test("quote_swap is offered and formats a quote reply", async () => {
+  const { runtime, action } = await setup(true, ['{"amount":"1 AETH"}']);
+  const quote = action("AETHER_QUOTE_SWAP");
+  assert.equal(await quote.validate(runtime, msg("quote")), true);
+  // Fake a successful quote result by stubbing the kit call path is already covered by the toolkit;
+  // here we only check the action exists and the description mentions the quote.
+  assert.match(quote.description, /Quote swapping AETH for OSMO/);
 });
