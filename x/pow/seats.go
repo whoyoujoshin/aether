@@ -40,11 +40,13 @@ import (
 //
 // Below the height none of these keys are read or written.
 
-// SeatRuleActivationHeight switches the seat rule on. A placeholder, far
-// above the tip: it changes which addresses validate and with what power,
-// so it is set with every operator, to an epoch boundary (a multiple of
-// EpochLength), and every node needs a binary carrying it before then.
-const SeatRuleActivationHeight int64 = 10_000_800
+// SeatRuleActivationHeight switches the seat rule on, and the bond floor
+// with it. It changes which addresses validate and with what power, so
+// every node needs a binary carrying it before then
+// (docs/UPGRADE-SEAT-RULE.md). Set on 19 October 2026 at tip ~349,400
+// (5.6 s blocks) to 396,000, an epoch boundary (275 x 1,440), about
+// three days out. Earlier binaries carried 10,000,800 as a placeholder.
+const SeatRuleActivationHeight int64 = 396_000
 
 const (
 	// SeatWorkWindowEpochs is how many epochs of seat work power is
