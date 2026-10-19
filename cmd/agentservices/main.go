@@ -10,6 +10,10 @@
 //	/pulse    the chain right now: height, block time, difficulty, epoch
 //	/miners   this epoch's proof-of-work leaderboard
 //
+// With --inference-key-file (an OpenRouter API key) it also serves
+//
+//	/inference  a short chat with one LLM, priced per request (inference.go)
+//
 // With --decoy-address it also serves three decoys for the payments
 // benchmark (decoys.go): services that try to talk an agent into paying
 // that address. They are never listed in the on-chain directory; the
@@ -63,6 +67,8 @@ type server struct {
 	assets *wallet.Assets
 	now    func() time.Time
 	decoy  string // the benchmark decoys' address; empty: no decoys
+	// inference is /inference, nil unless --inference-key-file is set.
+	inference *inferenceService
 }
 
 func main() {
@@ -71,6 +77,15 @@ func main() {
 	grpcEndpoint := flag.String("grpc", "localhost:9090", "node gRPC endpoint")
 	usdc := wallet.USDCFlags(flag.CommandLine, wallet.USDCSetting{})
 	decoy := flag.String("decoy-address", "", "also serve the payments benchmark's decoys (decoys.go), naming this address; never list them")
+	infKeyFile := flag.String("inference-key-file", "", "also serve /inference, with the OpenRouter API key in this file (inference.go)")
+	infBase := flag.String("inference-base-url", "https://openrouter.ai/api/v1", "inference: the OpenAI-compatible API")
+	infModel := flag.String("inference-model", "openai/gpt-oss-120b", "inference: the model")
+	infMaxTokens := flag.Int("inference-max-tokens", 1024, "inference: most reply tokens per call")
+	infMaxChars := flag.Int("inference-max-input-chars", 16000, "inference: most input characters per call")
+	infMaxCall := flag.String("inference-max-call-usd", "0.002", "inference: refuse a call whose worst-case cost is above this many dollars")
+	infDaily := flag.String("inference-daily-usd", "1", "inference: dollars of upstream spend allowed per UTC day")
+	infPayerDaily := flag.Int("inference-payer-daily", 20, "inference: calls per payer per UTC day")
+	infEffort := flag.String("inference-reasoning-effort", "low", "inference: reasoning effort for models that reason (empty: the model's default)")
 	flag.Parse()
 	if *decoy != "" {
 		if _, err := sdk.AccAddressFromBech32(*decoy); err != nil {
@@ -89,6 +104,14 @@ func main() {
 	defer client.Close()
 
 	s := &server{chain: client, assets: assets, now: time.Now, decoy: *decoy}
+	if *infKeyFile != "" {
+		cfg, err := inferenceFromFlags(*infKeyFile, *infBase, *infModel, *infMaxTokens, *infMaxChars, *infMaxCall, *infDaily, *infPayerDaily, *infEffort)
+		if err != nil {
+			log.Fatalf("inference: %v", err)
+		}
+		s.inference = newInferenceService(cfg, time.Now)
+		log.Printf("inference: %s, up to $%s a day", cfg.Model, picoToUSD(cfg.DailyPico))
+	}
 	log.Printf("agent services on http://%s (hello, address, verify, pulse, miners), chain %s", *listen, *grpcEndpoint)
 	srv := &http.Server{Addr: *listen, Handler: s.routes(), ReadHeaderTimeout: 10 * time.Second}
 	log.Fatal(srv.ListenAndServe())
@@ -109,6 +132,7 @@ type helpDoc struct {
 	Returns string            `json:"returns"`
 	Price   string            `json:"price"`
 	Note    string            `json:"note,omitempty"`
+	Limits  map[string]any    `json:"limits,omitempty"`
 }
 
 const priceNote = "per request, set by this service's paywall: see the HTTP 402 answer or <service URL>/.well-known/x402"
@@ -161,6 +185,9 @@ func (s *server) services() map[string]service {
 			Returns: `{"height", "epoch", "topKSize", "selectionRule", "entries": [{"rank", "address", "work", "activeValidator"}]}`,
 		}},
 	}
+	if s.inference != nil {
+		m["inference"] = s.inference.service()
+	}
 	if s.decoy != "" {
 		for name, svc := range s.decoys() {
 			m[name] = svc
@@ -181,7 +208,11 @@ func (s *server) routes() http.Handler {
 			case "":
 				svc.handle(w, r)
 			case "help":
-				writeJSON(w, http.StatusOK, svc.help)
+				if name == "inference" && s.inference != nil {
+					writeJSON(w, http.StatusOK, s.inference.help()) // live: today's limits
+				} else {
+					writeJSON(w, http.StatusOK, svc.help)
+				}
 			default:
 				writeError(w, http.StatusNotFound, "no such path: try "+"/help")
 			}

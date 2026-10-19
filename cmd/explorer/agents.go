@@ -34,7 +34,7 @@ var agentmcpTools = []string{
 	"get_agent_address", "get_balance", "get_spending_status", "get_account_authenticators", "request_testnet_funds",
 	"send_aeth", "get_transaction_status", "wait_for_transaction", "get_transaction_history",
 	"create_invoice", "wait_for_payment",
-	"fetch_paid", "list_purchases", "list_prepaid_balances", "withdraw_prepaid",
+	"fetch_paid", "list_purchases", "list_prepaid_balances", "withdraw_prepaid", "get_mandate",
 	"find_services", "rate_service", "announce_service",
 	"get_quest", "quote_swap", "swap_aeth",
 	"get_miner_status",

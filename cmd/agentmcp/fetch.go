@@ -146,6 +146,9 @@ func doHTTP(ctx context.Context, in fetchPaidInput, method, payment string) (*ht
 	if payment != "" {
 		req.Header.Set(paywall.HeaderPayment, payment)
 	}
+	if m := mandateHeader(); m != "" {
+		req.Header.Set(paywall.HeaderMandate, m)
+	}
 	resp, err := fetchHTTPClient.Do(req)
 	if err != nil {
 		return nil, newError(codeHTTPError, err.Error())
@@ -255,6 +258,9 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 	if rec == nil {
 		first, err := doHTTP(ctx, in, method, "")
 		if err != nil {
+			return nil, fetchPaidOutput{}, err
+		}
+		if err := mandateRefusal(first); err != nil {
 			return nil, fetchPaidOutput{}, err
 		}
 		if first.status != http.StatusPaymentRequired {

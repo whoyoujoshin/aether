@@ -53,6 +53,9 @@ type Config struct {
 	Pull *PullConfig
 	// Receipts, if set, signs a receipt for every paid response.
 	Receipts *ReceiptConfig
+	// Mandates, if set, checks owners' spending mandates (mandate.go):
+	// apply MandateGate before Middleware and MandatePayerCheck after.
+	Mandates *MandateConfig
 	// Exact, if set, also offers the standard x402 v2 exact scheme.
 	Exact *ExactConfig
 }

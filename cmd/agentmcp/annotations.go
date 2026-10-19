@@ -55,6 +55,7 @@ var toolLabels = map[string]toolLabel{
 	"create_invoice":        {title: "Create invoice", effect: additive},
 	"rate_service":          {title: "Rate service", effect: additive, idempotent: true},
 	"announce_service":      {title: "Announce service", effect: additive, idempotent: true},
+	"get_mandate":           {title: "Get spending mandate", effect: readOnly},
 	"withdraw_prepaid":      {title: "Withdraw prepaid balance", effect: additive, idempotent: true},
 	"create_test_wallet":    {title: "Create test wallet", effect: additive},
 

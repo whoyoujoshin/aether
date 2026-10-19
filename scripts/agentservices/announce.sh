@@ -11,7 +11,8 @@
 # services answer publicly, run it again: it lists each one (1 uaeth to
 # the directory address, memo "x402-service:<url>"), waiting for each
 # transaction to land before the next. ONLY=<name> lists just that one
-# (e.g. a service added to services.txt after the others were listed).
+# (e.g. a service added to services.txt after the others were listed;
+# inference.txt's service counts too, once its key is on this server).
 set -euo pipefail
 REPO=${REPO:-$(pwd)}
 KEYDIR=${KEYDIR:-/root/aether-services-key}
@@ -23,6 +24,8 @@ CHAIN_ID=${CHAIN_ID:-aether-testnet-1}
 DIRECTORY=aether1q33l05h32falelyk69p79p3ypxwka6yk2sq9e2
 LIST="$REPO/scripts/agentservices/services.txt"
 [ -f "$LIST" ] || { echo "run from the repo checkout (no $LIST)" >&2; exit 1; }
+INFERENCE_LIST=/dev/null
+[ -s "${INFERENCE_KEY_FILE:-/root/aether-inference/openrouter-key}" ] && INFERENCE_LIST="$REPO/scripts/agentservices/inference.txt"
 AETHERD=${AETHERD:-$(systemctl cat aetherd --no-pager 2>/dev/null | sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' | head -1)}
 AETHERD=${AETHERD:-$(command -v aetherd || true)}
 [ -x "$AETHERD" ] || { echo "can't find aetherd: set AETHERD=/path/to/aetherd" >&2; exit 1; }
@@ -70,5 +73,5 @@ while IFS='|' read -r name _; do
     sleep 3
   done
   echo "not in a block after 90s: check it, then run this again" >&2; exit 1
-done < "$LIST"
+done < <(cat "$LIST" "$INFERENCE_LIST")
 echo "Listed${ONLY:+ $ONLY}. Agents find them with find_services."

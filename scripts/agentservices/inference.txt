@@ -1,0 +1,5 @@
+# The paid LLM inference service (cmd/agentservices/inference.go), in the
+# same format as services.txt: name|port|price|title|description. install.sh,
+# caddy.sh and announce.sh use it only when the OpenRouter key file exists
+# (INFERENCE_KEY_FILE, default /root/aether-inference/openrouter-key).
+inference|8417|0.002 USDC|Aether LLM inference|A short chat with an open-weights LLM (gpt-oss-120b), paid per request in testnet USDC: POST a prompt or messages, get the model's reply and its token counts. Limits per payer and per day are on its free /help.
