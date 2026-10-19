@@ -126,3 +126,49 @@ func TestSeatRule_OldRuleBelowTheHeight(t *testing.T) {
 	_, ok := k.GetValidatorPower(ctx, miner)
 	require.False(t, ok)
 }
+
+// A validator's rewards fill its escrow up to the bond floor, and the rest
+// is paid out, from the activation height; below it, all of it stays in
+// escrow. The bond's unlock height moves forward either way.
+func TestSeatRule_BondFloor(t *testing.T) {
+	floor := math.NewInt(pow.ValidatorBondFloor)
+	reward := math.NewInt(5_000_000)
+	cut := reward.MulRaw(15).QuoRaw(100)
+	// The miner's part, plus the validators' 13/15 of the cut: v is the
+	// only validator.
+	minerPart := reward.Sub(cut).Add(cut.MulRaw(13).QuoRaw(15))
+
+	k, ctx, bank := setupKeeper(t)
+	v := sdk.AccAddress("bond_floor_validator_")
+	k.SetActiveValidator(ctx, v)
+	k.AddEscrow(ctx, v, floor.Sub(math.NewInt(1_000_000)))
+
+	below := ctx.WithBlockHeight(pow.SeatRuleActivationHeight - 1)
+	require.NoError(t, k.DistributeReward(below, v, reward))
+	require.Equal(t, floor.Sub(math.NewInt(1_000_000)).Add(minerPart), k.GetEscrowBalance(ctx, v), "below the height, all of it is escrowed")
+	for _, s := range bank.SendCalls {
+		require.False(t, v.Equals(s.RecipientAddr))
+	}
+
+	k.ClearEscrow(ctx, v)
+	k.AddEscrow(ctx, v, floor.Sub(math.NewInt(1_000_000)))
+	at := ctx.WithBlockHeight(pow.SeatRuleActivationHeight)
+	require.NoError(t, k.DistributeReward(at, v, reward))
+	require.Equal(t, floor, k.GetEscrowBalance(ctx, v), "escrow fills to the floor")
+	paid := math.ZeroInt()
+	for _, s := range bank.SendCalls {
+		if v.Equals(s.RecipientAddr) {
+			paid = paid.Add(s.Coins.AmountOf("uaeth"))
+		}
+	}
+	require.Equal(t, minerPart.Sub(math.NewInt(1_000_000)), paid, "the rest is paid out")
+
+	// Full escrow: everything is paid out, and the bond's unlock still
+	// moves forward.
+	later := at.WithBlockHeight(pow.SeatRuleActivationHeight + 50)
+	require.NoError(t, k.DistributeReward(later, v, reward))
+	require.Equal(t, floor, k.GetEscrowBalance(ctx, v))
+	unlock, ok := k.GetEscrowUnlockHeight(ctx, v)
+	require.True(t, ok)
+	require.Equal(t, pow.SeatRuleActivationHeight+50+k.GetBondCooldown(ctx), unlock)
+}

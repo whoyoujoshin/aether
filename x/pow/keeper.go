@@ -448,7 +448,7 @@ func (k Keeper) DistributeReward(ctx sdk.Context, miner sdk.AccAddress, reward m
 	minerAmount := reward.Sub(treasuryCut)
 	minerCoins := sdk.NewCoins(sdk.NewCoin("uaeth", minerAmount))
 	if k.IsActiveValidator(ctx, miner) {
-		k.AddEscrow(ctx, miner, minerAmount)
+		k.escrowReward(ctx, miner, minerAmount)
 	} else {
 		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, ModuleName, miner, minerCoins); err != nil {
 			return err
@@ -938,7 +938,7 @@ func (k Keeper) CreditTreasuryShareToValidators(ctx sdk.Context, amount math.Int
 	}
 
 	for _, addr := range validators {
-		k.AddEscrow(ctx, addr, share)
+		k.escrowReward(ctx, addr, share)
 	}
 	return share.MulRaw(int64(len(validators)))
 }

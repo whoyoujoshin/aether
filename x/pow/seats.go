@@ -333,3 +333,35 @@ func (k Keeper) computeSeatUpdates(ctx sdk.Context, epoch int64) []abci.Validato
 	}
 	return updates
 }
+
+// ValidatorBondFloor is the most of a validator's rewards held in escrow
+// from SeatRuleActivationHeight: 1,000 AETH. Below the height every reward
+// a validator earns stays in escrow while it is active, so a pool seated
+// by its merged-mining work couldn't pay its miners. From the height
+// escrow fills up to the floor and the rest is paid out. The floor stays
+// locked while the validator is active, and burned if it equivocates.
+const ValidatorBondFloor int64 = 1_000_000_000
+
+// escrowReward is AddEscrow for a validator's reward. Below
+// SeatRuleActivationHeight it escrows all of amount. From it, it escrows
+// up to ValidatorBondFloor and pays the rest to addr; the unlock height
+// moves forward either way, so the bond stays locked while addr earns. A
+// payout that fails is escrowed instead.
+func (k Keeper) escrowReward(ctx sdk.Context, addr sdk.AccAddress, amount math.Int) {
+	if ctx.BlockHeight() < SeatRuleActivationHeight {
+		k.AddEscrow(ctx, addr, amount)
+		return
+	}
+	room := math.NewInt(ValidatorBondFloor).Sub(k.GetEscrowBalance(ctx, addr))
+	if room.IsNegative() {
+		room = math.ZeroInt()
+	}
+	held := math.MinInt(amount, room)
+	if paid := amount.Sub(held); paid.IsPositive() {
+		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, ModuleName, addr, sdk.NewCoins(sdk.NewCoin("uaeth", paid))); err != nil {
+			k.logger.Error("failed to pay a validator's reward above the bond floor; escrowed it", "validator", addr.String(), "error", err)
+			held = amount
+		}
+	}
+	k.AddEscrow(ctx, addr, held)
+}

@@ -94,13 +94,16 @@ the chain.
 
 ## Before activating it
 
-- **Pools and escrow (decision).** A seated validator's block rewards go to
-  escrow and stay locked while it remains active (`AddEscrow`). A pool that
-  takes a seat with its reward address couldn't pay its miners. Options:
-  1. Pay rewards above a bond floor straight out.
-  2. Let an AuxPoW proof name a separate seat address.
-  3. Have pools seat a different address than the one they are paid at,
-     which needs option 2.
+- **Pools and escrow: settled by a bond floor** (`ValidatorBondFloor`,
+  1,000 AETH, same height). Below the height a seated validator's rewards
+  all stay in escrow while it is active (`AddEscrow`), so a seated pool
+  couldn't pay its miners. From the height, a validator's rewards fill its
+  escrow up to the floor and the rest is paid out at once
+  (`escrowReward`). The floor stays locked while the validator is active,
+  because its unlock height still moves forward with every reward. It is
+  burned if the validator equivocates. A CPU validator reaches the floor in
+  a few epochs, and a pool much faster. Raising the floor makes a seat cost
+  more to misuse. Lowering it pays out sooner.
 - **A pool that wants a seat** registers a consensus key for its reward
   address (`register-validator-pubkey`, signed by that address) and runs a
   validator for it.
