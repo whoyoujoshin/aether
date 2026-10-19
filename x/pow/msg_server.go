@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 
 	sdkerrors "cosmossdk.io/errors"
+	"cosmossdk.io/math"
 	"crypto/ed25519"
 	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -234,6 +235,7 @@ func (k msgServer) submitNativePoW(ctx sdk.Context, minerAddr sdk.AccAddress, na
 
 	currentEpoch := k.Keeper.CurrentEpoch(ctx)
 	k.Keeper.AddMiningWork(ctx, currentEpoch, minerAddr, 1)
+	k.Keeper.creditSeatWork(ctx, minerAddr, historicalDifficulty)
 
 	k.Keeper.MarkWorkAccepted(ctx, headerHash[:])
 
@@ -247,7 +249,8 @@ func (k msgServer) submitNativePoW(ctx sdk.Context, minerAddr sdk.AccAddress, na
 // see merged_mining.go), but deliberately does NOT call AddMiningWork -- AuxPoW work secures
 // the chain and earns rewards, but never counts toward Top-K validator
 // eligibility, bonding, tenure, or governance voting power. Only
-// native, dedicated work does.
+// native, dedicated work does. From SeatRuleActivationHeight its
+// difficulty counts toward seats, for the reward address (seats.go).
 func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPow *AuxPowData) (*MsgSubmitPoWResponse, error) {
 	// Below MergedMiningActivationHeight the signer is paid the full
 	// reward, aux_block_hash is unchecked, and AuxPoW shares the native
@@ -285,6 +288,9 @@ func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPo
 		}
 		k.Keeper.SetAuxDifficulty(ctx, k.Keeper.AdjustAuxDifficulty(ctx))
 		k.Keeper.SetAuxLastBlockTime(ctx, ctx.BlockTime().Unix())
+		// From SeatRuleActivationHeight merged work counts toward seats,
+		// credited to the address it pays (seats.go).
+		k.Keeper.creditSeatWork(ctx, rewardAddr, math.NewIntFromUint64(currentDifficulty))
 	} else {
 		if err := k.Keeper.DistributeBlockReward(ctx, rewardAddr); err != nil {
 			return nil, sdkerrors.Wrapf(err, "failed to distribute block reward")
@@ -295,6 +301,7 @@ func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPo
 	}
 
 	// Deliberately no AddMiningWork call here -- see function comment.
+	// Seat work (above) is separate, from SeatRuleActivationHeight.
 
 	k.Keeper.MarkWorkAccepted(ctx, auxPow.AuxBlockHash)
 

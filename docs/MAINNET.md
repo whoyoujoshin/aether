@@ -57,7 +57,8 @@ one accepted native submission in an epoch, makes 21 qualified miners. At the
 next epoch boundary all 21 are seated, so the newcomer holds 17 of 21 seats,
 about 81% of the power. That takes about 17 of the epoch's ~144 native
 submissions, **roughly 12% of the native hash rate**, held for about 2.4 hours.
-No majority is needed. Once there are more than 21 candidates the weighted
+Fewer will do: 9 accounts (about 6%) already hold 9 of 13 seats, over two
+thirds, and 3 are enough to halt the chain. No majority is needed. Once there are more than 21 candidates the weighted
 draw still favours many small identities, because once the few large honest
 miners are drawn the remaining seats go to whoever is left.
 
@@ -93,14 +94,12 @@ Only the last makes it costly.
 | c | **Entry limit:** newcomers together gain at most a set share of power per epoch (e.g. 10%) | A takeover takes several epochs and is visible. Add an alert for a newcomer's power to `minerwatch` |
 | d | **Count merged-mined work toward seats**, weighted by difficulty and normalised between the two tracks | An attacker has to rent a real share of Litecoin and Dogecoin hash. This is the Dogecoin lesson (2014) |
 
-**Recommended:** a, b and c for launch. d is a decision (see the table at
-the end). It makes takeovers expensive, but seats would then follow the large
-pools, who would have to run validators. The usual way to do that would be
-seating the key registered to the AuxPoW reward address.
-
-CometBFT needs integer powers that fit an int64, which work counts do. Cap
-any one validator's power (e.g. at 20%) so a single large *honest* miner
-can't halt the chain by going offline.
+**Built:** all four, as one rule behind `SeatRuleActivationHeight`. See
+`docs/SEAT-RULE.md` for the details, the tests and what is left before
+activating it. Both tracks measure difficulty in expected scrypt hashes, so
+d needs no separate scaling: each submission counts the difficulty it met.
+There is deliberately no cap on one validator's power, because a cap hands
+an honest miner's excess to everyone else, sybils included.
 
 **The testnet has the same weakness today.** Fixing it there is a consensus
 change behind an activation height, and it is the place to prove the new rule:
