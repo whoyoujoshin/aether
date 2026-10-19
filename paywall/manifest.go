@@ -29,6 +29,9 @@ type Manifest struct {
 	MinDeposit  string   `json:"minDeposit,omitempty"` // uaeth, aether-prepaid
 	// WithdrawPath is set if unspent prepaid balances can be withdrawn.
 	WithdrawPath string `json:"withdrawPath,omitempty"`
+	// Mandates is "required" or "checked" when the service checks owners'
+	// spending mandates (mandate.go), sent in HeaderMandate.
+	Mandates string `json:"mandates,omitempty"`
 }
 
 // Denom is the denom the manifest's amounts are in: uaeth for a
@@ -54,6 +57,12 @@ func (p *Paywall) Manifest(name, description string) Manifest {
 		m.MinDeposit = p.cfg.Prepaid.MinDeposit.String()
 		if p.cfg.Prepaid.Payout != nil {
 			m.WithdrawPath = WithdrawPath
+		}
+	}
+	if c := p.cfg.Mandates; c != nil {
+		m.Mandates = "checked"
+		if c.Required {
+			m.Mandates = "required"
 		}
 	}
 	return m

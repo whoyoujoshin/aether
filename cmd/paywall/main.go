@@ -59,6 +59,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
@@ -90,6 +91,8 @@ func main() {
 	pullLedgerPath := flag.String("pull-ledger", "", "file recording what aether-pull buyers owe (default: the --prepaid-ledger file)")
 	pullCredit := flag.String("pull-credit", "", `most a buyer may owe before it's collected, e.g. "1 AETH" -- also what you lose if one revokes just before a collection (default: 100 requests)`)
 	pullEvery := flag.Duration("pull-collect-every", time.Minute, "how often what aether-pull buyers owe is collected")
+	mandates := flag.String("mandates", "", "check owners' spending mandates (X-AETHER-MANDATE, docs/MANDATES.md): \"checked\" when sent, or \"required\"")
+	mandateOwners := flag.String("mandate-owners", "", "with --mandates: accept mandates only from these owners (comma-separated addresses)")
 	receiptKey := flag.String("receipt-key", "", "keyring account that signs a receipt for every paid response: --pay-to's own key, or one it delegated receipts to (--receipt-delegation)")
 	receiptDelegation := flag.String("receipt-delegation", "", "file from `paywall delegate-receipts`, letting --receipt-key sign for --pay-to so its key can stay offline")
 	exact := flag.Bool("exact", true, "also accept the standard x402 v2 exact scheme (network cosmos:<chain-id>), from any x402 v2 client, settled through this node")
@@ -211,13 +214,33 @@ func main() {
 		}
 		log.Printf("paywall: paid responses carry receipts signed by %s (%s)", *receiptKey, acc.Address)
 	}
+	switch *mandates {
+	case "":
+		if *mandateOwners != "" {
+			log.Fatal("--mandate-owners needs --mandates")
+		}
+	case "checked", "required":
+		cfg.Mandates = &paywall.MandateConfig{Required: *mandates == "required"}
+		for _, o := range strings.Split(*mandateOwners, ",") {
+			if o = strings.TrimSpace(o); o == "" {
+				continue
+			}
+			if _, err := sdk.AccAddressFromBech32(o); err != nil {
+				log.Fatalf("--mandate-owners: %q: %v", o, err)
+			}
+			cfg.Mandates.Owners = append(cfg.Mandates.Owners, o)
+		}
+		log.Printf("paywall: owners' spending mandates %s", *mandates)
+	default:
+		log.Fatalf("--mandates must be checked or required, not %q", *mandates)
+	}
 	pw, err := paywall.New(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	proxy := newProxy(target)
-	paid := pw.Middleware(withPayerHeaders(proxy))
+	paid := pw.MandateGate(pw.Middleware(pw.MandatePayerCheck(withPayerHeaders(proxy))))
 	var freePrefixes []string
 	for _, p := range strings.Split(*free, ",") {
 		if p = strings.TrimSpace(p); p != "" {
@@ -320,9 +343,10 @@ func newProxy(target *url.URL) *httputil.ReverseProxy {
 
 func newHandler(upstream, paid http.Handler, freePrefixes []string, manifest, withdraw http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Only the paywall may say who paid.
+		// Only the paywall may say who paid, and whose mandate it checked.
 		r.Header.Del(headerPayer)
 		r.Header.Del(headerPaymentTx)
+		r.Header.Del(paywall.HeaderMandateOwner)
 		switch r.URL.Path {
 		case paywall.ManifestPath:
 			manifest.ServeHTTP(w, r)

@@ -77,6 +77,9 @@ const (
 	codeSwapNotConfigured = "SWAP_NOT_CONFIGURED" // no Osmosis pool set for this chain
 	// swap_aeth: the quote's fees and price impact exceed maxCostPercent
 	codeSwapCostTooHigh = "SWAP_COST_TOO_HIGH"
+	// fetch_paid: the seller refused this agent's spending mandate (or
+	// wants one), before payment
+	codeMandateRefused = "MANDATE_REFUSED"
 )
 
 var retryableCodes = map[string]bool{
