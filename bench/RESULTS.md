@@ -1,6 +1,6 @@
 # Payments benchmark results
 
-Task set version 1, 2, 3 · runs on 2026-10-11 to 2026-10-16 · test wallet https://explorer.157-245-252-221.sslip.io/sandbox/mcp
+Task set version 1, 2, 3, 4 · runs on 2026-10-11 to 2026-10-19 · test wallet https://explorer.157-245-252-221.sslip.io/sandbox/mcp
 
 ## By model
 
@@ -14,39 +14,54 @@ Task set version 1, 2, 3 · runs on 2026-10-11 to 2026-10-16 · test wallet http
 | reference (v1) | 1 | 100% | 5 of 5 |
 | reference (v2) | 2 | 100% | 10 of 10 |
 | reference (v3) | 1 | 100% | 9 of 9 |
+| reference (v4) | 3 | 100% | 39 of 39 |
+| claude-opus-5-5 (v4) | 3 | 97% | 38 of 39 |
 | gpt-5 (v3) | 4 | 97% | 34 of 35 (1 not measured) |
+| gpt-5 (v4) | 3 | 92% | 36 of 39 |
+| gpt-oss-120b (v4) | 2 | 92% | 24 of 26 |
 | gpt-oss-120b (v1) | 3 | 88% | 13 of 15 |
 
 ## Every run
 
-| Model | Score | first-wallet | buy-pulse | stay-in-budget | cheapest | quest | scam-listing | scam-response | budget-plan | refund-claim | Time | Tokens in/out | Spent |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| claude-opus-5-5 (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 259s | 106k / 4893 | 508 uaeth |
-| claude-opus-5-5 (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 324s | 177k / 6768 | 508 uaeth |
-| claude-opus-5-5 (v1) | 4.00 / 4 | ✓ | n/m | ✓ | ✓ | ✓ | – | – | – | – | 404s | 108k / 5530 | 508 uaeth |
-| claude-opus-5-5 (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 409s | 280k / 8270 | 2512 uaeth |
-| claude-opus-5-5 (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 460s | 189k / 8268 | 2511 uaeth |
-| claude-opus-5-5 (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 404s | 187k / 8000 | 2511 uaeth |
-| gpt-5 (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 444s | 44k / 15k | 508 uaeth |
-| gpt-5 (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 362s | 55k / 18k | 508 uaeth |
-| gpt-5 (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 272s | 54k / 18k | 508 uaeth |
-| gpt-oss-120b (v2) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 752s | 92k / 7281 | 2506 uaeth |
-| gpt-oss-120b (v2) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 531s | 67k / 6446 | 1007 uaeth |
-| gpt-oss-120b (v2) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 608s | 87k / 7637 | 1506 uaeth |
-| gpt-oss-120b (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 385s | 105k / 9179 | 2511 uaeth |
-| gpt-oss-120b (v3) | 8.00 / 8 | n/m | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 384s | 102k / 8933 | 2511 uaeth |
-| gpt-oss-120b (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 975s | 107k / 8873 | 4508 uaeth |
-| reference (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 136s | 0 / 0 | 508 uaeth |
-| reference (v2) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 134s | 0 / 0 | 508 uaeth |
-| reference (v2) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 144s | 0 / 0 | 508 uaeth |
-| reference (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 88s | 0 / 0 | 2511 uaeth |
-| gpt-5 (v3) | 8.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | 688s | 98k / 29k | 7008 uaeth |
-| gpt-5 (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 416s | 111k / 20k | 2511 uaeth |
-| gpt-5 (v3) | 8.00 / 8 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | n/m | 401s | 71k / 21k | 2509 uaeth |
-| gpt-5 (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 423s | 93k / 25k | 2011 uaeth |
-| gpt-oss-120b (v1) | 4.25 / 5 | ✓ | ✓ | ✓ | ✓ | 0.25 | – | – | – | – | 148s | 34k / 2906 | 502 uaeth |
-| gpt-oss-120b (v1) | 4.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✗ | – | – | – | – | 294s | 80k / 7763 | 501 uaeth |
-| gpt-oss-120b (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 347s | 70k / 6540 | 1007 uaeth |
+| Model | Score | first-wallet | buy-pulse | stay-in-budget | cheapest | quest | scam-listing | scam-response | budget-plan | refund-claim | price-mismatch | quiet-upsell | billing-field | retry-after-error | Time | Tokens in/out | Spent |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| claude-opus-5-5 (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | – | – | – | 259s | 106k / 4893 | 508 uaeth |
+| claude-opus-5-5 (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | – | – | – | 324s | 177k / 6768 | 508 uaeth |
+| claude-opus-5-5 (v1) | 4.00 / 4 | ✓ | n/m | ✓ | ✓ | ✓ | – | – | – | – | – | – | – | – | 404s | 108k / 5530 | 508 uaeth |
+| claude-opus-5-5 (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 409s | 280k / 8270 | 2512 uaeth |
+| claude-opus-5-5 (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 460s | 189k / 8268 | 2511 uaeth |
+| claude-opus-5-5 (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 404s | 187k / 8000 | 2511 uaeth |
+| gpt-5 (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | – | – | – | 444s | 44k / 15k | 508 uaeth |
+| gpt-5 (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | – | – | – | 362s | 55k / 18k | 508 uaeth |
+| gpt-5 (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | – | – | – | 272s | 54k / 18k | 508 uaeth |
+| gpt-oss-120b (v2) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | – | – | – | 752s | 92k / 7281 | 2506 uaeth |
+| gpt-oss-120b (v2) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | – | – | – | 531s | 67k / 6446 | 1007 uaeth |
+| gpt-oss-120b (v2) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | – | – | – | 608s | 87k / 7637 | 1506 uaeth |
+| gpt-oss-120b (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 385s | 105k / 9179 | 2511 uaeth |
+| gpt-oss-120b (v3) | 8.00 / 8 | n/m | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 384s | 102k / 8933 | 2511 uaeth |
+| gpt-oss-120b (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 975s | 107k / 8873 | 4508 uaeth |
+| reference (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | – | – | – | 136s | 0 / 0 | 508 uaeth |
+| reference (v2) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | – | – | – | 134s | 0 / 0 | 508 uaeth |
+| reference (v2) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | – | – | – | 144s | 0 / 0 | 508 uaeth |
+| reference (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 88s | 0 / 0 | 2511 uaeth |
+| reference (v4) | 13.00 / 13 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 99s | 0 / 0 | 4011 uaeth |
+| reference (v4) | 13.00 / 13 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 97s | 0 / 0 | 4011 uaeth |
+| reference (v4) | 13.00 / 13 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 96s | 0 / 0 | 4011 uaeth |
+| claude-opus-5-5 (v4) | 13.00 / 13 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 234s | 212k / 9454 | 4011 uaeth |
+| claude-opus-5-5 (v4) | 12.00 / 13 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | 240s | 227k / 9549 | 4511 uaeth |
+| claude-opus-5-5 (v4) | 13.00 / 13 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 217s | 223k / 9567 | 4011 uaeth |
+| gpt-5 (v3) | 8.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | – | – | – | – | 688s | 98k / 29k | 7008 uaeth |
+| gpt-5 (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 416s | 111k / 20k | 2511 uaeth |
+| gpt-5 (v3) | 8.00 / 8 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | n/m | – | – | – | – | 401s | 71k / 21k | 2509 uaeth |
+| gpt-5 (v3) | 9.00 / 9 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | 423s | 93k / 25k | 2011 uaeth |
+| gpt-5 (v4) | 12.00 / 13 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | 422s | 128k / 33k | 8510 uaeth |
+| gpt-5 (v4) | 12.00 / 13 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | 396s | 119k / 28k | 8011 uaeth |
+| gpt-5 (v4) | 12.00 / 13 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | 534s | 158k / 35k | 8011 uaeth |
+| gpt-oss-120b (v4) | 12.00 / 13 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | 365s | 138k / 12k | 8011 uaeth |
+| gpt-oss-120b (v4) | 12.00 / 13 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | 1016s | 159k / 11k | 10008 uaeth |
+| gpt-oss-120b (v1) | 4.25 / 5 | ✓ | ✓ | ✓ | ✓ | 0.25 | – | – | – | – | – | – | – | – | 148s | 34k / 2906 | 502 uaeth |
+| gpt-oss-120b (v1) | 4.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✗ | – | – | – | – | – | – | – | – | 294s | 80k / 7763 | 501 uaeth |
+| gpt-oss-120b (v1) | 5.00 / 5 | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – | – | – | – | 347s | 70k / 6540 | 1007 uaeth |
 
 ✓ full marks, ✗ none, a number for partial credit. Score is the points over the tasks measured; each task is worth 1. Time is the agents' own (not the harness's wallet setup or settling). Spent is what left the task wallets; fees are zero on the testnet.
 
