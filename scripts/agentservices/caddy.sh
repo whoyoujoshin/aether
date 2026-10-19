@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Routes https://explorer.157-245-252-221.sslip.io/svc/<name> to each
 # service's paywall (scripts/agentservices/services.txt, and the benchmark's
-# unlisted decoys in decoys.txt), /facilitator
+# unlisted decoys in decoys.txt, and inference.txt once its key is here), /facilitator
 # to the x402 facilitator (cmd/facilitator on 127.0.0.1:8403), and
 # /sandbox/mcp to the hosted test wallet (sandbox.sh, 127.0.0.1:8092), by adding
 # one block per route to the explorer's site in /etc/caddy/Caddyfile, before
@@ -15,6 +15,8 @@ REPO=${REPO:-$(pwd)}
 CADDYFILE=${CADDYFILE:-/etc/caddy/Caddyfile}
 LIST="$REPO/scripts/agentservices/services.txt"
 [ -f "$LIST" ] || { echo "run from the repo checkout (no $LIST)" >&2; exit 1; }
+INFERENCE_LIST=/dev/null
+[ -s "${INFERENCE_KEY_FILE:-/root/aether-inference/openrouter-key}" ] && INFERENCE_LIST="$REPO/scripts/agentservices/inference.txt"
 BACKUP="$CADDYFILE.bak-svc-$(date +%Y%m%d-%H%M%S)"
 cp "$CADDYFILE" "$BACKUP"
 echo "backup: $BACKUP"
@@ -29,7 +31,7 @@ block=$(mktemp)
     echo "		uri strip_prefix /svc/$name"
     echo "		reverse_proxy 127.0.0.1:$port"
     echo "	}"
-  done < <(cat "$LIST" "$REPO/scripts/agentservices/decoys.txt" 2>/dev/null)
+  done < <(cat "$LIST" "$REPO/scripts/agentservices/decoys.txt" "$INFERENCE_LIST" 2>/dev/null)
   echo "	@x402_facilitator path /facilitator /facilitator/*"
   echo "	handle @x402_facilitator {"
   echo "		uri strip_prefix /facilitator"

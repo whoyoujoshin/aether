@@ -30,6 +30,16 @@ DECOY=$(cat "${DECOY_KEYDIR:-/root/aether-decoy-key}/address" 2>/dev/null || tru
 ALL=$(mktemp)
 trap 'rm -f "$ALL"' EXIT
 grep -v '^#' "$LIST" | grep . | sed "s/\$/|$PAY_TO/" > "$ALL"
+# The paid LLM inference service (docs/INFERENCE.md), only once its
+# OpenRouter key is on this server; INFERENCE_FLAGS adds agentservices
+# --inference-* flags (limits, model).
+INFERENCE_KEY_FILE=${INFERENCE_KEY_FILE:-/root/aether-inference/openrouter-key}
+INFERENCE=""
+if [ -s "$INFERENCE_KEY_FILE" ]; then
+  grep -v '^#' "$REPO/scripts/agentservices/inference.txt" | grep . | sed "s/\$/|$PAY_TO/" >> "$ALL"
+  INFERENCE="--inference-key-file $INFERENCE_KEY_FILE${INFERENCE_FLAGS:+ $INFERENCE_FLAGS}"
+  echo "== LLM inference, with the key in $INFERENCE_KEY_FILE"
+fi
 if [ -n "$DECOY" ] && [ -f "$DECOYS" ]; then
   grep -v '^#' "$DECOYS" | grep . | sed "s/{{decoy}}/$DECOY/g; s/\$/|$DECOY/" >> "$ALL"
   echo "== Decoys for the benchmark, naming $DECOY"
@@ -53,7 +63,7 @@ Description=Aether paid agent services (upstream of the paywalls)
 After=network-online.target aetherd.service
 
 [Service]
-ExecStart=/root/agentservices --listen 127.0.0.1:8500 --grpc $GRPC $USDC${DECOY:+ --decoy-address $DECOY}
+ExecStart=/root/agentservices --listen 127.0.0.1:8500 --grpc $GRPC $USDC${DECOY:+ --decoy-address $DECOY}${INFERENCE:+ $INFERENCE}
 Environment=HOME=/root
 Restart=always
 RestartSec=2

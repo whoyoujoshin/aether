@@ -14,6 +14,7 @@ They read public chain data only and hold no key.
 | verify | `…/svc/verify` (POST) | 0.0005 AETH | whether an ML-DSA-44 signature is valid, and the key's aether1 address |
 | pulse | `…/svc/pulse` | 0.0005 AETH | height, block time, difficulty, reward, epoch, blocks until selection |
 | miners | `…/svc/miners?top=N` | 0.0005 AETH | this epoch's proof-of-work leaderboard |
+| inference | `…/svc/inference` (POST) | 0.002 USDC | a short chat with an open-weights LLM: the reply and its token counts ([INFERENCE.md](INFERENCE.md); off until its OpenRouter key is on the seed) |
 
 Every service answers `<URL>/help` free, with what it takes and returns, and
 `<URL>/.well-known/x402` (its manifest). `scripts/agentservices/services.txt`
