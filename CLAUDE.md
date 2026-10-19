@@ -30,6 +30,15 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
     - **bond floor:** escrow fills to `ValidatorBondFloor` (1,000 AETH) and rewards beyond it are paid out, so a seated pool can pay its miners. The unlock still moves forward, so the bond stays locked while active.
   - **Height:** PR #152 sets it.
   - **Runbook** (`docs/UPGRADE-SEAT-RULE.md`): Gitty builds on a workstation (`prebuild.sh`, plus a Windows `.exe` for peer-1) and swaps sync3, sync4 and the seed one at a time; Joshua swaps peer-1 via `peer1-ensure.ps1` and the task. The abort line is 395,400. An old binary falls off at the first submission at or after 396,000. The first boundary under the rule is the end of 397,439: powers go from 1,000,000 each to a total of ~100,000,000.
+  - **Progress (2026-10-19):**
+    - **Linux validators:** sync3, sync4 and the seed have been on `3988485` since 03:16 UTC (tip 349,999), all four signing at 1,000,000 each. Gitty built it on their own machine with go1.25.8, and `go test ./x/pow/...` passed.
+    - **Binaries:** the Linux `aetherd` sha256 is `a2acd59d30340b7454b4be375a88db457b4f38397dc4e6c8f58141b0b8f4ea9e`. Each node's binary was replaced in place (`/root/aetherd-5267ab3` on the seed, `/root/aetherd-2c32e6a` on sync3 and sync4), with backups at `.pre-seatrule`.
+    - **peer-1** is left. Its `aetherd-3988485.exe` (sha256 `697e6398f0e16ca984f4827b889ea152d7e585e3dfe4c460db5515262f6c793d`) is staged on the seed at `/root/aetherd-3988485.exe`, and peer-1 must be swapped before 395,400.
+    - **Checking a binary:** `aetherd version --long` prints an empty version and commit (no ldflags), so check by sha256. The runbook's `grep -o '/[^ ;]*aetherd'` matched `/root/aetherd`; it is now `'/[^ ;]*aetherd[^ ;]*'`.
+  - **Seed out of memory (2026-10-19):**
+    - **What happened:** the seed's aetherd (`5267ab3`, up since 10-17) reached ~2.86 GB resident on the 3.9 GB box with swap full. RPC timed out, peers dropped, and the seed stopped committing at 349,528 (02:31 UTC). The chain ran on 3 of 4.
+    - **Recovery:** it was restarted onto `3988485` at ~02:41 UTC. Having missed epoch 242's work, it dropped to power 0 and rejoined at the boundary (signing since 349,921).
+    - **Watch it:** the seed also runs the explorer, faucet, MCP servers, test wallet, 14 paywalls and Caddy.
   - **Escrow:** peer-1 held ~27,246 AETH of escrow on 10-19; balances already above the floor stay locked until their unlock height.
   - **Follow-ups:** a seat-work query, a minerwatch alert for newcomer power, power on the explorer.
 - **Mainnet plan:** `docs/MAINNET.md` (PR #150) covers:

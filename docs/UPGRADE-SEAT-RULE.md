@@ -6,6 +6,12 @@ block **396,000**. That is about 03:30 UTC on 22 October 2026 at 5.6-second
 blocks (the tip was 349,354 at 02:16 UTC on 19 October). Check the tip and
 the time left before each step.
 
+**Progress (2026-10-19).**
+- **Linux nodes:** sync3, sync4 and the seed have run `3988485` since 03:16
+  UTC (tip 349,999). The Linux `aetherd` sha256 is `a2acd59d…f4ea9e`.
+- **peer-1:** its `.exe` (sha256 `697e6398…c793d`) is staged on the seed at
+  `/root/aetherd-3988485.exe`. peer-1 is the one left.
+
 **Abort rule.** If all four aren't on the new binary by block **395,400**,
 put every node already swapped back on the binary it ran before, and tell
 Joshua. Nothing has activated before 396,000, so the old binaries still
@@ -62,7 +68,8 @@ curl -s localhost:26657/block | jq -r '.result.block.last_commit.signatures[] | 
 **b. Swap the binary:**
 
 ```bash
-BIN=$(systemctl show -p ExecStart aetherd | grep -o '/[^ ;]*aetherd' | head -1)
+BIN=$(systemctl show -p ExecStart aetherd | grep -o '/[^ ;]*aetherd[^ ;]*' | head -1)
+echo "$BIN"                            # the unit's binary, e.g. /root/aetherd-2c32e6a
 sudo cp "$BIN" "$BIN.pre-seatrule"
 sudo systemctl stop aetherd
 sudo install -m 0755 <prebuilt folder>/aetherd "$BIN"
@@ -90,17 +97,22 @@ Get-FileHash C:\aether-data\aetherd-<commit>.exe     # must match Gitty's sum
 
 1. In `C:\aether-data\peer1-ensure.ps1`, change the binary name to
    `aetherd-<commit>.exe`.
-2. Stop the running `aetherd` that holds port 26667.
-3. Start the task:
+2. Stop the running `aetherd` that holds port 26667, then start the task,
+   which starts the binary the script names:
    ```powershell
+   Get-NetTCPConnection -LocalPort 26667 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess }
    Start-ScheduledTask -TaskName "Aether Peer-1"
    ```
-4. Check it:
+3. Check it runs the new file. `version --long` prints an empty version
+   and commit (the build sets no ldflags), so go by the file and its hash:
    ```powershell
-   C:\aether-data\aetherd-<commit>.exe version --long --home C:\aether-peer1
+   $p = (Get-NetTCPConnection -LocalPort 26667 -State Listen | Select-Object -First 1).OwningProcess
+   (Get-Process -Id $p).Path                                   # C:\aether-data\aetherd-<commit>.exe
+   Get-FileHash (Get-Process -Id $p).Path                      # Gitty's sum
+   (Invoke-RestMethod http://127.0.0.1:26667/status).result.sync_info.catching_up   # False
+   (Invoke-RestMethod http://127.0.0.1:26667/block).result.block.last_commit.signatures |
+     Where-Object block_id_flag -eq 2 | ForEach-Object validator_address        # includes B7F08625...
    ```
-   Then confirm, on its RPC at `127.0.0.1:26667`, that it is caught up and
-   in the latest commit.
 
 Keep the VPN off.
 
@@ -108,8 +120,9 @@ Keep the VPN off.
 
 - All four validators signing (step 2a shows four).
 - Every Linux node reports the same `sha256sum`, and peer-1 the `.exe`'s.
+  Check by hash: `aetherd version --long` prints no version or commit.
 - Send Joshua the commit, the height when the last node finished, and
-  peer-1's `version --long`.
+  peer-1's running path and hash.
 
 ## 5. Watch the first boundary (397,439)
 
