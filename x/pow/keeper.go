@@ -591,6 +591,12 @@ type qualifiedEntry struct {
 }
 
 func (k Keeper) ComputeValidatorUpdates(ctx sdk.Context, epoch int64) []abci.ValidatorUpdate {
+	// From SeatRuleActivationHeight power follows the hashes proved, on
+	// both tracks: see seats.go.
+	if ctx.BlockHeight() >= SeatRuleActivationHeight {
+		return k.computeSeatUpdates(ctx, epoch)
+	}
+
 	workEntries := k.IterateEpochWork(ctx, epoch)
 
 	var qualified []qualifiedEntry
