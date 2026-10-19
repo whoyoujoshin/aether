@@ -1,8 +1,9 @@
 # The seat rule
 
-**Status:** built, not active. It switches on at `SeatRuleActivationHeight`
-(`x/pow/seats.go`). That height is a placeholder (10,000,800) until it is set
-with every operator. This is phase 0 of `docs/MAINNET.md`.
+**Status:** built. It switches on at block **396,000**
+(`SeatRuleActivationHeight`, `x/pow/seats.go`), about 03:30 UTC on
+22 October 2026 at 5.6-second blocks. The upgrade runbook is
+`docs/UPGRADE-SEAT-RULE.md`. This is phase 0 of `docs/MAINNET.md`.
 
 ## Why
 
@@ -107,10 +108,10 @@ the chain.
 - **A pool that wants a seat** registers a consensus key for its reward
   address (`register-validator-pubkey`, signed by that address) and runs a
   validator for it.
-- **The height.** Set it to an epoch boundary (a multiple of 1,440) far
-  enough ahead for every validator to upgrade, one node at a time while the
-  other three sign. A node without the binary computes a different set at
-  the first boundary after the height and falls off the chain.
+- **The height** is 396,000, an epoch boundary. A node without a binary
+  carrying it falls off the chain at the first submission accepted from
+  then on, when seat work starts being recorded. The first boundary under
+  the rule is the end of 397,439.
 - **Watch the first boundary.** All four testnet validators are CPU miners,
   so their powers will follow their hash rates, moving at most 10% at the
   first boundary.
