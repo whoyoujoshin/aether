@@ -10,6 +10,7 @@ import (
 	"cosmossdk.io/math"
 
 	"github.com/whoyoujoshin/aether/wallet"
+	"github.com/whoyoujoshin/aether/x/pow"
 )
 
 // Event names are part of this program's interface: receivers switch
@@ -161,7 +162,12 @@ func step(cfg config, address string, st *addrState, snap snapshot) []Event {
 	// its selection height, so say so while there's still time to get
 	// its miner going: by default halfway through, hours ahead on the
 	// live chain, where selection_at_risk comes minutes ahead.
-	if cfg.noWorkAt > 0 && s.RegisteredConsensusKey && !s.Banned && s.WorkThisEpoch == 0 &&
+	noWork := s.WorkThisEpoch == 0
+	if s.SelectionRule == wallet.SelectionSeatRule {
+		// Merged-mined work counts too, and has no submission count.
+		noWork = s.SeatWorkThisEpoch == "" || s.SeatWorkThisEpoch == "0"
+	}
+	if cfg.noWorkAt > 0 && s.RegisteredConsensusKey && !s.Banned && noWork &&
 		s.Epoch.Length > 0 && st.NoWorkEpoch != s.Epoch.Index &&
 		float64(s.Height-s.Epoch.StartHeight+1) >= cfg.noWorkAt*float64(s.Epoch.Length) {
 		f := map[string]any{
@@ -175,10 +181,17 @@ func step(cfg config, address string, st *addrState, snap snapshot) []Event {
 		if s.Epoch.EstSecondsUntilSelection > 0 {
 			when += fmt.Sprintf(" (about %s)", (time.Duration(s.Epoch.EstSecondsUntilSelection) * time.Second).Round(time.Minute))
 		}
-		if s.ActiveValidator {
+		switch {
+		case s.SelectionRule == wallet.SelectionSeatRule:
+			// Seat work comes from a window of epochs, so one empty epoch
+			// lowers the address's share rather than ending its seat.
+			f["seatWork"] = s.SeatWork
+			f["message"] = fmt.Sprintf("%s has no mining work in epoch %d. Its seat work comes from the last %d epochs, so its share, and its power, fall at height %d, in %s, unless its miner lands work before then.",
+				address, s.Epoch.Index, pow.SeatWorkWindowEpochs, s.Epoch.SelectionHeight, when)
+		case s.ActiveValidator:
 			f["message"] = fmt.Sprintf("%s has no mining work in epoch %d. It leaves the validator set at height %d, in %s, unless its miner lands a share before then.",
 				address, s.Epoch.Index, s.Epoch.SelectionHeight, when)
-		} else {
+		default:
 			f["message"] = fmt.Sprintf("%s has no mining work in epoch %d, so it won't be picked at height %d, in %s, unless its miner lands a share before then.",
 				address, s.Epoch.Index, s.Epoch.SelectionHeight, when)
 		}
@@ -188,7 +201,8 @@ func step(cfg config, address string, st *addrState, snap snapshot) []Event {
 
 	if cfg.atRiskBlocks > 0 && s.RegisteredConsensusKey && !s.Banned &&
 		s.Epoch.BlocksUntilSelection <= cfg.atRiskBlocks && st.AtRiskEpoch != s.Epoch.Index {
-		atRisk := !s.Eligible || (s.SelectionRule == wallet.SelectionTopKByWork && !s.OnTrack)
+		deterministic := s.SelectionRule == wallet.SelectionTopKByWork || s.SelectionRule == wallet.SelectionSeatRule
+		atRisk := !s.Eligible || (deterministic && !s.OnTrack)
 		if atRisk {
 			f := map[string]any{
 				"epoch":                    s.Epoch.Index,
@@ -205,6 +219,9 @@ func step(cfg config, address string, st *addrState, snap snapshot) []Event {
 			}
 			if s.Rank > 0 {
 				f["rank"] = s.Rank
+			}
+			if s.SeatWork != "" {
+				f["seatWork"], f["seatWorkTotal"] = s.SeatWork, s.SeatWorkTotal
 			}
 			ev(EventSelectionAtRisk, fmt.Sprint(s.Epoch.Index), f)
 			st.AtRiskEpoch = s.Epoch.Index

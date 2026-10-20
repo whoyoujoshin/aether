@@ -25,6 +25,7 @@ import (
 const (
 	SelectionTopKByWork       = "top_k_by_work"
 	SelectionBeaconWeighted   = "beacon_weighted_sample"
+	SelectionSeatRule         = "seat_work_power"
 	blockTimeSampleBlocks     = 1000
 	eligibilityLookupParallel = 8
 )
@@ -71,15 +72,33 @@ type MinerStatus struct {
 	TopKSize       int64  `json:"topKSize"`
 	EligibleMiners int    `json:"eligibleMiners"`
 	// Rank is 1-based among eligible miners by work, the order
-	// top_k_by_work selects in; 0 when not eligible. OnTrack means the
-	// address would be picked if the epoch ended now, and is only ever
-	// true under top_k_by_work: a beacon sample isn't known in advance.
+	// top_k_by_work and seat_work_power seat in; 0 when not eligible.
+	// OnTrack means the address would be picked if the epoch ended now,
+	// and is never true under beacon_weighted_sample: a draw isn't known
+	// in advance. Under seat_work_power, Rank, OnTrack and WorkShare go
+	// by seat work over the window, and WorkShare is of all the window's
+	// work, the share the 1% minimum is measured against.
 	Rank      int    `json:"rank,omitempty"`
 	OnTrack   bool   `json:"onTrack"`
 	WorkShare string `json:"workShare,omitempty"`
 
-	ActiveValidator bool         `json:"activeValidator"`
-	Escrow          EscrowStatus `json:"escrow"`
+	// Under seat_work_power: the difficulty this address's accepted
+	// submissions met (native and AuxPoW) over the window, and the whole
+	// window's.
+	SeatWork          string `json:"seatWork,omitempty"`
+	SeatWorkThisEpoch string `json:"seatWorkThisEpoch,omitempty"`
+	SeatWorkTotal     string `json:"seatWorkTotal,omitempty"`
+	// A rule that applies from a later height than this epoch's selection.
+	NextSelectionRule  string `json:"nextSelectionRule,omitempty"`
+	NextRuleFromHeight int64  `json:"nextRuleFromHeight,omitempty"`
+
+	ActiveValidator bool `json:"activeValidator"`
+	// VotingPower is this address's power in the validator set at
+	// Height (0 outside it), and PowerShare its share of TotalVotingPower.
+	VotingPower      int64        `json:"votingPower"`
+	TotalVotingPower int64        `json:"totalVotingPower"`
+	PowerShare       string       `json:"powerShare,omitempty"`
+	Escrow           EscrowStatus `json:"escrow"`
 }
 
 // EpochWindow is the epoch containing height, per x/pow's
@@ -97,6 +116,9 @@ func EpochWindow(height, length int64) (index, start, selection int64) {
 
 // SelectionRuleAt is the rule the block at selectionHeight applies.
 func SelectionRuleAt(selectionHeight int64) string {
+	if selectionHeight >= pow.SeatRuleActivationHeight {
+		return SelectionSeatRule
+	}
 	if selectionHeight >= pow.RandomnessBeaconActivationHeight {
 		return SelectionBeaconWeighted
 	}
@@ -217,10 +239,32 @@ func (c *Client) MinerStatus(ctx context.Context, address string) (*MinerStatus,
 		st.WorkShare = math.LegacyNewDecFromInt(math.NewIntFromUint64(st.WorkThisEpoch)).QuoInt(total).String()
 		st.OnTrack = st.SelectionRule == SelectionTopKByWork && int64(st.Rank) <= st.TopKSize
 	}
+
+	switch {
+	case st.SelectionRule == SelectionSeatRule:
+		if err := c.applySeatRule(at, st); err != nil {
+			return nil, err
+		}
+	case pow.SeatRuleActivationHeight > selection:
+		st.NextSelectionRule, st.NextRuleFromHeight = SelectionSeatRule, pow.SeatRuleActivationHeight
+	}
+
+	powers, totalPower, err := c.validatorPowers(ctx, height)
+	if err != nil {
+		return nil, err
+	}
+	st.TotalVotingPower = totalPower
+	st.VotingPower = powerOf(powers, self[0].pubkey)
+	if st.VotingPower > 0 {
+		st.PowerShare = share(math.NewInt(st.VotingPower), math.NewInt(totalPower))
+	}
 	return st, nil
 }
 
-type eligibilityResult struct{ registered, banned bool }
+type eligibilityResult struct {
+	registered, banned bool
+	pubkey             []byte // the registered consensus key, if any
+}
 
 // eligibility checks each address's consensus key and ban at height.
 // The key has no gRPC query of its own, so it's read straight from
@@ -259,7 +303,7 @@ func (c *Client) eligibility(at context.Context, height int64, addresses []strin
 				errs[i] = fmt.Errorf("ban status of %s: %w", a, err)
 				return
 			}
-			out[i] = eligibilityResult{registered: len(res.Value) > 0, banned: ban.Banned}
+			out[i] = eligibilityResult{registered: len(res.Value) > 0, banned: ban.Banned, pubkey: res.Value}
 		}(i, a)
 	}
 	wg.Wait()
@@ -291,9 +335,12 @@ func (c *Client) avgBlockTime(ctx context.Context, cmt cmtservice.ServiceClient,
 
 // LeaderboardEntry is one miner's proof-of-work this epoch.
 type LeaderboardEntry struct {
-	Address         string `json:"address"`
-	Work            uint64 `json:"work"`
+	Address string `json:"address"`
+	Work    uint64 `json:"work"` // accepted native submissions this epoch
+	// SeatWork is the window's seat work under seat_work_power.
+	SeatWork        string `json:"seatWork,omitempty"`
 	ActiveValidator bool   `json:"activeValidator"`
+	VotingPower     int64  `json:"votingPower"`
 }
 
 // Leaderboard is the current epoch's miners, most work first, as of one
@@ -353,8 +400,55 @@ func (c *Client) MinerLeaderboard(ctx context.Context) (*Leaderboard, error) {
 		lb.Epoch.AvgBlockSeconds = avg
 		lb.Epoch.EstSecondsUntilSelection = int64(avg * float64(lb.Epoch.BlocksUntilSelection))
 	}
+	seen := map[string]int{}
 	for _, e := range board.Entries {
+		seen[e.Address] = len(lb.Entries)
 		lb.Entries = append(lb.Entries, LeaderboardEntry{Address: e.Address, Work: e.Work, ActiveValidator: isActive[e.Address]})
+	}
+	var window *seatWindow
+	if lb.Rule == SelectionSeatRule {
+		// Merged-mining reward addresses earn seat work without native
+		// submissions, so the window's addresses are listed too.
+		if window, err = c.seatWindow(at, height, index); err != nil {
+			return nil, err
+		}
+		for _, a := range window.order {
+			if _, ok := seen[a]; !ok {
+				seen[a] = len(lb.Entries)
+				lb.Entries = append(lb.Entries, LeaderboardEntry{Address: a, ActiveValidator: isActive[a]})
+			}
+			lb.Entries[seen[a]].SeatWork = window.work[a].String()
+		}
+	}
+
+	addrs := make([]string, len(lb.Entries))
+	for i, e := range lb.Entries {
+		addrs[i] = e.Address
+	}
+	keys, err := c.eligibility(at, height, addrs)
+	if err != nil {
+		return nil, err
+	}
+	powers, _, err := c.validatorPowers(ctx, height)
+	if err != nil {
+		return nil, err
+	}
+	for i := range lb.Entries {
+		lb.Entries[i].VotingPower = powerOf(powers, keys[i].pubkey)
+	}
+
+	if window != nil {
+		sort.SliceStable(lb.Entries, func(i, j int) bool {
+			wi, wj := window.work[lb.Entries[i].Address], window.work[lb.Entries[j].Address]
+			if wi.IsNil() {
+				wi = math.ZeroInt()
+			}
+			if wj.IsNil() {
+				wj = math.ZeroInt()
+			}
+			return wi.GT(wj)
+		})
+		return lb, nil
 	}
 	sort.SliceStable(lb.Entries, func(i, j int) bool { return lb.Entries[i].Work > lb.Entries[j].Work })
 	return lb, nil

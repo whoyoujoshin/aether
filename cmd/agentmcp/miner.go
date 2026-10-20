@@ -40,17 +40,26 @@ type getMinerStatusOutput struct {
 	Banned                 bool     `json:"banned" jsonschema:"permanently banned for equivocation"`
 	WorkThisEpoch          uint64   `json:"workThisEpoch"`
 	Eligible               bool     `json:"eligible" jsonschema:"can be picked when this epoch ends: has work this epoch, a registered consensus key, and no ban"`
-	NotEligibleBecause     []string `json:"notEligibleBecause,omitempty" jsonschema:"any of no_work_this_epoch, no_consensus_key, banned"`
+	NotEligibleBecause     []string `json:"notEligibleBecause,omitempty" jsonschema:"any of no_work_this_epoch, no_consensus_key, banned; under seat_work_power no_seat_work_in_window or below_minimum_share in place of no_work_this_epoch"`
 
-	SelectionRule  string `json:"selectionRule" jsonschema:"top_k_by_work: the topKSize eligible miners with the most work are picked; beacon_weighted_sample: topKSize are drawn at random, weighted by work"`
+	SelectionRule  string `json:"selectionRule" jsonschema:"top_k_by_work: the topKSize eligible miners with the most work are picked; beacon_weighted_sample: topKSize are drawn at random, weighted by work; seat_work_power: the topKSize miners with the most seat work over the window are seated, each with power in proportion to it (power moves at most 10% of the total an epoch)"`
 	TopKSize       int64  `json:"topKSize"`
 	EligibleMiners int    `json:"eligibleMiners"`
-	Rank           int    `json:"rank,omitempty" jsonschema:"1-based position among eligible miners by work; absent if not eligible"`
-	OnTrack        bool   `json:"onTrack" jsonschema:"would be picked if the epoch ended now; only ever true under top_k_by_work, since a random draw isn't known in advance"`
-	WorkShare      string `json:"workShare,omitempty" jsonschema:"this address's share of all eligible work this epoch, 0 to 1; under beacon_weighted_sample it drives the odds of being drawn"`
+	Rank           int    `json:"rank,omitempty" jsonschema:"1-based position among eligible miners by work (by seat work under seat_work_power); absent if not eligible"`
+	OnTrack        bool   `json:"onTrack" jsonschema:"would be picked if the epoch ended now; never true under beacon_weighted_sample, since a random draw isn't known in advance"`
+	WorkShare      string `json:"workShare,omitempty" jsonschema:"0 to 1: this address's share of all eligible work this epoch; under seat_work_power, its share of all the window's seat work, which must be at least 0.01 to qualify"`
 
-	ActiveValidator bool           `json:"activeValidator" jsonschema:"in the validator set right now"`
-	Escrow          minerEscrowDTO `json:"escrow"`
+	SeatWork           string `json:"seatWork,omitempty" jsonschema:"under seat_work_power: the difficulty this address's accepted submissions met over the last 3 epochs, native and merged-mined; it decides seats and power"`
+	SeatWorkThisEpoch  string `json:"seatWorkThisEpoch,omitempty" jsonschema:"under seat_work_power: the part of seatWork earned in this epoch"`
+	SeatWorkTotal      string `json:"seatWorkTotal,omitempty" jsonschema:"under seat_work_power: every address's seat work over the window"`
+	NextSelectionRule  string `json:"nextSelectionRule,omitempty" jsonschema:"a different rule that applies from nextRuleFromHeight"`
+	NextRuleFromHeight int64  `json:"nextRuleFromHeight,omitempty"`
+
+	ActiveValidator  bool           `json:"activeValidator" jsonschema:"in the validator set right now"`
+	VotingPower      int64          `json:"votingPower" jsonschema:"this address's voting power in the validator set at height; 0 outside it"`
+	TotalVotingPower int64          `json:"totalVotingPower"`
+	PowerShare       string         `json:"powerShare,omitempty" jsonschema:"votingPower over totalVotingPower, 0 to 1"`
+	Escrow           minerEscrowDTO `json:"escrow"`
 }
 
 func toolGetMinerStatus(ctx context.Context, _ *mcp.CallToolRequest, input getMinerStatusInput) (*mcp.CallToolResult, getMinerStatusOutput, error) {
@@ -97,7 +106,15 @@ func minerStatusFor(ctx context.Context, address string) (getMinerStatusOutput, 
 		Rank:                   st.Rank,
 		OnTrack:                st.OnTrack,
 		WorkShare:              st.WorkShare,
+		SeatWork:               st.SeatWork,
+		SeatWorkThisEpoch:      st.SeatWorkThisEpoch,
+		SeatWorkTotal:          st.SeatWorkTotal,
+		NextSelectionRule:      st.NextSelectionRule,
+		NextRuleFromHeight:     st.NextRuleFromHeight,
 		ActiveValidator:        st.ActiveValidator,
+		VotingPower:            st.VotingPower,
+		TotalVotingPower:       st.TotalVotingPower,
+		PowerShare:             st.PowerShare,
 		Escrow: minerEscrowDTO{
 			Balance:      amountDTOFromUaethString(st.Escrow.BalanceUaeth),
 			UnlockHeight: st.Escrow.UnlockHeight,

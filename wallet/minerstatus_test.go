@@ -38,4 +38,10 @@ func TestEpochWindow(t *testing.T) {
 func TestSelectionRuleAt(t *testing.T) {
 	require.Equal(t, wallet.SelectionTopKByWork, wallet.SelectionRuleAt(pow.RandomnessBeaconActivationHeight-1))
 	require.Equal(t, wallet.SelectionBeaconWeighted, wallet.SelectionRuleAt(pow.RandomnessBeaconActivationHeight))
+	require.Equal(t, wallet.SelectionBeaconWeighted, wallet.SelectionRuleAt(pow.SeatRuleActivationHeight-1))
+	require.Equal(t, wallet.SelectionSeatRule, wallet.SelectionRuleAt(pow.SeatRuleActivationHeight))
+	// The first selection under the seat rule ends the epoch that starts at its height.
+	_, _, first := wallet.EpochWindow(pow.SeatRuleActivationHeight, 1440)
+	require.Equal(t, int64(397_439), first)
+	require.Equal(t, wallet.SelectionSeatRule, wallet.SelectionRuleAt(first))
 }

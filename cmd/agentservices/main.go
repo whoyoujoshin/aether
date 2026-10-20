@@ -179,10 +179,10 @@ func (s *server) services() map[string]service {
 		}},
 		"miners": {s.miners, helpDoc{
 			Name: "Aether miner leaderboard", Method: "GET", Price: priceNote,
-			Summary: "This epoch's proof-of-work leaderboard, most work first, with which miners are validators now, how many places the selection fills, and when it happens.",
+			Summary: "This epoch's proof-of-work leaderboard, most work first, with which miners are validators now and their voting power, how many places the selection fills, and when it happens. Under selectionRule seat_work_power (from block 396,000) entries go by seatWork, the difficulty met over the last 3 epochs, native and merged-mined.",
 			Params:  map[string]string{"top": "optional: how many miners to list (default 21, max 200)"},
 			Example: "GET <service URL>/?top=10",
-			Returns: `{"height", "epoch", "topKSize", "selectionRule", "entries": [{"rank", "address", "work", "activeValidator"}]}`,
+			Returns: `{"height", "epoch", "topKSize", "selectionRule", "entries": [{"rank", "address", "work", "seatWork", "activeValidator", "votingPower"}]}`,
 		}},
 	}
 	if s.inference != nil {

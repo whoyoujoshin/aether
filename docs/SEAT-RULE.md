@@ -115,8 +115,22 @@ the chain.
 - **Watch the first boundary.** All four testnet validators are CPU miners,
   so their powers will follow their hash rates, moving at most 10% at the
   first boundary.
-- **Follow-ups not in this change:**
-  - a query for seat work and power (CometBFT's `/validators` shows the
-    power meanwhile);
+- **Miner status under the rule** (since PR #155):
+  - **Where:** `get_miner_status` (agentmcp and the public `/mcp`),
+    `/api/miner` and the `miners` service.
+  - **What they report:** selectionRule `seat_work_power`, each address's
+    seat work over the window and this epoch, rank and on-track by seat
+    work, and its voting power from the validator set. Before the height
+    they name the rule coming (`nextSelectionRule`,
+    `nextRuleFromHeight`).
+  - **How:** seat work is read from x/pow's store (a `/subspace` query of
+    `seat_work/`), so no node needs a new query.
+  - **minerwatch:** warns on no seat work this epoch, which counts merged
+    work, and says the power falls rather than that the seat ends.
+  - **Checked** on a devnet with the height patched to 40. At the first
+    boundary under the rule, the validator's power went from 1,000,000 to
+    100,000,000, and the status showed the same.
+- **Follow-ups:**
+  - a gRPC query for seat work;
   - a `minerwatch` alert when a newcomer's power grows;
   - the explorer's validator page showing power.

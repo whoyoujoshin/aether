@@ -104,7 +104,8 @@ func newPublicServer() *mcp.Server {
 	mcp.AddTool(server, annotate(&mcp.Tool{
 		Name: "get_miner_status",
 		Description: "Check whether an address will become a validator when this epoch ends: its registered consensus key, work this epoch, rank among eligible miners, " +
-			"blocks (and estimated seconds) until the validator set is picked, whether it's a validator now, and its escrowed mining rewards. " +
+			"blocks (and estimated seconds) until the validator set is picked, whether it's a validator now and with what voting power, and its escrowed mining rewards. " +
+			"From block 396,000 seats follow seat work (selectionRule seat_work_power): the difficulty met over the last 3 epochs, native and merged-mined. " +
 			"The address is required. Read-only; every field is as of one block height.",
 	}), coded(toolGetMinerStatusPublic))
 
