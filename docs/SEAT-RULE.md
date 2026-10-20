@@ -83,6 +83,46 @@ merge-mines, it holds most of the power, and native miners fall under the
 1% bar. That is the security model: seats follow the hash that protects
 the chain.
 
+## Known weaknesses
+
+Found by reading the code (Grok's strategy review, 2026-10-19) and
+confirmed with the simulation in [SEAT-SIM.md](SEAT-SIM.md), which calls
+the real `computeSeats`. Neither is a reason to hold back 396,000: the old
+rule is weaker on both counts. Both are reasons not to open meaningful IBC
+value, or set a mainnet date, until they're fixed behind a later height.
+
+- **A4, denominator capture.** The 1% bar is measured against all window
+  work, including merged work credited to an address with no consensus key.
+  An unregistered pool with most of the hash pushes the CPU validators under
+  1%, and an attacker with about 1% of the hash and a key becomes the only
+  one that qualifies. It can halt the chain at the fifth boundary after the
+  pool appears and controls it at the eighth (the first is lost while the
+  window fills). Merged work is uncapped (`AuxMaxDifficulty`, 2^62) while
+  native work is capped at `MaxDifficulty` per submission, so any real
+  scrypt pool dwarfs native miners.
+- **A5, freeze.** The same pool with no attacker: nobody qualifies, every
+  boundary leaves the set as it is, and a validator removed for downtime
+  never comes back. At the first boundary, check that every validator still
+  clears 1% of the window's total.
+- **A6, downtime amplification.** A validator that misses more than 30 of
+  the last 60 blocks (~3 minutes) is removed at once, and its power isn't
+  replaced until a boundary, so every other share jumps with no damping;
+  it returns only through the 10% entry limit. Against four equal honest
+  validators, an attacker with over 20% of the work gets halt power from
+  one removal, and from 34% it can remove them all and hold the whole set.
+  The simulation's sweep has the numbers.
+
+**Candidate fixes**, each a consensus change behind a new height:
+
+- A4 and A5: measure the 1% bar against eligible work only. One line in
+  `computeSeats`; the simulation shows it holds the A4 attacker at its fair
+  share (27%) and ends the freeze.
+- A6: reserve a removed validator's power, so it returns at the next
+  boundary without using the entry budget (the simulation shows recovery in
+  one boundary instead of five). That doesn't stop the jump within the
+  epoch: for that, lengthen the liveness window well past 60 blocks, as
+  other Cosmos chains do.
+
 ## Left out on purpose
 
 - **No cap on one validator's power.** With a cap, an honest miner's excess

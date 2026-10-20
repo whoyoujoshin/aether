@@ -47,6 +47,12 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
   - **Escrow:** peer-1 held ~27,246 AETH of escrow on 10-19; balances already above the floor stay locked until their unlock height.
   - **Miner status:** `get_miner_status`, `/api/miner`, the `miners` service and minerwatch report selectionRule `seat_work_power`, seat work (read from the store's `seat_work/` subspace), and voting power from the validator set. Before 396,000 they name the coming rule. It needs a deploy of agentmcp, the sandbox, explorer and agentservices on the seed before 396,000.
   - **Follow-ups:** a gRPC seat-work query, a minerwatch alert for newcomer power, power on the explorer's validator page.
+  - **Known weaknesses** (`docs/SEAT-RULE.md`, simulated in `docs/SEAT-SIM.md` with `x/pow/seatsim_test.go`, which calls the real `computeSeats`):
+    - **A4:** unregistered merged work counts toward the 1% bar's total. With a 96% unregistered pool, an attacker with 1% of the hash can halt at the 5th boundary and controls at the 8th.
+    - **A5:** the same pool with no attacker freezes the set, and a downtime removal never comes back.
+    - **A6:** a liveness removal (31 of 60 blocks missed) jumps every other share mid-epoch. Over 20% of the work gets halt power from one removal, and 34% can take the whole set.
+    - **Plan:** none blocks 396,000, but no meaningful IBC value or mainnet date until fixed behind a later height. Candidates: the 1% bar on eligible work only (A4/A5), and reserved power plus a longer liveness window (A6).
+    - **First boundary (397,439):** check every validator still clears 1% of the window's total.
 - **Fresh-chain gates** (package `gates`, `docs/MAINNET.md` §4): every height gate is read through `gates.Height(chainID, testnetHeight)`.
   - **Fresh chains:** on `aether-1` and on any chain ID starting `aether-rc-`, every gate opens at block 1. A module left out of the genesis file starts from its defaults, and a miner that registers a genesis validator's key takes that validator over.
   - **Everywhere else** (`aether-testnet-1`, other devnets, unit tests with an empty chain ID) the testnet heights apply unchanged.
