@@ -338,7 +338,7 @@ func TestSeatSim_A6_ControlThreshold(t *testing.T) {
 	control := 0
 	var rows []string
 	for a := int64(20); a <= 50; a++ {
-		n, _ := a6Net(a*4, (100-a), false) // attacker a%, each honest (100-a)/4 %
+		n, _ := a6Net(a*4, 100-a, false) // attacker a%, each honest (100-a)/4 %
 		peaks := knockOut(n)
 		peak := 0.0
 		if len(peaks) > 0 {
