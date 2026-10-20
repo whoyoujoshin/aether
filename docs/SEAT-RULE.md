@@ -114,7 +114,7 @@ value, or set a mainnet date, until they're fixed behind a later height.
 
 ## Hardening (built, behind `SeatHardeningHeight`)
 
-`x/pow/seat_hardening.go` holds three fixes. They sit behind one new
+`x/pow/seat_hardening.go` holds four fixes. They sit behind one new
 height, `SeatHardeningHeight`, which is a placeholder (20,001,600) on the
 testnet until a height is chosen and every validator runs a binary
 carrying it. On a fresh chain (`aether-1`, `aether-rc-*`) they're on from
@@ -123,39 +123,41 @@ block 1. Like 396,000, the height needs a coordinated binary swap.
 - **A4 and A5: the 1% bar is measured against eligible work only.**
   `computeSeats` takes `eligibleTotal`, so work credited to an address with
   no consensus key, or a banned one, no longer counts toward the total. In
-  the simulation, which now runs this code, the A4 attacker stays at its
-  fair share (27%) and the A5 set never freezes. Miner status (`wallet`)
+  the simulation, which runs this code, the A4 attacker stays at its fair
+  share (27%) and the A5 set never freezes. Miner status (`wallet`)
   measures the bar the same way from the height.
+- **A6: a cap on removals.** Downtime removals between two boundaries take
+  out at most 10% of the power (`SeatEntryLimitBps`, the same as the entry
+  limit). A validator over the liveness threshold past the cap stays in the
+  set, still counted as missing, until the next boundary resets the budget.
+  A removal happens only while blocks are being made, so keeping it never
+  halts the chain; it only slows the rounds it would have proposed. With
+  four validators at a quarter each, none is removed for downtime: an
+  offline one fades through the seat rule instead, as its work does.
 - **A6: reserved power.** A validator removed for downtime keeps its power
   at the next boundary, outside the entry budget, if its miner added seat
   work after the removal. One that didn't re-enters through the entry
-  limit as before, so a validator that's still offline isn't handed back
-  its full power. A reserve lasts one boundary.
+  limit, sharing it with any newcomer, so a validator that's still offline
+  isn't handed back its full power. A reserve lasts one boundary.
 - **A6: a longer liveness window.** It grows from 60 blocks to 1,440 (one
   epoch), still removing at more than half missed, so a removal takes
   about 68 minutes offline instead of 3. Short outages of our own, such as
   peer-1's VPN drop-outs and the seed's restarts, no longer cost a seat.
-  The bitmap is one bit per block (180 bytes). A bitmap kept under the old
+  The bitmap is one bit per block (180 bytes), and one kept under the old
   window starts over at the height.
 
-**What A6 still needs.** The two A6 fixes limit how long an attacker's
-gain lasts (until the next boundary) and how fast it comes (about two
-68-minute rounds per epoch). They don't raise the share an attacker needs.
-It can still take several validators offline at once, under 1/3 in all
-so that blocks continue, and needs only two rounds.
+The simulation's A6 sweep, for the least share of the work that reaches
+control:
 
 | Control from | 4 honest validators | 10 honest validators |
 |---|---|---|
 | As at 396,000 | 34% of the work | 17% |
-| Hardened | 34% | 34% |
-| Hardened plus a 10% cap on removals | 61% | 62% |
+| Window and reserve, no cap | 34% | 34% |
+| Hardened (with the cap) | **61%** | **62%** |
 
-A cap on how much power downtime can remove per epoch, mirroring the
-entry limit, is what raises the bar. A removal happens only while blocks
-are being made, so it never brings a halted chain back. A cap therefore
-costs only slower blocks while an offline validator past the cap stays in
-the set. The cap is modelled in the simulation but not built; it waits on
-a decision.
+The window and the reserve alone don't raise the bar, because an attacker
+can take several validators offline at once (under 1/3 in all, so blocks
+continue). The cap does.
 
 ## Left out on purpose
 

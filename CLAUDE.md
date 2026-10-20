@@ -56,7 +56,8 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
       - **A4/A5:** the 1% bar is measured on eligible work only (`computeSeats`' `eligibleTotal`; wallet miner status matches).
       - **A6, reserved power:** a validator removed for downtime whose miner adds work afterwards gets its power back at the next boundary.
       - **A6, liveness window:** 1,440 blocks, bit-packed, so a removal takes about 68 minutes offline.
-      - **What A6 still needs:** the simulation shows the window and the reserve don't raise A6's control threshold (34%), because several validators can be taken offline at once. A 10% per-epoch cap on removals raises it to about 61%; it's modelled, not built, and awaits Joshua's decision.
+      - **A6, removal cap:** downtime removals between boundaries take out at most 10% of the power (`mayRemoveForDowntime`). A validator past the cap stays in the set until the next boundary. With four validators at 25% each, none is removed for downtime.
+      - **Simulation:** the window and the reserve alone leave A6's control threshold at 34%. With the cap it is about 61% (four validators) or 62% (ten).
     - **First boundary (397,439):** check every validator still clears 1% of the window's total.
 - **Fresh-chain gates** (package `gates`, `docs/MAINNET.md` §4): every height gate is read through `gates.Height(chainID, testnetHeight)`.
   - **Fresh chains:** on `aether-1` and on any chain ID starting `aether-rc-`, every gate opens at block 1. A module left out of the genesis file starts from its defaults, and a miner that registers a genesis validator's key takes that validator over.

@@ -1193,6 +1193,13 @@ func (k Keeper) CheckValidatorLiveness(ctx sdk.Context) {
 		signed := vote.GetBlockIDFlag() == comet.BlockIDFlagCommit
 		shouldRemove := k.RecordValidatorSigning(ctx, minerAddr, signed)
 
+		if shouldRemove && !k.mayRemoveForDowntime(ctx, minerAddr) {
+			// Past this epoch's removal cap: it stays in the set, still
+			// counted as missing, until the next boundary.
+			k.logger.Debug("validator over the liveness threshold kept: this epoch's downtime removals are at the cap",
+				"miner", minerAddr.String())
+			continue
+		}
 		if shouldRemove {
 			k.logger.Info("validator exceeded liveness miss threshold, removing from active set (downtime, not equivocation -- no ban, no escrow forfeiture)",
 				"miner", minerAddr.String(), "window_size", livenessWindow(ctx), "threshold", LivenessMissThreshold)
