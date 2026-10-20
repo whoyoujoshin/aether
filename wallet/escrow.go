@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
@@ -170,4 +171,78 @@ func (c *Client) EscrowOutcome(ctx context.Context, id uint64) (*EscrowOutcome, 
 		}
 	}
 	return nil, ErrEscrowNotFound
+}
+
+// EscrowCreated is one escrow_created event, from its transaction.
+type EscrowCreated struct {
+	ID        uint64
+	Payer     string
+	Payee     string
+	Arbiter   string
+	Amount    string // coins, e.g. "2000000uaeth"
+	ExpiresAt int64  // unix seconds
+	OnExpiry  string // escrow.OnExpiry's name, e.g. "ON_EXPIRY_RELEASE"
+	Terms     string
+	TxHash    string
+	Height    int64
+}
+
+// EscrowsCreatedWithTerms returns every escrow created at or above
+// sinceHeight whose terms contain substr, oldest first, reading all
+// result pages; ErrTooMuchHistory (with what it has) past maxResults.
+// substr goes into a query string, so it may hold only letters, digits
+// and ":-_".
+func (c *Client) EscrowsCreatedWithTerms(ctx context.Context, substr string, sinceHeight int64, maxResults int) ([]EscrowCreated, error) {
+	return escrowsCreatedWithTerms(ctx, txtypes.NewServiceClient(c.conn), substr, sinceHeight, maxResults)
+}
+
+func escrowsCreatedWithTerms(ctx context.Context, s txSearcher, substr string, sinceHeight int64, maxResults int) ([]EscrowCreated, error) {
+	for _, r := range substr {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune(":-_", r)) {
+			return nil, fmt.Errorf("terms filter %q may hold only letters, digits and \":-_\"", substr)
+		}
+	}
+	if sinceHeight < 1 {
+		sinceHeight = 1
+	}
+	query := fmt.Sprintf("%s.%s CONTAINS '%s' AND tx.height>=%d", escrow.EventTypeCreated, escrow.AttributeTerms, substr, sinceHeight)
+	var out []EscrowCreated
+	for page := uint64(1); ; page++ {
+		resp, err := s.GetTxsEvent(ctx, &txtypes.GetTxsEventRequest{
+			Query: query, OrderBy: txtypes.OrderBy_ORDER_BY_ASC, Page: page, Limit: txSearchPageSize,
+		})
+		if err != nil {
+			return out, fmt.Errorf("failed to search escrows: %w", err)
+		}
+		for _, r := range resp.TxResponses {
+			if r.Code != 0 {
+				continue
+			}
+			for _, ev := range r.Events {
+				if ev.Type != escrow.EventTypeCreated {
+					continue
+				}
+				attrs := map[string]string{}
+				for _, a := range ev.Attributes {
+					attrs[a.Key] = a.Value
+				}
+				id, err := strconv.ParseUint(attrs[escrow.AttributeID], 10, 64)
+				if err != nil || !strings.Contains(attrs[escrow.AttributeTerms], substr) {
+					continue
+				}
+				expires, _ := strconv.ParseInt(attrs[escrow.AttributeExpiresAt], 10, 64)
+				out = append(out, EscrowCreated{
+					ID: id, Payer: attrs[escrow.AttributePayer], Payee: attrs[escrow.AttributePayee], Arbiter: attrs[escrow.AttributeArbiter],
+					Amount: attrs[escrow.AttributeAmount], ExpiresAt: expires, OnExpiry: attrs[escrow.AttributeOnExpiry], Terms: attrs[escrow.AttributeTerms],
+					TxHash: r.TxHash, Height: r.Height,
+				})
+			}
+		}
+		if len(out) >= maxResults {
+			return out, ErrTooMuchHistory
+		}
+		if len(resp.TxResponses) < txSearchPageSize || page*txSearchPageSize >= resp.Total {
+			return out, nil
+		}
+	}
 }

@@ -24,6 +24,8 @@ const (
 	testnetGRPC   = "grpc.157-245-252-221.sslip.io:443"
 	testnetFaucet = "https://faucet.157-245-252-221.sslip.io/request"
 	testnetSeed   = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"
+	// testnetJobs is the job board's host (cmd/jobboard behind the seed's Caddy).
+	testnetJobs = "https://explorer.157-245-252-221.sslip.io"
 )
 
 // Public endpoints to advertise (not the ones the explorer itself queries,
@@ -41,6 +43,7 @@ var agentmcpTools = []string{
 	"get_quest", "quote_swap", "swap_aeth",
 	"get_miner_status",
 	"create_escrow", "release_escrow", "refund_escrow", "get_escrow", "list_escrows",
+	"post_job", "find_jobs", "get_job", "offer_on_job", "hire_for_job", "deliver_job", "close_job",
 }
 
 // testWalletTools are the hosted test wallet's tools (agentmcp
@@ -48,6 +51,7 @@ var agentmcpTools = []string{
 var testWalletTools = []string{
 	"create_test_wallet", "get_test_wallet", "send_from_test_wallet", "buy_service", "get_quest",
 	"get_balance", "get_transaction_status", "find_services", "quote_swap", "swap_from_test_wallet",
+	"find_jobs", "get_job", "offer_from_test_wallet", "deliver_from_test_wallet",
 }
 
 // publicTestWallet is the hosted test wallet's URL (--public-test-wallet).
@@ -199,12 +203,16 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			"openapi":     "/api/openapi.json",
 			"x402":        repoURL + "/blob/main/docs/X402.md",
 			"quest":       "/api/quest",
+			"jobBoard":    repoURL + "/blob/main/docs/JOBS.md",
 			"llms":        "/llms.txt",
 		},
 		Warnings: []string{
 			"Testnet: use disposable keys and never anything of value.",
 			"No independent security audit yet.",
 		},
+	}
+	if chainID == "aether-testnet-1" {
+		card.Docs["jobs"] = testnetJobs + "/jobs"
 	}
 	if publicA2A != "" {
 		card.A2A = &agentA2ADTO{AgentCard: "/.well-known/agent-card.json", Endpoint: publicA2A, Version: a2a.ProtocolVersion}

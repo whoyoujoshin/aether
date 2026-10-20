@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Installs (or updates) the paid agent services on the seed:
 # cmd/agentservices on 127.0.0.1:8500 and one cmd/paywall per service
-# (scripts/agentservices/services.txt), each a systemd unit; and the
-# public x402 facilitator (cmd/facilitator) on 127.0.0.1:8403. The
+# (scripts/agentservices/services.txt), each a systemd unit; the
+# public x402 facilitator (cmd/facilitator) on 127.0.0.1:8403; and the
+# job board's host (cmd/jobboard, docs/JOBS.md) on 127.0.0.1:8404, its
+# texts in $JOBS_DIR. The
 # paywalls also take standard x402 v2 exact payments. Run as root
 # from the repo checkout, after creating the payee account (announce.sh
 # prints it the first time):
@@ -19,6 +21,7 @@ PAY_TO=${PAY_TO:?set PAY_TO to the payee address (bash scripts/agentservices/ann
 PUBLIC=${PUBLIC:-https://explorer.157-245-252-221.sslip.io/svc}
 GRPC=${GRPC:-localhost:9090}
 CHAIN_ID=${CHAIN_ID:-aether-testnet-1}
+JOBS_DIR=${JOBS_DIR:-/root/aether-jobs}
 USDC="--usdc-path transfer/channel-2 --usdc-base-denom erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d --usdc-issuer Injective"
 LIST="$REPO/scripts/agentservices/services.txt"
 [ -f "$LIST" ] || { echo "run from the repo checkout (no $LIST)" >&2; exit 1; }
@@ -52,9 +55,11 @@ no_build_on_validator
 place_bin agentservices /root/agentservices.new ./cmd/agentservices
 place_bin paywall /root/paywall.new ./cmd/paywall
 place_bin facilitator /root/facilitator.new ./cmd/facilitator
+place_bin jobboard /root/jobboard.new ./cmd/jobboard
 mv /root/agentservices.new /root/agentservices
 mv /root/paywall.new /root/paywall
 mv /root/facilitator.new /root/facilitator
+mv /root/jobboard.new /root/jobboard
 
 echo "== Units"
 cat > /etc/systemd/system/aether-agentservices.service <<UNIT
@@ -89,7 +94,26 @@ NoNewPrivileges=true
 WantedBy=multi-user.target
 UNIT
 
-units=(aether-agentservices aether-facilitator)
+# The seed is short of memory (CLAUDE.md, "Seed out of memory"): the
+# host is capped well below what it needs.
+cat > /etc/systemd/system/aether-jobboard.service <<UNIT
+[Unit]
+Description=Aether job board host (stores job texts named on chain; holds no key)
+After=network-online.target
+
+[Service]
+ExecStart=/root/jobboard --listen 127.0.0.1:8404 --grpc $GRPC --dir $JOBS_DIR
+Environment=HOME=/root
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+units=(aether-agentservices aether-facilitator aether-jobboard)
 while IFS='|' read -r name port price title desc payee; do
   case "$name" in ''|'#'*) continue;; esac
   unit=aether-paywall-$name
@@ -126,6 +150,9 @@ fail=0
 for _ in $(seq 1 10); do [ "$(code http://127.0.0.1:8403/supported)" = 200 ] && break; sleep 1; done
 printf '%-8s supported %s  healthz %s\n' facilitator "$(code http://127.0.0.1:8403/supported)" "$(code http://127.0.0.1:8403/healthz)"
 [ "$(code http://127.0.0.1:8403/healthz)" = 200 ] || fail=1
+for _ in $(seq 1 10); do [ "$(code http://127.0.0.1:8404/jobs/healthz)" = 200 ] && break; sleep 1; done
+printf '%-8s healthz %s  board %s\n' jobboard "$(code http://127.0.0.1:8404/jobs/healthz)" "$(code http://127.0.0.1:8404/jobs)"
+[ "$(code http://127.0.0.1:8404/jobs/healthz)" = 200 ] || fail=1
 while IFS='|' read -r name port price title desc payee; do
   case "$name" in ''|'#'*) continue;; esac
   for _ in $(seq 1 10); do [ "$(code "http://127.0.0.1:$port/help")" = 200 ] && break; sleep 1; done
@@ -140,4 +167,4 @@ if [ $fail = 1 ]; then
   echo "Some checks failed (000: not answering). Why: journalctl -u aether-paywall-<name> -n 5 --no-pager" >&2
   exit 1
 fi
-echo "All answer: the facilitator; each service's help 200, unpaid 402 with the v2 header, manifest 200."
+echo "All answer: the facilitator and the job board; each service's help 200, unpaid 402 with the v2 header, manifest 200."
