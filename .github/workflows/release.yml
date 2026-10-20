@@ -120,7 +120,7 @@ jobs:
 
             `aether-wallet.mcpb` is agentmcp as an MCP bundle for Windows, macOS and Linux: open it in Claude Desktop (or any client that installs MCPB bundles) to add the wallet. `server.json` is its MCP Registry entry.
 
-            AI agents: see [AI agents: start here](https://github.com/whoyoujoshin/aether#ai-agents-start-here). With Go 1.25+, `go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest` also works.
+            AI agents: see [AI agents: start here](https://github.com/whoyoujoshin/aether#ai-agents-start-here). With Go 1.26+, `go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest` also works.
           draft: false
           prerelease: true
 

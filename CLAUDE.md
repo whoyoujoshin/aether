@@ -11,7 +11,10 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
 
 ## Environment
 - **OS:** Windows, developed via PowerShell
-- **Stack:** Cosmos SDK v0.50.14, CometBFT v0.38.26, ibc-go v8.8.0, Go 1.25
+- **Stack:** Cosmos SDK v0.50.14, CometBFT v0.38.26, ibc-go v8.8.0, Go 1.26 (`go 1.26.10` in `go.mod` since 2026-10-20, for the `golang.org/x/net` 0.60 and `x/crypto` 0.57 security fixes, which need Go 1.26).
+  - **Builders need Go 1.26.10:** Gitty's workstation `prebuild.sh` and peer-1's Windows `.exe` build. The release workflows read the version from `go.mod`.
+  - **`bench/` stays on Go 1.25:** it's a separate module that doesn't depend on the root one.
+  - **Mixed builds are fine:** the `3988485` binaries validating 396,000 were built with Go 1.25.8 and stay as they are. A devnet run by a Go 1.25 `aetherd` was continued by a Go 1.26 build on the same data, across three boundaries, with no app-hash errors.
 - **Data directory:** `C:\aether-data` (moved off OneDrive — see gotcha below)
 - **Critical:** every `aetherd` command for peer-1 (DardenPC) must include `--home C:\aether-peer1`, its live node home. `C:\aether-data` is the git repo, not a node home. Don't omit this flag or assume a default home dir.
 

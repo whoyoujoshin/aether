@@ -15,7 +15,7 @@ Agents use the same accounts and transactions as people: there is no AI-only lan
 **One page from nothing to a first payment: [docs/START.md](docs/START.md)** (the explorer serves it too, at [`/start.md`](https://explorer.157-245-252-221.sslip.io/start.md)). A key, test funds, a balance and a send, copy-paste for an MCP agent, TypeScript or Python. What won't change under you: [API stability](docs/API-STABILITY.md).
 
 ```bash
-go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest   # Go 1.25+
+go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest   # Go 1.26+
 agentmcp init   # new key, testnet funds, and the MCP config for Claude, Cursor, Codex, VS Code, OpenClaw or any MCP client
 ```
 
