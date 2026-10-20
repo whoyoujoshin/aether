@@ -45,7 +45,7 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
     - **After the 10-19 restarts:** aetherd sat at ~625 MB to 1.5 GB.
     - **Out of the set:** those restarts took the seed out of the validator set. Its miner had work in epoch 253, so it is due back at the boundary at the end of 365,759 (about 03:56 UTC on 10-20, at 5.93 s blocks). Until then the chain runs on 3 validators, and **no other validator may go down**: peer-1's swap waits until the seed is back and signing.
   - **Escrow:** peer-1 held ~27,246 AETH of escrow on 10-19; balances already above the floor stay locked until their unlock height.
-  - **Miner status** (PR #155): `get_miner_status`, `/api/miner`, the `miners` service and minerwatch report selectionRule `seat_work_power`, seat work (read from the store's `seat_work/` subspace), and voting power from the validator set. Before 396,000 they name the coming rule. It needs a deploy of agentmcp, the sandbox, explorer and agentservices on the seed before 396,000.
+  - **Miner status:** `get_miner_status`, `/api/miner`, the `miners` service and minerwatch report selectionRule `seat_work_power`, seat work (read from the store's `seat_work/` subspace), and voting power from the validator set. Before 396,000 they name the coming rule. It needs a deploy of agentmcp, the sandbox, explorer and agentservices on the seed before 396,000.
   - **Follow-ups:** a gRPC seat-work query, a minerwatch alert for newcomer power, power on the explorer's validator page.
 - **Mainnet plan:** `docs/MAINNET.md` (PR #150) covers:
   - seats first (the rule above);

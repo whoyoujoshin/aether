@@ -115,7 +115,7 @@ the chain.
 - **Watch the first boundary.** All four testnet validators are CPU miners,
   so their powers will follow their hash rates, moving at most 10% at the
   first boundary.
-- **Miner status under the rule** (since PR #155):
+- **Miner status under the rule:**
   - **Where:** `get_miner_status` (agentmcp and the public `/mcp`),
     `/api/miner` and the `miners` service.
   - **What they report:** selectionRule `seat_work_power`, each address's
