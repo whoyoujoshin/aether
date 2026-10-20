@@ -2,8 +2,16 @@
 
 Aether accepts merged-mining proof-of-work (AuxPoW) from the Litecoin
 family under AuxPoW chain ID 17776. It earns the block reward and
-retargets difficulty, but never counts toward validator selection. Only
-native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
+retargets difficulty (`submitAuxPoW` in `x/pow/msg_server.go`).
+
+**From block 396,000 merged work also picks validators.** The seat rule
+([SEAT-RULE.md](SEAT-RULE.md)) counts each accepted AuxPoW submission's
+difficulty as seat work for the reward address its proof commits to,
+alongside native work. A pool holds a seat only if that address registers
+a consensus key. Before 396,000 only native work counted, which is what
+the sections below were written against. Merged work from an address with
+no key still counts toward the total the 1% bar is measured against: see
+"Known weaknesses" in SEAT-RULE.md.
 
 **Status (2026-10-03):**
 - **Nothing sends real merged-mining work to Aether yet.**
@@ -106,9 +114,10 @@ native work does (`submitAuxPoW` in `x/pow/msg_server.go`).
     nothing until pools actually arrive;
   - a track counts as mining if it had a submission accepted in the last
     five target intervals (5 minutes).
-- **Why.** Native mining stays viable at native difficulty and keeps
-  driving validator selection, and total issuance stays on the published
-  schedule.
+- **Why.** Native mining stays viable at native difficulty, and total
+  issuance stays on the published schedule. (Native work drove validator
+  selection alone until the seat rule at 396,000; from then both tracks
+  count.)
 
 **D. Reject a parent whose chain ID is 17776: built.** From
 `MergedMiningActivationHeight`, `CheckAuxPow` refuses a parent header

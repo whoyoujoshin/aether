@@ -114,9 +114,10 @@ same set.
 A takeover or a bug can lose, at most, the value that IBC counterparties hold
 in escrow for Aether. Keep that small while the chain is young:
 
-- **One USDC path at launch.** Either Noble (Circle's issuance chain for Cosmos)
-  or Injective. Pin it in `wallet` the way `TestnetUSDC` is pinned. Check the
-  chosen chain's rules for opening a channel first.
+- **One USDC path at launch: Injective.** Noble is out: Circle stopped
+  minting USDC there on 13 October 2026 and pauses its contract on
+  12 January 2027. Pin Injective's USDC in `wallet` the way `TestnetUSDC`
+  is pinned, and check Injective's rules for opening a channel first.
 - **An inflow cap on Aether's side.** Refuse a received packet that would take
   the USDC on Aether over a cap (refused packets are refunded on the sender's
   chain). That bounds the counterparty's escrow, so it bounds what a forged
@@ -255,9 +256,9 @@ had.
 
 | Decision | Options | Recommendation |
 |---|---|---|
-| Seat rule | a + b + c, or a + b + c + d | a + b + c at launch; decide on d after asking the large Litecoin and Dogecoin pools whether they would run validators |
+| Seat rule | a + b + c, or a + b + c + d | The testnet rule from 396,000 is a + b + c + d (merged work counts). Decide d for mainnet with the simulation of SEAT-RULE.md's known weaknesses, after asking the large Litecoin and Dogecoin pools whether they would run validators |
 | Supply | fair launch (as now) or an allocation | fair launch |
-| First USDC path | Noble or Injective | whichever chain lets Aether open a channel sooner; check both |
+| First USDC path | Injective (Noble is being wound down by Circle) | Injective, as on the testnet |
 | Inflow cap | an amount | low at launch, e.g. 10,000 USDC, raised by governance |
 | Fees | a minimum price, USDC accepted, where fees go | accept USDC; fees to the treasury |
 | Operators | who, and how many | seven or more before phase 2 |

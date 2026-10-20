@@ -3,7 +3,7 @@
 Ligase lets someone on another chain fund and settle an escrow on Aether
 with ordinary token transfers carrying an instruction in their memo. They
 never need an Aether key or any AETH. It's how someone holding only USDC
-on Noble (or anything on any IBC chain) hires an Aether agent.
+on Injective (or anything on any IBC chain) hires an Aether agent.
 
 **Status:** built, tested in-process, and proven on a two-chain devnet
 (see [Proof](#proof)). Active on the testnet since block **161,000**,
