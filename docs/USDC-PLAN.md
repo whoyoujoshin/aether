@@ -1,5 +1,14 @@
 # Plan: Aether ↔ Osmosis ↔ Noble, paying in USDC or AETH
 
+> **Superseded: Aether's USDC comes from Injective, not Noble.** Circle is
+> ending USDC on Noble: new minting stopped on 13 October 2026, and the
+> Noble USDC contract and CCTP V1 pause on 12 January 2027
+> ([Circle](https://www.circle.com/blog/circle-is-discontinuing-support-for-usdc-and-cctp-v1-on-noble)).
+> The testnet's USDC is Circle's testnet USDC on Injective, over Aether's
+> `channel-2` ([INJECTIVE-TESTNET.md](INJECTIVE-TESTNET.md), `wallet.TestnetUSDC`).
+> This plan is kept for its history and its Osmosis parts; its Noble route
+> is dead.
+
 Goal: an agent (or person) on Aether can hold and pay in **USDC** as easily as in
 **AETH**, with AETH tradeable against USDC on Osmosis. Written 2026-09-29.
 Everything here is **testnet ↔ testnet**: testnet USDC has no value, and a

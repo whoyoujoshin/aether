@@ -85,8 +85,9 @@ type MinerStatus struct {
 	WorkShare string `json:"workShare,omitempty"`
 
 	// Under seat_work_power: the difficulty this address's accepted
-	// submissions met (native and AuxPoW) over the window, and the whole
-	// window's.
+	// submissions met (native and AuxPoW) over the window, and the total
+	// the 1% bar is measured against: the whole window's, or from
+	// SeatHardeningHeight the eligible addresses' only.
 	SeatWork          string `json:"seatWork,omitempty"`
 	SeatWorkThisEpoch string `json:"seatWorkThisEpoch,omitempty"`
 	SeatWorkTotal     string `json:"seatWorkTotal,omitempty"`

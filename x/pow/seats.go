@@ -165,10 +165,15 @@ type seat struct {
 // computeSeats is the seat rule's arithmetic: who is seated, with what
 // power, given every address's window work and the current validators'
 // powers (prev). ok is false when nobody qualifies, and the set stays as
-// it is.
-func computeSeats(cands []seatCandidate, prev []seat, topK int64) ([]seat, bool) {
+// it is. eligibleTotal measures the 1% bar against eligible candidates'
+// work only (from SeatHardeningHeight); otherwise every candidate's work
+// counts toward it.
+func computeSeats(cands []seatCandidate, prev []seat, topK int64, eligibleTotal bool) ([]seat, bool) {
 	total := math.ZeroInt()
 	for _, c := range cands {
+		if eligibleTotal && !c.Eligible {
+			continue
+		}
 		total = total.Add(c.Work)
 	}
 	var qualified []seatCandidate
@@ -319,8 +324,19 @@ func (k Keeper) computeSeatUpdates(ctx sdk.Context, epoch int64) []abci.Validato
 		at[string(owner)] = len(prev)
 		prev = append(prev, seat{Addr: owner, Power: p})
 	}
+	hardened := seatHardened(ctx)
+	if hardened {
+		// A validator removed for downtime this epoch that's back counts
+		// as holding its power, so it returns outside the entry budget.
+		for _, r := range k.takeDowntimeReserves(ctx, epoch) {
+			if _, ok := at[string(r.Addr)]; !ok {
+				at[string(r.Addr)] = len(prev)
+				prev = append(prev, r)
+			}
+		}
+	}
 
-	seats, ok := computeSeats(cands, prev, k.GetTopKSize(ctx))
+	seats, ok := computeSeats(cands, prev, k.GetTopKSize(ctx), hardened)
 	if !ok {
 		k.logger.Info("no qualified validator candidates this epoch, leaving validator set unchanged", "epoch", epoch)
 		return nil
