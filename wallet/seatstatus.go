@@ -13,6 +13,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/bech32"
 	"google.golang.org/protobuf/encoding/protowire"
 
+	"github.com/whoyoujoshin/aether/gates"
 	"github.com/whoyoujoshin/aether/x/pow"
 )
 
@@ -199,13 +200,24 @@ func (c *Client) applySeatRule(at context.Context, st *MinerStatus) error {
 	if err != nil {
 		return err
 	}
+	// From SeatHardeningHeight the 1% bar is measured against eligible
+	// work only, as computeSeats does with eligibleTotal.
+	bar := w.total
+	if st.Epoch.SelectionHeight >= gates.Height(st.ChainID, pow.SeatHardeningHeight) {
+		bar = math.ZeroInt()
+		for i, a := range w.order {
+			if elig[i].registered && !elig[i].banned {
+				bar = bar.Add(w.work[a])
+			}
+		}
+	}
 	type cand struct {
 		addr string
 		work math.Int
 	}
 	var qualified []cand
 	for i, a := range w.order {
-		if elig[i].registered && !elig[i].banned && qualifies(w.work[a], w.total) {
+		if elig[i].registered && !elig[i].banned && qualifies(w.work[a], bar) {
 			qualified = append(qualified, cand{a, w.work[a]})
 		}
 	}
@@ -232,13 +244,13 @@ func (c *Client) applySeatRule(at context.Context, st *MinerStatus) error {
 	if cur, ok := w.current[st.Address]; ok {
 		st.SeatWorkThisEpoch = cur.String()
 	}
-	st.SeatWorkTotal = w.total.String()
-	st.WorkShare = share(mine, w.total)
+	st.SeatWorkTotal = bar.String()
+	st.WorkShare = share(mine, bar)
 	st.NotEligibleBecause = nil
 	switch {
 	case !mine.IsPositive():
 		st.NotEligibleBecause = append(st.NotEligibleBecause, IneligibleNoSeatWork)
-	case !qualifies(mine, w.total):
+	case !qualifies(mine, bar):
 		st.NotEligibleBecause = append(st.NotEligibleBecause, IneligibleBelowMinimum)
 	}
 	if !st.RegisteredConsensusKey {

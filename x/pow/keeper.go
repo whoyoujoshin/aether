@@ -1098,6 +1098,9 @@ func (k Keeper) BootstrapValidator(ctx sdk.Context, pubKeyProto cryptoproto.Publ
 // validator's miss rate within the window now exceeds
 // LivenessMissThreshold, signaling they should be immediately removed.
 func (k Keeper) RecordValidatorSigning(ctx sdk.Context, minerAddr sdk.AccAddress, signed bool) bool {
+	if seatHardened(ctx) {
+		return k.recordSigningLong(ctx, minerAddr, signed)
+	}
 	store := ctx.KVStore(k.storeKey)
 
 	bitmapKey := append(KeyLivenessBitmapPrefix, minerAddr.Bytes()...)
@@ -1192,7 +1195,8 @@ func (k Keeper) CheckValidatorLiveness(ctx sdk.Context) {
 
 		if shouldRemove {
 			k.logger.Info("validator exceeded liveness miss threshold, removing from active set (downtime, not equivocation -- no ban, no escrow forfeiture)",
-				"miner", minerAddr.String(), "window_size", LivenessWindowSize, "threshold", LivenessMissThreshold)
+				"miner", minerAddr.String(), "window_size", livenessWindow(ctx), "threshold", LivenessMissThreshold)
+			k.reserveDowntimePower(ctx, minerAddr)
 			k.RemoveActiveValidator(ctx, minerAddr)
 			k.MarkPendingRemoval(ctx, minerAddr)
 			k.ClearValidatorLiveness(ctx, minerAddr)

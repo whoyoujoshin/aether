@@ -10,8 +10,10 @@ boundary, so it can't drift from consensus. On top of that it adds:
   the set holds over 2/3, since blocks have to keep coming.
 
 It's a test file, so it never goes into `aetherd`. Its scenarios assert
-what the rule activating at 396,000 does, so a rule change shows up there
-first.
+what the rule activating at 396,000 does, and what the hardening behind
+`SeatHardeningHeight` changes ([SEAT-RULE.md](SEAT-RULE.md#hardening-built-behind-seathardeningheight)).
+The A4 and A5 fix runs the chain's own code (`computeSeats`'
+`eligibleTotal`).
 
 ```bash
 go test ./x/pow/ -run TestSeatSim -v
@@ -86,6 +88,28 @@ validators, by its share of the work:
 - **From 34%:** the attacker holds over twice the last honest validator's
   power. That validator then holds under 1/3 and can be removed too, so the
   attacker holds the whole set.
+
+### A6 under the hardening
+
+The hardening's liveness window (1,440 blocks) makes each removal take
+about 68 minutes, so about two rounds fit in an epoch. Its reserved power
+returns the victims at the next boundary. The simulation looks for the
+least share of the work that reaches control (over 2/3). In each round,
+the attacker takes offline as many honest validators as it can while the
+rest hold over 2/3.
+
+| Control from | 4 honest validators | 10 honest validators |
+|---|---|---|
+| As at 396,000 (3-minute removals) | 34% | 17% |
+| Hardened (68-minute removals, reserved power) | 34% | 34% |
+| Hardened plus a 10% cap on removals per epoch (modelled only) | 61% | 62% |
+
+- **The window and the reserve:** they bound the attack to one epoch and
+  slow it down, but don't raise the bar. Two of four validators (33% in
+  all) go offline together and blocks continue.
+- **The cap:** this is what raises the bar.
+- **Many small validators:** they make the attack cheaper under today's
+  rule, down to 17%.
 
 ## Not modeled yet
 

@@ -51,7 +51,7 @@ type getMinerStatusOutput struct {
 
 	SeatWork           string `json:"seatWork,omitempty" jsonschema:"under seat_work_power: the difficulty this address's accepted submissions met over the last 3 epochs, native and merged-mined; it decides seats and power"`
 	SeatWorkThisEpoch  string `json:"seatWorkThisEpoch,omitempty" jsonschema:"under seat_work_power: the part of seatWork earned in this epoch"`
-	SeatWorkTotal      string `json:"seatWorkTotal,omitempty" jsonschema:"under seat_work_power: every address's seat work over the window"`
+	SeatWorkTotal      string `json:"seatWorkTotal,omitempty" jsonschema:"under seat_work_power: the total the 1% bar is measured against: every address's seat work over the window (from the seat hardening height, registered addresses' only)"`
 	NextSelectionRule  string `json:"nextSelectionRule,omitempty" jsonschema:"a different rule that applies from nextRuleFromHeight"`
 	NextRuleFromHeight int64  `json:"nextRuleFromHeight,omitempty"`
 

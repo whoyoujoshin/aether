@@ -51,7 +51,12 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
     - **A4:** unregistered merged work counts toward the 1% bar's total. With a 96% unregistered pool, an attacker with 1% of the hash can halt at the 5th boundary and controls at the 8th.
     - **A5:** the same pool with no attacker freezes the set, and a downtime removal never comes back.
     - **A6:** a liveness removal (31 of 60 blocks missed) jumps every other share mid-epoch. Over 20% of the work gets halt power from one removal, and 34% can take the whole set.
-    - **Plan:** none blocks 396,000, but no meaningful IBC value or mainnet date until fixed behind a later height. Candidates: the 1% bar on eligible work only (A4/A5), and reserved power plus a longer liveness window (A6).
+    - **Plan:** none blocks 396,000, but no meaningful IBC value or mainnet date until fixed behind a later height.
+    - **Hardening (built, `x/pow/seat_hardening.go`):** behind `SeatHardeningHeight`, a 20,001,600 placeholder on the testnet and on from block 1 on fresh chains. It needs a coordinated binary swap once a height is chosen.
+      - **A4/A5:** the 1% bar is measured on eligible work only (`computeSeats`' `eligibleTotal`; wallet miner status matches).
+      - **A6, reserved power:** a validator removed for downtime whose miner adds work afterwards gets its power back at the next boundary.
+      - **A6, liveness window:** 1,440 blocks, bit-packed, so a removal takes about 68 minutes offline.
+      - **What A6 still needs:** the simulation shows the window and the reserve don't raise A6's control threshold (34%), because several validators can be taken offline at once. A 10% per-epoch cap on removals raises it to about 61%; it's modelled, not built, and awaits Joshua's decision.
     - **First boundary (397,439):** check every validator still clears 1% of the window's total.
 - **Fresh-chain gates** (package `gates`, `docs/MAINNET.md` §4): every height gate is read through `gates.Height(chainID, testnetHeight)`.
   - **Fresh chains:** on `aether-1` and on any chain ID starting `aether-rc-`, every gate opens at block 1. A module left out of the genesis file starts from its defaults, and a miner that registers a genesis validator's key takes that validator over.
