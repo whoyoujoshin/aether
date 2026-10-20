@@ -39,6 +39,11 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
     - **What happened:** the seed's aetherd (`5267ab3`, up since 10-17) reached ~2.86 GB resident on the 3.9 GB box with swap full. RPC timed out, peers dropped, and the seed stopped committing at 349,528 (02:31 UTC). The chain ran on 3 of 4.
     - **Recovery:** it was restarted onto `3988485` at ~02:41 UTC. Having missed epoch 242's work, it dropped to power 0 and rejoined at the boundary (signing since 349,921).
     - **Watch it:** the seed also runs the explorer, faucet, MCP servers, test wallet, 14 paywalls and Caddy.
+    - **Memory alert (Gitty's, on the seed):** `aether-memwatch.timer` runs `/usr/local/bin/aether-memwatch.sh` every 10 min with the webhook from `/root/ibcwatch.env`. It alerts when aetherd is above 2 GB or under 400 MB is free, at most once per 6 h per condition, and posts a daily summary at 9 AM CT. Its test post went through on 10-19.
+    - **Heap profiles:** pprof is on at `localhost:6060`. An alert saves heap and goroutine profiles to `/root/heap-profiles/`.
+    - **Restarts:** Gitty checks with Joshua before restarting the seed, even when memory goes critical.
+    - **After the 10-19 restarts:** aetherd sat at ~625 MB to 1.5 GB.
+    - **Out of the set:** those restarts took the seed out of the validator set. Its miner had work in epoch 253, so it is due back at the boundary at the end of 365,759 (about 03:56 UTC on 10-20, at 5.93 s blocks). Until then the chain runs on 3 validators, and **no other validator may go down**: peer-1's swap waits until the seed is back and signing.
   - **Escrow:** peer-1 held ~27,246 AETH of escrow on 10-19; balances already above the floor stay locked until their unlock height.
   - **Follow-ups:** a seat-work query, a minerwatch alert for newcomer power, power on the explorer.
 - **Mainnet plan:** `docs/MAINNET.md` (PR #150) covers:
