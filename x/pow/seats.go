@@ -7,7 +7,10 @@ import (
 	"cosmossdk.io/math"
 	storetypes "cosmossdk.io/store/types"
 	abci "github.com/cometbft/cometbft/abci/types"
+	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/whoyoujoshin/aether/gates"
 )
 
 // The seat rule (docs/MAINNET.md §1). Before SeatRuleActivationHeight every
@@ -94,7 +97,7 @@ func (k Keeper) AddSeatWork(ctx sdk.Context, epoch int64, addr sdk.AccAddress, a
 // SeatRuleActivationHeight it adds difficulty to addr's seat work for the
 // current epoch.
 func (k Keeper) creditSeatWork(ctx sdk.Context, addr sdk.AccAddress, difficulty math.Int) {
-	if ctx.BlockHeight() < SeatRuleActivationHeight {
+	if !gates.On(ctx, SeatRuleActivationHeight) {
 		return
 	}
 	k.AddSeatWork(ctx, k.CurrentEpoch(ctx), addr, difficulty)
@@ -288,7 +291,9 @@ func (k Keeper) computeSeatUpdates(ctx sdk.Context, epoch int64) []abci.Validato
 	}
 
 	active := k.IterateActiveValidators(ctx)
+	fresh := gates.Fresh(ctx.ChainID())
 	prev := make([]seat, 0, len(active))
+	at := map[string]int{}
 	for _, a := range active {
 		if k.IsBanned(ctx, a) {
 			continue
@@ -297,7 +302,22 @@ func (k Keeper) computeSeatUpdates(ctx sdk.Context, epoch int64) []abci.Validato
 		if !ok {
 			p = ValidatorVotingPower
 		}
-		prev = append(prev, seat{Addr: a, Power: p})
+		owner := a
+		if fresh {
+			// A genesis validator starts active under an address made from
+			// its own consensus key (BootstrapValidator). A miner that
+			// registers that key takes the validator over, power and all,
+			// so one key never holds two seats.
+			if heir := k.keyHeir(ctx, a); heir != nil {
+				owner = heir
+			}
+		}
+		if i, ok := at[string(owner)]; ok {
+			prev[i].Power += p
+			continue
+		}
+		at[string(owner)] = len(prev)
+		prev = append(prev, seat{Addr: owner, Power: p})
 	}
 
 	seats, ok := computeSeats(cands, prev, k.GetTopKSize(ctx))
@@ -315,7 +335,8 @@ func (k Keeper) computeSeatUpdates(ctx sdk.Context, epoch int64) []abci.Validato
 		if seated[string(a)] {
 			continue
 		}
-		if pubkey, ok := k.GetValidatorPubkey(ctx, a); ok {
+		heir := fresh && k.keyHeir(ctx, a) != nil
+		if pubkey, ok := k.GetValidatorPubkey(ctx, a); ok && !heir {
 			if u, ok := k.toValidatorUpdate(pubkey, 0, a); ok {
 				updates = append(updates, u)
 			}
@@ -350,7 +371,7 @@ const ValidatorBondFloor int64 = 1_000_000_000
 // moves forward either way, so the bond stays locked while addr earns. A
 // payout that fails is escrowed instead.
 func (k Keeper) escrowReward(ctx sdk.Context, addr sdk.AccAddress, amount math.Int) {
-	if ctx.BlockHeight() < SeatRuleActivationHeight {
+	if !gates.On(ctx, SeatRuleActivationHeight) {
 		k.AddEscrow(ctx, addr, amount)
 		return
 	}
@@ -366,4 +387,27 @@ func (k Keeper) escrowReward(ctx sdk.Context, addr sdk.AccAddress, amount math.I
 		}
 	}
 	k.AddEscrow(ctx, addr, held)
+}
+
+// keyHeir is the miner that has taken over genesis validator a's
+// consensus key, or nil: a must be the address BootstrapValidator made
+// from that key, and another address must have registered the same key
+// since.
+func (k Keeper) keyHeir(ctx sdk.Context, a sdk.AccAddress) sdk.AccAddress {
+	pubkey, ok := k.GetValidatorPubkey(ctx, a)
+	if !ok || len(pubkey) != cometed25519.PubKeySize {
+		return nil
+	}
+	consAddr := cometed25519.PubKey(pubkey).Address()
+	if !a.Equals(sdk.AccAddress(consAddr)) {
+		return nil
+	}
+	holder, ok := k.GetMinerByConsensusAddr(ctx, consAddr)
+	if !ok || holder.Equals(a) {
+		return nil
+	}
+	if held, ok := k.GetValidatorPubkey(ctx, holder); !ok || !bytes.Equal(held, pubkey) {
+		return nil
+	}
+	return holder
 }

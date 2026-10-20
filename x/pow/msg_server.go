@@ -10,6 +10,7 @@ import (
 	"crypto/ed25519"
 	cometed25519 "github.com/cometbft/cometbft/crypto/ed25519"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/whoyoujoshin/aether/gates"
 	"github.com/whoyoujoshin/aether/x/pow/types"
 )
 
@@ -45,7 +46,7 @@ func (k msgServer) RegisterValidatorPubkey(goCtx context.Context, msg *MsgRegist
 	// One key, one miner account: two accounts holding the same key can
 	// put it in one block's validator updates twice, which halts the
 	// chain. See ConsensusKeyGuardActivationHeight.
-	if ctx.BlockHeight() >= ConsensusKeyGuardActivationHeight {
+	if gates.On(ctx, ConsensusKeyGuardActivationHeight) {
 		if holder, ok := k.Keeper.GetMinerByConsensusAddr(ctx, consensusAddr); ok &&
 			!holder.Equals(minerAddr) && !holder.Equals(sdk.AccAddress(consensusAddr)) {
 			if held, ok := k.Keeper.GetValidatorPubkey(ctx, holder); ok && bytes.Equal(held, msg.ConsensusPubkey) {
@@ -69,7 +70,7 @@ func (k msgServer) RegisterValidatorPubkey(goCtx context.Context, msg *MsgRegist
 	// the existing MarkPendingRemoval/IteratePendingRemovals pattern
 	// this module already uses for immediate equivocation-driven
 	// removal -- see module.go's EndBlock.
-	if ctx.BlockHeight() >= RotationRevocationActivationHeight {
+	if gates.On(ctx, RotationRevocationActivationHeight) {
 		if oldPubkey, ok := k.Keeper.GetValidatorPubkey(ctx, minerAddr); ok &&
 			!bytes.Equal(oldPubkey, msg.ConsensusPubkey) &&
 			k.Keeper.IsActiveValidator(ctx, minerAddr) {
@@ -79,7 +80,7 @@ func (k msgServer) RegisterValidatorPubkey(goCtx context.Context, msg *MsgRegist
 			// or a later removal would name the new key, which CometBFT
 			// doesn't have, and halt the chain. It's back when an
 			// epoch picks it with the new key.
-			if ctx.BlockHeight() >= ConsensusKeyGuardActivationHeight {
+			if gates.On(ctx, ConsensusKeyGuardActivationHeight) {
 				k.Keeper.RemoveActiveValidator(ctx, minerAddr)
 				k.Keeper.ClearValidatorLiveness(ctx, minerAddr)
 			}
@@ -109,7 +110,7 @@ func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubm
 	// other gates, even though a live-history audit found this was
 	// never actually exercised (no miner has ever been banned) -- see
 	// that constant's doc comment.
-	if ctx.BlockHeight() >= BanEnforcementActivationHeight {
+	if gates.On(ctx, BanEnforcementActivationHeight) {
 		if k.Keeper.IsBanned(ctx, minerAddr) {
 			return nil, sdkerrors.Wrapf(types.ErrBannedMiner,
 				"miner %s is permanently banned and may not submit further work", minerAddr.String())
@@ -139,12 +140,12 @@ func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubm
 	// execution never performed, diverging gas_used (and therefore
 	// LastResultsHash) on any historical tx that happens to hit the gas
 	// limit. See SubmissionCapActivationHeight's doc comment.
-	enforceCap := ctx.BlockHeight() >= SubmissionCapActivationHeight
+	enforceCap := gates.On(ctx, SubmissionCapActivationHeight)
 	// From MergedMiningActivationHeight AuxPoW has its own slot, so each
 	// block takes one native and one AuxPoW submission (change C of
 	// docs/MERGED-MINING-PLAN.md). Before it both share the native slot.
 	_, isAux := msg.Submission.(*MsgSubmitPoW_AuxPow)
-	auxTrack := isAux && ctx.BlockHeight() >= MergedMiningActivationHeight
+	auxTrack := isAux && gates.On(ctx, MergedMiningActivationHeight)
 	if enforceCap && k.Keeper.submissionSlotTaken(ctx, auxTrack) {
 		kind := "a PoW"
 		if auxTrack {
@@ -221,7 +222,7 @@ func (k msgServer) submitNativePoW(ctx sdk.Context, minerAddr sdk.AccAddress, na
 	// From MergedMiningActivationHeight a native submission gives up the
 	// merged share of the reward while merged mining is active.
 	var err error
-	if ctx.BlockHeight() >= MergedMiningActivationHeight {
+	if gates.On(ctx, MergedMiningActivationHeight) {
 		err = k.Keeper.DistributeReward(ctx, minerAddr, k.Keeper.NativeReward(ctx))
 	} else {
 		err = k.Keeper.DistributeBlockReward(ctx, minerAddr)
@@ -258,7 +259,7 @@ func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPo
 	// recent block and a reward address, and that address is paid whoever
 	// signs (change B); and AuxPoW runs on its own difficulty and earns
 	// its share of the reward (change C, merged_mining.go).
-	merged := ctx.BlockHeight() >= MergedMiningActivationHeight
+	merged := gates.On(ctx, MergedMiningActivationHeight)
 	rewardAddr := minerAddr
 	if merged {
 		addr, err := k.checkAuxPoWTemplate(ctx, auxPow)
@@ -274,7 +275,7 @@ func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPo
 	} else {
 		currentDifficulty = k.Keeper.GetDifficulty(ctx).Uint64()
 	}
-	if err := CheckAuxPow(auxPow, currentDifficulty, ctx.BlockHeight()); err != nil {
+	if err := CheckAuxPowOn(ctx.ChainID(), auxPow, currentDifficulty, ctx.BlockHeight()); err != nil {
 		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "AuxPoW verification failed: %s", err)
 	}
 
@@ -374,8 +375,8 @@ func (k msgServer) UpdateParams(goCtx context.Context, msg *MsgUpdateParams) (*M
 	// isn't used: that keeps every block below the height reading and
 	// writing exactly what it always did.
 	if share := msg.MergedMiningRewardShareBps; share != 0 {
-		if ctx.BlockHeight() < MergedMiningActivationHeight {
-			return nil, sdkerrors.Wrapf(types.ErrInvalidParamValue, "merged_mining_reward_share_bps can be set from height %d, when merged mining's rules start", MergedMiningActivationHeight)
+		if !gates.On(ctx, MergedMiningActivationHeight) {
+			return nil, sdkerrors.Wrapf(types.ErrInvalidParamValue, "merged_mining_reward_share_bps can be set from height %d, when merged mining's rules start", gates.Height(ctx.ChainID(), MergedMiningActivationHeight))
 		}
 		if share > 10_000 {
 			return nil, sdkerrors.Wrapf(types.ErrInvalidParamValue, "merged_mining_reward_share_bps is basis points, at most 10000, got %d", share)

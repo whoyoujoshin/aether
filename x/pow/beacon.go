@@ -5,6 +5,8 @@ import (
 	"math/big"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/whoyoujoshin/aether/gates"
 )
 
 // This file implements Phase 3 of aether-randomness-beacon-design.md:
@@ -102,7 +104,7 @@ func (k Keeper) setBeaconSeed(ctx sdk.Context, epoch int64, seed []byte) {
 // that epoch's permanent seed and the in-progress accumulator is
 // cleared (redundant with the finalized copy once sealed).
 func (k Keeper) AdvanceBeacon(ctx sdk.Context) {
-	if ctx.BlockHeight() < RandomnessBeaconActivationHeight {
+	if !gates.On(ctx, RandomnessBeaconActivationHeight) {
 		return
 	}
 

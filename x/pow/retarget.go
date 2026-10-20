@@ -5,6 +5,8 @@ import (
 
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/whoyoujoshin/aether/gates"
 )
 
 // SmoothRetargetActivationHeight is the first height at which an accepted
@@ -51,7 +53,7 @@ const SmoothRetargetStartDifficulty int64 = 285_960
 // that block retargets. A no-op at every other height, and when
 // difficulty is already at or below it.
 func (k Keeper) StartSmoothRetarget(ctx sdk.Context) {
-	if ctx.BlockHeight() != SmoothRetargetActivationHeight {
+	if !gates.At(ctx, SmoothRetargetActivationHeight) {
 		return
 	}
 	start := math.NewInt(SmoothRetargetStartDifficulty)
@@ -72,7 +74,7 @@ func (k Keeper) retarget(ctx sdk.Context, current math.Int, lastTime int64, ok b
 	}
 	elapsed := ctx.BlockTime().Unix() - lastTime
 	var adjusted math.Int
-	if ctx.BlockHeight() >= SmoothRetargetActivationHeight {
+	if gates.On(ctx, SmoothRetargetActivationHeight) {
 		adjusted = asertDifficulty(current, k.GetTargetBlockTime(ctx), elapsed, DifficultyHalfLife)
 	} else {
 		if elapsed <= 0 {

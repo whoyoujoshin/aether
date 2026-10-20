@@ -49,6 +49,7 @@ import (
 	"github.com/cosmos/gogoproto/grpc"
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	"github.com/whoyoujoshin/aether/gates"
 	"github.com/whoyoujoshin/aether/ligase"
 	"github.com/whoyoujoshin/aether/x/accountauth"
 	"github.com/whoyoujoshin/aether/x/escrow"
@@ -321,7 +322,7 @@ func New(
 	}
 	app.SetInterfaceRegistry(app.interfaceRegistry)
 
-	authzFeegrant := planAuthzFeegrant(rootmulti.GetLatestVersion(db), authzFeegrantActivationHeight)
+	authzFeegrant := planAuthzFeegrant(rootmulti.GetLatestVersion(db), gates.Height(bApp.ChainID(), authzFeegrantActivationHeight))
 	app.authzFeegrantWired = authzFeegrant.wire
 	if authzFeegrant.wire {
 		for _, name := range authzFeegrantStoreKeys {
@@ -329,7 +330,7 @@ func New(
 		}
 	}
 
-	ibcCutover := planIBC(rootmulti.GetLatestVersion(db), ibcActivationHeight)
+	ibcCutover := planIBC(rootmulti.GetLatestVersion(db), gates.Height(bApp.ChainID(), ibcActivationHeight))
 	app.ibcWired = ibcCutover.wire
 	if ibcCutover.wire {
 		for _, name := range ibcStoreKeys {
@@ -337,7 +338,7 @@ func New(
 		}
 	}
 
-	accountAuthCutover := planAccountAuth(rootmulti.GetLatestVersion(db), accountAuthActivationHeight)
+	accountAuthCutover := planAccountAuth(rootmulti.GetLatestVersion(db), gates.Height(bApp.ChainID(), accountAuthActivationHeight))
 	app.accountAuthWired = accountAuthCutover.wire
 	if accountAuthCutover.wire {
 		for _, name := range accountAuthStoreKeys {
@@ -345,7 +346,7 @@ func New(
 		}
 	}
 
-	escrowCutover := planEscrow(rootmulti.GetLatestVersion(db), escrowActivationHeight)
+	escrowCutover := planEscrow(rootmulti.GetLatestVersion(db), gates.Height(bApp.ChainID(), escrowActivationHeight))
 	app.escrowWired = escrowCutover.wire
 	if escrowCutover.wire {
 		for _, name := range escrowStoreKeys {
@@ -626,7 +627,7 @@ func New(
 		// A proposer-included relay transaction has no signature to check
 		// (see app/helicase.go); everything else is signed and must be
 		// ML-DSA-44.
-		if helicaseActive(ctx.BlockHeight()) && isHelicaseTx(tx) {
+		if app.helicaseActive(ctx.BlockHeight()) && isHelicaseTx(tx) {
 			return helicaseAnteHandle(ctx, tx, simulate)
 		}
 		newCtx, err = pqDecorator.AnteHandle(ctx, tx, simulate, stdAnteHandler)
@@ -677,6 +678,17 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 	var genesisState map[string]json.RawMessage
 	if err := json.Unmarshal(req.AppStateBytes, &genesisState); err != nil {
 		return nil, err
+	}
+	// On a fresh chain every module is wired from the start (package
+	// gates), and none waits for an activation block to run its genesis.
+	// A module the genesis file leaves out starts from its defaults, as
+	// it would have at its testnet activation height.
+	if gates.Fresh(ctx.ChainID()) {
+		for name, def := range app.BasicModuleManager.DefaultGenesis(app.cdc) {
+			if _, ok := genesisState[name]; !ok {
+				genesisState[name] = def
+			}
+		}
 	}
 
 	if _, err := app.sm.InitGenesis(ctx, app.cdc, genesisState); err != nil {

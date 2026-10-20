@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/whoyoujoshin/aether/app"
+	"github.com/whoyoujoshin/aether/gates"
 )
 
 // --- GET /api/agents ---
@@ -167,8 +168,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			Explorer: scheme + "://" + r.Host,
 		},
 		Authz: agentAuthzDTO{
-			ActivationHeight: app.AuthzFeegrantActivationHeight,
-			Active:           height >= app.AuthzFeegrantActivationHeight,
+			ActivationHeight: gates.Height(chainID, app.AuthzFeegrantActivationHeight),
+			Active:           height >= gates.Height(chainID, app.AuthzFeegrantActivationHeight),
 		},
 		MCP: agentMCPDTO{
 			Install:    "go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest",

@@ -17,6 +17,8 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	clienttypes "github.com/cosmos/ibc-go/v8/modules/core/02-client/types"
 	channeltypes "github.com/cosmos/ibc-go/v8/modules/core/04-channel/types"
+
+	"github.com/whoyoujoshin/aether/gates"
 )
 
 // Helicase lets the block proposer bring IBC packets in from other chains
@@ -117,8 +119,8 @@ func (app *App) SetHelicaseSource(s HelicaseSource) {
 	app.helicase.source.Store(&helicaseSourceHolder{s})
 }
 
-func helicaseActive(height int64) bool {
-	return height >= helicaseActivationHeight
+func (app *App) helicaseActive(height int64) bool {
+	return height >= gates.Height(app.ChainID(), helicaseActivationHeight)
 }
 
 // isRelayMsg reports whether msg is one Helicase carries, and returns
@@ -264,7 +266,7 @@ func helicaseAnteHandle(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context,
 func (app *App) helicasePrepareProposal(next sdk.PrepareProposalHandler) sdk.PrepareProposalHandler {
 	return func(ctx sdk.Context, req *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
 		holder := app.helicase.source.Load()
-		if !helicaseActive(req.Height) || holder == nil {
+		if !app.helicaseActive(req.Height) || holder == nil {
 			return next(ctx, req)
 		}
 
@@ -326,7 +328,7 @@ func (app *App) helicasePrepareProposal(next sdk.PrepareProposalHandler) sdk.Pre
 // next's checks. Their proofs are checked when they execute.
 func (app *App) helicaseProcessProposal(next sdk.ProcessProposalHandler) sdk.ProcessProposalHandler {
 	return func(ctx sdk.Context, req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
-		if helicaseActive(req.Height) {
+		if app.helicaseActive(req.Height) {
 			n := 0
 			for _, bz := range req.Txs {
 				tx, err := app.TxDecode(bz)

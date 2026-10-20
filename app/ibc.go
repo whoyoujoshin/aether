@@ -17,6 +17,8 @@ import (
 	ibctransfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
 	ibc "github.com/cosmos/ibc-go/v8/modules/core"
 	ibcexported "github.com/cosmos/ibc-go/v8/modules/core/exported"
+
+	"github.com/whoyoujoshin/aether/gates"
 )
 
 // IBCActivationHeight is the first block that executes with IBC (core,
@@ -104,23 +106,27 @@ var ibcActivationMarkerKey = []byte("\xffaether/ibc-activated")
 // wired, so it's available from the very first block IBC could need it.
 func (app *App) checkIBCActivation(ctx sdk.Context) error {
 	if app.ibcWired {
-		if ctx.BlockHeight() == ibcActivationHeight {
+		if gates.At(ctx, ibcActivationHeight) {
 			for _, name := range ibcStoreKeys {
 				ctx.KVStore(app.keys[name]).Set(ibcActivationMarkerKey, []byte{1})
 			}
-			if err := app.initIBCGenesisAtActivation(ctx); err != nil {
-				return err
+			// A fresh chain had IBC's modules in its module manager from
+			// the start, so InitChain already ran their genesis.
+			if !gates.Fresh(ctx.ChainID()) {
+				if err := app.initIBCGenesisAtActivation(ctx); err != nil {
+					return err
+				}
 			}
 		}
 		app.trackSelfConsensusInfo(ctx)
 		return nil
 	}
-	if ctx.BlockHeight() < ibcActivationHeight {
+	if !gates.On(ctx, ibcActivationHeight) {
 		return nil
 	}
 	return fmt.Errorf(
 		"IBC (capability, core, transfer, interchain accounts) activates at height %d: restart this node (e.g. `systemctl restart aetherd`) to add its stores, then it will resume from this block",
-		ibcActivationHeight,
+		gates.Height(ctx.ChainID(), ibcActivationHeight),
 	)
 }
 

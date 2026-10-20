@@ -47,6 +47,10 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
   - **Escrow:** peer-1 held ~27,246 AETH of escrow on 10-19; balances already above the floor stay locked until their unlock height.
   - **Miner status:** `get_miner_status`, `/api/miner`, the `miners` service and minerwatch report selectionRule `seat_work_power`, seat work (read from the store's `seat_work/` subspace), and voting power from the validator set. Before 396,000 they name the coming rule. It needs a deploy of agentmcp, the sandbox, explorer and agentservices on the seed before 396,000.
   - **Follow-ups:** a gRPC seat-work query, a minerwatch alert for newcomer power, power on the explorer's validator page.
+- **Fresh-chain gates** (package `gates`, `docs/MAINNET.md` §4): every height gate is read through `gates.Height(chainID, testnetHeight)`.
+  - **Fresh chains:** on `aether-1` and on any chain ID starting `aether-rc-`, every gate opens at block 1. A module left out of the genesis file starts from its defaults, and a miner that registers a genesis validator's key takes that validator over.
+  - **Everywhere else** (`aether-testnet-1`, other devnets, unit tests with an empty chain ID) the testnet heights apply unchanged.
+  - **Checked:** with `app/fresh_chain_test.go`, and on an `aether-rc-dev` devnet.
 - **Mainnet plan:** `docs/MAINNET.md` (PR #150) covers:
   - seats first (the rule above);
   - a cap on IBC inflow and one USDC path at launch;

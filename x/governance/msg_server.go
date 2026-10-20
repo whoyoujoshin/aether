@@ -8,6 +8,8 @@ import (
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+
+	"github.com/whoyoujoshin/aether/gates"
 )
 
 type msgServer struct {
@@ -43,7 +45,7 @@ func (k msgServer) SubmitProposal(goCtx context.Context, msg *MsgSubmitProposal)
 	// status already committed to PASSED beforehand). Gated on
 	// AmountValidationActivationHeight per the same discipline as every
 	// other fix in this project -- see that constant's doc comment.
-	if ctx.BlockHeight() >= AmountValidationActivationHeight {
+	if gates.On(ctx, AmountValidationActivationHeight) {
 		amount, ok := math.NewIntFromString(msg.Amount)
 		if !ok || !amount.IsPositive() {
 			return nil, sdkerrors.Wrapf(ErrInvalidAmount, "invalid or non-positive amount %q", msg.Amount)
@@ -92,8 +94,8 @@ func (k msgServer) SubmitProposal(goCtx context.Context, msg *MsgSubmitProposal)
 func (k msgServer) SubmitParamChangeProposal(goCtx context.Context, msg *MsgSubmitParamChangeProposal) (*MsgSubmitParamChangeProposalResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	if ctx.BlockHeight() < ParamChangeGovernanceActivationHeight {
-		return nil, sdkerrors.Wrapf(ErrUnroutableProposalMsg, "param-change proposals are not active until height %d", ParamChangeGovernanceActivationHeight)
+	if !gates.On(ctx, ParamChangeGovernanceActivationHeight) {
+		return nil, sdkerrors.Wrapf(ErrUnroutableProposalMsg, "param-change proposals are not active until height %d", gates.Height(ctx.ChainID(), ParamChangeGovernanceActivationHeight))
 	}
 
 	proposerAddr, err := sdk.AccAddressFromBech32(msg.Proposer)

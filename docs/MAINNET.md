@@ -146,13 +146,29 @@ in escrow for Aether. Keep that small while the chain is young:
 
 ## 4. The mainnet genesis and build
 
-- **Activation heights.** Every gate is a compile-time constant set to a
-  testnet height: the submission cap (51,007), IBC and accountauth (122,000),
-  escrow, Helicase and Ligase (161,000), ASERT, the beacon and merged-mining
-  rules (205,000). A fresh chain built from today's code would run the old
-  rules until those heights. Mainnet needs the gates chosen by chain ID (all at
-  height 1 on mainnet, unchanged on `aether-testnet-1`), with tests that run
-  both. Then run a full devnet from genesis with the mainnet gates.
+- **Activation heights: built** (package `gates`).
+  - **Where the gates open:** every gate is a testnet height, such as the
+    submission cap (51,007), IBC and accountauth (122,000), escrow,
+    Helicase and Ligase (161,000), ASERT, the beacon and merged mining
+    (205,000), and the seat rule (396,000). Each is now read through
+    `gates.Height(chainID, h)`.
+  - **On a fresh chain** every gate opens at block 1. A fresh chain is
+    `aether-1`, or any chain ID starting `aether-rc-`, such as
+    `aether-rc-1` or a devnet named `aether-rc-dev`.
+  - **On every other chain ID** the testnet heights apply: on
+    `aether-testnet-1`, on other devnets, and in unit tests.
+  - **Two changes apply on fresh chains only:**
+    - A module the genesis file leaves out starts from its defaults. On
+      the testnet, IBC's genesis ran at its activation block instead.
+    - A miner that registers a genesis validator's key takes that
+      validator over, so one key never holds two seats.
+  - **Tests:** `app/fresh_chain_test.go`. A fresh chain wires every module
+    from the first start, has every store in block 1, keeps IBC's params,
+    and keeps committing after a restart. The testnet's chain ID wires
+    none of them on a fresh database.
+  - **Devnet:** a run on `aether-rc-dev` with the real build had IBC and
+    ICA params from genesis. The seat rule held the validator at
+    100,000,000 from the first boundary.
 - **Parameters to review:**
   - `EpochLength` 1,440. Its comment says about 24 h, which assumed 60-second
     blocks; it is about 2.4 h at 6 s.

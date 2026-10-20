@@ -13,6 +13,7 @@ import (
 	grpctypes "github.com/cosmos/cosmos-sdk/types/grpc"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/whoyoujoshin/aether/gates"
 	"github.com/whoyoujoshin/aether/x/pow"
 )
 
@@ -59,6 +60,7 @@ type EscrowStatus struct {
 
 type MinerStatus struct {
 	Address string      `json:"address"`
+	ChainID string      `json:"chainId"`
 	Height  int64       `json:"height"`
 	Epoch   EpochStatus `json:"epoch"`
 
@@ -114,12 +116,19 @@ func EpochWindow(height, length int64) (index, start, selection int64) {
 	return index, start, selection
 }
 
-// SelectionRuleAt is the rule the block at selectionHeight applies.
+// SelectionRuleAt is the rule the block at selectionHeight applies on
+// the testnet.
 func SelectionRuleAt(selectionHeight int64) string {
-	if selectionHeight >= pow.SeatRuleActivationHeight {
+	return SelectionRuleOn("", selectionHeight)
+}
+
+// SelectionRuleOn is the rule the block at selectionHeight applies on
+// chainID (see package gates).
+func SelectionRuleOn(chainID string, selectionHeight int64) string {
+	if selectionHeight >= gates.Height(chainID, pow.SeatRuleActivationHeight) {
 		return SelectionSeatRule
 	}
-	if selectionHeight >= pow.RandomnessBeaconActivationHeight {
+	if selectionHeight >= gates.Height(chainID, pow.RandomnessBeaconActivationHeight) {
 		return SelectionBeaconWeighted
 	}
 	return SelectionTopKByWork
@@ -174,7 +183,8 @@ func (c *Client) MinerStatus(ctx context.Context, address string) (*MinerStatus,
 			SelectionHeight:      selection,
 			BlocksUntilSelection: selection - height,
 		},
-		SelectionRule: SelectionRuleAt(selection),
+		SelectionRule: SelectionRuleOn(latest.SdkBlock.Header.ChainID, selection),
+		ChainID:       latest.SdkBlock.Header.ChainID,
 		TopKSize:      params.TopKSize,
 		Escrow: EscrowStatus{
 			BalanceUaeth: escrow.Balance,
@@ -245,8 +255,8 @@ func (c *Client) MinerStatus(ctx context.Context, address string) (*MinerStatus,
 		if err := c.applySeatRule(at, st); err != nil {
 			return nil, err
 		}
-	case pow.SeatRuleActivationHeight > selection:
-		st.NextSelectionRule, st.NextRuleFromHeight = SelectionSeatRule, pow.SeatRuleActivationHeight
+	case gates.Height(st.ChainID, pow.SeatRuleActivationHeight) > selection:
+		st.NextSelectionRule, st.NextRuleFromHeight = SelectionSeatRule, gates.Height(st.ChainID, pow.SeatRuleActivationHeight)
 	}
 
 	powers, totalPower, err := c.validatorPowers(ctx, height)
@@ -393,7 +403,7 @@ func (c *Client) MinerLeaderboard(ctx context.Context) (*Leaderboard, error) {
 			SelectionHeight: selection, BlocksUntilSelection: selection - height,
 		},
 		TopK:    params.TopKSize,
-		Rule:    SelectionRuleAt(selection),
+		Rule:    SelectionRuleOn(latest.SdkBlock.Header.ChainID, selection),
 		Entries: make([]LeaderboardEntry, 0, len(board.Entries)),
 	}
 	if avg, ok := c.avgBlockTime(ctx, cmt, height, latest.SdkBlock.Header.Time.UnixNano()); ok {

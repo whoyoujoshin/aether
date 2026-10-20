@@ -140,7 +140,7 @@ func step(cfg config, address string, st *addrState, snap snapshot) []Event {
 				"epoch":         serving,
 				"selectedAt":    lastSelection,
 				"effectiveFrom": lastSelection + 2,
-				"selectionRule": wallet.SelectionRuleAt(lastSelection),
+				"selectionRule": wallet.SelectionRuleOn(s.ChainID, lastSelection),
 			})
 		case !s.ActiveValidator && st.Active:
 			reason := RemovedDowntime

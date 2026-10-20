@@ -8,6 +8,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/whoyoujoshin/aether/gates"
 	"github.com/whoyoujoshin/aether/x/governance"
 )
 
@@ -84,7 +85,7 @@ func (s consensusParamsMigratingStore) Set(ctx context.Context, cp tmproto.Conse
 // fleet cutover safe rather than requiring literal single-block
 // simultaneity across independently-run machines.
 func (app *App) MigrateConsensusParamsToNewStore(ctx sdk.Context) error {
-	if ctx.BlockHeight() < governance.ParamChangeGovernanceActivationHeight {
+	if !gates.On(ctx, governance.ParamChangeGovernanceActivationHeight) {
 		return nil
 	}
 

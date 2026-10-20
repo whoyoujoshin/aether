@@ -6,6 +6,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 
+	"github.com/whoyoujoshin/aether/gates"
 	"github.com/whoyoujoshin/aether/x/escrow"
 )
 
@@ -48,7 +49,7 @@ var escrowMarkerKey = []byte("\xffaether/escrow-activated")
 // sets up the module account the escrowed money lives in.
 func (app *App) checkEscrowActivation(ctx sdk.Context) error {
 	if app.escrowWired {
-		if ctx.BlockHeight() == escrowActivationHeight {
+		if gates.At(ctx, escrowActivationHeight) {
 			for _, name := range escrowStoreKeys {
 				ctx.KVStore(app.keys[name]).Set(escrowMarkerKey, []byte{1})
 			}
@@ -56,12 +57,12 @@ func (app *App) checkEscrowActivation(ctx sdk.Context) error {
 		}
 		return nil
 	}
-	if ctx.BlockHeight() < escrowActivationHeight {
+	if !gates.On(ctx, escrowActivationHeight) {
 		return nil
 	}
 	return fmt.Errorf(
 		"x/escrow activates at height %d: restart this node (e.g. `systemctl restart aetherd`) to add its store, then it will resume from this block",
-		escrowActivationHeight,
+		gates.Height(ctx.ChainID(), escrowActivationHeight),
 	)
 }
 
