@@ -10,6 +10,8 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"golang.org/x/crypto/scrypt"
+
+	"github.com/whoyoujoshin/aether/gates"
 )
 
 // checkMerkleBranch reconstructs a Merkle root from a leaf hash and a
@@ -215,6 +217,13 @@ const maxChainMerkleBranchLength = 30
 // against. height is the block the submission executes in: it decides
 // how the parent's hash is read (see parentPoWHash).
 func CheckAuxPow(data *AuxPowData, currentDifficulty uint64, height int64) error {
+	return CheckAuxPowOn("", data, currentDifficulty, height)
+}
+
+// CheckAuxPowOn is CheckAuxPow on chainID, where merged mining's rules
+// apply from gates.Height(chainID, MergedMiningActivationHeight).
+func CheckAuxPowOn(chainID string, data *AuxPowData, currentDifficulty uint64, height int64) error {
+	merged := height >= gates.Height(chainID, MergedMiningActivationHeight)
 	auxBlockHash := data.AuxBlockHash
 	if len(data.ChainBranch.Hashes) > maxChainMerkleBranchLength {
 		return fmt.Errorf("chain merkle branch too long: %d exceeds maximum of %d", len(data.ChainBranch.Hashes), maxChainMerkleBranchLength)
@@ -227,7 +236,7 @@ func CheckAuxPow(data *AuxPowData, currentDifficulty uint64, height int64) error
 	// The parent must be another chain's block: the reference
 	// implementation refuses a parent carrying the merged-mined chain's
 	// own ID, and so does Aether from MergedMiningActivationHeight.
-	if height >= MergedMiningActivationHeight && parent.chainID() == AuxPoWChainID {
+	if merged && parent.chainID() == AuxPoWChainID {
 		return fmt.Errorf("parent block carries Aether's own AuxPoW chain ID %d", AuxPoWChainID)
 	}
 
@@ -258,7 +267,7 @@ func CheckAuxPow(data *AuxPowData, currentDifficulty uint64, height int64) error
 	// chain_nonce must be the nonce the coinbase commits to, which picks
 	// the chain's slot in a multi-chain tree (step 5), rather than a value
 	// the submitter chooses.
-	if height >= MergedMiningActivationHeight {
+	if merged {
 		if data.CoinbaseBranch.Index != 0 {
 			return fmt.Errorf("coinbase branch index %d: the merge-mining commitment must be in the parent block's coinbase (index 0)", data.CoinbaseBranch.Index)
 		}
@@ -305,7 +314,7 @@ func CheckAuxPow(data *AuxPowData, currentDifficulty uint64, height int64) error
 	if err != nil {
 		return fmt.Errorf("failed to compute parent header scrypt hash: %w", err)
 	}
-	if !meetsdifficulty(parentPoWHash(scryptHash, height), currentDifficulty) {
+	if !meetsdifficulty(parentHash(scryptHash, merged), currentDifficulty) {
 		return errors.New("parent header's proof of work does not meet Aether's current difficulty")
 	}
 
@@ -402,7 +411,13 @@ func extractCoinbaseScriptSig(tx []byte) ([]byte, error) {
 // counts exactly as Litecoin counts it. Below that height the raw bytes
 // are used as they always were, so history replays unchanged.
 func parentPoWHash(scryptHash []byte, height int64) []byte {
-	if height < MergedMiningActivationHeight {
+	return parentHash(scryptHash, height >= MergedMiningActivationHeight)
+}
+
+// parentHash is parentPoWHash with the gate already decided: merged is
+// whether merged mining's rules apply.
+func parentHash(scryptHash []byte, merged bool) []byte {
+	if !merged {
 		return scryptHash
 	}
 	reversed := make([]byte, len(scryptHash))

@@ -3,7 +3,10 @@
 # service's paywall (scripts/agentservices/services.txt, and the benchmark's
 # unlisted decoys in decoys.txt, and inference.txt once its key is here), /facilitator
 # to the x402 facilitator (cmd/facilitator on 127.0.0.1:8403), and
-# /sandbox/mcp to the hosted test wallet (sandbox.sh, 127.0.0.1:8092), by adding
+# /sandbox/mcp to the hosted test wallet (sandbox.sh, 127.0.0.1:8092), and
+# /a2a to the public read-only agentmcp's A2A endpoint (aether-agentmcp,
+# 127.0.0.1:8090, the same process as /mcp; docs/A2A.md), and /jobs to
+# the job board's host (install.sh, 127.0.0.1:8404; docs/JOBS.md), by adding
 # one block per route to the explorer's site in /etc/caddy/Caddyfile, before
 # its catch-all handle. Backs the file up first, validates, and puts the
 # backup back if Caddy rejects the result. Safe to run again: it replaces
@@ -42,6 +45,17 @@ block=$(mktemp)
   echo "		uri strip_prefix /sandbox"
   echo "		reverse_proxy 127.0.0.1:8092"
   echo "	}"
+  echo "	@a2a path /a2a /a2a/*"
+  echo "	handle @a2a {"
+  echo "		reverse_proxy 127.0.0.1:8090"
+  echo "	}"
+  echo "	@jobs path /jobs /jobs/*"
+  echo "	handle @jobs {"
+  echo "		request_body {"
+  echo "			max_size 300KB"
+  echo "		}"
+  echo "		reverse_proxy 127.0.0.1:8404"
+  echo "	}"
   echo "	# END agentservices"
 } > "$block"
 
@@ -72,4 +86,4 @@ if ! caddy validate --config "$CADDYFILE" --adapter caddyfile >/dev/null 2>&1; t
   exit 1
 fi
 systemctl reload caddy
-echo "Caddy reloaded with the /svc, /facilitator and /sandbox/mcp routes."
+echo "Caddy reloaded with the /svc, /facilitator, /sandbox/mcp, /a2a and /jobs routes."

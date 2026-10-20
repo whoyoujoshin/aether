@@ -6,6 +6,8 @@ import (
 	"sort"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/whoyoujoshin/aether/gates"
 )
 
 type queryServer struct {
@@ -21,7 +23,7 @@ func (q queryServer) Difficulty(goCtx context.Context, req *QueryDifficultyReque
 	resp := &QueryDifficultyResponse{
 		Difficulty: q.Keeper.GetDifficulty(ctx).String(),
 	}
-	if ctx.BlockHeight() >= MergedMiningActivationHeight {
+	if gates.On(ctx, MergedMiningActivationHeight) {
 		resp.AuxDifficulty = q.Keeper.GetAuxDifficulty(ctx).String()
 	}
 	return resp, nil

@@ -51,7 +51,7 @@ func TestToolAnnotations(t *testing.T) {
 		}
 	}
 	// What moves the agent's money out for good, and nothing else.
-	require.ElementsMatch(t, []string{"send_aeth", "fetch_paid", "create_escrow", "release_escrow", "refund_escrow", "swap_aeth"}, destructives)
+	require.ElementsMatch(t, []string{"send_aeth", "fetch_paid", "create_escrow", "release_escrow", "refund_escrow", "swap_aeth", "hire_for_job"}, destructives)
 
 	// The test wallet server: what moves a test wallet's money is marked.
 	require.Len(t, sandbox, len(sandboxToolNames))

@@ -7,6 +7,8 @@ import (
 	"cosmossdk.io/x/feegrant"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authzkeeper "github.com/cosmos/cosmos-sdk/x/authz/keeper"
+
+	"github.com/whoyoujoshin/aether/gates"
 )
 
 // AuthzFeegrantActivationHeight is the first block that executes with
@@ -94,18 +96,18 @@ var authzFeegrantMarkerKey = []byte("\xffaether/activated")
 // the marker that keeps them non-empty.
 func (app *App) checkAuthzFeegrantActivation(ctx sdk.Context) error {
 	if app.authzFeegrantWired {
-		if ctx.BlockHeight() == authzFeegrantActivationHeight {
+		if gates.At(ctx, authzFeegrantActivationHeight) {
 			for _, name := range authzFeegrantStoreKeys {
 				ctx.KVStore(app.keys[name]).Set(authzFeegrantMarkerKey, []byte{1})
 			}
 		}
 		return nil
 	}
-	if ctx.BlockHeight() < authzFeegrantActivationHeight {
+	if !gates.On(ctx, authzFeegrantActivationHeight) {
 		return nil
 	}
 	return fmt.Errorf(
 		"x/authz and x/feegrant activate at height %d: restart this node (e.g. `systemctl restart aetherd`) to add their stores, then it will resume from this block",
-		authzFeegrantActivationHeight,
+		gates.Height(ctx.ChainID(), authzFeegrantActivationHeight),
 	)
 }

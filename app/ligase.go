@@ -6,6 +6,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	transfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
 
+	"github.com/whoyoujoshin/aether/gates"
 	"github.com/whoyoujoshin/aether/ligase"
 	"github.com/whoyoujoshin/aether/x/escrow"
 )
@@ -32,7 +33,7 @@ type ligaseHost struct{ app *App }
 var _ ligase.Host = ligaseHost{}
 
 func (h ligaseHost) Active(ctx sdk.Context) bool {
-	return h.app.escrowWired && ctx.BlockHeight() >= ligaseActivationHeight
+	return h.app.escrowWired && gates.On(ctx, ligaseActivationHeight)
 }
 
 func (h ligaseHost) Escrow() escrow.MsgServer { return escrow.NewMsgServerImpl(h.app.EscrowKeeper) }

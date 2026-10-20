@@ -9,6 +9,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/whoyoujoshin/aether/gates"
 )
 
 type Keeper struct {
@@ -304,7 +306,7 @@ func (k Keeper) ProcessProposalLifecycle(ctx sdk.Context) {
 // this is a deliberate, height-gated policy change rather than a plain
 // bug fix.
 func (k Keeper) computeQuorumThreshold(ctx sdk.Context) int64 {
-	if ctx.BlockHeight() >= QuorumActiveValidatorCountActivationHeight {
+	if gates.On(ctx, QuorumActiveValidatorCountActivationHeight) {
 		active := k.powKeeper.GetActiveValidatorCount(ctx)
 		if active == 0 {
 			return 1
@@ -456,7 +458,7 @@ func (k Keeper) ResolveProposal(ctx sdk.Context, proposal Proposal, quorumThresh
 
 		yesRatio := result.YesPower.Quo(nonAbstainPower)
 		if yesRatio.GTE(math.LegacyNewDec(2).QuoInt64(3)) {
-			if ctx.BlockHeight() >= ParamChangeGovernanceActivationHeight {
+			if gates.On(ctx, ParamChangeGovernanceActivationHeight) {
 				return k.resolvePassedProposal(ctx, proposal)
 			}
 

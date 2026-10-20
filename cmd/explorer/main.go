@@ -504,6 +504,7 @@ func main() {
 	flag.StringVar(&publicRPC, "public-rpc", "", "RPC endpoint to advertise to agents at /api/agents (default: the public testnet's on aether-testnet-1)")
 	flag.StringVar(&publicGRPC, "public-grpc", "", "gRPC endpoint to advertise to agents (default: the public testnet's on aether-testnet-1)")
 	flag.StringVar(&publicFaucet, "public-faucet", "", "faucet URL to advertise to agents (default: the public testnet's on aether-testnet-1)")
+	flag.StringVar(&publicA2A, "public-a2a", "", "public A2A JSON-RPC endpoint (agentmcp --http's /a2a behind the proxy, e.g. https://explorer.example/a2a) to describe in /.well-known/agent-card.json; empty: no card")
 	flag.StringVar(&publicMCP, "public-mcp", "", "public read-only MCP endpoint (agentmcp --http behind the proxy, e.g. https://explorer.example/mcp) to advertise in /.well-known/mcp/server-card.json and /api/agents; empty: none")
 	flag.StringVar(&publicSeed, "public-seed", "", "seed node (id@host:port) to advertise (default: the public testnet's on aether-testnet-1)")
 	flag.StringVar(&ibcRPCEndpoint, "ibc-rpc", "", "CometBFT RPC of the chain on the other end of Aether's IBC transfer channel: draws it as the helix's second strand; comma-separated for several chains, the first drawn by default and the rest picked with ?peer= (empty: Aether only)")
@@ -540,6 +541,7 @@ func main() {
 	mux.HandleFunc("/start.md", handleStartMd)
 	mux.HandleFunc("/.well-known/mcp/server-card.json", withCORS(handleServerCard))
 	mux.HandleFunc("/.well-known/mcp.json", withCORS(handleServerCard))
+	mux.HandleFunc("/.well-known/agent-card.json", withCORS(handleAgentCard))
 	// Any other /.well-known/ path is a 404, not the SPA's index.html:
 	// crawlers probe these (agent-card.json, ai-plugin.json, ...) and a
 	// 200 with HTML reads as a broken card rather than an absent one.

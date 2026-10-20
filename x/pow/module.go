@@ -12,6 +12,8 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+
+	"github.com/whoyoujoshin/aether/gates"
 )
 
 var (
@@ -174,7 +176,7 @@ func (am AppModule) endBlockUpdates(sdkCtx sdk.Context) []abci.ValidatorUpdate {
 	// that has twice now broken fresh-node replay on this chain, even
 	// though a live-history audit found this specific path was never
 	// actually exercised.
-	if sdkCtx.BlockHeight() >= RotationRevocationActivationHeight {
+	if gates.On(sdkCtx, RotationRevocationActivationHeight) {
 		for _, entry := range am.keeper.IteratePendingKeyRevocations(sdkCtx) {
 			if update, ok := am.keeper.toValidatorUpdate(entry.OldPubkey, 0, entry.MinerAddr); ok {
 				updates = append(updates, update)

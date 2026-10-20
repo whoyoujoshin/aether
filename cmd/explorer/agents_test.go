@@ -85,8 +85,9 @@ func TestAgentCard_ListsEveryAgentmcpTool(t *testing.T) {
 	files, err := filepath.Glob("../agentmcp/*.go")
 	require.NoError(t, err)
 	re := regexp.MustCompile(`Name:\s+"([a-z_]+)"`)
-	// The hosted test wallet (sandbox.go) is its own server with its own
-	// list; every other file registers the wallet's tools.
+	// The hosted test wallet (sandbox.go, jobs_sandbox.go) is its own
+	// server with its own list; every other file registers the wallet's
+	// tools.
 	names := func(include func(string) bool) []string {
 		seen := map[string]bool{}
 		var out []string
@@ -111,8 +112,9 @@ func TestAgentCard_ListsEveryAgentmcpTool(t *testing.T) {
 		sort.Strings(out)
 		return out
 	}
-	wallet := names(func(f string) bool { return f != "sandbox.go" })
+	testWallet := func(f string) bool { return f == "sandbox.go" || f == "jobs_sandbox.go" }
+	wallet := names(func(f string) bool { return !testWallet(f) })
 	require.NotEmpty(t, wallet)
 	require.Equal(t, wallet, sorted(agentmcpTools))
-	require.Equal(t, names(func(f string) bool { return f == "sandbox.go" }), sorted(testWalletTools))
+	require.Equal(t, names(testWallet), sorted(testWalletTools))
 }

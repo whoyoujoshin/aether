@@ -67,6 +67,8 @@ func TestPublicServerTools(t *testing.T) {
 		"get_escrow", // opens the keyring to label what this agent may do
 		"list_escrows",
 		"get_transaction_history",
+		"post_job", "offer_on_job", "hire_for_job", "deliver_job", "close_job",
+		"find_jobs", "get_job", // open the keyring to say this agent's role
 	} {
 		require.NotContains(t, names, forbidden)
 	}

@@ -417,3 +417,35 @@ func TestChainStalledAndResumed(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+// Under the seat rule, merged-mined work counts and has no submission
+// count: a validator with seat work this epoch isn't warned, and one
+// without is told its power falls rather than that it leaves the set.
+func TestNoWorkUnderTheSeatRule(t *testing.T) {
+	cfg := config{lowBalance: math.ZeroInt(), noWorkAt: 0.5}
+	seat := func(h int64, thisEpoch string) *wallet.MinerStatus {
+		s := status(h)
+		s.ActiveValidator, s.SelectionRule = true, wallet.SelectionSeatRule
+		s.WorkThisEpoch = 0 // a pool: AuxPoW only
+		s.SeatWork, s.SeatWorkThisEpoch, s.SeatWorkTotal = "9000", thisEpoch, "10000"
+		return s
+	}
+	var st addrState
+	requireEvents(t, step(cfg, addr, &st, snap(seat(25, "3000"))))
+	st = addrState{}
+	evs := step(cfg, addr, &st, snap(seat(25, "0")))
+	requireEvents(t, evs, EventNoWorkThisEpoch)
+	if msg, _ := evs[0].Fields["message"].(string); !strings.Contains(msg, "power, fall at height 39") || strings.Contains(msg, "leaves the validator set") {
+		t.Fatalf("message = %q", msg)
+	}
+
+	// Not on track by seat work, close to the selection: at risk, with the seat work.
+	late := seat(37, "3000")
+	late.OnTrack, late.Rank = false, 2
+	st = addrState{}
+	evs = step(config{lowBalance: math.ZeroInt(), atRiskBlocks: 5}, addr, &st, snap(late))
+	requireEvents(t, evs, EventSelectionAtRisk)
+	if evs[0].Fields["seatWork"] != "9000" {
+		t.Fatalf("fields = %v", evs[0].Fields)
+	}
+}

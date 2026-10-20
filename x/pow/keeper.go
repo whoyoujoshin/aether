@@ -17,6 +17,7 @@ import (
 	cryptoproto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/whoyoujoshin/aether/gates"
 	"github.com/whoyoujoshin/aether/x/pow/types"
 	"github.com/whoyoujoshin/aether/x/treasury"
 	"golang.org/x/crypto/scrypt"
@@ -593,7 +594,7 @@ type qualifiedEntry struct {
 func (k Keeper) ComputeValidatorUpdates(ctx sdk.Context, epoch int64) []abci.ValidatorUpdate {
 	// From SeatRuleActivationHeight power follows the hashes proved, on
 	// both tracks: see seats.go.
-	if ctx.BlockHeight() >= SeatRuleActivationHeight {
+	if gates.On(ctx, SeatRuleActivationHeight) {
 		return k.computeSeatUpdates(ctx, epoch)
 	}
 
@@ -642,7 +643,7 @@ func (k Keeper) ComputeValidatorUpdates(ctx sdk.Context, epoch int64) []abci.Val
 	// the one-epoch lag matters (it denies whoever mines this epoch's
 	// last block any way to know, at grinding time, what this epoch's
 	// own candidate pool and work totals will even be).
-	if ctx.BlockHeight() >= RandomnessBeaconActivationHeight {
+	if gates.On(ctx, RandomnessBeaconActivationHeight) {
 		seed, ok := k.GetBeaconSeed(ctx, epoch-1)
 		if ok {
 			qualified = k.SampleValidatorsWithBeacon(seed, qualified, topK)
@@ -1254,7 +1255,7 @@ func (k Keeper) ComputeScheduledBlockReward(ctx sdk.Context, height int64) math.
 // invoked twice for the same height; it is not what makes this
 // correct across a fresh replay -- the height check is.
 func (k Keeper) CorrectBootstrapPower(ctx sdk.Context) []abci.ValidatorUpdate {
-	if ctx.BlockHeight() != BootstrapPowerCorrectionHeight {
+	if !gates.At(ctx, BootstrapPowerCorrectionHeight) {
 		return nil
 	}
 

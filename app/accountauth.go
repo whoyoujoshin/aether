@@ -5,6 +5,7 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/whoyoujoshin/aether/gates"
 	"github.com/whoyoujoshin/aether/x/accountauth"
 )
 
@@ -63,18 +64,18 @@ var accountAuthMarkerKey = []byte("\xffaether/accountauth-activated")
 // restart mechanics).
 func (app *App) checkAccountAuthActivation(ctx sdk.Context) error {
 	if app.accountAuthWired {
-		if ctx.BlockHeight() == accountAuthActivationHeight {
+		if gates.At(ctx, accountAuthActivationHeight) {
 			for _, name := range accountAuthStoreKeys {
 				ctx.KVStore(app.keys[name]).Set(accountAuthMarkerKey, []byte{1})
 			}
 		}
 		return nil
 	}
-	if ctx.BlockHeight() < accountAuthActivationHeight {
+	if !gates.On(ctx, accountAuthActivationHeight) {
 		return nil
 	}
 	return fmt.Errorf(
 		"x/accountauth activates at height %d: restart this node (e.g. `systemctl restart aetherd`) to add its store, then it will resume from this block",
-		accountAuthActivationHeight,
+		gates.Height(ctx.ChainID(), accountAuthActivationHeight),
 	)
 }

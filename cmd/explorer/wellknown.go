@@ -12,9 +12,9 @@ import (
 // --public-mcp names one) and the tools on each. Directories that scan a
 // site for MCP servers look under /.well-known/mcp.
 //
-// There's deliberately no A2A /.well-known/agent-card.json: that card's
-// url promises an A2A endpoint (message/send and the rest), and nothing
-// here speaks A2A. The chain's own agent card is /api/agents.
+// The A2A Agent Card, /.well-known/agent-card.json, is a2acard.go: it is
+// served only when --public-a2a names a real A2A endpoint. The chain's
+// own agent card is /api/agents.
 
 // publicMCP is the public read-only Streamable HTTP endpoint (cmd/agentmcp
 // --http behind the reverse proxy) to advertise. Empty: none is, because
