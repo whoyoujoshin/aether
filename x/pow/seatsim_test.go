@@ -35,9 +35,9 @@ type simNet struct {
 	reserve bool
 	removed map[string]int64
 	frozen  int // boundaries at which nobody qualified
-	// exitCap, if set, models a cap on downtime removals: at most this
-	// share of the power is removed between two boundaries. Not in the
-	// chain's code: a candidate to decide on.
+	// exitCap, if set, caps downtime removals: at most this share of the
+	// power is removed between two boundaries, as mayRemoveForDowntime
+	// does from SeatHardeningHeight (hardenedCap).
 	exitCap float64
 }
 
@@ -435,14 +435,15 @@ func a6Peak(attackerPct, nHonest, roundsPerEpoch int, hardened bool, exitCap flo
 	return peak
 }
 
-// A6 under the hardening. A removal now takes 721 of 1,440 blocks
-// missed (~68 minutes), so about two rounds fit in an epoch, and a
-// victim whose miner mines on is back at the next boundary. That bounds
-// how long a gain lasts and slows it down, but doesn't raise the bar:
-// an attacker takes several validators offline at once (under 1/3 in
-// all, so blocks continue) and needs only two rounds. A cap on how much
-// power downtime can remove per epoch (modelled here, not in the chain)
-// is what raises it.
+// hardenedCap is the hardening's removal cap as a share of the power.
+var hardenedCap = float64(SeatEntryLimitBps) / 10_000
+
+// A6 under the hardening. A removal takes 721 of 1,440 blocks missed
+// (~68 minutes), so about two rounds fit in an epoch, a victim whose
+// miner mines on is back at the next boundary, and removals between
+// boundaries take out at most 10% of the power. The window and the
+// reserve alone don't raise the bar (an attacker takes several validators
+// offline at once, under 1/3 in all); the cap is what does.
 func TestSeatSim_A6_Hardened(t *testing.T) {
 	type row struct {
 		nHonest, rounds int
@@ -460,16 +461,16 @@ func TestSeatSim_A6_Hardened(t *testing.T) {
 	label := func(r row) string {
 		switch {
 		case r.exitCap > 0:
-			return fmt.Sprintf("hardened + %.0f%% removal cap", 100*r.exitCap)
+			return fmt.Sprintf("hardened (window, reserve, %.0f%% cap)", 100*r.exitCap)
 		case r.hardened:
-			return "hardened (68-minute removals, reserve)"
+			return "window and reserve only, no cap"
 		}
 		return "as at 396,000 (3-minute removals)"
 	}
 	got := map[row]int{}
 	for _, r := range []row{
-		{4, 40, false, 0}, {4, 2, true, 0}, {4, 2, true, 0.1},
-		{10, 40, false, 0}, {10, 2, true, 0}, {10, 2, true, 0.1},
+		{4, 40, false, 0}, {4, 2, true, 0}, {4, 2, true, hardenedCap},
+		{10, 40, false, 0}, {10, 2, true, 0}, {10, 2, true, hardenedCap},
 	} {
 		got[r] = threshold(r)
 		t.Logf("A6 %2d honest validators, %-40s control from %d%% of the work", r.nHonest, label(r)+":", got[r])
@@ -478,6 +479,6 @@ func TestSeatSim_A6_Hardened(t *testing.T) {
 	require.Equal(t, 34, got[row{4, 2, true, 0}], "the window and the reserve don't raise the bar")
 	require.Equal(t, 17, got[row{10, 40, false, 0}], "many small validators make it cheaper")
 	require.Equal(t, 34, got[row{10, 2, true, 0}])
-	require.Greater(t, got[row{4, 2, true, 0.1}], 50, "a removal cap does")
-	require.Greater(t, got[row{10, 2, true, 0.1}], 50)
+	require.Greater(t, got[row{4, 2, true, hardenedCap}], 50, "the removal cap does")
+	require.Greater(t, got[row{10, 2, true, hardenedCap}], 50)
 }

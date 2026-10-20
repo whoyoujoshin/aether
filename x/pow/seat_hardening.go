@@ -28,6 +28,13 @@ import (
 //     removal takes about 68 minutes offline instead of 3, so an attacker
 //     can't push its share up with short outages, and short outages of
 //     our own (a VPN drop, a restart) no longer cost a seat.
+//   - A6, removal cap: downtime removals between two boundaries take out
+//     at most SeatEntryLimitBps of the power, as the entry limit lets at
+//     most that much in. Taking honest validators offline can then raise
+//     an attacker's share by at most that much per epoch. A validator past
+//     the cap stays in the set; a removal happens only while blocks are
+//     being made, so keeping it never halts the chain, it only slows the
+//     rounds it would have proposed.
 //
 // SeatHardeningHeight gates all three. On the testnet it is a
 // placeholder until a height is chosen and every validator runs a binary
@@ -65,16 +72,46 @@ func (k Keeper) getSeatWork(ctx sdk.Context, epoch int64, addr sdk.AccAddress) m
 	return w
 }
 
+// powerOrFlat is a validator's power, or the old rule's flat power if it
+// has none recorded.
+func (k Keeper) powerOrFlat(ctx sdk.Context, addr sdk.AccAddress) int64 {
+	if p, ok := k.GetValidatorPower(ctx, addr); ok {
+		return p
+	}
+	return ValidatorVotingPower
+}
+
+// mayRemoveForDowntime reports whether removing addr for downtime keeps
+// the removals since the last boundary within SeatEntryLimitBps of the
+// power (what's active plus what they took out). Always true below
+// SeatHardeningHeight.
+func (k Keeper) mayRemoveForDowntime(ctx sdk.Context, addr sdk.AccAddress) bool {
+	if !seatHardened(ctx) {
+		return true
+	}
+	gone := int64(0)
+	store := ctx.KVStore(k.storeKey)
+	it := store.Iterator(KeyDowntimeReservePrefix, storetypes.PrefixEndBytes(KeyDowntimeReservePrefix))
+	for ; it.Valid(); it.Next() {
+		if v := it.Value(); len(v) >= 16 {
+			gone += int64(binary.BigEndian.Uint64(v[8:16]))
+		}
+	}
+	it.Close()
+	total := gone
+	for _, a := range k.IterateActiveValidators(ctx) {
+		total += k.powerOrFlat(ctx, a)
+	}
+	return (gone+k.powerOrFlat(ctx, addr))*10_000 <= total*SeatEntryLimitBps
+}
+
 // reserveDowntimePower records a validator removed for downtime, so the
 // next boundary can give it back its power if it's back.
 func (k Keeper) reserveDowntimePower(ctx sdk.Context, addr sdk.AccAddress) {
 	if !seatHardened(ctx) || !gates.On(ctx, SeatRuleActivationHeight) {
 		return
 	}
-	power, ok := k.GetValidatorPower(ctx, addr)
-	if !ok {
-		power = ValidatorVotingPower
-	}
+	power := k.powerOrFlat(ctx, addr)
 	epoch := k.CurrentEpoch(ctx)
 	work, _ := k.getSeatWork(ctx, epoch, addr).Marshal()
 	bz := make([]byte, 16, 16+len(work))

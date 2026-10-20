@@ -20,7 +20,7 @@ the three paths below, which do.
 ## 1. An MCP agent (Claude, Cursor, Codex, VS Code, OpenClaw, any MCP client)
 
 ```bash
-go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest   # Go 1.25+
+go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest   # Go 1.26+
 agentmcp init   # a new key, test funds, and the config to paste into your MCP host
 ```
 

@@ -11,7 +11,10 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
 
 ## Environment
 - **OS:** Windows, developed via PowerShell
-- **Stack:** Cosmos SDK v0.50.14, CometBFT v0.38.26, ibc-go v8.8.0, Go 1.25
+- **Stack:** Cosmos SDK v0.50.14, CometBFT v0.38.26, ibc-go v8.8.0, Go 1.26 (`go 1.26.10` in `go.mod` since 2026-10-20, for the `golang.org/x/net` 0.60 and `x/crypto` 0.57 security fixes, which need Go 1.26).
+  - **Builders need Go 1.26.10:** Gitty's workstation `prebuild.sh` and peer-1's Windows `.exe` build. The release workflows read the version from `go.mod`.
+  - **`bench/` stays on Go 1.25:** it's a separate module that doesn't depend on the root one.
+  - **Mixed builds are fine:** the `3988485` binaries validating 396,000 were built with Go 1.25.8 and stay as they are. A devnet run by a Go 1.25 `aetherd` was continued by a Go 1.26 build on the same data, across three boundaries, with no app-hash errors.
 - **Data directory:** `C:\aether-data` (moved off OneDrive — see gotcha below)
 - **Critical:** every `aetherd` command for peer-1 (DardenPC) must include `--home C:\aether-peer1`, its live node home. `C:\aether-data` is the git repo, not a node home. Don't omit this flag or assume a default home dir.
 
@@ -56,7 +59,8 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
       - **A4/A5:** the 1% bar is measured on eligible work only (`computeSeats`' `eligibleTotal`; wallet miner status matches).
       - **A6, reserved power:** a validator removed for downtime whose miner adds work afterwards gets its power back at the next boundary.
       - **A6, liveness window:** 1,440 blocks, bit-packed, so a removal takes about 68 minutes offline.
-      - **What A6 still needs:** the simulation shows the window and the reserve don't raise A6's control threshold (34%), because several validators can be taken offline at once. A 10% per-epoch cap on removals raises it to about 61%; it's modelled, not built, and awaits Joshua's decision.
+      - **A6, removal cap:** downtime removals between boundaries take out at most 10% of the power (`mayRemoveForDowntime`). A validator past the cap stays in the set until the next boundary. With four validators at 25% each, none is removed for downtime.
+      - **Simulation:** the window and the reserve alone leave A6's control threshold at 34%. With the cap it is about 61% (four validators) or 62% (ten).
     - **First boundary (397,439):** check every validator still clears 1% of the window's total.
 - **Fresh-chain gates** (package `gates`, `docs/MAINNET.md` §4): every height gate is read through `gates.Height(chainID, testnetHeight)`.
   - **Fresh chains:** on `aether-1` and on any chain ID starting `aether-rc-`, every gate opens at block 1. A module left out of the genesis file starts from its defaults, and a miner that registers a genesis validator's key takes that validator over.

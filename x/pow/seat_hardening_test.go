@@ -1,6 +1,7 @@
 package pow_test
 
 import (
+	"fmt"
 	"testing"
 
 	"cosmossdk.io/math"
@@ -80,49 +81,106 @@ func TestSeatHardening_LongLivenessWindow(t *testing.T) {
 	require.True(t, remove, "more than half of %d missed removes", pow.LongLivenessWindow)
 }
 
+// seatNet sets up validators with keys and consensus addresses, active,
+// and runs boundaries from hardEpoch with work per epoch until their
+// powers have settled. It returns the next epoch.
+func seatNet(t *testing.T, k pow.Keeper, ctx sdk.Context, work map[string]int64) (sdk.Context, int64) {
+	t.Helper()
+	for name := range work {
+		v := sdk.AccAddress(name)
+		k.SetValidatorPubkey(ctx, v, genValidatorPubkey(t))
+		k.SetActiveValidator(ctx, v)
+		k.SetConsensusToMiner(ctx, []byte("cons_"+name), v)
+	}
+	e := hardEpoch
+	for ; e < hardEpoch+8; e++ {
+		ctx = ctx.WithBlockHeight((e+1)*epochLen - 1)
+		for name, w := range work {
+			k.AddSeatWork(ctx, e, sdk.AccAddress(name), math.NewInt(w))
+		}
+		k.ComputeValidatorUpdates(ctx, e)
+	}
+	return ctx, e
+}
+
+// goOffline has name miss blocks until the liveness window removes it, or
+// would have.
+func goOffline(k pow.Keeper, ctx sdk.Context, name string) {
+	for i := int64(0); i <= pow.LongLivenessWindow/2; i++ {
+		k.CheckValidatorLiveness(setupLivenessCtx(ctx, testutil.FakeVoteInfos{fakeVoteInfo([]byte("cons_"+name), false)}))
+	}
+}
+
+// A6, removal cap: downtime removals between boundaries take out at most
+// 10% of the power. Of four validators with a quarter each, none is
+// removed; of ten with a tenth each, one is and the next isn't, until the
+// boundary resets the budget.
+func TestSeatHardening_RemovalCap(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	ctx, e := seatNet(t, k, ctx, map[string]int64{"cap_four_a__________": 10, "cap_four_b__________": 10, "cap_four_c__________": 10, "cap_four_d__________": 10})
+	ctx = ctx.WithBlockHeight(e*epochLen + 10)
+	goOffline(k, ctx, "cap_four_a__________")
+	require.True(t, k.IsActiveValidator(ctx, sdk.AccAddress("cap_four_a__________")), "25% is past the 10% cap: kept, still counted as missing")
+
+	k, ctx, _ = setupKeeper(t)
+	ten := map[string]int64{}
+	for i := 0; i < 10; i++ {
+		ten[fmt.Sprintf("cap_ten_%02d_________", i)] = 10
+	}
+	ctx, e = seatNet(t, k, ctx, ten)
+	ctx = ctx.WithBlockHeight(e*epochLen + 10)
+	goOffline(k, ctx, "cap_ten_00_________")
+	goOffline(k, ctx, "cap_ten_01_________")
+	require.False(t, k.IsActiveValidator(ctx, sdk.AccAddress("cap_ten_00_________")), "the first tenth is removed")
+	require.True(t, k.IsActiveValidator(ctx, sdk.AccAddress("cap_ten_01_________")), "a second tenth in the same epoch is past the cap")
+
+	// After the boundary the budget is fresh.
+	ctx = ctx.WithBlockHeight((e+1)*epochLen - 1)
+	for name, w := range ten {
+		k.AddSeatWork(ctx, e, sdk.AccAddress(name), math.NewInt(w))
+	}
+	k.ComputeValidatorUpdates(ctx, e)
+	ctx = ctx.WithBlockHeight((e+1)*epochLen + 10)
+	goOffline(k, ctx, "cap_ten_01_________")
+	require.False(t, k.IsActiveValidator(ctx, sdk.AccAddress("cap_ten_01_________")), "removed in the next epoch")
+}
+
 // A6: a validator removed for downtime gets its power back at the next
-// boundary if its miner added work after the removal; one that didn't
-// re-enters through the entry limit, as under the seat rule alone.
+// boundary if its miner added work after the removal, outside the entry
+// budget. One that didn't competes for that budget with a newcomer, as
+// under the seat rule alone, and comes back with less.
 func TestSeatHardening_ReservedPowerOnReturn(t *testing.T) {
+	a, b, c := "reserve_big_________", "reserve_small_______", "reserve_newcomer____"
+	got := map[bool]int64{}
+	var before int64
 	for _, back := range []bool{true, false} {
 		k, ctx, _ := setupKeeper(t)
-		a, b := sdk.AccAddress("hardening_reserve_a___"), sdk.AccAddress("hardening_reserve_b___")
-		consB := []byte("hardening_cons_b______")
-		for _, v := range []sdk.AccAddress{a, b} {
-			k.SetValidatorPubkey(ctx, v, genValidatorPubkey(t))
-			k.SetActiveValidator(ctx, v)
-		}
-		k.SetConsensusToMiner(ctx, consB, b)
+		ctx, e := seatNet(t, k, ctx, map[string]int64{a: 90, b: 10})
+		var ok bool
+		before, ok = k.GetValidatorPower(ctx, sdk.AccAddress(b))
+		require.True(t, ok)
+		require.InDelta(t, 10_000_000, before, 100_000)
 
-		// Boundary 1: equal work, equal power.
-		e0 := hardEpoch
-		ctx = ctx.WithBlockHeight((e0+1)*epochLen - 1)
-		k.AddSeatWork(ctx, e0, a, math.NewInt(10))
-		k.AddSeatWork(ctx, e0, b, math.NewInt(10))
-		require.NotNil(t, k.ComputeValidatorUpdates(ctx, e0))
-		require.Equal(t, int64(50_000_000), powerOf(t, k, ctx, b))
-
-		// Next epoch: b mines, then its node goes quiet for most of the window.
-		e1 := e0 + 1
-		ctx = ctx.WithBlockHeight(e1*epochLen + 10)
-		k.AddSeatWork(ctx, e1, a, math.NewInt(10))
-		k.AddSeatWork(ctx, e1, b, math.NewInt(5))
-		for i := int64(0); i <= pow.LongLivenessWindow/2; i++ {
-			k.CheckValidatorLiveness(setupLivenessCtx(ctx, testutil.FakeVoteInfos{fakeVoteInfo(consB, false)}))
-		}
-		require.False(t, k.IsActiveValidator(ctx, b), "removed for downtime")
+		k.SetValidatorPubkey(ctx, sdk.AccAddress(c), genValidatorPubkey(t)) // registers, not seated
+		ctx = ctx.WithBlockHeight(e*epochLen + 10)
+		k.AddSeatWork(ctx, e, sdk.AccAddress(a), math.NewInt(90))
+		k.AddSeatWork(ctx, e, sdk.AccAddress(b), math.NewInt(5))
+		k.AddSeatWork(ctx, e, sdk.AccAddress(c), math.NewInt(40))
+		goOffline(k, ctx, b)
+		require.False(t, k.IsActiveValidator(ctx, sdk.AccAddress(b)), "a tenth is within the cap: removed")
 		if back {
-			k.AddSeatWork(ctx, e1, b, math.NewInt(5)) // its miner is back
+			k.AddSeatWork(ctx, e, sdk.AccAddress(b), math.NewInt(5)) // its miner is back
 		}
 
-		ctx = ctx.WithBlockHeight((e1+1)*epochLen - 1)
-		require.NotNil(t, k.ComputeValidatorUpdates(ctx, e1))
-		if back {
-			require.Equal(t, int64(50_000_000), powerOf(t, k, ctx, b), "back at its power, outside the entry budget")
-			require.Equal(t, int64(50_000_000), powerOf(t, k, ctx, a))
-		} else {
-			require.InDelta(t, 10_000_000, powerOf(t, k, ctx, b), 1, "no sign of life: it re-enters at the entry limit")
-			require.InDelta(t, 90_000_000, powerOf(t, k, ctx, a), 1)
-		}
+		ctx = ctx.WithBlockHeight((e+1)*epochLen - 1)
+		require.NotNil(t, k.ComputeValidatorUpdates(ctx, e))
+		got[back] = powerOf(t, k, ctx, sdk.AccAddress(b))
+		t.Logf("back=%v: power %d before, %d after", back, before, got[back])
+		require.True(t, k.IsActiveValidator(ctx, sdk.AccAddress(c)), "the newcomer entered either way")
 	}
+	// Back, it moves from its own power toward its target like any seated
+	// validator; still dark, it starts from nothing and shares the entry
+	// budget with the newcomer.
+	require.Greater(t, got[true], before*8/10)
+	require.Less(t, got[false], got[true]*6/10)
 }

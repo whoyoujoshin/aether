@@ -121,7 +121,7 @@ the same `command` and `args`.
 ## Your own wallet
 
 ```bash
-go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest   # Go 1.25+, or take it from a release archive
+go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest   # Go 1.26+, or take it from a release archive
 agentmcp init
 ```
 
