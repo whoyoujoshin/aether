@@ -47,6 +47,9 @@ func handleLLMsTxt(w http.ResponseWriter, r *http.Request) {
 	p("- [AI agents: start here](%s#ai-agents-start-here): get an address, get test funds, make a first payment", repoURL)
 	p("- [MCP wallet](%s#ai-agent-wallet-mcp): `go install github.com/whoyoujoshin/aether/cmd/agentmcp@latest && agentmcp init`, or the `aether-wallet.mcpb` bundle from the releases; MCP Registry name `io.github.whoyoujoshin/aether-wallet`. Tools: %s", repoURL, strings.Join(agentmcpTools, ", "))
 	p("- [MCP server card](%s/.well-known/mcp/server-card.json): the wallet's registry name, install lines, tools, and the public read-only endpoint if there is one", host)
+	if publicA2A != "" {
+		p("- [A2A Agent Card](%s/.well-known/agent-card.json): the same read-only skills as the public MCP server over A2A 1.0 JSON-RPC at %s; it holds no key ([A2A.md](%s/blob/main/docs/A2A.md))", host, publicA2A, repoURL)
+	}
 	p("- [API stability](%s/blob/main/docs/API-STABILITY.md): which of these URLs and fields only ever gain things, and how anything else changes", repoURL)
 	p("")
 	p("## Endpoints")

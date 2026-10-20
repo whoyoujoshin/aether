@@ -136,8 +136,9 @@ func newPublicServer() *mcp.Server {
 	return server
 }
 
-// publicMux serves Streamable HTTP at /mcp and a liveness check at
-// /healthz. Every other path is a 404, never an HTML app.
+// publicMux serves Streamable HTTP at /mcp, the same tools as A2A
+// skills at /a2a (a2a.go), and a liveness check at /healthz. Every other
+// path is a 404, never an HTML app.
 func publicMux(server *mcp.Server) http.Handler {
 	// Stateless: a public process must not keep a session per caller.
 	// Localhost protection is off because this listens on loopback
@@ -151,6 +152,7 @@ func publicMux(server *mcp.Server) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", h)
 	mux.Handle("/mcp/", h)
+	mux.HandleFunc("/a2a", handleA2A)
 	mux.HandleFunc("/healthz", handlePublicHealth)
 	return mux
 }
@@ -174,7 +176,7 @@ func servePublicHTTP(addr string) error {
 		Handler:           publicMux(newPublicServer()),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	log.Printf("public MCP at %s (health %s)", listenURL(addr, "/mcp"), listenURL(addr, "/healthz"))
+	log.Printf("public MCP at %s, A2A at %s (health %s)", listenURL(addr, "/mcp"), listenURL(addr, "/a2a"), listenURL(addr, "/healthz"))
 	return srv.ListenAndServe()
 }
 

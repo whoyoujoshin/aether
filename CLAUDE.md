@@ -50,6 +50,7 @@ Solo dev project. Originated from an earlier scaffolding pass in Grok, then buil
 - **Fresh-chain gates** (package `gates`, `docs/MAINNET.md` §4): every height gate is read through `gates.Height(chainID, testnetHeight)`.
   - **Fresh chains:** on `aether-1` and on any chain ID starting `aether-rc-`, every gate opens at block 1. A module left out of the genesis file starts from its defaults, and a miner that registers a genesis validator's key takes that validator over.
   - **Everywhere else** (`aether-testnet-1`, other devnets, unit tests with an empty chain ID) the testnet heights apply unchanged.
+- **A2A** (`docs/A2A.md`, package `a2a`): `agentmcp --http` also serves A2A 1.0 JSON-RPC at `/a2a`, offering the six public read-only tools as skills. It holds no key, and every task finishes inside `SendMessage`. The explorer serves the Agent Card at `/.well-known/agent-card.json` and lists it in `/api/agents` and llms.txt only with `--public-a2a <endpoint>`; without the flag the card is a 404. `caddy.sh` routes `/a2a` to 127.0.0.1:8090. Checked with the Python `a2a-sdk` 1.2.3. Not deployed yet. The order is agentmcp, then `caddy.sh`, then the explorer unit's flag.
   - **Checked:** with `app/fresh_chain_test.go`, and on an `aether-rc-dev` devnet.
 - **Mainnet plan:** `docs/MAINNET.md` (PR #150) covers:
   - seats first (the rule above);

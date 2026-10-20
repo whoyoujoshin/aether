@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/whoyoujoshin/aether/a2a"
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/gates"
 )
@@ -116,9 +117,17 @@ type agentCardDTO struct {
 	Faucet        *agentFaucetDTO   `json:"faucet"` // nil: no faucet
 	Authz         agentAuthzDTO     `json:"authz"`
 	MCP           agentMCPDTO       `json:"mcp"`
+	A2A           *agentA2ADTO      `json:"a2a,omitempty"` // nil: no --public-a2a
 	Payments      []string          `json:"paymentSchemes"`
 	Docs          map[string]string `json:"docs"`
 	Warnings      []string          `json:"warnings"`
+}
+
+// agentA2ADTO points at the A2A Agent Card and the endpoint it describes.
+type agentA2ADTO struct {
+	AgentCard string `json:"agentCard"`
+	Endpoint  string `json:"endpoint"`
+	Version   string `json:"protocolVersion"`
 }
 
 // faucetReachable reports whether the faucet answers HTTP at all (a GET to
@@ -196,6 +205,9 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			"Testnet: use disposable keys and never anything of value.",
 			"No independent security audit yet.",
 		},
+	}
+	if publicA2A != "" {
+		card.A2A = &agentA2ADTO{AgentCard: "/.well-known/agent-card.json", Endpoint: publicA2A, Version: a2a.ProtocolVersion}
 	}
 	if publicFaucet != "" {
 		ok := faucetReachable(publicFaucet)
