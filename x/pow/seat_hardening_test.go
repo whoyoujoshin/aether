@@ -24,6 +24,13 @@ func powerOf(t *testing.T, k pow.Keeper, ctx sdk.Context, a sdk.AccAddress) int6
 	return p
 }
 
+// The height starts an epoch, so the whole epoch runs under one liveness
+// window, and comes after the seat rule, whose powers the cap measures.
+func TestSeatHardening_Height(t *testing.T) {
+	require.Zero(t, pow.SeatHardeningHeight%epochLen)
+	require.Greater(t, pow.SeatHardeningHeight, pow.SeatRuleActivationHeight)
+}
+
 // A4/A5: an unregistered pool's work no longer counts toward the 1% bar.
 // Under the seat rule alone it puts both validators under 1% and the set
 // freezes; hardened, they're seated by their own work.
