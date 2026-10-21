@@ -40,54 +40,62 @@ func TestRedTeam_RemovalBudgetExhaustedOnPurpose(t *testing.T) {
 
 // Attack: game the reserve by going dark and coming back with dust.
 // A removed validator that adds any positive seat work after the
-// removal reclaims its full prior power at the next boundary, outside
-// the entry budget. Dust is enough.
+// removal counts as back: at the next boundary it starts from the power
+// it held, outside the entry budget, and moves toward its share of the
+// window's work like any seated validator. Dust buys no more than that:
+// it ends where a validator that was never removed, with the same work,
+// ends.
 func TestRedTeam_ReserveReclaimedWithDustWork(t *testing.T) {
-	k, ctx, _ := setupKeeper(t)
 	big, small := "rt_reserve_big_____", "rt_reserve_small___"
-	ctx, e := seatNet(t, k, ctx, map[string]int64{big: 90, small: 10})
-	before, ok := k.GetValidatorPower(ctx, sdk.AccAddress(small))
-	require.True(t, ok)
-	require.InDelta(t, 10_000_000, before, 100_000)
+	got := map[bool]int64{}
+	for _, removed := range []bool{true, false} {
+		k, ctx, _ := setupKeeper(t)
+		ctx, e := seatNet(t, k, ctx, map[string]int64{big: 90, small: 10})
+		ctx = ctx.WithBlockHeight(e*epochLen + 10)
+		k.AddSeatWork(ctx, e, sdk.AccAddress(big), math.NewInt(90))
+		if removed {
+			goOffline(k, ctx, small)
+			require.False(t, k.IsActiveValidator(ctx, sdk.AccAddress(small)))
+		}
+		k.AddSeatWork(ctx, e, sdk.AccAddress(small), math.NewInt(1)) // dust
 
-	ctx = ctx.WithBlockHeight(e*epochLen + 10)
-	k.AddSeatWork(ctx, e, sdk.AccAddress(big), math.NewInt(90))
-	goOffline(k, ctx, small)
-	require.False(t, k.IsActiveValidator(ctx, sdk.AccAddress(small)))
-
-	k.AddSeatWork(ctx, e, sdk.AccAddress(small), math.NewInt(1)) // dust
-
-	ctx = ctx.WithBlockHeight((e+1)*epochLen - 1)
-	require.NotNil(t, k.ComputeValidatorUpdates(ctx, e))
-	after := powerOf(t, k, ctx, sdk.AccAddress(small))
-	t.Logf("dust reclaim: power %d before, %d after (threshold: any positive work)", before, after)
-	require.Greater(t, after, before*8/10, "dust work reclaims nearly full prior power")
+		ctx = ctx.WithBlockHeight((e+1)*epochLen - 1)
+		require.NotNil(t, k.ComputeValidatorUpdates(ctx, e))
+		got[removed] = powerOf(t, k, ctx, sdk.AccAddress(small))
+	}
+	t.Logf("dust return: %d after a removal, %d never removed", got[true], got[false])
+	require.Equal(t, got[false], got[true], "the reserve gives back what staying would have kept, no more")
 }
 
 // Attack: rotate the consensus key around a removal.
 // The reserve is keyed by the miner address. A new address that
 // registers a different key does not inherit the reserve; it is a
-// newcomer and must enter through the 10% limit.
+// newcomer and must enter through the 10% limit, as must the old
+// address. The old validator holds under a tenth, so the removal cap
+// lets it be removed.
 func TestRedTeam_KeyRotationDoesNotInheritReserve(t *testing.T) {
 	k, ctx, _ := setupKeeper(t)
-	old, neu := "rt_rotate_old______", "rt_rotate_new______"
-	ctx, e := seatNet(t, k, ctx, map[string]int64{old: 50, "rt_rotate_peer_____": 50})
+	old, neu, peer := "rt_rotate_old______", "rt_rotate_new______", "rt_rotate_peer_____"
+	ctx, e := seatNet(t, k, ctx, map[string]int64{old: 9, peer: 91})
+	before := powerOf(t, k, ctx, sdk.AccAddress(old))
 	ctx = ctx.WithBlockHeight(e*epochLen + 10)
 	goOffline(k, ctx, old)
 	require.False(t, k.IsActiveValidator(ctx, sdk.AccAddress(old)))
 
 	k.SetValidatorPubkey(ctx, sdk.AccAddress(neu), genValidatorPubkey(t))
-	k.AddSeatWork(ctx, e, sdk.AccAddress(neu), math.NewInt(50))
-	k.AddSeatWork(ctx, e, sdk.AccAddress("rt_rotate_peer_____"), math.NewInt(50))
+	k.AddSeatWork(ctx, e, sdk.AccAddress(neu), math.NewInt(9))
+	k.AddSeatWork(ctx, e, sdk.AccAddress(peer), math.NewInt(91))
 
 	ctx = ctx.WithBlockHeight((e+1)*epochLen - 1)
 	require.NotNil(t, k.ComputeValidatorUpdates(ctx, e))
-	require.False(t, k.IsActiveValidator(ctx, sdk.AccAddress(old)), "old address does not return")
-	if k.IsActiveValidator(ctx, sdk.AccAddress(neu)) {
-		p := powerOf(t, k, ctx, sdk.AccAddress(neu))
-		t.Logf("newcomer power after rotation: %d (entry-limited, not inherited)", p)
-		require.Less(t, p, int64(15_000_000), "does not inherit the old validator's power")
-	}
+	// The old address added no work after the removal, so it gets no
+	// reserve; its work earlier in the window can still seat it through
+	// the entry limit, sharing that budget with the new address.
+	oldP, _ := k.GetValidatorPower(ctx, sdk.AccAddress(old))
+	newP, _ := k.GetValidatorPower(ctx, sdk.AccAddress(neu))
+	t.Logf("old power %d before; after rotation: old address %d, new address %d", before, oldP, newP)
+	require.Less(t, newP, before, "the new address does not inherit the old validator's power")
+	require.LessOrEqual(t, oldP+newP, pow.SeatPowerScale*pow.SeatEntryLimitBps/10_000+1, "both enter through the entry limit")
 }
 
 // Attack: a ban interacts with the downtime cap.
