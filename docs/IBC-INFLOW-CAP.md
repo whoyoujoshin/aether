@@ -1,102 +1,154 @@
 # IBC inflow cap for mainnet
 
-**Status:** design only. No code. For Cosmos SDK v0.50 with ibc-go v8.8.
-**Related:** `docs/MAINNET.md` §2 (one USDC path, inflow cap).
+**Status:** design only. No code yet. For Cosmos SDK v0.50 with ibc-go v8.8.
+**Related:** `docs/MAINNET.md` §2 (one USDC path, an inflow cap).
 
 ## Why
 
-A takeover or a bug on Aether can lose, at most, the value that IBC
-counterparties hold in escrow for Aether's channels. An inflow cap on
-Aether's side refuses a received packet that would take a denom over
-the cap. The counterparty refunds the refused packet, so the
-counterparty's escrow never grows past the cap. That bounds what a
-forged header (trust level 1/3) could release.
+A takeover of Aether, or a bug in it, can lose at most what the
+counterparties hold in escrow for Aether's channels. For a token that
+comes from the other chain (USDC from Injective), that escrow is the
+voucher supply on Aether: every voucher minted on Aether locked the same
+amount on Injective, and every voucher sent back burned one and unlocked
+it. A forged header on Aether's client of Injective can mint vouchers
+with nothing behind them, but only through the same receive path.
 
-## Options surveyed
+So the cap is on **stock, not flow**: refuse a received packet that would
+take a voucher's total supply on Aether over a fixed amount. The refused
+packet gets an error acknowledgement and Injective refunds the sender.
+That bounds the counterparty's escrow, so it bounds what a takeover could
+release, and it bounds what a forged header could mint.
 
-| Option | What it is | Fits ibc-go v8.8? | Notes |
-|---|---|---|---|
-| Stride `x/ratelimit` (now in `cosmos/ibc-apps` `modules/rate-limiting`) | Native Go IBC middleware. Per channel+denom, fixed window, net flow. | Yes. The `ibc-apps` line tracks ibc-go v8. | Governance messages to add/update/remove limits. Undoes on timeout and ack error. |
-| Osmosis `cw-ibc-rate-limit` | Middleware that calls a CosmWasm contract for the check. | Yes, if wasmd is wired. | Extra moving part (contract + middleware). Aether does not run wasmd on the chain itself today. |
-| ibc-go's own rate-limiting middleware | Moved into ibc-go at v11 (`modules/apps/rate-limiting`). | No. Aether is on v8.8. | The migration guide is v10 → v11. Not available without an ibc-go upgrade. |
+## Why not the ibc-apps rate limiter on its own
 
-## Proposal
+`cosmos/ibc-apps` `modules/rate-limiting` (Stride's module) supports
+ibc-go v8, but it can't do this job at launch:
 
-Use the **ibc-apps rate-limiting middleware** (Stride's native Go
-module) on the ICS-20 transfer stack. Do not pull in wasmd for this.
-Do not upgrade ibc-go just for the middleware.
+- **Its quotas are percentages, not amounts.** `MaxPercentRecv` and
+  `MaxPercentSend` are shares of the denom's total supply on Aether, read
+  at the start of each window, and a limit can't be created while that
+  supply is 0. USDC on a fresh `aether-1` starts at 0, so "10,000 USDC"
+  can't be expressed with it.
+- **A path with no limit is open.** `CheckRateLimitAndUpdateFlow` returns
+  `false, nil` when no limit exists for the denom and channel, and the
+  packet passes. Closing every other path needs separate wiring.
+- **It limits flow per window.** That bounds how fast escrow grows, not
+  how large it gets.
 
-### Limits
+It is a good second layer once there is supply to take a percentage of
+(see Later). Osmosis's limiter would need wasmd on Aether, and moving
+ibc-go for its own rate-limiting app is a much larger change; neither is
+worth it for this.
 
-- **Granularity:** per channel and per denom. The first limit is on
-  Injective's USDC (`erc20:0xa00C59fF5a080D2b954d0c75e46E22a0c371235a`
-  as the bank denom on Injective, then the IBC trace on Aether) on the
-  Aether↔Injective channel.
-- **Direction:** inflow only at first (`MaxPercentRecv` or an absolute
-  quota). Outflow can be added later. Net flow (in minus out) so a
-  ping-pong does not exhaust the cap.
-- **Window:** 24 hours, fixed, reset by governance or by the module's
-  own timer. A shorter window (1 hour) is an alternative if the first
-  weeks show bursts.
-- **Starting size:** 10,000 USDC, as `docs/MAINNET.md` suggests. Raised
-  by governance after the seat-rule evidence and the two-week trial.
-- **One path:** only the Injective USDC channel is open at launch.
-  Other denoms and channels have no limit configured, which means they
-  are refused until a limit is added (fail closed), or the middleware
-  is wired only on that channel. Prefer fail closed.
+## Proposal: an Aether inflow-cap middleware
 
-### How it works with Aether's relayers
+A small IBC middleware, outermost on the transfer route in `app/app.go`:
 
-- **Helicase** (on the validators) relays packets *onto* Aether. The
-  rate-limit middleware sits in the transfer stack's `OnRecvPacket`.
-  Helicase submits the same `MsgRecvPacket` any relayer would, so the
-  middleware sees it. A packet over the cap returns an error
-  acknowledgement; Helicase does not special-case it.
-- **cmd/outbound** relays the other way (Aether → counterparty). It
-  signs on the counterparty, not on Aether. The cap on Aether does not
-  inspect those sends. If an outflow cap is added later, it belongs in
-  the `SendPacket` / ICS4 wrapper path, which outbound does not touch.
-- **No change to either relayer** for the inflow cap. The middleware
-  is consensus code.
+```go
+ibcRouter.AddRoute(ibctransfertypes.ModuleName,
+    inflowcap.NewIBCModule(
+        ligase.NewIBCModule(transfer.NewIBCModule(app.TransferKeeper), ligaseHost{app}),
+        app.InflowCapKeeper, app.BankKeeper))
+```
 
-### Stuck or refunded packets
+Outermost, so it sees every received transfer before Ligase acts on a
+memo, and an escrow funded through Ligase counts like any other transfer.
 
-| Event | What the limit must do |
+### On receive
+
+1. Decode the ICS-20 packet data. If it doesn't decode, pass it on
+   (transfer refuses it itself).
+2. **Tokens coming home** (`ReceiverChainIsSource`: AETH, or anything
+   that left Aether and is returning) pass. They unlock Aether's own
+   escrow and mint nothing.
+3. **A voucher** (a token from the other side): compute its `ibc/...`
+   denom from the destination port and channel, as
+   `ligase.receivedCoin` does.
+   - If (channel, denom) isn't in the allowlist, return an error
+     acknowledgement: **fail closed**.
+   - If `bank.GetSupply(denom) + amount > cap`, return an error
+     acknowledgement naming the cap.
+   - Otherwise pass the packet on.
+
+The supply is read when the packet arrives, so there is no counter to
+keep, no window to reset and nothing to undo: every case below follows
+from the supply itself.
+
+### Parameters
+
+A list of entries `{channel, denom, cap}`, for example the Injective
+channel, `ibc/<hash of transfer/<channel>/<Injective USDC base denom>>`
+and `10000000000` (10,000 USDC at 6 decimals). They are set in genesis
+and changed by an `x/governance` param-change proposal: governance
+executes any routed Msg, so the module needs only a `MsgUpdateParams`
+whose authority is the governance module. An empty list closes every
+inbound voucher path. A query returns each entry with its current supply,
+so wallets and agents can check the room left before sending.
+
+The mainnet USDC base denom is Injective mainnet's, pinned in `wallet` the
+way `wallet.TestnetUSDC` is. The testnet one is
+`erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d`; mainnet's differs.
+
+### Each case
+
+| Event | Effect |
 |---|---|
-| Packet received, under cap | Quota increases. Tokens minted/unlocked. |
-| Packet received, over cap | Error ack. Quota does **not** increase. Counterparty refunds. |
-| Packet times out on Aether before recv | No recv happened, so no quota change. Counterparty refunds on timeout. |
-| Packet acked with error (middleware refused, or app refused) | If the middleware incremented on the way in, it must undo on the error ack. The ibc-apps middleware does this in `OnAcknowledgementPacket` for sends, and refuses before incrementing on recv. Confirm the recv path never increments on a refused packet. |
-| Packet stuck (relayer down, client expired) | Quota is unchanged until a recv or a timeout. A stuck packet does not consume the cap. It does delay the refund on the sender chain. |
-| Successful recv, then a later refund via a different packet | The refund is a new transfer the other way. Net-flow accounting reduces the inflow counter. Absolute-quota accounting does not, unless the refund is explicitly subtracted. Prefer net flow. |
+| Received, under the cap | Voucher minted; supply rises. |
+| Received, over the cap or not allowlisted | Error ack; nothing minted. Injective refunds the sender once the ack is relayed. |
+| Voucher sent back to Injective | Burned on Aether; supply falls, so room frees up. |
+| That send times out or gets an error ack | Transfer re-mints the refund; supply is back where it was. |
+| Packet stuck (relayer down, client expired) | Nothing minted, supply unchanged; the funds wait on Injective until the packet times out. |
+| A Ligase escrow funded by a transfer | Counted on the way in like any voucher; moving vouchers into escrow doesn't change supply. |
 
-### Risks
+### Relayers
 
-- **Fail open vs fail closed.** If the middleware is not wired, or a
-  channel has no limit, inflows are unlimited. Wire it before the
-  channel opens, and refuse unknown denoms.
-- **Undo on error.** A bug that increments on a refused recv, or fails
-  to undo on a timeout of a send, either locks the cap or lets it be
-  bypassed. Test both with the middleware's own tests and an Aether
-  devnet.
-- **Helicase per-block limit.** Helicase already caps how many packets
-  a block can relay. The rate-limit cap is a second, longer window.
-  They do not conflict, but a burst that fits in one Helicase block
-  can still hit the rate-limit cap.
-- **Client expiry.** A light client that expires stops the path
-  (`docs/MAINNET.md`). The cap does not help there. `ibcwatch` paging
-  a human stays required.
-- **Governance of the cap.** Raising the cap is a governance proposal.
-  The seat-rule hardening (460,800) should be live and observed before
-  the first raise.
-- **ibc-go upgrade later.** When Aether moves to ibc-go v11, the
-  middleware moves into `ibc-go/modules/apps/rate-limiting`. The
-  migration is a code change in `app.go`, not a state migration of the
-  limits, if the store layout matches. Confirm before the upgrade.
+- **Helicase** (on the validators) submits `MsgRecvPacket` onto Aether
+  like any relayer; the middleware runs inside it. No change.
+- **`cmd/outbound`** relays Aether's acknowledgements to the other chain.
+  A refused packet is refunded only once its error ack is relayed, so
+  outbound must be running. No change either.
+
+### Activation
+
+It is consensus code: it changes which packets succeed. On a fresh chain
+(`gates.Fresh`) it is on from block 1, with the entries in genesis. On the
+testnet it sits behind its own height like every other gate, and is tried
+first with a low cap on the Injective channel (`channel-2`).
+
+## Tests before it ships
+
+- **Unit:** a voucher under, at and over the cap; a denom not in the
+  allowlist; AETH coming home over the same channel; a multi-hop denom (a
+  different `ibc/` hash) refused; a cap of 0.
+- **App (`app/`, with the `counterparty` test chain):** a refused
+  transfer's error ack refunds the sender; sending vouchers back frees
+  room; a timed-out send restores the supply; a Ligase escrow memo over
+  the cap is refused as a whole.
+- **Devnet:** the round trip with Helicase and outbound, before a testnet
+  height is set.
+
+## Risks
+
+- **Over the cap means refused, not queued.** The transfer comes back
+  only after the ack is relayed. Clients should read the room left first.
+- **Refunds depend on outbound.** If `cmd/outbound` is down, refused
+  packets wait for it, or for their timeout.
+- **A forged header can still mint up to the cap.** The cap bounds the
+  loss; it doesn't prevent it. `ibcwatch` and a low starting cap stay
+  required.
+- **Governance raises the cap.** The first raise should wait until the
+  seat hardening has run on the testnet (from 460,800) and the USDC path
+  has run at its starting cap.
+
+## Later
+
+- **A flow limit as a second layer:** the ibc-apps rate limiter with a
+  24-hour net-flow percentage, once the voucher supply is well above 0,
+  to slow a drain inside the cap.
+- **An outflow cap**, if AETH leaving Aether needs one.
 
 ## Not doing
 
-- No code in this note.
-- No wasmd dependency.
-- No ibc-go upgrade for this feature.
+- No wasmd on Aether for this.
+- No ibc-go upgrade for this.
 - No outflow cap at launch.
