@@ -112,13 +112,15 @@ value, or set a mainnet date, until they're fixed behind a later height.
   one removal, and from 34% it can remove them all and hold the whole set.
   The simulation's sweep has the numbers.
 
-## Hardening (built, behind `SeatHardeningHeight`)
+## Hardening (on at block 460,800)
 
 `x/pow/seat_hardening.go` holds four fixes. They sit behind one new
-height, `SeatHardeningHeight`, which is a placeholder (20,001,600) on the
-testnet until a height is chosen and every validator runs a binary
-carrying it. On a fresh chain (`aether-1`, `aether-rc-*`) they're on from
-block 1. Like 396,000, the height needs a coordinated binary swap.
+height, `SeatHardeningHeight`: block **460,800** on the testnet (320 ×
+1,440, an epoch's first block, about five days after the seat rule). On a
+fresh chain (`aether-1`, `aether-rc-*`) they're on from block 1. Like
+396,000, the height needs a coordinated binary swap:
+`docs/UPGRADE-SEAT-HARDENING.md` is the runbook. Binaries built before the
+height was set carry a placeholder (20,001,600) and fall off at 460,800.
 
 - **A4 and A5: the 1% bar is measured against eligible work only.**
   `computeSeats` takes `eligibleTotal`, so work credited to an address with

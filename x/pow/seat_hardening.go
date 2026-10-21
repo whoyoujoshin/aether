@@ -10,7 +10,7 @@ import (
 	"github.com/whoyoujoshin/aether/gates"
 )
 
-// Seat-rule hardening: three fixes for the weaknesses docs/SEAT-SIM.md
+// Seat-rule hardening: four fixes for the weaknesses docs/SEAT-SIM.md
 // confirmed in the rule activating at SeatRuleActivationHeight.
 //
 //   - A4/A5: the 1% bar is measured against eligible work only. Merged
@@ -36,10 +36,14 @@ import (
 //     being made, so keeping it never halts the chain, it only slows the
 //     rounds it would have proposed.
 //
-// SeatHardeningHeight gates all three. On the testnet it is a
-// placeholder until a height is chosen and every validator runs a binary
-// carrying it; on a fresh chain (gates.Fresh) it is on from block 1.
-const SeatHardeningHeight int64 = 20_001_600
+// SeatHardeningHeight gates all four, and on a fresh chain (gates.Fresh)
+// they are on from block 1. On the testnet every node needs a binary
+// carrying it before then (docs/UPGRADE-SEAT-HARDENING.md). Set on 21
+// October 2026 at tip ~380,900 (5.6 s blocks) to 460,800, an epoch
+// boundary (320 x 1,440), about five days out and 64,800 blocks after
+// SeatRuleActivationHeight. Earlier binaries carried 20,001,600 as a
+// placeholder.
+const SeatHardeningHeight int64 = 460_800
 
 // LongLivenessWindow is the liveness window from SeatHardeningHeight: one
 // epoch of blocks.
