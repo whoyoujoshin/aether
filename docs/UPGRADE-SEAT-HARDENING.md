@@ -6,6 +6,20 @@ block **460,800**. That is about 08:15 UTC on 26 October 2026 at 5.6-second
 blocks, or about 15:00 UTC at 5.9 seconds (the tip was 380,879 at 03:38 UTC
 on 21 October). Check the tip and the time left before each step.
 
+**Progress (2026-10-21).**
+- **Build:** Gitty built `3ad12a6` (the merge of #159) on their workstation
+  with Go 1.26.10. Both height greps match and `go test ./x/pow/...` passes.
+  - Linux `aetherd` (sync3, sync4, seed): sha256
+    `9a78e03acc057be37c45c762881ddc4443555bbe2d8f106833319f2b83897123`.
+  - peer-1 `aetherd-3ad12a6.exe`: sha256
+    `8d0c26e79af684c96372253e5f392e5c07922205130af12ba0725cb00827e5f1`. It is
+    over the chat attachment limit, so it is staged on the seed for Joshua
+    to download, as `3988485`'s was.
+- **Swaps:** not started; they wait for the 397,439 check. At 5.64-second
+  blocks (tip 386,178 at 11:55 UTC on 21 October), 397,439 is about 05:30
+  UTC on 22 October, 460,200 about 07:50 UTC and 460,800 about 08:50 UTC on
+  26 October.
+
 **When to swap.** After the seat rule's first boundary (the end of
 397,439, about 05:30 UTC on 22 October) has been checked and all four are
 signing, so only one change is in flight at a time. The new binary carries
