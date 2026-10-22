@@ -15,10 +15,21 @@ on 21 October). Check the tip and the time left before each step.
     `8d0c26e79af684c96372253e5f392e5c07922205130af12ba0725cb00827e5f1`. It is
     over the chat attachment limit, so it is staged on the seed for Joshua
     to download, as `3988485`'s was.
-- **Swaps:** not started; they wait for the 397,439 check. At 5.64-second
-  blocks (tip 386,178 at 11:55 UTC on 21 October), 397,439 is about 05:30
-  UTC on 22 October, 460,200 about 07:50 UTC and 460,800 about 08:50 UTC on
-  26 October.
+- **397,439 boundary (2026-10-22, about 05:37 UTC):** all four signed
+  across it. Powers at 397,441, from 25% each: peer-1 `B7F08625` 34.84%,
+  sync3 `CCA35D28` 25.16%, sync4 `BCEF78B5` 21.42%, seed `F94934BD` 18.58%
+  (total about 100,000,000). Exactly 10 points moved, so the entry limit
+  bound; everyone clears 1%.
+- **Swaps: done, all four on `3ad12a6`**, one at a time with the other three
+  signing and no blocks missed, each checked by the running binary's sha256:
+  sync3 06:11, sync4 06:14, seed 06:17 and peer-1 about 07:08 UTC (through
+  `peer1-ensure.ps1`). All four signed 398,409 to 398,412. Backups:
+  `.pre-hardening` on each Linux node; `aetherd-3988485.exe` and
+  `peer1-ensure.ps1.pre-hardening` on DardenPC. The abort line no longer
+  applies. 460,800 is about 08:50 UTC on 26 October at 5.64-second blocks.
+- **Seed memory:** its swap restart applied `GOMEMLIMIT=2000MiB` (in the
+  process environment) and `iavl-cache-size = 200000`; RSS was about 218 MiB
+  a few minutes later.
 
 **When to swap.** After the seat rule's first boundary (the end of
 397,439, about 05:30 UTC on 22 October) has been checked and all four are
