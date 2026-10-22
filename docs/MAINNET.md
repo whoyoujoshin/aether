@@ -124,8 +124,14 @@ in escrow for Aether. Keep that small while the chain is young:
   header could release. The design is `docs/IBC-INFLOW-CAP.md`: a small Aether
   middleware with a fixed cap on the voucher's supply, failing closed (the
   `cosmos/ibc-apps` rate limiter takes only percentages and can't be set
-  while supply is 0). The cap at launch is **500 USDC**, Joshua's own money
-  (decided 2026-10-22), raised by governance as the chain earns trust.
+  while supply is 0). The cap is chain-wide (all holders together, not per
+  person) and is **5,000 USDC** at launch (decided 2026-10-22), raised by
+  governance as the chain earns trust.
+- **The launch pool.** Joshua plans to put 500 USDC of his own into a
+  pool at launch to give AETH a market. On Osmosis that USDC never comes
+  onto Aether, so it doesn't count against the cap; only AETH crosses, and
+  AETH leaving isn't capped. That would mean opening the Osmosis channel
+  earlier than phase 4 (still to decide).
 - **Osmosis later.** The AETH/OSMO pool and the swap contract come after the
   USDC path has run with its cap for a while.
 - **Light-client upkeep stays an operations duty.** A light client that
@@ -283,7 +289,7 @@ had.
 | Seat rule | a + b + c, or a + b + c + d | The testnet rule from 396,000 is a + b + c + d (merged work counts). Decide d for mainnet with the simulation of SEAT-RULE.md's known weaknesses, after asking the large Litecoin and Dogecoin pools whether they would run validators | open |
 | Supply | fair launch (as now) or an allocation | fair launch | **fair launch** |
 | First USDC path | Injective (Noble is being wound down by Circle) | Injective, as on the testnet | **Injective** |
-| Inflow cap | an amount | low at launch, raised by governance | **500 USDC**, Joshua's own money |
+| Inflow cap | an amount | low at launch, raised by governance | **5,000 USDC**, chain-wide, raised by governance |
 | Fees | a minimum price, USDC accepted, where fees go | accept USDC; fees to the treasury | **accept USDC; fees to the treasury** (the minimum price is still open) |
 | Operators | who, and how many | seven or more before phase 2 | to define: a draft is in §3 |
 | Legal | — | one consultation before phase 2 | Joshua is researching it |
