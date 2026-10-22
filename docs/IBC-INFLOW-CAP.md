@@ -27,7 +27,7 @@ ibc-go v8, but it can't do this job at launch:
 - **Its quotas are percentages, not amounts.** `MaxPercentRecv` and
   `MaxPercentSend` are shares of the denom's total supply on Aether, read
   at the start of each window, and a limit can't be created while that
-  supply is 0. USDC on a fresh `aether-1` starts at 0, so "10,000 USDC"
+  supply is 0. USDC on a fresh `aether-1` starts at 0, so "500 USDC"
   can't be expressed with it.
 - **A path with no limit is open.** `CheckRateLimitAndUpdateFlow` returns
   `false, nil` when no limit exists for the denom and channel, and the
@@ -78,7 +78,8 @@ from the supply itself.
 
 A list of entries `{channel, denom, cap}`, for example the Injective
 channel, `ibc/<hash of transfer/<channel>/<Injective USDC base denom>>`
-and `10000000000` (10,000 USDC at 6 decimals). They are set in genesis
+and `500000000` (500 USDC at 6 decimals, the launch cap decided on
+2026-10-22). They are set in genesis
 and changed by an `x/governance` param-change proposal: governance
 executes any routed Msg, so the module needs only a `MsgUpdateParams`
 whose authority is the governance module. An empty list closes every

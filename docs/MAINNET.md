@@ -121,9 +121,11 @@ in escrow for Aether. Keep that small while the chain is young:
 - **An inflow cap on Aether's side.** Refuse a received packet that would take
   the USDC on Aether over a cap (refused packets are refunded on the sender's
   chain). That bounds the counterparty's escrow, so it bounds what a forged
-  header could release. An example is the rate-limiting middleware in
-  `cosmos/ibc-apps`; check it is compatible with ibc-go v8 first. Start the
-  cap low and raise it by governance as the chain earns trust.
+  header could release. The design is `docs/IBC-INFLOW-CAP.md`: a small Aether
+  middleware with a fixed cap on the voucher's supply, failing closed (the
+  `cosmos/ibc-apps` rate limiter takes only percentages and can't be set
+  while supply is 0). The cap at launch is **500 USDC**, Joshua's own money
+  (decided 2026-10-22), raised by governance as the chain earns trust.
 - **Osmosis later.** The AETH/OSMO pool and the swap contract come after the
   USDC path has run with its cap for a while.
 - **Light-client upkeep stays an operations duty.** A light client that
@@ -135,6 +137,27 @@ in escrow for Aether. Keep that small while the chain is young:
 - **Independent operators.** BFT tolerates fewer than a third faulty, so seven
   operators survive two failures. Today two people run four nodes. Mainnet
   needs operators who don't share a person, a host or a network.
+- **What an operator is (draft for Joshua).** Seats on Aether aren't handed
+  out: under the seat rule a validator holds power only while its miner proves
+  at least 1% of the window's work. So an operator is a miner and a validator
+  together, and the launch can't invite seven; it can only make seven able
+  to join. A proposed definition:
+  - **One operator, one controller.** A person or organization whose
+    validator and miner no other operator controls, pays for or can reach:
+    no shared people, keys, cloud account or home network.
+  - **Spread out.** No two operators in the same data center, and no more
+    than a third of the power on one cloud provider.
+  - **Mines its own seat.** Holds at least 1% of the window's work from its
+    own hash or a pool it runs (merged-mined work counts).
+  - **Runs it properly.** A server, not a home PC; a sentry node in front;
+    the consensus key in a remote signer with double-sign protection; the
+    5-second `timeout_commit`; alerts that reach a person.
+  - **Is reachable.** A contact who can swap a binary before an upgrade
+    height, and who has done one on `aether-rc-1` (phase 1).
+  - **Launch bar:** seven operators meeting all of this, with no one of them
+    above a third of the power, before phase 2. The seat rule has no
+    per-validator cap on purpose, so this is a launch condition to watch,
+    not a rule the chain enforces.
 - **No validator on a home PC.** peer-1 was voted out twice because of a VPN
   on DardenPC. Validators run on servers with sentry nodes in front.
 - **Consensus keys in a remote signer** (tmkms, or horcrux for a threshold
@@ -190,7 +213,8 @@ in escrow for Aether. Keep that small while the chain is young:
     `minimum-gas-prices` (a fee in any listed denom passes), so an agent
     holding only USDC can still pay its gas.
   - **Where fees go.** They land in the fee collector, which nothing spends;
-    route them to the treasury or the validators.
+    route them to the treasury (decided 2026-10-22). That is a code change
+    in the mainnet build, so it is on the review's list.
 - **Chain ID:** `aether-1`.
 
 ## 5. Review instead of audit
@@ -254,12 +278,12 @@ had.
 
 ## Decisions for Joshua
 
-| Decision | Options | Recommendation |
-|---|---|---|
-| Seat rule | a + b + c, or a + b + c + d | The testnet rule from 396,000 is a + b + c + d (merged work counts). Decide d for mainnet with the simulation of SEAT-RULE.md's known weaknesses, after asking the large Litecoin and Dogecoin pools whether they would run validators |
-| Supply | fair launch (as now) or an allocation | fair launch |
-| First USDC path | Injective (Noble is being wound down by Circle) | Injective, as on the testnet |
-| Inflow cap | an amount | low at launch, e.g. 10,000 USDC, raised by governance |
-| Fees | a minimum price, USDC accepted, where fees go | accept USDC; fees to the treasury |
-| Operators | who, and how many | seven or more before phase 2 |
-| Legal | — | one consultation before phase 2 |
+| Decision | Options | Recommendation | Decided (2026-10-22) |
+|---|---|---|---|
+| Seat rule | a + b + c, or a + b + c + d | The testnet rule from 396,000 is a + b + c + d (merged work counts). Decide d for mainnet with the simulation of SEAT-RULE.md's known weaknesses, after asking the large Litecoin and Dogecoin pools whether they would run validators | open |
+| Supply | fair launch (as now) or an allocation | fair launch | **fair launch** |
+| First USDC path | Injective (Noble is being wound down by Circle) | Injective, as on the testnet | **Injective** |
+| Inflow cap | an amount | low at launch, raised by governance | **500 USDC**, Joshua's own money |
+| Fees | a minimum price, USDC accepted, where fees go | accept USDC; fees to the treasury | **accept USDC; fees to the treasury** (the minimum price is still open) |
+| Operators | who, and how many | seven or more before phase 2 | to define: a draft is in §3 |
+| Legal | — | one consultation before phase 2 | Joshua is researching it |
