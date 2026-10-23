@@ -410,8 +410,10 @@ Each event is printed to stdout as one JSON object per line and, with `--webhook
 | `balance_low` / `balance_recovered` | the balance crossed `--low-balance` |
 | `node_unreachable` / `node_recovered` | `--unreachable-after` (3) failed polls in a row, then the first success |
 | `chain_stalled` / `chain_resumed` | the node answers but made no block for `--stall-after` (5m) |
+| `signing_low` / `signing_recovered` | a watched validator's precommits are missing from the chain's commits: it missed at least 1 − `--signing-warn-below` (0.8) of the last `--signing-window` (60) commits it was in the set for, well before x/pow removes it for downtime (more than half). `consensusAddress`, `missed`, `of`, `message` |
+| `power_concentrated` / `power_concentration_eased` | any validator, watched or not, holds more than `--concentration-above` (a third) of the voting power, or no longer does. Above a third, that validator going offline stops the chain until it's back. `consensusAddress`, `powerShare`, `address` when it's a watched miner's validator |
 
-It checks every `--interval` (30s) and does nothing until a new block. With `--state <file>` a restart reports what happened while it was down; without it, it starts fresh. `--once` with `--state` suits a cron job.
+It checks every `--interval` (30s) and does nothing until a new block. The signing check reads each new block's commit (one query per block; after a restart it reads the window back), and the concentration check reads the validator set once per poll. With `--state <file>` a restart reports what happened while it was down; without it, it starts fresh. `--once` with `--state` suits a cron job.
 
 ## Merged mining (AuxPoW)
 

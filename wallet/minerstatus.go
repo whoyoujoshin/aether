@@ -98,9 +98,12 @@ type MinerStatus struct {
 	ActiveValidator bool `json:"activeValidator"`
 	// VotingPower is this address's power in the validator set at
 	// Height (0 outside it), and PowerShare its share of TotalVotingPower.
-	VotingPower      int64        `json:"votingPower"`
-	TotalVotingPower int64        `json:"totalVotingPower"`
-	PowerShare       string       `json:"powerShare,omitempty"`
+	VotingPower      int64  `json:"votingPower"`
+	TotalVotingPower int64  `json:"totalVotingPower"`
+	PowerShare       string `json:"powerShare,omitempty"`
+	// ConsensusAddress is the registered consensus key's address in
+	// upper-case hex, as CometBFT prints it; "" with no key.
+	ConsensusAddress string       `json:"consensusAddress,omitempty"`
 	Escrow           EscrowStatus `json:"escrow"`
 }
 
@@ -265,6 +268,7 @@ func (c *Client) MinerStatus(ctx context.Context, address string) (*MinerStatus,
 		return nil, err
 	}
 	st.TotalVotingPower = totalPower
+	st.ConsensusAddress = ConsensusAddressHex(self[0].pubkey)
 	st.VotingPower = powerOf(powers, self[0].pubkey)
 	if st.VotingPower > 0 {
 		st.PowerShare = share(math.NewInt(st.VotingPower), math.NewInt(totalPower))

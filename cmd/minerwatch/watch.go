@@ -73,6 +73,10 @@ type config struct {
 	lowBalance   math.Int // uaeth; zero: no balance alerts
 	atRiskBlocks int64    // warn this many blocks before selection; 0: never
 	noWorkAt     float64  // warn once this fraction of an epoch passes with no work; 0: never
+
+	signingWindow      int     // commits a watched validator's signing is counted over
+	signingWarnBelow   float64 // signing_low under this share of the window signed; 0: never
+	concentrationAbove float64 // power_concentrated over this share of the voting power; 0: never
 }
 
 // snapshot is everything one poll learns about an address.
@@ -95,6 +99,7 @@ type addrState struct {
 	NoWorkEpoch     int64    `json:"noWorkEpoch"`
 	SubHeight       int64    `json:"subHeight"`
 	SubHashes       []string `json:"subHashes,omitempty"`
+	SigningLow      bool     `json:"signingLow,omitempty"`
 }
 
 // step compares snap with what st last saw, returns the events in

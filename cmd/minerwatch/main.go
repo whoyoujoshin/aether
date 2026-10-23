@@ -5,8 +5,9 @@
 // logs: a PoW submission lands in a block (or fails there), the address
 // is picked into the validator set or dropped from it (and why), it has
 // no work halfway through an epoch, an epoch is about to close without it
-// on track, its balance runs low, or
-// the node stops answering or its chain stops making blocks.
+// on track, its balance runs low, its validator's votes stop reaching the
+// chain's commits, any validator holds over a third of the voting power,
+// or the node stops answering or its chain stops making blocks.
 //
 // Each event is printed to stdout as one JSON object per line and, with
 // --webhook, POSTed there, signed like agentmcp's owner alerts:
@@ -47,11 +48,23 @@ const submissionsPerPoll = 25
 type source interface {
 	LatestHeight(ctx context.Context) (int64, error)
 	Snapshot(ctx context.Context, address string) (snapshot, error)
+	// CommitSigners: see wallet.Client.CommitSigners.
+	CommitSigners(ctx context.Context, height int64) (map[string]bool, error)
+	// ValidatorSet: see wallet.Client.ValidatorSet.
+	ValidatorSet(ctx context.Context, height int64) (map[string]int64, int64, error)
 }
 
 type chainSource struct{ c *wallet.Client }
 
 func (s chainSource) LatestHeight(context.Context) (int64, error) { return s.c.GetLatestHeight() }
+
+func (s chainSource) CommitSigners(ctx context.Context, height int64) (map[string]bool, error) {
+	return s.c.CommitSigners(ctx, height)
+}
+
+func (s chainSource) ValidatorSet(ctx context.Context, height int64) (map[string]int64, int64, error) {
+	return s.c.ValidatorSet(ctx, height)
+}
 
 func (s chainSource) Snapshot(ctx context.Context, address string) (snapshot, error) {
 	st, err := s.c.MinerStatus(ctx, address)
@@ -73,6 +86,9 @@ func (s chainSource) Snapshot(ctx context.Context, address string) (snapshot, er
 // reports what happened while it was down instead of starting over.
 type stateFile struct {
 	Addresses map[string]*addrState `json:"addresses"`
+	// Concentrated holds the consensus addresses power_concentrated was
+	// last reported for.
+	Concentrated map[string]bool `json:"concentrated,omitempty"`
 }
 
 type watcher struct {
@@ -94,6 +110,12 @@ type watcher struct {
 	tipHeight int64 // the node's latest height, and since when
 	tipSince  time.Time
 	stalled   bool
+
+	// Each watched validator's recent commits (by consensus address), and
+	// the last block whose commit was read. Kept in memory: a restart
+	// reads the window back.
+	rings         map[string]*signRing
+	signedThrough int64
 }
 
 // checkStall notices a node that answers but whose chain stopped: no
@@ -159,6 +181,8 @@ func (w *watcher) poll(ctx context.Context) {
 			w.out.deliver(ctx, e)
 		}
 	}
+	w.checkSigning(ctx, h, snaps)
+	w.checkConcentration(ctx, h, snaps)
 	w.lastHeight = h
 	if w.statePath != "" {
 		if err := saveState(w.statePath, w.state); err != nil {
@@ -240,6 +264,9 @@ func main() {
 	noWorkAt := flag.Float64("no-work-warn-at", 0.5, "warn once per epoch when a registered miner has no work this far through the epoch (0.5: halfway); 0: never")
 	unreachableAfter := flag.Int("unreachable-after", 3, "failed polls in a row before node_unreachable")
 	stallAfter := flag.Duration("stall-after", 5*time.Minute, "chain_stalled when the node answers but has made no new block for this long; 0: never")
+	signingWindow := flag.Int("signing-window", 60, "count a watched validator's signatures over this many recent commits (x/pow removes at more than half missed of 60, or of 1,440 from the hardening height)")
+	signingWarnBelow := flag.Float64("signing-warn-below", 0.8, "signing_low when a watched validator signed less than this share of the window; 0: never")
+	concentrationAbove := flag.Float64("concentration-above", 1.0/3, "power_concentrated when any validator holds more than this share of the voting power; 0: never")
 	statePath := flag.String("state", "", "remember what was reported in this file, so a restart catches up instead of starting fresh")
 	once := flag.Bool("once", false, "poll once and exit (with --state, suits a cron job)")
 	quiet := flag.Bool("quiet", false, "don't print events to stdout")
@@ -249,7 +276,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	cfg := config{lowBalance: math.ZeroInt(), atRiskBlocks: *atRiskBlocks, noWorkAt: *noWorkAt}
+	cfg := config{lowBalance: math.ZeroInt(), atRiskBlocks: *atRiskBlocks, noWorkAt: *noWorkAt,
+		signingWindow: *signingWindow, signingWarnBelow: *signingWarnBelow, concentrationAbove: *concentrationAbove}
 	if *lowBalance != "" {
 		if cfg.lowBalance, err = wallet.ParseAmount(*lowBalance); err != nil {
 			log.Fatalf("--low-balance: %v", err)
@@ -292,6 +320,7 @@ func main() {
 		unreachableAfter: *unreachableAfter,
 		stallAfter:       *stallAfter,
 		now:              time.Now,
+		rings:            map[string]*signRing{},
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
