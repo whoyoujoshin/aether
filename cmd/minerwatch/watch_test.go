@@ -253,9 +253,23 @@ func TestBalanceAlertsWithHysteresis(t *testing.T) {
 
 // fakeSource answers from a script, or fails while down is set.
 type fakeSource struct {
-	height int64
-	snaps  map[string]snapshot
-	down   bool
+	height  int64
+	snaps   map[string]snapshot
+	down    bool
+	commits map[int64]map[string]bool // CommitSigners by block height
+	vals    map[string]int64          // the validator set's powers
+}
+
+func (f *fakeSource) CommitSigners(_ context.Context, h int64) (map[string]bool, error) {
+	return f.commits[h], nil
+}
+
+func (f *fakeSource) ValidatorSet(context.Context, int64) (map[string]int64, int64, error) {
+	var total int64
+	for _, p := range f.vals {
+		total += p
+	}
+	return f.vals, total, nil
 }
 
 func (f *fakeSource) LatestHeight(context.Context) (int64, error) {
