@@ -40,7 +40,7 @@ var agentmcpTools = []string{
 	"create_invoice", "wait_for_payment",
 	"fetch_paid", "list_purchases", "list_prepaid_balances", "withdraw_prepaid", "get_mandate",
 	"find_services", "rate_service", "announce_service",
-	"get_quest", "quote_swap", "swap_aeth",
+	"get_quest", "quote_swap", "get_inflow_caps", "swap_aeth",
 	"get_miner_status",
 	"create_escrow", "release_escrow", "refund_escrow", "get_escrow", "list_escrows",
 	"post_job", "find_jobs", "get_job", "offer_on_job", "hire_for_job", "deliver_job", "close_job",
@@ -50,7 +50,7 @@ var agentmcpTools = []string{
 // --sandbox-http, cmd/agentmcp/sandbox.go); the same test keeps them in step.
 var testWalletTools = []string{
 	"create_test_wallet", "get_test_wallet", "send_from_test_wallet", "buy_service", "get_quest",
-	"get_balance", "get_transaction_status", "find_services", "quote_swap", "swap_from_test_wallet",
+	"get_balance", "get_transaction_status", "find_services", "quote_swap", "get_inflow_caps", "swap_from_test_wallet",
 	"find_jobs", "get_job", "offer_from_test_wallet", "deliver_from_test_wallet",
 }
 

@@ -42,11 +42,12 @@ async function setup(withKey: boolean, replies: string[]) {
   return { plugin, runtime, prompts, action, sent, key };
 }
 
-test("the plugin offers seven actions and a wallet provider", async () => {
+test("the plugin offers eight actions and a wallet provider", async () => {
   const { plugin, runtime, action, key } = await setup(true, []);
   assert.equal(plugin.name, "aether");
   assert.deepEqual(plugin.actions!.map((a) => a.name), [
     "AETHER_GET_BALANCE", "AETHER_TRANSACTION_STATUS", "AETHER_FIND_PAID_SERVICES", "AETHER_SEND_PAYMENT", "AETHER_CALL_PAID_API", "AETHER_REQUEST_TESTNET_FUNDS", "AETHER_QUOTE_SWAP",
+    "AETHER_GET_INFLOW_CAPS",
   ]);
   for (const a of plugin.actions!) {
     assert.ok(a.description.length > 20, a.name);
@@ -152,4 +153,26 @@ test("quote_swap: the reply shows the quote and says it isn't a swap", async () 
   const bad = await quote.handler(runtime, msg("quote 5 USDC", "2"), undefined, {}, undefined);
   assert.equal(bad!.success, false);
   assert.match(bad!.text!, /INVALID_AMOUNT/);
+});
+
+test("AETHER_GET_INFLOW_CAPS reads the room left, and says when there's no cap", async () => {
+  const file = JSON.parse(readFileSync(new URL("../../../testdata/inflowcaps.json", import.meta.url), "utf8"));
+  const node = (answer: { value?: string; code?: number; log?: string }) => (async (_i: unknown, init?: RequestInit) => {
+    const req = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: req.id, result: { response: { code: answer.code ?? 0, log: answer.log ?? "", value: answer.value ?? null } } }));
+  }) as typeof fetch;
+  const usdc = { usdcPath: "transfer/channel-2", usdcBaseDenom: "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d", usdcIssuer: "Injective" };
+  for (const [answer, want] of [
+    [{ value: file.vectors[1].value }, "Only these may come onto Aether, up to their room (more is refused and refunded on the sending chain): USDC over channel-2: room 89.99 USDC; OSMO over channel-3: room 0 OSMO."],
+    [file.inactive, "Aether has no inflow cap yet: tokens from other chains come in uncapped."],
+  ] as const) {
+    const kit = new AetherToolkit(new AetherClient({ rpc: "http://node.test", fetch: node(answer), ...usdc }), undefined, { faucetUrl: null });
+    const plugin = createAetherPlugin({ toolkit: () => kit });
+    const { runtime } = fakeRuntime({}, []);
+    await plugin.init!({}, runtime);
+    const caps = plugin.actions!.find((a) => a.name === "AETHER_GET_INFLOW_CAPS")!;
+    const r = await caps.handler(runtime, msg("how much USDC can still come onto Aether?"), undefined, {}, undefined);
+    assert.equal(r!.success, true);
+    assert.equal(r!.text, want);
+  }
 });

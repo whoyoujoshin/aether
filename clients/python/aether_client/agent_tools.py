@@ -39,11 +39,18 @@ from .client import AetherClient
 from .directory import find_services
 from .keys import Key, is_address
 from .paywall import PaymentError, fetch_paid
-from .swap_quote import TESTNET_OSMOSIS_POOL, TESTNET_OSMOSIS_REST, SwapQuoter
+from .swap_quote import OSMO_ON_AETHER, TESTNET_OSMOSIS_POOL, TESTNET_OSMOSIS_REST, SwapQuoter
 
 TESTNET_FAUCET = "https://faucet.157-245-252-221.sslip.io/request"
 _DAY = 24 * 3600
 _MAX_BODY = 64 * 1024  # of an API response passed back to the model
+
+
+def _format_micro(n: int) -> str:
+    """A 6-decimal base amount in whole units, trailing zeros trimmed (as agentmcp's formatMicro)."""
+    whole, frac = divmod(n, 1_000_000)
+    frac_s = f"{frac:06d}".rstrip("0")
+    return f"{whole}.{frac_s}" if frac_s else str(whole)
 
 
 def _error(code: str, message: str) -> dict:
@@ -195,6 +202,34 @@ class AetherToolkit:
             return _error("SWAP_NOT_CONFIGURED", "quote_swap is off: no Osmosis endpoint for this chain")
         return self._quoter.quote(amount, slippage_percent)
 
+    def get_inflow_caps(self) -> dict:
+        """List the tokens other chains may send onto Aether over IBC, each with its channel, the cap on how
+        much of it may be on Aether, how much is there now and the room left. A transfer of any other token,
+        or over the room, is refused and the sending chain refunds it: check the room before asking anyone
+        to send USDC (or anything else) onto Aether. Read-only. active=false means this chain has no cap yet."""
+        try:
+            caps = self.client.inflow_caps()
+        except Exception as e:  # noqa: BLE001
+            return _error("UNAVAILABLE", str(e))
+        if not caps.active:
+            return {"active": False, "caps": [],
+                    "message": "This chain has no inflow cap yet: tokens from other chains come in uncapped."}
+        rows = []
+        for c in caps.caps:
+            row = {"channel": c.channel, "denom": c.denom, "voucherDenom": c.voucher_denom,
+                   "cap": str(c.cap), "supply": str(c.supply), "room": str(c.room)}
+            # Named when known: OSMO, and this client's USDC (both 6 decimals).
+            asset = self.client.assets.by_denom(c.voucher_denom)
+            symbol = "OSMO" if c.voucher_denom == OSMO_ON_AETHER else (asset.symbol if asset and asset.decimals == 6 else "")
+            if symbol:
+                row["symbol"], row["roomDisplay"] = symbol, f"{_format_micro(c.room)} {symbol}"
+            rows.append(row)
+        return {"active": True, "caps": rows, "message":
+                "Only these tokens may come onto Aether, each over its channel and up to its room. Any other token "
+                "from another chain, or a transfer over the room, is refused, and the sending chain refunds it once "
+                "the refusal is relayed back (seconds to minutes). Check the room just before asking anyone to "
+                "send: others' transfers use it too."}
+
     def send_payment(self, to: str, amount: str, idempotency_key: str, memo: str = "") -> dict:
         """Send a payment. amount carries its unit ("0.5 AETH" or "500000uaeth"). idempotency_key is a
         unique ID for this payment: calling again with the same key never pays twice and returns the
@@ -318,6 +353,8 @@ class AetherToolkit:
                     "slippage_percent": {"type": "number", "description":
                                          "how far below the quote a swap may fill, for minOutput (default 1, at most 50)"}}},
                 True, self.quote_swap),
+            ToolSpec("aether_get_inflow_caps", self.get_inflow_caps.__doc__, {"type": "object", "properties": {}},
+                     True, self.get_inflow_caps),
         ]
         if self.key is not None:
             s += [

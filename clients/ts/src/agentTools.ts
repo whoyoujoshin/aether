@@ -14,7 +14,7 @@
 // descriptions, API bodies) is untrusted data, never instructions.
 
 import { AetherClient } from "./client.js";
-import { SwapQuoter, TESTNET_OSMOSIS_REST } from "./swapQuote.js";
+import { OSMO_ON_AETHER, SwapQuoter, TESTNET_OSMOSIS_REST } from "./swapQuote.js";
 import { Asset, decimalOf, formatAmount } from "./amount.js";
 import { findServices, Manifest } from "./directory.js";
 import { isAddress, Key } from "./keys.js";
@@ -25,6 +25,8 @@ const DAY_MS = 24 * 3600 * 1000;
 const MAX_BODY = 64 * 1024; // of an API response passed back to the model
 
 export type ToolResult = Record<string, unknown>;
+
+export const INFLOW_CAPS_DESCRIPTION = "List the tokens other chains may send onto Aether over IBC, each with its channel, the cap on how much of it may be on Aether, how much is there now and the room left. A transfer of any other token, or over the room, is refused and the sending chain refunds it: check the room before asking anyone to send USDC (or anything else) onto Aether. Read-only. active=false means this chain has no cap yet.";
 
 export interface ToolSpec {
   name: string;
@@ -61,6 +63,13 @@ export function manifestPrice(m: Partial<Manifest>): string {
 }
 
 const str = (v: unknown): string => (v === undefined || v === null ? "" : String(v));
+
+/** A 6-decimal base amount in whole units, trailing zeros trimmed (as agentmcp's formatMicro). */
+function formatMicro(n: bigint): string {
+  const whole = n / 1_000_000n;
+  const frac = (n % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole.toString();
+}
 
 export class AetherToolkit {
   private readonly capAsset: Asset;
@@ -144,6 +153,29 @@ export class AetherToolkit {
   async quoteSwap(args: { amount?: string; slippage_percent?: number }): Promise<ToolResult> {
     if (!this.quoter) return error("SWAP_NOT_CONFIGURED", "quote_swap is off: no Osmosis endpoint for this chain");
     return this.quoter.quote({ amount: str(args.amount), slippagePercent: args.slippage_percent === undefined ? 0 : Number(args.slippage_percent) });
+  }
+
+  /** The tokens other chains may send onto Aether and the room each has left (read-only). */
+  async getInflowCaps(): Promise<ToolResult> {
+    let caps;
+    try {
+      caps = await this.client.inflowCaps();
+    } catch (e) {
+      return error("UNAVAILABLE", (e as Error).message);
+    }
+    if (!caps.active) return { active: false, caps: [], message: "This chain has no inflow cap yet: tokens from other chains come in uncapped." };
+    return {
+      active: true,
+      caps: caps.caps.map((c) => {
+        // Named when known: OSMO, and this client's USDC (both 6 decimals).
+        const asset = this.client.assets.byDenom(c.voucherDenom);
+        const symbol = c.voucherDenom === OSMO_ON_AETHER ? "OSMO" : asset?.decimals === 6 ? asset.symbol : "";
+        const row: ToolResult = { channel: c.channel, denom: c.denom, voucherDenom: c.voucherDenom, cap: c.cap.toString(), supply: c.supply.toString(), room: c.room.toString() };
+        if (symbol) Object.assign(row, { symbol, roomDisplay: `${formatMicro(c.room)} ${symbol}` });
+        return row;
+      }),
+      message: "Only these tokens may come onto Aether, each over its channel and up to its room. Any other token from another chain, or a transfer over the room, is refused, and the sending chain refunds it once the refusal is relayed back (seconds to minutes). Check the room just before asking anyone to send: others' transfers use it too.",
+    };
   }
 
   async getTransactionStatus(args: { tx_hash?: string }): Promise<ToolResult> {
@@ -293,6 +325,11 @@ export class AetherToolkit {
         name: "aether_quote_swap", readOnly: true, run: (a) => this.quoteSwap(a),
         description: "Quote swapping AETH for OSMO in the AETH/OSMO pool on Osmosis testnet: the OSMO it would return after Osmosis's taker fee and the pool's fee, the price before and after, what fees and price impact cost together (costPercent), and a minOutput for slippage_percent. Read-only; the pool is small and moves with every trade.",
         parameters: { type: "object", required: ["amount"], properties: { amount: { type: "string", description: "the AETH to swap, with its unit: \"1 AETH\" or \"1000000uaeth\"" }, slippage_percent: { type: "number", description: "how far below the quote a swap may fill, for minOutput (default 1, at most 50)" } } },
+      },
+      {
+        name: "aether_get_inflow_caps", readOnly: true, run: () => this.getInflowCaps(),
+        description: INFLOW_CAPS_DESCRIPTION,
+        parameters: { type: "object", properties: {} },
       },
     ];
     if (this.key) {

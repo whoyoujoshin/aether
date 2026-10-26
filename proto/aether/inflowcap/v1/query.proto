@@ -1,0 +1,45 @@
+syntax = "proto3";
+package aether.inflowcap.v1;
+
+import "gogoproto/gogo.proto";
+import "cosmos_proto/cosmos.proto";
+import "aether/inflowcap/v1/inflowcap.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/inflowcap";
+
+service Query {
+  // Params is the allowlist as set.
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse);
+  // Caps is each entry with its voucher's supply now and the room left,
+  // so a sender can check before sending: a transfer over the room is
+  // refused, not queued.
+  rpc Caps(QueryCapsRequest) returns (QueryCapsResponse);
+}
+
+message QueryParamsRequest {}
+message QueryParamsResponse {
+  Params params = 1 [(gogoproto.nullable) = false];
+}
+
+message CapStatus {
+  Entry entry = 1 [(gogoproto.nullable) = false];
+  // ibc/... on Aether.
+  string voucher_denom = 2;
+  string supply = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  // cap - supply, or 0 if the supply is at or over the cap (a cap
+  // lowered below the supply).
+  string room = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message QueryCapsRequest {}
+message QueryCapsResponse {
+  repeated CapStatus caps = 1 [(gogoproto.nullable) = false];
+}

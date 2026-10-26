@@ -154,7 +154,8 @@ def test_uncertain_send_is_not_repeated(kit):
 def test_read_only_without_a_key():
     kit = AetherToolkit(FakeClient())
     names = [t.name for t in kit.specs()]
-    assert names == ["aether_get_balance", "aether_get_transaction_status", "aether_find_paid_services", "aether_quote_swap"]
+    assert names == ["aether_get_balance", "aether_get_transaction_status", "aether_find_paid_services", "aether_quote_swap",
+                     "aether_get_inflow_caps"]
     assert kit.send_payment("aether1x", "1 AETH", "k")["error"]["code"] == "READ_ONLY"
     assert kit.get_balance()["error"]["code"] == "INVALID_ARGUMENT"
 
@@ -163,7 +164,7 @@ def test_specs_and_dispatch(kit):
     openai = kit.tool_specs()
     assert {t["function"]["name"] for t in openai} == {
         "aether_get_balance", "aether_get_transaction_status", "aether_find_paid_services", "aether_quote_swap",
-        "aether_send_payment", "aether_call_paid_api", "aether_request_testnet_funds"}
+        "aether_get_inflow_caps", "aether_send_payment", "aether_call_paid_api", "aether_request_testnet_funds"}
     for t in openai:
         assert t["type"] == "function" and t["function"]["description"] and t["function"]["parameters"]["type"] == "object"
     anthropic = kit.tool_specs("anthropic")
@@ -181,7 +182,7 @@ def test_specs_and_dispatch(kit):
 def test_langchain_tools(kit):
     pytest.importorskip("langchain_core")
     tools = {t.name: t for t in kit.langchain()}
-    assert len(tools) == 6
+    assert len(tools) == 7
     send = tools["aether_send_payment"]
     assert "never pays twice" in send.description
     assert send.args["amount"]["description"].startswith("with its unit")

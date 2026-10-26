@@ -155,6 +155,8 @@ func TestA2A_SkillFromText(t *testing.T) {
 		"quote swapping 2.5 AETH to OSMO":     `quote_swap {"amount":"2.5 AETH"}`,
 		"swap 1000000uaeth":                   `quote_swap {"amount":"1000000 uaeth"}`,
 		"find paid services for block pulse?": `find_services {"query":"block pulse"}`,
+		"how much USDC can come onto Aether?": `get_inflow_caps {}`,
+		"what are the inflow caps?":           `get_inflow_caps {}`,
 	} {
 		skill, input, ok := skillFromText(in)
 		require.True(t, ok, in)

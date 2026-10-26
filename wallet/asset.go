@@ -93,14 +93,34 @@ func USDCAt(path, baseDenom string) (Asset, error) {
 	}, nil
 }
 
+// Circle's native USDC on Injective, as Injective's bank names it (6
+// decimals). Mainnet's contract is the one Circle lists for Injective
+// (circle.com, "Now available: native USDC & CCTP on Injective") and the
+// one Injective's verified token list names (InjectiveLabs/injective-lists,
+// json/tokens/verified/mainnet.json), checked 2026-10-26.
+const (
+	InjectiveMainnetUSDCBaseDenom = "erc20:0xa00C59fF5a080D2b954d0c75e46E22a0c371235a"
+	InjectiveTestnetUSDCBaseDenom = "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d"
+)
+
 // TestnetUSDC is the USDC the public testnet's tools accept: Circle's
 // USDC on Injective's testnet (injective-888), over Aether's direct
 // channel to Injective (Aether channel-2, Injective channel-77152; see
 // docs/INJECTIVE-TESTNET.md). Its first transfer landed 2026-10-08.
 var TestnetUSDC = USDCSetting{
 	Path:      "transfer/channel-2",
-	BaseDenom: "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d",
+	BaseDenom: InjectiveTestnetUSDCBaseDenom,
 	Issuer:    "Injective",
+}
+
+// MainnetUSDC is the USDC aether-1's tools accept: Circle's USDC on
+// Injective (injective-1) over Aether's channel to Injective. The channel
+// is a parameter because it exists only once the path is opened after
+// launch, and IBC channel IDs go to whoever opens a channel first: use
+// the one that was checked and listed in x/inflowcap
+// (docs/IBC-INFLOW-CAP.md, "Listing on aether-1").
+func MainnetUSDC(channel string) USDCSetting {
+	return USDCSetting{Path: "transfer/" + channel, BaseDenom: InjectiveMainnetUSDCBaseDenom, Issuer: "Injective"}
 }
 
 // USDCSetting is how a tool is told which USDC it accepts: Channel, as

@@ -9,6 +9,7 @@ from .keys import PREFIX, Key, address_bytes, address_of, is_address
 from .paywall import (DEPOSIT_MEMO_PREFIX, PULL_GRANT_SECONDS, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, FetchPaidResult, PaymentError,
                       fetch_paid, memo_payment_header, prepaid_payment_header, present_payment, pull_payment_header,
                       pull_signing_message, signing_message)
+from .inflow_caps import INFLOW_CAPS_PATH, InflowCap, InflowCaps, decode_inflow_caps
 from .rpc import Rpc, RpcError
 from .tx import (DEFAULT_GAS_LIMIT, MSG_EXEC_TYPE_URL, MSG_GRANT_TYPE_URL, SignedTx, build_send, build_tx, exec_send_msg,
                  grant_send_msg, memo_of)

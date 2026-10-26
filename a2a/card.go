@@ -98,6 +98,12 @@ var Skills = []AgentSkill{
 		Tags:        []string{"swap", "osmosis", "ibc", "read-only"},
 		Examples:    []string{"quote 1 AETH to OSMO", `{"skill":"quote_swap","input":{"amount":"1 AETH"}}`},
 	},
+	{
+		ID: "get_inflow_caps", Name: "IBC inflow caps",
+		Description: `The tokens other chains may send onto Aether, each with its channel, cap, supply on Aether and the room left. Anything else, or a transfer over the room, is refused and refunded on the sending chain. No input.`,
+		Tags:        []string{"ibc", "usdc", "limits", "read-only"},
+		Examples:    []string{"how much USDC can still come onto Aether?", `{"skill":"get_inflow_caps","input":{}}`},
+	},
 }
 
 // Card is the Agent Card for an endpoint at endpointURL. site is the

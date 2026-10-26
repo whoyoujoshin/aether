@@ -3,6 +3,7 @@ import { Rpc, RpcError, TxEvent, TxResult } from "./rpc.js";
 import { Key, isAddress } from "./keys.js";
 import { buildSend, buildTx, memoOf, MSG_SEND_TYPE_URL, SEND_AUTHORIZATION_TYPE_URL, type AnyMsg, SignedTx } from "./tx.js";
 import { AETH, Assets, DENOM, type Asset, type UsdcSetting } from "./amount.js";
+import { decodeInflowCaps, INFLOW_CAPS_PATH, type InflowCaps } from "./inflowCaps.js";
 
 export type TxStatus = "pending" | "confirmed" | "failed";
 
@@ -131,6 +132,19 @@ export class AetherClient {
   /** The balance of every asset this client knows, AETH first. */
   async balances(address: string): Promise<{ asset: Asset; amount: bigint }[]> {
     return Promise.all(this.assets.list().map(async (asset) => ({ asset, amount: await this.balance(address, asset) })));
+  }
+
+  /**
+   * The tokens other chains may send onto Aether and the room each has
+   * left (x/inflowcap). active is false on a chain without it yet.
+   */
+  async inflowCaps(): Promise<InflowCaps> {
+    try {
+      return { active: true, caps: decodeInflowCaps(await this.rpc.abciQuery(INFLOW_CAPS_PATH, new Uint8Array())) };
+    } catch (e) {
+      if (e instanceof RpcError && /unknown query path/i.test(e.message)) return { active: false, caps: [] };
+      throw e;
+    }
   }
 
   /** Account number and next sequence; undefined if the account doesn't exist yet (never received funds). */

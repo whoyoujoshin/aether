@@ -29,6 +29,13 @@ type swapFake struct {
 	sent      map[string]uint64 // tx hash -> packet sequence
 	outcomes  map[uint64]*wallet.PacketOutcome
 	transfers []*transfertypes.MsgTransfer
+	caps      wallet.InflowCaps // Aether's inflow caps; not Active by default
+}
+
+func (s *swapFake) inflowCaps() (wallet.InflowCaps, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.caps, nil
 }
 
 func setupSwap(t *testing.T) (*swapFake, string) {

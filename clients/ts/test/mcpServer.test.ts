@@ -29,7 +29,7 @@ test("aether-mcp: four read-only tools, and nothing that spends", async () => {
   const t = tools();
   const list = (await handleMcpMessage(t, { jsonrpc: "2.0", id: 1, method: "tools/list" }, "1"))!;
   const listed = (list.result as { tools: { name: string; annotations: { readOnlyHint: boolean; destructiveHint: boolean }; run?: unknown }[] }).tools;
-  assert.deepEqual(listed.map((x) => x.name), ["get_balance", "get_transaction_status", "find_services", "quote_swap"]);
+  assert.deepEqual(listed.map((x) => x.name), ["get_balance", "get_transaction_status", "find_services", "quote_swap", "get_inflow_caps"]);
   for (const x of listed) {
     assert.equal(x.annotations.readOnlyHint, true);
     assert.equal(x.annotations.destructiveHint, false);
@@ -68,5 +68,5 @@ test("aether-mcp: the stdio loop answers line by line and ends with its input", 
   assert.equal(replies.length, 3);
   assert.equal(replies.find((r) => r.id === 1).result.serverInfo.version, "1.2.3");
   assert.equal(replies.find((r) => r.id === null).error.code, -32700);
-  assert.equal(replies.find((r) => r.id === 2).result.tools.length, 4);
+  assert.equal(replies.find((r) => r.id === 2).result.tools.length, 5);
 });

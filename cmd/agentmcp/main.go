@@ -683,6 +683,11 @@ func newServer() *mcp.Server {
 	}), coded(toolQuoteSwap))
 
 	mcp.AddTool(server, annotate(&mcp.Tool{
+		Name:        "get_inflow_caps",
+		Description: getInflowCapsDescription,
+	}), coded(toolGetInflowCaps))
+
+	mcp.AddTool(server, annotate(&mcp.Tool{
 		Name: "swap_aeth",
 		Description: "Swap this agent's AETH for OSMO in the AETH/OSMO pool on Osmosis testnet and get the OSMO back on Aether, in about 25 seconds. " +
 			"It quotes first (as quote_swap) and refuses if fees and price impact exceed maxCostPercent; the swap fills at no less than minOutput " +

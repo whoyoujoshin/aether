@@ -64,10 +64,14 @@ adapter) and GOAT 0.5 (and its Vercel AI adapter). For ElizaOS, use
 ## Read-only MCP server
 
 `aether-mcp` is a read-only Aether MCP server over stdio, in this package: the
-public `/mcp`'s `get_balance`, `get_transaction_status`, `find_services` and
-`quote_swap`, run on your own machine. It holds no key and can't send anything.
-`quote_swap` reads Osmosis testnet's own estimate for the AETH/OSMO pool (1370);
-the swap itself is agentmcp's `swap_aeth`.
+public `/mcp`'s `get_balance`, `get_transaction_status`, `find_services`,
+`quote_swap` and `get_inflow_caps`, run on your own machine. It holds no key and
+can't send anything. `quote_swap` reads Osmosis testnet's own estimate for the
+AETH/OSMO pool (1370); the swap itself is agentmcp's `swap_aeth`.
+`get_inflow_caps` (`AetherClient.inflowCaps()`, and `aether_get_inflow_caps` in
+the toolkit) lists the tokens other chains may send onto Aether and the room
+each has left: a transfer of anything else, or over the room, is refused and
+refunded on the sending chain (`docs/IBC-INFLOW-CAP.md`).
 
 ```json
 { "mcpServers": { "aether": { "command": "npx", "args": ["-y", "-p", "aether-chain-client", "aether-mcp"] } } }

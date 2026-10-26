@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"sync"
 	"sync/atomic"
 
 	sdkerrors "cosmossdk.io/errors"
@@ -104,9 +106,61 @@ type HelicaseSource interface {
 type helicaseSourceHolder struct{ HelicaseSource }
 
 // helicaseState holds the source PrepareProposal reads, which the worker
-// sets from another goroutine.
+// sets from another goroutine, and the transactions of the last few
+// committed blocks.
 type helicaseState struct {
 	source atomic.Pointer[helicaseSourceHolder]
+
+	mu        sync.Mutex
+	committed map[[sha256.Size]byte]int64 // tx hash -> height it was committed at
+}
+
+// helicaseRecentBlocks is how many blocks back a proposer remembers what
+// was committed. A worker's batch is proposed for up to staleAfter (2)
+// blocks after it was computed, so a batch whose transactions already
+// made it into a block can come round again; this covers that with room.
+const helicaseRecentBlocks = 10
+
+// noteCommitted remembers the transactions of the block at height.
+func (s *helicaseState) noteCommitted(height int64, txs [][]byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.committed == nil {
+		s.committed = map[[sha256.Size]byte]int64{}
+	}
+	for h, at := range s.committed {
+		if at <= height-helicaseRecentBlocks {
+			delete(s.committed, h)
+		}
+	}
+	for _, bz := range txs {
+		s.committed[sha256.Sum256(bz)] = height
+	}
+}
+
+// committedAt is the height a transaction with exactly these bytes was
+// committed at in the last helicaseRecentBlocks blocks, or 0.
+func (s *helicaseState) committedAt(bz []byte) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.committed[sha256.Sum256(bz)]
+}
+
+// FinalizeBlock is BaseApp's, noting the block's transactions for
+// helicasePrepareProposal. A relay transaction has no signature and no
+// sequence, so proposing the same one again makes a transaction with the
+// same hash: executing it is a no-op, but CometBFT's transaction index
+// keeps one result per hash, so the no-op's result replaces the one that
+// delivered the packet, and cmd/outbound, which finds Aether's
+// acknowledgements by searching that index, can no longer find it. Seen
+// on a devnet with 1 s blocks, 2026-10-26. This is the proposer's own
+// memory, never consensus: validators don't check it.
+func (app *App) FinalizeBlock(req *abci.RequestFinalizeBlock) (*abci.ResponseFinalizeBlock, error) {
+	res, err := app.BaseApp.FinalizeBlock(req)
+	if err == nil {
+		app.helicase.noteCommitted(req.Height, req.Txs)
+	}
+	return res, err
 }
 
 // SetHelicaseSource attaches the worker whose relay transactions this
@@ -282,6 +336,9 @@ func (app *App) helicasePrepareProposal(next sdk.PrepareProposalHandler) sdk.Pre
 		for _, bz := range holder.RelayTxs(req.Height) {
 			if len(relay) == helicaseMaxTxsPerBlock || used+int64(len(bz)) > budget {
 				break
+			}
+			if at := app.helicase.committedAt(bz); at != 0 {
+				continue // already in block at; see FinalizeBlock
 			}
 			tx, err := app.TxDecode(bz)
 			if err == nil && isHelicaseTx(tx) {

@@ -25,7 +25,7 @@ var publicMCP string
 // TestServerCard_ListsEveryPublicTool keeps this in step with
 // cmd/agentmcp's publicToolNames.
 var publicMCPTools = []string{
-	"get_balance", "get_miner_status", "get_account_authenticators", "get_transaction_status", "find_services", "quote_swap",
+	"get_balance", "get_miner_status", "get_account_authenticators", "get_transaction_status", "find_services", "quote_swap", "get_inflow_caps",
 }
 
 const mcpRegistryName = "io.github.whoyoujoshin/aether-wallet"

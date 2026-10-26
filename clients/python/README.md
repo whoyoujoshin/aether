@@ -68,12 +68,17 @@ result = kit.call(name, arguments)   # ... and the answer to the model's tool ca
 - **No double payments.** `send_payment` takes an `idempotency_key`; the same key
   returns the first result instead of paying again.
 - **Read-only without a key.** `AetherToolkit(client)` offers only the balance,
-  transaction, directory and swap-quote tools.
+  transaction, directory, swap-quote and inflow-cap tools.
 - **Swap quotes.** `aether_quote_swap` reads Osmosis's own estimate for the AETH/OSMO
   pool (1370) and gives the OSMO out, the cost in fees and price impact, and a
   `minOutput` for a slippage. It is on for `aether-testnet-1`; `osmosis_rest=[...]`
   names other Osmosis REST endpoints and `osmosis_rest=[]` turns it off. It only
   quotes: the swap itself is agentmcp's `swap_aeth` (see `docs/OSMOSIS-POOL.md`).
+- **Inflow caps.** `aether_get_inflow_caps` (`AetherClient.inflow_caps()`) lists the
+  tokens other chains may send onto Aether and the room each has left. A transfer of
+  anything else, or over the room, is refused and refunded on the sending chain, so
+  check before asking anyone to send USDC (see `docs/IBC-INFLOW-CAP.md`). On a chain
+  without the cap yet it answers `active: false`.
 - **Errors are results.** A failed call returns `{"error": {"code", "message"}}`, so
   the model sees what went wrong instead of the run stopping.
 - **Untrusted text stays data.** Memos, service names and descriptions and API

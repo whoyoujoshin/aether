@@ -56,11 +56,12 @@ func TestFreshChain_EveryModuleFromBlockOne(t *testing.T) {
 	require.True(t, first.ibcWired)
 	require.True(t, first.accountAuthWired)
 	require.True(t, first.escrowWired)
+	require.True(t, first.inflowCapWired)
 
 	genesisOn(t, first, chainID)
 	finalizeAndCommit(t, first, 1)
 	names := committedStoreNames(t, first, 1)
-	for _, set := range [][]string{authzFeegrantStoreKeys, ibcStoreKeys, accountAuthStoreKeys, escrowStoreKeys} {
+	for _, set := range [][]string{authzFeegrantStoreKeys, ibcStoreKeys, accountAuthStoreKeys, escrowStoreKeys, inflowCapStoreKeys} {
 		for _, name := range set {
 			require.True(t, names[name], "%s must be in the AppHash from block 1", name)
 		}
@@ -73,6 +74,12 @@ func TestFreshChain_EveryModuleFromBlockOne(t *testing.T) {
 	require.NotPanics(t, func() { first.ICAHostKeeper.GetParams(ctx) })
 	require.True(t, first.TransferKeeper.GetParams(ctx).SendEnabled)
 	require.NotNil(t, first.AccountKeeper.GetModuleAccount(ctx, escrow.ModuleName))
+	// The inflow cap starts from its default, which lists nothing: every
+	// token from another chain is refused until genesis lists it. The
+	// testnet's entries are for the testnet only.
+	require.True(t, first.InflowCapKeeper.HasParams(ctx))
+	require.Empty(t, first.InflowCapKeeper.GetParams(ctx).Entries)
+	require.True(t, inflowCapHost{first}.Active(ctx))
 
 	again := newChainApp(t, db, chainID)
 	require.True(t, again.ibcWired)
@@ -88,4 +95,5 @@ func TestTestnetChain_GatesUnchanged(t *testing.T) {
 	require.False(t, app.ibcWired)
 	require.False(t, app.accountAuthWired)
 	require.False(t, app.escrowWired)
+	require.False(t, app.inflowCapWired)
 }

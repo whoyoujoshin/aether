@@ -245,7 +245,7 @@ go run ./cmd/agentmcp --grpc localhost:9090 --rpc http://localhost:26657 --chain
     [--granter <your-address> [--fee-granter <your-address>]]
 ```
 
-**Public read-only URL** (no local package). `--http` serves Streamable HTTP at `/mcp` and `GET /healthz`. It is a different server from the wallet above: it never opens the keyring and does not register tools that spend, sign, create a key, or call the faucet. `get_balance`, `get_miner_status` and `get_account_authenticators` require an address. `get_transaction_status` looks a hash up. `find_services` is the service directory. `quote_swap` quotes AETH into OSMO on the Osmosis testnet pool. Stdio, with the full wallet, stays the default when `--http` is omitted.
+**Public read-only URL** (no local package). `--http` serves Streamable HTTP at `/mcp` and `GET /healthz`. It is a different server from the wallet above: it never opens the keyring and does not register tools that spend, sign, create a key, or call the faucet. `get_balance`, `get_miner_status` and `get_account_authenticators` require an address. `get_transaction_status` looks a hash up. `find_services` is the service directory. `quote_swap` quotes AETH into OSMO on the Osmosis testnet pool. `get_inflow_caps` lists the tokens other chains may send onto Aether and the room each has left. Stdio, with the full wallet, stays the default when `--http` is omitted.
 
 ```bash
 go run ./cmd/agentmcp --http 127.0.0.1:8090 \
