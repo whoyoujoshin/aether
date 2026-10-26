@@ -105,6 +105,12 @@ export function Legend({ segments }: { segments: Segment[] }) {
   );
 }
 
+/** A calm note: something is missing or stale, and the rest of the page is still good. */
+export function NoticeBanner({ children }: { children: ReactNode }) {
+  if (!children) return null;
+  return <div className="warning-banner">{children}</div>;
+}
+
 export function ErrorBanner({ error, prefix }: { error: string | null; prefix?: string }) {
   if (!error) return null;
   return (

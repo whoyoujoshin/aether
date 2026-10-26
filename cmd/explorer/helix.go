@@ -38,7 +38,42 @@ var (
 )
 
 // helixPeer is one chain the helix can draw opposite Aether.
-type helixPeer struct{ endpoint, name string }
+// endpoint is tried first. fallbacks are tried, in order, when it
+// refuses or times out. In --ibc-rpc they are written with pipes:
+// https://primary.example|https://fallback.example
+type helixPeer struct {
+	endpoint  string
+	fallbacks []string
+	name      string
+}
+
+// endpoints is the primary RPC and then each fallback.
+func (p helixPeer) endpoints() []string {
+	out := make([]string, 0, 1+len(p.fallbacks))
+	if p.endpoint != "" {
+		out = append(out, p.endpoint)
+	}
+	out = append(out, p.fallbacks...)
+	return out
+}
+
+// splitEndpoints splits one --ibc-rpc slot on pipes. A slot with no
+// pipe has a nil fallback list, which is what a single URL always was.
+func splitEndpoints(slot string) (primary string, fallbacks []string) {
+	var eps []string
+	for _, p := range strings.Split(slot, "|") {
+		if p = strings.TrimSpace(p); p != "" {
+			eps = append(eps, p)
+		}
+	}
+	if len(eps) == 0 {
+		return "", nil
+	}
+	if len(eps) == 1 {
+		return eps[0], nil
+	}
+	return eps[0], eps[1:]
+}
 
 // helixPeers are the chains in --ibc-rpc, named by --ibc-name.
 func helixPeers() []helixPeer {
@@ -48,10 +83,11 @@ func helixPeers() []helixPeer {
 	}
 	var peers []helixPeer
 	for _, e := range strings.Split(ibcRPCEndpoint, ",") {
-		if e = strings.TrimSpace(e); e == "" {
+		primary, fallbacks := splitEndpoints(e)
+		if primary == "" {
 			continue
 		}
-		p := helixPeer{endpoint: e}
+		p := helixPeer{endpoint: primary, fallbacks: fallbacks}
 		if i := len(peers); i < len(names) {
 			p.name = names[i]
 		}
@@ -65,15 +101,30 @@ var (
 	peerChainIDs   = map[string]string{} // endpoint -> chain ID, once seen
 )
 
-// peerChainID is the chain ID behind endpoint, asked once and remembered:
-// a chain's ID doesn't change. Empty if the chain can't be reached.
-func peerChainID(ctx context.Context, endpoint string) string {
+// peerChainID is the chain ID behind the first endpoint that answers,
+// asked once per endpoint and remembered: a chain's ID doesn't change.
+// Empty if none of them can be reached.
+func peerChainID(ctx context.Context, endpoints ...string) string {
 	peerChainIDsMu.Lock()
-	id, ok := peerChainIDs[endpoint]
-	peerChainIDsMu.Unlock()
-	if ok {
-		return id
+	for _, endpoint := range endpoints {
+		if id := peerChainIDs[endpoint]; id != "" {
+			peerChainIDsMu.Unlock()
+			return id
+		}
 	}
+	peerChainIDsMu.Unlock()
+	for _, endpoint := range endpoints {
+		if ctx.Err() != nil {
+			return ""
+		}
+		if id := fetchPeerChainID(ctx, endpoint); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+func fetchPeerChainID(ctx context.Context, endpoint string) string {
 	rpc, err := cometrpchttp.New(endpoint, "/websocket")
 	if err != nil {
 		return ""
@@ -81,11 +132,22 @@ func peerChainID(ctx context.Context, endpoint string) string {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	st, err := rpc.Status(ctx)
-	if err != nil {
+	if err != nil || st == nil {
 		return ""
 	}
 	rememberPeerChainID(endpoint, st.NodeInfo.Network)
 	return st.NodeInfo.Network
+}
+
+func rememberedChainID(endpoints []string) string {
+	peerChainIDsMu.Lock()
+	defer peerChainIDsMu.Unlock()
+	for _, endpoint := range endpoints {
+		if id := peerChainIDs[endpoint]; id != "" {
+			return id
+		}
+	}
+	return ""
 }
 
 func rememberPeerChainID(endpoint, chainID string) {
@@ -130,7 +192,11 @@ type helixStrandDTO struct {
 	Height        int64           `json:"height"`
 	BlockTimeSecs float64         `json:"blockTimeSecs"` // mean over the blocks returned; 0 with fewer than two
 	Validators    int             `json:"validators"`
-	Blocks        []helixBlockDTO `json:"blocks"` // newest first
+	Blocks        []helixBlockDTO `json:"blocks"`                // newest first
+	Stale         bool            `json:"stale,omitempty"`       // blocks are the last good read; the RPC missed this request
+	AsOf          string          `json:"asOf,omitempty"`        // when that read happened
+	Source        string          `json:"source,omitempty"`      // which RPC answered
+	ViaFallback   bool            `json:"viaFallback,omitempty"` // a fallback answered, not the first URL
 }
 
 type packetStepDTO struct {
@@ -183,6 +249,10 @@ type helixDTO struct {
 	Bridge     *helixBridgeDTO   `json:"bridge"`  // null without an ICS-20 channel to that chain
 	Packets    []helixPacketDTO  `json:"packets"` // newest first
 	Errors     map[string]string `json:"errors,omitempty"`
+	// Degraded is a calm explanation when a counterparty RPC missed.
+	// The rest of the response is still Aether's own data, plus any
+	// cached blocks. It is not an error: the chain is fine.
+	Degraded map[string]string `json:"degraded,omitempty"`
 }
 
 // packetEvent is one IBC packet event as a chain emitted it.
@@ -514,6 +584,99 @@ func intParam(raw string, def, lo, hi int) int {
 }
 
 // --- GET /api/helix?seconds=&min=&peer= ---
+const (
+	peerAttemptTimeout = 8 * time.Second
+	ibcSnapTTL         = 6 * time.Hour
+)
+
+type ibcStrandSnap struct {
+	at     time.Time
+	strand helixStrandDTO
+}
+
+var (
+	ibcSnapMu sync.Mutex
+	ibcSnaps  = map[string]ibcStrandSnap{}
+)
+
+func storeIbcSnap(primary string, strand helixStrandDTO) {
+	if primary == "" {
+		return
+	}
+	strand.Blocks = append([]helixBlockDTO(nil), strand.Blocks...)
+	strand.Stale = false
+	strand.AsOf = ""
+	ibcSnapMu.Lock()
+	ibcSnaps[primary] = ibcStrandSnap{at: time.Now(), strand: strand}
+	ibcSnapMu.Unlock()
+}
+
+func loadIbcSnap(primary string) (ibcStrandSnap, bool) {
+	ibcSnapMu.Lock()
+	defer ibcSnapMu.Unlock()
+	s, ok := ibcSnaps[primary]
+	if !ok || time.Since(s.at) > ibcSnapTTL {
+		return ibcStrandSnap{}, false
+	}
+	return s, true
+}
+
+// readPeerStrand tries the peer's RPCs in order. A refusal or a timeout
+// moves on to the next. If every one fails, the last good strand from
+// the past six hours is returned with the error still set, so the page
+// can say the blocks are cached. Packet events from that old window are
+// not returned: they would be joined with this request's Aether events.
+func readPeerStrand(ctx context.Context, peer helixPeer, cutoff time.Time, minBlocks int) (helixStrandDTO, []packetEvent, error) {
+	var last error
+	for i, ep := range peer.endpoints() {
+		if ctx.Err() != nil {
+			break
+		}
+		attempt, cancel := context.WithTimeout(ctx, peerAttemptTimeout)
+		strand, ev, err := readStrand(attempt, ep, "ibc", cutoff, minBlocks, nil)
+		cancel()
+		if err == nil {
+			strand.Source = ep
+			strand.ViaFallback = i > 0
+			storeIbcSnap(peer.endpoint, strand)
+			return strand, ev, nil
+		}
+		last = err
+	}
+	if snap, ok := loadIbcSnap(peer.endpoint); ok {
+		s := snap.strand
+		s.Stale = true
+		s.AsOf = snap.at.UTC().Format(time.RFC3339Nano)
+		return s, nil, last
+	}
+	return helixStrandDTO{Blocks: []helixBlockDTO{}}, nil, last
+}
+
+// counterpartyNote is the sentence the overview shows when the other
+// chain's RPC missed. It names a 403 as a refusal, which is what public
+// providers do to datacenter addresses, and it does not repeat the RPC
+// client's unmarshal noise.
+func counterpartyNote(err error, asOf string) string {
+	why := "didn't answer"
+	if err != nil {
+		msg := err.Error()
+		low := strings.ToLower(msg)
+		switch {
+		case strings.Contains(msg, "403") || strings.Contains(low, "forbidden"):
+			why = "refused this explorer with HTTP 403. Public RPC providers often block datacenter addresses"
+		case strings.Contains(low, "timeout") || strings.Contains(low, "deadline") || strings.Contains(low, "canceled"):
+			why = "timed out"
+		default:
+			why = "didn't answer (" + clipErr(err, 160) + ")"
+		}
+	}
+	note := "The counterparty RPC " + why + ". Aether's own channel, escrow and packets are still shown."
+	if asOf != "" {
+		return note + " Blocks from the other chain are the last ones read at " + asOf + "."
+	}
+	return note + " No earlier read is cached. A fallback RPC can be added after a pipe in --ibc-rpc (primary|fallback)."
+}
+
 func handleHelix(w http.ResponseWriter, r *http.Request) {
 	seconds := intParam(r.URL.Query().Get("seconds"), helixDefaultSeconds, 10, helixMaxSeconds)
 	minBlocks := intParam(r.URL.Query().Get("min"), 0, 0, helixMaxMinBlocks)
@@ -531,7 +694,7 @@ func handleHelix(w http.ResponseWriter, r *http.Request) {
 		pwg.Add(1)
 		go func() {
 			defer pwg.Done()
-			id := peerChainID(ctx, p.endpoint)
+			id := peerChainID(ctx, p.endpoints()...)
 			name := p.name
 			if name == "" {
 				name = id
@@ -540,9 +703,11 @@ func handleHelix(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 	pwg.Wait()
+	picked := 0
 	var peer *helixPeer
 	if len(peers) > 0 {
-		peer = &peers[pickPeer(out.Peers, r.URL.Query().Get("peer"))]
+		picked = pickPeer(out.Peers, r.URL.Query().Get("peer"))
+		peer = &peers[picked]
 	}
 	// Aether's proposers by miner account, as the block page names them.
 	var miners map[string]string
@@ -566,7 +731,7 @@ func handleHelix(w http.ResponseWriter, r *http.Request) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ibc, ibcEv, ibcErr = readStrand(ctx, peer.endpoint, "ibc", cutoff, minBlocks, nil)
+			ibc, ibcEv, ibcErr = readPeerStrand(ctx, *peer, cutoff, minBlocks)
 		}()
 	}
 	wg.Wait()
@@ -577,8 +742,15 @@ func handleHelix(w http.ResponseWriter, r *http.Request) {
 	aether.Name = "Aether"
 	out.Aether = aether
 	if peer != nil {
-		if ibcErr != nil {
-			errs["ibc"] = ibcErr.Error()
+		// The strand read can fail while we already know which chain it
+		// is (an earlier request, or a fallback that answered /status).
+		// That chain ID is what lets Aether's own channel state still
+		// draw the bridge.
+		if ibc.ChainID == "" && picked < len(out.Peers) {
+			ibc.ChainID = out.Peers[picked].ChainID
+		}
+		if ibc.ChainID == "" {
+			ibc.ChainID = rememberedChainID(peer.endpoints())
 		}
 		if peer.name != "" {
 			ibc.Name = peer.name
@@ -586,18 +758,25 @@ func handleHelix(w http.ResponseWriter, r *http.Request) {
 		if ibc.Blocks == nil {
 			ibc.Blocks = []helixBlockDTO{}
 		}
+		if ibcErr != nil {
+			if out.Degraded == nil {
+				out.Degraded = map[string]string{}
+			}
+			out.Degraded["ibc"] = counterpartyNote(ibcErr, ibc.AsOf)
+			ibcEv = nil
+		}
 		out.IBC = &ibc
+		if ibc.ChainID != "" && picked < len(out.Peers) && out.Peers[picked].ChainID == "" {
+			out.Peers[picked].ChainID = ibc.ChainID
+		}
 	}
 
 	// The transfer channel to that chain, from Aether's own IBC state.
 	aetherChannel, ibcChannel := "", ""
 	if out.IBC != nil && out.IBC.ChainID != "" {
 		if conn, err := newGRPC(); err == nil {
-			if summary, err := readIBC(ctx, conn); err == nil {
-				for _, ch := range summary.Channels {
-					if ch.PortID != transfertypes.PortID || ch.CounterpartyChainID != out.IBC.ChainID || ch.State != "STATE_OPEN" {
-						continue
-					}
+			if summary, err := cachedReadIBC(ctx, conn); err == nil {
+				if ch, ok := pickBridgeChannel(summary.Channels, out.IBC.ChainID); ok {
 					b := &helixBridgeDTO{PortID: ch.PortID, ChannelID: ch.ChannelID, CounterpartyChannelID: ch.CounterpartyChannel,
 						PacketsSent: ch.PacketsSent, InFlight: ch.PendingPackets, EscrowedUaeth: "0"}
 					for _, c := range ch.EscrowBalances {
@@ -607,7 +786,6 @@ func handleHelix(w http.ResponseWriter, r *http.Request) {
 					}
 					out.Bridge = b
 					aetherChannel, ibcChannel = ch.ChannelID, ch.CounterpartyChannel
-					break
 				}
 			} else {
 				errs["bridge"] = err.Error()

@@ -101,7 +101,7 @@ export function HelixHero({ helix, now, view, width: W, height: H, windowSecs }:
   let rungs = "";
   for (let x = 6; x < W; x += 14) rungs += `M${x} ${(cy + A * sn(x)).toFixed(1)} L${x} ${(cy - A * sn(x)).toFixed(1)} `;
 
-  const hasIbc = !!helix.ibc;
+  const hasIbc = !!helix.ibc && helix.ibc.height > 0;
   const dA = view === "ibc" ? 0.12 : 1;
   const dB = view === "aether" ? 0.12 : 1;
   const fade = { transition: "opacity .4s" };
@@ -177,9 +177,13 @@ export function HelixHero({ helix, now, view, width: W, height: H, windowSecs }:
       <text x={nowX + 14} y={cy + A * sn(nowX) + 4} fill={AETHER_COLOR} fontSize={12} fontWeight={600} fontFamily={MONO} style={{ ...fade, opacity: dA }}>
         #{int(helix.aether.height)}
       </text>
-      {helix.ibc ? (
-        <text x={nowX + 14} y={cy - A * sn(nowX) + 4} fill={IBC_COLOR} fontSize={12} fontWeight={600} fontFamily={MONO} style={{ ...fade, opacity: dB }}>
+      {helix.ibc && helix.ibc.height > 0 ? (
+        <text x={nowX + 14} y={cy - A * sn(nowX) + 4} fill={IBC_COLOR} fontSize={12} fontWeight={600} fontFamily={MONO} style={{ ...fade, opacity: helix.ibc.stale ? 0.55 : dB }}>
           #{int(helix.ibc.height)}
+        </text>
+      ) : helix.ibc ? (
+        <text x={Math.min(nowX - 8, W - 12)} y={cy - A * sn(nowX) + 4} fill={IBC_COLOR} fontSize={11} fontFamily={MONO} textAnchor="end" style={{ ...fade, opacity: 0.55 }}>
+          RPC unavailable
         </text>
       ) : (
         <text
@@ -222,6 +226,21 @@ export function vSegment(row: number, rowH: number, width: number, amp: number, 
   }
   const at = (sign: number) => ({ x: +(cx + sign * amp * Math.sin(th(rowH / 2))).toFixed(1), z: sign * Math.cos(th(rowH / 2)) });
   return { aF, aB, bF, bB, rungs, at };
+}
+
+/**
+ * What to tell a person when the counterparty RPC missed. The raw 403
+ * (and its "unexpected end of JSON") is a provider refusing this host,
+ * not a broken chain, so it is not repeated.
+ */
+export function counterpartyNotice(h: Helix | null | undefined, name: string): string {
+  if (!h) return "";
+  if (h.degraded?.ibc) return h.degraded.ibc;
+  if (!h.errors?.ibc) return "";
+  if (/403|forbidden/i.test(h.errors.ibc)) {
+    return `${name}'s public RPC refused this explorer (HTTP 403). Providers often block datacenter addresses, so this is a missing view of that chain, not a halt. Aether's channel and packets are still shown.`;
+  }
+  return `${name}'s RPC didn't answer. Aether's channel and packets are still shown.`;
 }
 
 /** A block on either strand, for the feeds that mix both. */

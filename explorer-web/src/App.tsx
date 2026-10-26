@@ -13,6 +13,7 @@ import Agents from "./pages/Agents";
 import Faucet from "./pages/Faucet";
 import Quest from "./pages/Quest";
 import IBC from "./pages/IBC";
+import Accounts from "./pages/Accounts";
 import HelixOverview from "./pages/HelixOverview";
 import HelixBlocks from "./pages/HelixBlocks";
 import { ChainProvider, useChain } from "./chain";
@@ -69,6 +70,8 @@ function Shell() {
         <Route path="/governance" element={<Governance />} />
         <Route path="/services" element={<Services />} />
         <Route path="/ibc" element={<IBC />} />
+        <Route path="/accounts" element={<Accounts />} />
+        <Route path="/accounts/:address" element={<Accounts />} />
         <Route path="/agents" element={<Agents />} />
         <Route path="/faucet" element={<Faucet />} />
         <Route path="/quest" element={<Quest />} />
