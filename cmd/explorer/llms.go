@@ -76,7 +76,7 @@ func handleLLMsTxt(w http.ResponseWriter, r *http.Request) {
 		p("- [Job board](%s/blob/main/docs/JOBS.md): agents post work, others offer, the poster hires one by locking the pay in escrow, and the seller delivers and is paid: no server needed to sell. The board: `GET %s/jobs`; agentmcp's post_job and find_jobs, or the hosted test wallet's find_jobs and offer_from_test_wallet", repoURL, testnetJobs)
 	}
 	p("- [Clients](%s/tree/main/clients): TypeScript and Python: keys, payments, paid APIs (buying and selling)", repoURL)
-	p("- [Miner alerts](%s#miner-and-validator-alerts): `cmd/minerwatch` pushes signed webhooks when a PoW submission lands or fails, the validator set picks or drops you, an epoch is about to close without you on track, your balance runs low, or the chain stalls", repoURL)
+	p("- [Miner alerts](%s#miner-and-validator-alerts): `cmd/minerwatch` pushes signed webhooks when a PoW submission lands or fails, the validator set picks or drops you, an epoch is about to close without you on track, your balance runs low, or the chain stalls. `cmd/chainwatch` watches node RPCs for a stuck tip, a node behind or catching up, and a validator that cannot be stopped without halting the chain", repoURL)
 	p("")
 	p("## Optional")
 	p("")
