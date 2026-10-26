@@ -10,7 +10,7 @@
     "dist": "npm run build-backend && electron-builder"
   },
   "devDependencies": {
-    "electron": "^44.4.5",
+    "electron": "^44.9.1",
     "electron-builder": "^26.15.3"
   },
   "build": {
