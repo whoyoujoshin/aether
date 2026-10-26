@@ -39,6 +39,12 @@ type ligaseFixture struct {
 }
 
 func newLigaseFixture(t *testing.T, ligaseAt int64) *ligaseFixture {
+	return newLigaseFixtureOn(t, ligaseAt, "aether-test-a")
+}
+
+// newLigaseFixtureOn is newLigaseFixture with Aether on chainA, e.g. a
+// fresh chain ID, which opens every gate from block 1.
+func newLigaseFixtureOn(t *testing.T, ligaseAt int64, chainA string) *ligaseFixture {
 	defer func(orig int64) { escrowActivationHeight = orig }(escrowActivationHeight)
 	escrowActivationHeight = 1 // wired from the start; block 1 creates its module account
 	orig := ligaseActivationHeight
@@ -46,7 +52,7 @@ func newLigaseFixture(t *testing.T, ligaseAt int64) *ligaseFixture {
 	t.Cleanup(func() { ligaseActivationHeight = orig })
 
 	coord := &ibctesting.Coordinator{T: t, CurrentTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
-	a := newIBCTestChain(t, coord, "aether-test-a")
+	a := newIBCTestChain(t, coord, chainA)
 	b := newIBCTestChain(t, coord, "aether-test-b")
 	coord.Chains = map[string]*ibctesting.TestChain{a.ChainID: a, b.ChainID: b}
 	path := ibctesting.NewTransferPath(a, b)

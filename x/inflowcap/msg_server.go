@@ -27,3 +27,13 @@ func (k msgServer) UpdateParams(goCtx context.Context, msg *MsgUpdateParams) (*M
 	k.SetParams(sdk.UnwrapSDKContext(goCtx), msg.Params)
 	return &MsgUpdateParamsResponse{}, nil
 }
+
+// ValidateBasic lets governance refuse a bad list when it's proposed,
+// not when it would execute a voting period later. The authority is
+// checked by governance itself (the only signer it accepts is its own).
+func (m *MsgUpdateParams) ValidateBasic() error {
+	if err := m.Params.Validate(); err != nil {
+		return ErrInvalidParams.Wrap(err.Error())
+	}
+	return nil
+}

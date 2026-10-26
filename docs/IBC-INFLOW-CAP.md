@@ -108,6 +108,8 @@ but prefixes the event and every key with `ibccallbackerror-`, so search
 for `ibccallbackerror-inflow_cap_refused.ibccallbackerror-reason`
 (`inflowcap.RefusedEvent`, `inflowcap.RefusedKey`).
 
+`aetherd q inflowcap caps` and `aetherd q inflowcap params` print them.
+
 The mainnet USDC base denom is Injective mainnet's, pinned in `wallet` the
 way `wallet.TestnetUSDC` is. The testnet one is
 `erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d`; mainnet's differs.
@@ -138,10 +140,9 @@ store, so it uses the restart-driven activation x/escrow does: a node
 that reaches the height without restarting halts there and resumes from
 that block once restarted.
 
-- **Fresh chains** (`gates.Fresh`): on from block 1, with the entries in
-  genesis. A genesis without an `inflowcap` section starts from the
-  default, which lists nothing, so the mainnet genesis must list the
-  Injective USDC entry.
+- **Fresh chains** (`gates.Fresh`): on from block 1. A genesis without an
+  `inflowcap` section starts from the default, which lists nothing. On
+  `aether-1` that is what genesis should have: see Listing on aether-1.
 - **The testnet:** `InflowCapActivationHeight` is a placeholder
   (30,000,000), chosen after the devnet run below. No genesis sets a list
   there, so the activation block sets `testnetInflowEntries`: USDC from
@@ -198,12 +199,68 @@ that block once restarted.
   seat hardening has run on the testnet (from 460,800) and the USDC path
   has run at its starting cap.
 
+## Listing on aether-1
+
+**Genesis lists nothing.** The Injective channel doesn't exist at
+genesis, and IBC channels are permissionless and numbered first come,
+first served: if genesis listed `channel-0` for Injective's USDC, whoever
+opened `channel-0` first, to a chain of their own, could send a token
+named `erc20:0xa00C…235a` and mint, up to the cap, vouchers with the
+same `ibc/` hash wallets treat as USDC. Client IDs and chain IDs can be
+claimed the same way, so nothing but a checked, open channel can anchor
+an entry. That also fits `docs/MAINNET.md`'s phased launch with IBC
+closed at first.
+
+**Then, once the Injective path is open:**
+
+1. Check it on both chains: Aether's client of Injective follows
+   `injective-1` from a header taken from Injective itself, and
+   Injective's end of the channel names Aether's.
+2. Draft the listing. The command reads the live list, checks the
+   channel is an open transfer channel whose client follows the chain ID
+   you name, and prints the client and the other end for voters:
+
+   ```bash
+   aetherd tx inflowcap draft-update-params usdc.json \
+     --set channel-<n>,erc20:0xa00C59fF5a080D2b954d0c75e46E22a0c371235a,5000000000 \
+     --counterparty-chain-id channel-<n>=injective-1
+   aetherd tx governance submit-param-change-proposal usdc.json <deposit> --from <key> ...
+   ```
+
+   A bad list is refused when proposed (`MsgUpdateParams.ValidateBasic`),
+   not when it would execute.
+3. Validators vote. It executes when the voting period ends with 2/3 of
+   the non-abstain power yes and 60% of the active validators voting.
+4. Point the tools at it: `wallet.MainnetUSDC("channel-<n>")`, or
+   `--usdc-path transfer/channel-<n> --usdc-base-denom
+   erc20:0xa00C59fF5a080D2b954d0c75e46E22a0c371235a --usdc-issuer Injective`.
+
+The voting period is 7 days by default (`x/governance` genesis
+`voting_period`), so USDC opens about a week after the path does unless
+`aether-1`'s genesis sets a shorter one. Tenure weights votes during the
+first 30 days, but the 2/3 is a share of the power cast, so new
+validators can still pass it.
+
+`wallet.InjectiveMainnetUSDCBaseDenom` is Circle's mainnet USDC on
+Injective, `erc20:0xa00C59fF5a080D2b954d0c75e46E22a0c371235a` (6
+decimals), as Circle lists it and as Injective's verified token list
+(`InjectiveLabs/injective-lists`) names it, checked 2026-10-26.
+
+**Tested** (`TestInflowCap_ListedByGovernance`, on an `aether-rc-` chain
+ID so every gate is open as on `aether-1`): a transfer is refused with
+nothing listed; a duplicate list is refused at submission; the real
+proposal, votes and execution list the channel; then a transfer up to
+the cap comes in and one more is refused. On the devnet the draft
+command refused `channel-0` named as `injective-1` (its client follows
+`counterparty`), refused a channel that doesn't exist, and wrote a file
+`submit-param-change-proposal` accepts.
+
 ## Still to do
 
 - The testnet height, with `testnetInflowEntries` checked against what
   is on Aether then.
-- Injective mainnet's USDC denom pinned in `wallet` and listed in the
-  `aether-1` genesis.
+- Decide `aether-1`'s governance voting period (USDC opens one period
+  after the path does).
 - Clients: read `Caps` before a transfer onto Aether (agentmcp and the
   published clients), and name a refusal's reason from its event.
 

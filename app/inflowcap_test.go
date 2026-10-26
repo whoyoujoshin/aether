@@ -8,6 +8,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	ibctransfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
@@ -16,6 +17,7 @@ import (
 	ibctesting "github.com/cosmos/ibc-go/v8/testing"
 	"github.com/stretchr/testify/require"
 
+	"github.com/whoyoujoshin/aether/gates"
 	"github.com/whoyoujoshin/aether/ligase"
 	"github.com/whoyoujoshin/aether/x/governance"
 	"github.com/whoyoujoshin/aether/x/inflowcap"
@@ -295,4 +297,66 @@ func TestInflowCap_Activation(t *testing.T) {
 	require.Equal(t, "ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C", usdc.VoucherDenom, "wallet.TestnetUSDC")
 	osmo := after.InflowCapKeeper.Caps(ctx)[1]
 	require.Equal(t, "ibc/47BD209179859CDE4A2806763D7189B6E6FE13A17880FE2B42DE1E6C1E329E23", osmo.VoucherDenom, "docs/OSMOSIS-POOL.md")
+}
+
+// How a token gets listed on aether-1 (docs/IBC-INFLOW-CAP.md, "Listing
+// on aether-1"): genesis lists nothing, the path is opened, and a
+// governance param-change proposal lists the channel it opened. Here on a
+// fresh chain ID, so every gate is open from block 1 as on aether-1, with
+// the real x/governance proposal, vote and execution.
+func TestInflowCap_ListedByGovernance(t *testing.T) {
+	f := newLigaseFixtureOn(t, 0, gates.RehearsalPrefix+"test-a")
+	require.True(t, f.appA.inflowCapWired)
+	receiver := f.a.SenderAccount.GetAddress().String()
+
+	f.send(10, receiver, "")
+	require.False(t, f.lastAckSuccess, "genesis lists nothing: refused")
+
+	// One validator we hold the key of, active long enough to have
+	// tenure, and a short voting period for the test.
+	voter := f.a.SenderAccount.GetAddress()
+	ctx := f.a.GetContext()
+	gov := f.appA.GovernanceKeeper
+	f.appA.PowKeeper.SetActiveValidator(ctx, voter)
+	gov.SetVotingPeriod(ctx, 60)
+	f.coord.IncrementTimeBy(time.Hour)
+	f.coord.CommitBlock(f.a)
+
+	update := &inflowcap.MsgUpdateParams{
+		Authority: authtypes.NewModuleAddress(governance.ModuleName).String(),
+		Params:    inflowcap.Params{Entries: []inflowcap.Entry{{ChannelId: f.path.EndpointA.ChannelID, Denom: "uaeth", Cap: sdkmath.NewInt(1000)}}},
+	}
+	srv := governance.NewMsgServerImpl(gov)
+
+	// A bad list is refused when it's proposed.
+	bad := &inflowcap.MsgUpdateParams{Authority: update.Authority, Params: inflowcap.Params{Entries: append(update.Params.Entries, update.Params.Entries...)}}
+	badAny, err := codectypes.NewAnyWithValue(bad)
+	require.NoError(t, err)
+	_, err = srv.SubmitParamChangeProposal(f.a.GetContext(), &governance.MsgSubmitParamChangeProposal{Proposer: voter.String(), Deposit: "25000000", ExecuteMsg: badAny})
+	require.ErrorContains(t, err, "already listed")
+
+	anyMsg, err := codectypes.NewAnyWithValue(update)
+	require.NoError(t, err)
+	res, err := srv.SubmitParamChangeProposal(f.a.GetContext(), &governance.MsgSubmitParamChangeProposal{Proposer: voter.String(), Deposit: "25000000", ExecuteMsg: anyMsg})
+	require.NoError(t, err)
+	// Quorum is 60% of the active validators: the genesis one votes too
+	// (a msg server call needs no key).
+	active := f.appA.PowKeeper.IterateActiveValidators(f.a.GetContext())
+	require.Len(t, active, 2)
+	for _, v := range active {
+		_, err = srv.Vote(f.a.GetContext(), &governance.MsgVote{ProposalId: res.ProposalId, Voter: v.String(), Option: governance.VoteOption_VOTE_OPTION_YES})
+		require.NoError(t, err)
+	}
+
+	f.coord.IncrementTimeBy(2 * time.Minute)
+	f.coord.CommitBlock(f.a) // the voting period ends; EndBlock resolves it
+	p, ok := gov.GetProposal(f.a.GetContext(), res.ProposalId)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_PASSED, p.Status)
+	require.Equal(t, update.Params.Entries, f.appA.InflowCapKeeper.GetParams(f.a.GetContext()).Entries)
+
+	f.send(1000, receiver, "")
+	require.True(t, f.lastAckSuccess, "listed by governance: in, up to the cap")
+	f.send(1, receiver, "")
+	require.False(t, f.lastAckSuccess, "over the cap")
 }

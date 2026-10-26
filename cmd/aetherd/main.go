@@ -34,6 +34,7 @@ import (
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	accountauthcli "github.com/whoyoujoshin/aether/x/accountauth/client/cli"
 	escrowcli "github.com/whoyoujoshin/aether/x/escrow/client/cli"
+	inflowcapcli "github.com/whoyoujoshin/aether/x/inflowcap/client/cli"
 	governancecli "github.com/whoyoujoshin/aether/x/governance/client/cli"
 	powcli "github.com/whoyoujoshin/aether/x/pow/client/cli"
 	treasurycli "github.com/whoyoujoshin/aether/x/treasury/client/cli"
@@ -118,6 +119,7 @@ func main() {
 		icacli.NewTxCmd(),
 		accountauthcli.NewTxCmd(),
 		escrowcli.NewTxCmd(),
+		inflowcapcli.NewTxCmd(),
 	)
 	setDefaultGas(txCmd, defaultGasLimit)
 	rootCmd.AddCommand(txCmd)
@@ -140,6 +142,7 @@ func main() {
 	queryCmd.AddCommand(treasurycli.GetQueryCmd())
 	queryCmd.AddCommand(accountauthcli.GetQueryCmd())
 	queryCmd.AddCommand(escrowcli.GetQueryCmd())
+	queryCmd.AddCommand(inflowcapcli.GetQueryCmd())
 	queryCmd.AddCommand(bankQueryCmd(), authzQueryCmd(), feegrantQueryCmd())
 
 	app.ModuleBasics.AddQueryCommands(queryCmd)

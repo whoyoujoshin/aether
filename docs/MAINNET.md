@@ -116,8 +116,12 @@ in escrow for Aether. Keep that small while the chain is young:
 
 - **One USDC path at launch: Injective.** Noble is out: Circle stopped
   minting USDC there on 13 October 2026 and pauses its contract on
-  12 January 2027. Pin Injective's USDC in `wallet` the way `TestnetUSDC`
-  is pinned, and check Injective's rules for opening a channel first.
+  12 January 2027. Injective's USDC is pinned in `wallet`
+  (`InjectiveMainnetUSDCBaseDenom`, `MainnetUSDC(channel)`); check
+  Injective's rules for opening a channel first. Genesis lists no inflow
+  entry: the channel is listed by governance once it's open and checked,
+  since channel IDs are first come, first served (`docs/IBC-INFLOW-CAP.md`,
+  Listing on aether-1). That takes one voting period, 7 days by default.
 - **An inflow cap on Aether's side.** Refuse a received packet that would take
   the USDC on Aether over a cap (refused packets are refunded on the sender's
   chain). That bounds the counterparty's escrow, so it bounds what a forged
