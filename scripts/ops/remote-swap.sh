@@ -28,7 +28,7 @@ quorum_ok() {
   }'
 }
 
-unit="" stage="" suffix=".pre-cutover" sha="" activation="" rpc="" validator="" min_peers=1 chain_id="" allow_down=0
+unit="" stage="" suffix=".pre-cutover" sha="" activation="" rpc="" validator="" min_peers=1 chain_id="" allow_down=0 accept_halt=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --unit) unit=$2; shift 2 ;;
@@ -41,6 +41,9 @@ while [[ $# -gt 0 ]]; do
     --min-peers) min_peers=$2; shift 2 ;;
     --chain-id) chain_id=$2; shift 2 ;;
     --allow-down) allow_down=1; shift ;;
+    # This one validator holds a third or more: swap it anyway, and blocks
+    # stop until it is back. cutover.sh passes it only with --only.
+    --accept-halt) accept_halt=1; shift ;;
     *) echo "remote-swap: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -121,8 +124,11 @@ done <"$tmp/signers"
 
 if [[ "$allow_down" -eq 0 ]]; then
   if ! safe_to_stop "$total" "$power"; then
-    echo "remote-swap: UNSAFE to stop $validator (power $power of $total). The others would hold 2/3 or less and the chain would halt." >&2
-    exit 1
+    if [[ "$accept_halt" -eq 0 ]]; then
+      echo "remote-swap: UNSAFE to stop $validator (power $power of $total). The others would hold 2/3 or less and the chain would halt." >&2
+      exit 1
+    fi
+    echo "remote-swap: $validator holds $power of $total; blocks stop until it is back (--accept-halt)" >&2
   fi
   if ! quorum_ok "$signed" "$total"; then
     echo "remote-swap: the latest block has $signed of $total voting power signed, which is not more than 2/3. Fix liveness before swapping a binary." >&2

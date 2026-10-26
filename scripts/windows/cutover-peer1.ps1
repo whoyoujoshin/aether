@@ -9,13 +9,23 @@
 #
 #   .\cutover-peer1.ps1 -Binary C:\aether-data\aetherd-NEW.exe -Sha256 <hex> -ActivationHeight 460800
 #   .\cutover-peer1.ps1 -Apply -Binary ... -Sha256 ... -ActivationHeight 460800
-#   .\cutover-peer1.ps1 -Rollback -ActivationHeight 460800
-#   .\cutover-peer1.ps1 -Apply -Rollback -ActivationHeight 460800
+#   .\cutover-peer1.ps1 -Rollback -ActivationHeight 460800 -HeightRpc https://<another node's RPC>
+#   .\cutover-peer1.ps1 -Apply -Rollback -ActivationHeight 460800 -HeightRpc https://<another node's RPC>
+#
+# While peer-1 holds a third or more of the voting power, stopping it
+# halts blocks until it is back, so the swap is refused unless -AcceptHalt
+# is passed. Every other check still applies.
 
 [CmdletBinding()]
 param(
   [switch]$Apply,
   [switch]$Rollback,
+  # Swap even though stopping peer-1 leaves the others at 2/3 or less:
+  # blocks stop until it is back (seconds, if the new binary starts).
+  [switch]$AcceptHalt,
+  # Other nodes' RPCs to read the height from when peer-1's own doesn't
+  # answer (a new binary that won't start). The highest height wins.
+  [string[]]$HeightRpc = @(),
   [string]$Binary = "",
   [string]$Sha256 = "",
   [string]$DestExe = "",
@@ -78,6 +88,44 @@ if (-not $Rollback -and (-not $Binary -or -not $Sha256)) {
 $Rpc = $Rpc.TrimEnd("/")
 Write-Host $(if ($Apply) { "apply: peer-1 will be restarted" } else { "dry-run: preflight runs for real; peer-1 will not be restarted. Pass -Apply to perform it." })
 
+function Get-Height([string]$Base) {
+  try {
+    return [long](Invoke-RestMethod -Uri "$($Base.TrimEnd('/'))/status" -TimeoutSec 20).result.sync_info.latest_block_height
+  } catch {
+    return $null
+  }
+}
+
+if ($Rollback) {
+  # peer-1's own RPC is down when its new binary won't start, which is
+  # when a rollback is wanted, so the other nodes' heights count too. The
+  # highest one never allows a rollback the chain is already past.
+  $height = $null
+  foreach ($u in @($Rpc) + $HeightRpc) {
+    $h = Get-Height $u
+    if ($null -eq $h) { Write-Host "$u gives no height"; continue }
+    Write-Host "$u reports height $h"
+    if ($null -eq $height -or $h -gt $height) { $height = $h }
+  }
+  if ($null -eq $height) {
+    throw "refusing rollback: no RPC answered with a height. Pass -HeightRpc with another node's RPC."
+  }
+  $bak = "$EnsureScript$BackupSuffix"
+  if (-not (Test-Path $bak)) { throw "no backup at $bak" }
+  if ($height -ge $ActivationHeight) {
+    throw "refusing rollback: height $height, activation $ActivationHeight. Roll back only while the height is still below the activation height."
+  }
+  Write-Host "rollback will restore $bak over $EnsureScript and restart the task"
+  Invoke-Step "restore $bak" { Copy-Item -Force $bak $EnsureScript }
+  Invoke-Step "stop listener on $Port and start task $TaskName" {
+    Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+    Start-ScheduledTask -TaskName $TaskName
+  }
+  if (-not $Apply) { Write-Host "dry-run: no change made"; return }
+  Write-Host "peer-1 rolled back to the ensure-script backup"
+  return
+}
+
 $status = Invoke-RestMethod -Uri "$Rpc/status" -TimeoutSec 20
 $height = [long]$status.result.sync_info.latest_block_height
 # JSON false must stay false. A non-empty string would be $true under [bool].
@@ -111,28 +159,15 @@ foreach ($sig in $sigs) {
 Write-Host "height $height catching_up=$catching peers=$peers chain=$network validator=$mine power=$power/$total signed=$signed/$total"
 
 if ($ChainId -and $network -ne $ChainId) { throw "chain id $network, want $ChainId" }
-if ($Rollback) {
-  $bak = "$EnsureScript$BackupSuffix"
-  if (-not (Test-Path $bak)) { throw "no backup at $bak" }
-  if ($height -ge $ActivationHeight) {
-    throw "refusing rollback: height $height, activation $ActivationHeight. Roll back only while the height is still below the activation height."
-  }
-  Write-Host "rollback will restore $bak over $EnsureScript and restart the task"
-  Invoke-Step "restore $bak" { Copy-Item -Force $bak $EnsureScript }
-  Invoke-Step "stop listener on $Port and start task $TaskName" {
-    Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
-    Start-ScheduledTask -TaskName $TaskName
-  }
-  if (-not $Apply) { Write-Host "dry-run: no change made"; return }
-  Write-Host "peer-1 rolled back to the ensure-script backup"
-  return
-}
 
 if ($catching) { throw "node reports catching_up; wait until it is synced" }
 if ($peers -lt $MinPeers) { throw "peers $peers, want at least $MinPeers" }
 if ($null -eq $power) { throw "$mine is not in the validator set" }
 if (-not (Test-SafeToStop $total $power)) {
-  throw "UNSAFE to stop $mine (power $power of $total). The others would hold 2/3 or less and the chain would halt."
+  if (-not $AcceptHalt) {
+    throw "UNSAFE to stop $mine (power $power of $total). The others would hold 2/3 or less and the chain would halt until peer-1 is back. Pass -AcceptHalt to swap it anyway."
+  }
+  Write-Host "WARNING: $mine holds $power of $total. Blocks stop until peer-1 is back (-AcceptHalt)."
 }
 if (-not (Test-Quorum $signed $total)) {
   throw "the latest block has $signed of $total voting power signed, which is not more than 2/3"

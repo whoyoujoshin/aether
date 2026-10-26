@@ -13,7 +13,9 @@ Usage: rollback.sh --nodes nodes.txt --name NODE --activation-height HEIGHT [--a
 
 Restores BIN + --backup-suffix (default .pre-cutover) over the unit's
 aetherd and restarts that one node. Rolls back only while the height is
-still below the activation height.
+still below the activation height. The height is the highest any node in
+the file reports, so a node whose new binary won't start (no RPC) can
+still be rolled back; if no node answers, it refuses.
 EOF
 }
 
@@ -41,19 +43,36 @@ main() {
   done
   [[ "$i" -ge 0 ]] || { echo "no node named $name" >&2; return 1; }
   local ssh=${N_SSH[$i]} rpc=${N_RPC[$i]} unit=${N_UNIT[$i]}
-  local height
-  height=$(remote_exec "$ssh" curl -sf --max-time 20 "$rpc/status" | jq -r '.result.sync_info.latest_block_height')
+  local height="" h n2
+  # The highest height any node reports: the one being rolled back is
+  # often down. Taking the highest never allows a rollback the chain is
+  # already past.
+  for n2 in "${!N_NAME[@]}"; do
+    h=$(remote_exec "${N_SSH[$n2]}" curl -sf --max-time 20 "${N_RPC[$n2]}/status" 2>/dev/null | jq -r '.result.sync_info.latest_block_height' 2>/dev/null || true)
+    if [[ "$h" =~ ^[0-9]+$ ]]; then
+      echo "   ${N_NAME[$n2]} reports height $h"
+      if [[ -z "$height" || "$h" -gt "$height" ]]; then
+        height=$h
+      fi
+    else
+      echo "   ${N_NAME[$n2]}: no height (RPC down?)"
+    fi
+  done
+  if [[ -z "$height" ]]; then
+    echo "refusing rollback of $name: no node in $nodes reported a height" >&2
+    return 2
+  fi
   if ! rollback_allowed "$height" "$activation"; then
     echo "refusing rollback of $name: height $height, activation $activation. Roll back only while the height is still below the activation height." >&2
     return 2
   fi
   echo "$name is at height $height, below activation $activation. Backup suffix $suffix."
   if [[ "$apply" -eq 0 ]]; then
-    echo "dry-run [$ssh] bash remote-rollback.sh --unit $unit --suffix $suffix --activation-height $activation --rpc $rpc"
+    echo "dry-run [$ssh] bash remote-rollback.sh --unit $unit --suffix $suffix --activation-height $activation --rpc $rpc --height $height"
     echo "dry-run: no node was restarted. Pass --apply to restore the backup."
     return 0
   fi
-  if ! remote_script "$ssh" "$HERE/remote-rollback.sh" --unit "$unit" --suffix "$suffix" --activation-height "$activation" --rpc "$rpc"; then
+  if ! remote_script "$ssh" "$HERE/remote-rollback.sh" --unit "$unit" --suffix "$suffix" --activation-height "$activation" --rpc "$rpc" --height "$height"; then
     echo "rollback of $name failed" >&2
     return 1
   fi

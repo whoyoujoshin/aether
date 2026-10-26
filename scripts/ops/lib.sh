@@ -97,6 +97,10 @@ parse_nodes_file() {
     N_RPC+=("${f[2]%/}")
     N_VAL+=("${f[3]^^}")
     if [[ ${#f[@]} -eq 5 ]]; then
+      if [[ ! "${f[4]}" =~ ^[A-Za-z0-9@._-]+$ ]]; then
+        echo "bad unit name: ${f[4]}" >&2
+        return 1
+      fi
       N_UNIT+=("${f[4]}")
     else
       N_UNIT+=("aetherd")
@@ -110,6 +114,18 @@ bin_from_execstart() {
   printf '%s\n' "$1" | grep -oE '/[^ ;]*aetherd[^ ;]*' | head -1
 }
 
+# ssh_quote ARGS...: ARGS as one string the remote shell splits back
+# into exactly ARGS. ssh joins its arguments with spaces and hands the
+# result to the remote shell, so an unquoted `bash -c 'a "$b"'` arrives
+# as `bash -c a ...` and an `&` in a URL backgrounds the command.
+ssh_quote() {
+  local out="" a
+  for a in "$@"; do
+    out+="$(printf '%q' "$a") "
+  done
+  printf '%s' "${out% }"
+}
+
 remote_exec() {
   local dest=$1
   shift
@@ -120,8 +136,25 @@ remote_exec() {
   if [[ "$dest" == local ]]; then
     "$@"
   else
-    command ssh -o BatchMode=yes -o ConnectTimeout=20 "$dest" "$@"
+    command ssh -o BatchMode=yes -o ConnectTimeout=20 "$dest" "$(ssh_quote "$@")"
   fi
+}
+
+# unit_exe_sha DEST UNIT: sha256 of the binary the unit's main process
+# runs. Found through systemd, not pidof: the binaries are named
+# aetherd-<commit>, and `pidof aetherd` doesn't match those.
+unit_exe_sha() {
+  local dest=$1 unit=$2
+  # shellcheck disable=SC2016 # expanded on the node
+  remote_exec "$dest" bash -c 'pid=$(systemctl show -p MainPID --value "$1"); [ "${pid:-0}" -gt 0 ] || exit 1; sha256sum "/proc/$pid/exe"' _ "$unit" \
+    | awk '{print tolower($1)}'
+}
+
+# unit_running DEST UNIT: success when the unit has a main process.
+unit_running() {
+  local dest=$1 unit=$2
+  # shellcheck disable=SC2016 # expanded on the node
+  remote_exec "$dest" bash -c 'pid=$(systemctl show -p MainPID --value "$1"); [ "${pid:-0}" -gt 0 ]' _ "$unit"
 }
 
 # remote_copy SRC DEST PATH
@@ -149,7 +182,7 @@ remote_script() {
   if [[ "$dest" == local ]]; then
     bash -s -- "$@" <"$script"
   else
-    command ssh -o BatchMode=yes -o ConnectTimeout=20 "$dest" bash -s -- "$@" <"$script"
+    command ssh -o BatchMode=yes -o ConnectTimeout=20 "$dest" "$(ssh_quote bash -s -- "$@")" <"$script"
   fi
 }
 

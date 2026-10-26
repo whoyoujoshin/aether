@@ -112,7 +112,9 @@ Preflight on every node, before any restart:
 
 `--apply` repeats that check, copies the binary, and on the node runs `scripts/ops/remote-swap.sh`, which checks again and only then stops the unit, installs over the path in the unit's `ExecStart`, and starts it. The previous binary is kept at that path plus `.pre-cutover` (override with `--backup-suffix`). An existing backup is not overwritten. The script waits until the height has moved, `catching_up` is false, this validator signed, and the commit still has more than 2/3. Then it checks the running binary's sha256. It does not touch the next node until that passes.
 
-A node already running that sha256 is skipped. `--only NAME` limits the run to one node. `--allow-down` is for a process that is already stopped: it skips the signing, peer, and safe-to-stop checks. It is not a way past an UNSAFE line while the node is still up.
+A node already running that sha256 is skipped. The running binary is found through the unit (`systemctl show -p MainPID`), not `pidof`: the binaries are named `aetherd-<commit>`, which `pidof aetherd` doesn't match. `--only NAME` limits the run to one node. `--allow-down` is for a process that is already stopped: it skips the signing, peer, and safe-to-stop checks. It is not a way past an UNSAFE line while the node is still up.
+
+**A validator that holds a third or more** (peer-1 at about 41% today) is UNSAFE to stop: while it restarts the others hold 2/3 or less and no block commits. Past the seat hardening it isn't removed for downtime, so blocks resume as soon as it is back. To swap it anyway, run that one node with `--only NAME --accept-halt` (`-AcceptHalt` on peer-1). That accepts blocks stopping for the restart, and only that: the node must still be synced, have peers and have signed the latest block, and the commit must still be over 2/3. Do it with every other validator signing, and have the new binary ready to start at once.
 
 ### 3. peer-1 (Windows)
 
@@ -131,7 +133,7 @@ Dry-run prints the plan and still reads the RPC. `-Apply` checks the same 2/3 co
 ### 4. After the last node
 
 - `chainwatch --safe-to-stop` and a block whose commit includes every validator you care about
-- `sha256sum` of the running Linux binary (`sha256sum /proc/$(pidof aetherd)/exe`), and `Get-FileHash` of the peer-1 process path
+- `sha256sum` of the running Linux binary (`sha256sum /proc/$(systemctl show -p MainPID --value aetherd)/exe`; `pidof aetherd` finds nothing when the file is `aetherd-<commit>`), and `Get-FileHash` of the peer-1 process path
 - the activation height, and the height when the last node finished
 
 ## Roll back, only before activation
@@ -145,15 +147,15 @@ bash scripts/ops/rollback.sh --nodes nodes.txt --name sync3 --activation-height 
 bash scripts/ops/rollback.sh --apply --nodes nodes.txt --name sync3 --activation-height HEIGHT
 ```
 
-That restores `ExecStart`'s path plus the backup suffix and restarts the unit. If `remote-swap.sh` fails to start the new process **and** the height it read is still below activation, it restores the backup itself and does not continue to the next node.
+That restores `ExecStart`'s path plus the backup suffix and restarts the unit. The height is the highest any node in `nodes.txt` reports, since the node being rolled back is usually the one whose RPC is down; with no node answering, it refuses. If `remote-swap.sh` fails to start the new process **and** the height it read is still below activation, it restores the backup itself and does not continue to the next node.
 
 peer-1:
 
 ```powershell
-.\scripts\windows\cutover-peer1.ps1 -Rollback -ActivationHeight HEIGHT
-.\scripts\windows\cutover-peer1.ps1 -Apply -Rollback -ActivationHeight HEIGHT
+.\scripts\windows\cutover-peer1.ps1 -Rollback -ActivationHeight HEIGHT -HeightRpc <another node's RPC>
+.\scripts\windows\cutover-peer1.ps1 -Apply -Rollback -ActivationHeight HEIGHT -HeightRpc <another node's RPC>
 ```
 
-That puts the backed-up `peer1-ensure.ps1` back and restarts the task. If `-Apply` starts the new exe and it does not sign before the wait ends, the script restores that backup on its own only while the height from before the swap is still below activation.
+`-HeightRpc` (one or more URLs) gives the height when peer-1's own RPC doesn't answer; the highest height read decides. That puts the backed-up `peer1-ensure.ps1` back and restarts the task. If `-Apply` starts the new exe and it does not sign before the wait ends, the script restores that backup on its own only while the height from before the swap is still below activation.
 
 Above the activation height, leave the new binary in place and tell the operator. Do not start a second `aetherd` for the same validator key.

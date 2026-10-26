@@ -32,12 +32,15 @@ Usage: cutover.sh --nodes nodes.txt --activation-height HEIGHT (--prebuilt DIR |
   --wait-timeout SECONDS    default 300, how long a node may take to sign again
   --poll-every SECONDS      default 5
   --allow-down              the node is already stopped: skip signing, peers, and the safe-to-stop check
+  --accept-halt             with --only: swap that node even though stopping it leaves the others at
+                            2/3 or less. Blocks stop until it is back (seconds, if the new binary
+                            starts). Every other check still applies.
 EOF
 }
 
 main() {
   local apply=0 binary="" sha="" built_with="" prebuilt="" nodes="" activation="" only=""
-  local suffix=".pre-cutover" min_peers=1 chain_id="" wait_timeout=300 poll_every=5 allow_down=0
+  local suffix=".pre-cutover" min_peers=1 chain_id="" wait_timeout=300 poll_every=5 allow_down=0 accept_halt=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --apply) apply=1; shift ;;
@@ -54,12 +57,17 @@ main() {
       --wait-timeout) wait_timeout=$2; shift 2 ;;
       --poll-every) poll_every=$2; shift 2 ;;
       --allow-down) allow_down=1; shift ;;
+      --accept-halt) accept_halt=1; shift ;;
       -h|--help) usage; return 0 ;;
       *) echo "unknown argument: $1" >&2; usage >&2; return 2 ;;
     esac
   done
 
   [[ -n "$nodes" && -n "$activation" ]] || { usage >&2; echo "need --nodes and --activation-height" >&2; return 2; }
+  if [[ "$accept_halt" -eq 1 && -z "$only" ]]; then
+    echo "--accept-halt needs --only NODE: it is for one validator that holds a third or more, never for a whole run" >&2
+    return 2
+  fi
   [[ "$activation" =~ ^[0-9]+$ && "$activation" -gt 0 ]] || { echo "--activation-height must be a positive integer" >&2; return 2; }
   command -v jq >/dev/null 2>&1 || { echo "jq is required on the workstation" >&2; return 1; }
   parse_nodes_file "$nodes"
@@ -101,7 +109,7 @@ main() {
 
   local failed=0
   for i in "${selected[@]}"; do
-    if ! preflight_node "$i" "$min_peers" "$chain_id" "$allow_down" "$sha"; then
+    if ! preflight_node "$i" "$min_peers" "$chain_id" "$allow_down" "$sha" "$accept_halt"; then
       failed=1
     fi
   done
@@ -112,7 +120,7 @@ main() {
 
   for i in "${selected[@]}"; do
     local name=${N_NAME[$i]} ssh=${N_SSH[$i]}
-    if node_matches_sha "$ssh" "$sha"; then
+    if node_matches_sha "$ssh" "${N_UNIT[$i]}" "$sha"; then
       echo "$name is already running $sha; skipping"
       continue
     fi
@@ -124,6 +132,7 @@ main() {
     )
     [[ -n "$chain_id" ]] && args+=(--chain-id "$chain_id")
     [[ "$allow_down" -eq 1 ]] && args+=(--allow-down)
+    [[ "$accept_halt" -eq 1 ]] && args+=(--accept-halt)
     if [[ "$apply" -eq 0 ]]; then
       echo "dry-run [$ssh] copy $binary -> $stage"
       echo "dry-run [$ssh] bash remote-swap.sh ${args[*]}"
@@ -131,7 +140,7 @@ main() {
       continue
     fi
     echo "== $name: re-checking, then swapping"
-    preflight_node "$i" "$min_peers" "$chain_id" "$allow_down" "$sha" >/dev/null
+    preflight_node "$i" "$min_peers" "$chain_id" "$allow_down" "$sha" "$accept_halt" >/dev/null
     local before
     before=$(node_height "$ssh" "${N_RPC[$i]}")
     remote_copy "$binary" "$ssh" "$stage"
@@ -143,7 +152,7 @@ main() {
       echo "$name did not return to signing. No further node will be touched." >&2
       return 1
     fi
-    if ! node_matches_sha "$ssh" "$sha"; then
+    if ! node_matches_sha "$ssh" "${N_UNIT[$i]}" "$sha"; then
       echo "$name is up but the running binary checksum does not match $sha" >&2
       return 1
     fi
@@ -152,9 +161,9 @@ main() {
   echo "cutover plan complete"
 }
 
-# preflight_node INDEX MIN_PEERS CHAIN_ID ALLOW_DOWN SHA
+# preflight_node INDEX MIN_PEERS CHAIN_ID ALLOW_DOWN SHA ACCEPT_HALT
 preflight_node() {
-  local i=$1 min_peers=$2 chain_id=$3 allow_down=$4 sha=$5
+  local i=$1 min_peers=$2 chain_id=$3 allow_down=$4 sha=$5 accept_halt=${6:-0}
   local name=${N_NAME[$i]} ssh=${N_SSH[$i]} rpc=${N_RPC[$i]} val=${N_VAL[$i]}
   local tmp uid height catching network peers total power signed
   tmp=$(mktemp -d)
@@ -202,8 +211,12 @@ preflight_node() {
     echo "   FAIL $val is not in the validator set" >&2
     ok=1
   elif [[ "$allow_down" -eq 0 ]] && ! safe_to_stop "$total" "$power"; then
-    echo "   FAIL unsafe to stop $val (power $power of $total): the others would hold 2/3 or less" >&2
-    ok=1
+    if [[ "$accept_halt" -eq 1 ]]; then
+      echo "   WARNING unsafe to stop $val (power $power of $total): blocks stop while it restarts (--accept-halt)" >&2
+    else
+      echo "   FAIL unsafe to stop $val (power $power of $total): the others would hold 2/3 or less (--accept-halt --only $name swaps it anyway, halting blocks while it restarts)" >&2
+      ok=1
+    fi
   fi
   if [[ "$allow_down" -eq 0 ]] && ! quorum_ok "$signed" "$total"; then
     echo "   FAIL latest commit signed $signed of $total, which is not more than 2/3" >&2
@@ -213,7 +226,7 @@ preflight_node() {
     echo "   FAIL $val did not sign the latest block" >&2
     ok=1
   fi
-  if [[ "$allow_down" -eq 0 ]] && ! node_matches_sha "$ssh" "$sha" && ! remote_exec "$ssh" bash -c 'pidof -s aetherd >/dev/null'; then
+  if [[ "$allow_down" -eq 0 ]] && ! unit_running "$ssh" "${N_UNIT[$i]}"; then
     echo "   FAIL aetherd is not running (pass --allow-down to replace a stopped node)" >&2
     ok=1
   fi
@@ -271,8 +284,8 @@ node_height() {
 }
 
 node_matches_sha() {
-  local ssh=$1 sha=$2 got
-  got=$(remote_exec "$ssh" bash -c 'sha256sum "$(readlink -f /proc/$(pidof -s aetherd)/exe)"' 2>/dev/null | awk '{print tolower($1)}' || true)
+  local ssh=$1 unit=$2 sha=$3 got
+  got=$(unit_exe_sha "$ssh" "$unit" 2>/dev/null || true)
   [[ -n "$got" && "$got" == "$(printf '%s' "$sha" | tr 'A-F' 'a-f')" ]]
 }
 

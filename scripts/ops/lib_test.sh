@@ -59,6 +59,28 @@ printf 'sync3 local http://127.0.0.1:26657 %s aetherd\n# comment\n\n' "$(pad40 C
 parse_nodes_file "$tmp/nodes"
 [[ "${N_NAME[0]}" == sync3 && "${N_UNIT[0]}" == aetherd && ${#N_VAL[0]} -eq 40 ]] || fail "parse nodes"
 if printf 'bad line\n' >"$tmp/bad" && parse_nodes_file "$tmp/bad"; then fail "bad line accepted"; fi
+if printf 'sync3 local http://x %s aetherd;rm\n' "$(pad40 CCA35D28)" >"$tmp/bad" && parse_nodes_file "$tmp/bad" 2>/dev/null; then fail "bad unit accepted"; fi
+
+# ssh joins its arguments with spaces for the remote shell: a stub ssh
+# that does the same shows remote_exec's arguments arrive intact.
+sshstub=$(mktemp -d)
+cat >"$sshstub/ssh" <<'STUB'
+#!/bin/bash
+while [[ "$1" == -o ]]; do shift 2; done
+shift # destination
+exec bash -c "$*"
+STUB
+chmod +x "$sshstub/ssh"
+got=$(PATH="$sshstub:$PATH" remote_exec root@node printf '%s\n' 'http://127.0.0.1:26657/validators?per_page=100&page=2')
+[[ "$got" == 'http://127.0.0.1:26657/validators?per_page=100&page=2' ]] || fail "URL with & over ssh: $got"
+# shellcheck disable=SC2016
+got=$(PATH="$sshstub:$PATH" remote_exec root@node bash -c 'echo "[$1]"' _ 'a b')
+[[ "$got" == '[a b]' ]] || fail "bash -c over ssh: $got"
+# shellcheck disable=SC2016
+echo 'echo "[$1|$2]"' >"$tmp/s.sh"
+got=$(PATH="$sshstub:$PATH" remote_script root@node "$tmp/s.sh" --rpc 'http://x/?a=1&b=2')
+[[ "$got" == '[--rpc|http://x/?a=1&b=2]' ]] || fail "remote_script args over ssh: $got"
+rm -rf "$sshstub"
 
 # A stub systemctl that claims the unit is active.
 stub=$(mktemp -d)
@@ -162,6 +184,12 @@ fi
 rm -rf "$d"
 
 d=$(mktemp -d)
+write_chain_stubs "$d" 1 100
+run_swap "$d" --activation-height 500 --accept-halt 2>/dev/null
+[[ "$(cat "$d/aetherd")" == new ]] || fail "--accept-halt did not swap the heavy validator"
+rm -rf "$d"
+
+d=$(mktemp -d)
 write_chain_stubs "$d" 0 100
 # Only the heavy-looking failure mode: drop signers down to one.
 jq -n --arg a1 "$A1" '{result:{block:{last_commit:{signatures:[{block_id_flag:2,validator_address:$a1}]}}}}' >"$d/block.json"
@@ -208,6 +236,25 @@ PATH="$d:$PATH" bash "$HERE/remote-rollback.sh" --unit aetherd --suffix .pre-cut
 grep -q stop "$d/systemctl.log" || fail "rollback did not stop"
 rm -rf "$d"
 
+# The node's own RPC is down (its new binary won't start): the height
+# rollback.sh read from the other nodes decides.
+d=$(mktemp -d)
+write_chain_stubs "$d" 0 100
+printf '#!/bin/bash\nexit 7\n' >"$d/curl"
+echo previous >"$d/aetherd.pre-cutover"
+echo current >"$d/aetherd"
+if PATH="$d:$PATH" bash "$HERE/remote-rollback.sh" --unit aetherd --activation-height 500 --rpc "http://127.0.0.1:26657" 2>/dev/null; then
+  fail "rollback with no height at all was allowed"
+fi
+[[ "$(cat "$d/aetherd")" == current ]] || fail "rollback without a height changed the binary"
+PATH="$d:$PATH" bash "$HERE/remote-rollback.sh" --unit aetherd --activation-height 500 --rpc "http://127.0.0.1:26657" --height 100
+[[ "$(cat "$d/aetherd")" == previous ]] || fail "rollback of a down node did not restore"
+echo current >"$d/aetherd"
+if PATH="$d:$PATH" bash "$HERE/remote-rollback.sh" --unit aetherd --activation-height 500 --rpc "http://127.0.0.1:26657" --height 500 2>/dev/null; then
+  fail "rollback at activation (height given) was allowed"
+fi
+rm -rf "$d"
+
 # --- cutover.sh and rollback.sh against a fake remote ---
 A1=$(pad40 CCA35D28)
 NEW=$(mktemp)
@@ -229,8 +276,8 @@ fake_remote() {
   local line="$*"
   case "$line" in
     "id -u") echo 0 ;;
-    # The running-binary command line contains both words; match the
-    # checksum command first so a pidof check can still succeed alone.
+    # The checksum command also names MainPID; match it first so the
+    # running check (MainPID alone) can still succeed.
     *sha256sum*)
       if [[ -f "$SEEN" ]]; then
         echo "$NEWSHA  /proc/1/exe"
@@ -238,7 +285,7 @@ fake_remote() {
         echo "0000000000000000000000000000000000000000000000000000000000000000  /proc/1/exe"
       fi
       ;;
-    *pidof*) return 0 ;;
+    *MainPID*) return 0 ;;
     *curl*)
       local url="${!#}" h
       h=${FAKE_HEIGHT:-100}
@@ -295,6 +342,17 @@ out=$(bash "$HERE/cutover.sh" --nodes "$NODES" --activation-height 500 \
 [[ ! -f "$SEEN" ]] || fail "unsafe cutover invoked the swap"
 echo "unsafe preflight ok"
 
+rc=0
+out=$(bash "$HERE/cutover.sh" --nodes "$NODES" --activation-height 500 --accept-halt \
+  --binary "$NEW" --sha256 "$NEWSHA" --built-with go1.26.10 --chain-id aether-testnet-1 2>&1) || rc=$?
+[[ "$rc" -eq 2 && "$out" == *"needs --only"* ]] || fail "--accept-halt without --only ($rc): $out"
+out=$(bash "$HERE/cutover.sh" --apply --nodes "$NODES" --only sync3 --accept-halt --activation-height 500 \
+  --binary "$NEW" --sha256 "$NEWSHA" --built-with go1.26.10 --chain-id aether-testnet-1 --wait-timeout 5 --poll-every 1 2>&1)
+[[ -f "$SEEN" && "$(cat "$SEEN")" == *--accept-halt* ]] || fail "--accept-halt did not reach remote-swap: $(cat "$SEEN" 2>/dev/null)"
+[[ "$out" == *WARNING* && "$out" == *"is signing"* ]] || fail "--accept-halt output: $out"
+rm -f "$SEEN" "$SEEN.copy"
+echo "accept-halt ok"
+
 # Restore an even set for rollback, which only gates on height.
 VALJSON=$(jq -n --arg a1 "$A1" '[{address:$a1,voting_power:"25"}]')
 export VALJSON
@@ -312,6 +370,27 @@ out=$(bash "$HERE/rollback.sh" --apply --nodes "$NODES" --name sync3 --activatio
 [[ "$rc" -eq 2 ]] || fail "rollback at activation exit $rc: $out"
 [[ ! -f "$SEEN" ]] || fail "rollback at activation ran the script"
 echo "rollback refusal ok"
+
+# The node being rolled back is down; another node in the file gives the
+# height. With every node down there is no height and no rollback.
+export FAKE_HEIGHT=100
+NODES2=$(mktemp)
+printf 'sync3 down@node http://127.0.0.1:26657 %s aetherd\nsync4 local http://127.0.0.1:26657 %s aetherd\n' "$A1" "$(pad40 BCEF78B5)" >"$NODES2"
+fake_remote_down() {
+  if [[ "$1" == down@node && "$*" == *curl* ]]; then return 7; fi
+  fake_remote "$@"
+}
+export -f fake_remote_down
+rc=0
+out=$(REMOTE_EXEC_OVERRIDE=fake_remote_down bash "$HERE/rollback.sh" --nodes "$NODES2" --name sync3 --activation-height 500 2>&1) || rc=$?
+[[ "$rc" -eq 0 && "$out" == *"--height 100"* ]] || fail "rollback of a down node ($rc): $out"
+printf 'sync3 down@node http://127.0.0.1:26657 %s aetherd\n' "$A1" >"$NODES2"
+rc=0
+out=$(REMOTE_EXEC_OVERRIDE=fake_remote_down bash "$HERE/rollback.sh" --apply --nodes "$NODES2" --name sync3 --activation-height 500 2>&1) || rc=$?
+[[ "$rc" -eq 2 && "$out" == *"no node"* ]] || fail "rollback with every node down ($rc): $out"
+[[ ! -f "$SEEN" ]] || fail "rollback with no height ran the script"
+rm -f "$NODES2"
+echo "rollback of a down node ok"
 
 # Wrong Go version is refused before any remote call.
 rc=0
