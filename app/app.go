@@ -54,6 +54,7 @@ import (
 	"github.com/whoyoujoshin/aether/x/accountauth"
 	"github.com/whoyoujoshin/aether/x/escrow"
 	"github.com/whoyoujoshin/aether/x/governance"
+	"github.com/whoyoujoshin/aether/x/inflowcap"
 	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/treasury"
 
@@ -142,6 +143,8 @@ var ModuleBasics = module.NewBasicManager(
 	accountauth.AppModuleBasic{},
 	// And on EscrowActivationHeight: see app/escrow.go.
 	escrow.AppModuleBasic{},
+	// And on InflowCapActivationHeight: see app/inflowcap.go.
+	inflowcap.AppModuleBasic{},
 )
 
 type EncodingConfig struct {
@@ -270,6 +273,12 @@ type App struct {
 
 	escrowWired bool
 
+	// Zero-valued (unusable) until inflowCapWired -- see
+	// InflowCapActivationHeight.
+	InflowCapKeeper inflowcap.Keeper
+
+	inflowCapWired bool
+
 	// The worker this node proposes relay transactions from; see
 	// app/helicase.go.
 	helicase helicaseState
@@ -350,6 +359,14 @@ func New(
 	app.escrowWired = escrowCutover.wire
 	if escrowCutover.wire {
 		for _, name := range escrowStoreKeys {
+			app.keys[name] = storetypes.NewKVStoreKey(name)
+		}
+	}
+
+	inflowCapCutover := planInflowCap(rootmulti.GetLatestVersion(db), gates.Height(bApp.ChainID(), inflowCapActivationHeight))
+	app.inflowCapWired = inflowCapCutover.wire
+	if inflowCapCutover.wire {
+		for _, name := range inflowCapStoreKeys {
 			app.keys[name] = storetypes.NewKVStoreKey(name)
 		}
 	}
@@ -512,8 +529,12 @@ func New(
 
 		ibcRouter := porttypes.NewRouter()
 		// Ligase wraps transfer: a transfer to the Ligase address can carry
-		// an instruction for x/escrow (see app/ligase.go).
-		ibcRouter.AddRoute(ibctransfertypes.ModuleName, ligase.NewIBCModule(transfer.NewIBCModule(app.TransferKeeper), ligaseHost{app}))
+		// an instruction for x/escrow (see app/ligase.go). The inflow cap
+		// wraps both, so it sees every received transfer before Ligase
+		// acts on it (see app/inflowcap.go).
+		ibcRouter.AddRoute(ibctransfertypes.ModuleName, inflowcap.NewIBCModule(
+			ligase.NewIBCModule(transfer.NewIBCModule(app.TransferKeeper), ligaseHost{app}),
+			inflowCapHost{app}))
 		// nil: no custom authentication module wraps the controller --
 		// every icacontroller.IBCMiddleware callback checks "im.app !=
 		// nil" before delegating (see ibc-go's ibc_middleware.go), so
@@ -533,6 +554,9 @@ func New(
 	}
 	if escrowCutover.wire {
 		app.EscrowKeeper = escrow.NewKeeper(appCodec, app.keys[escrow.StoreKey], app.BankKeeper, logger)
+	}
+	if inflowCapCutover.wire {
+		app.InflowCapKeeper = inflowcap.NewKeeper(appCodec, app.keys[inflowcap.StoreKey], app.BankKeeper, authtypes.NewModuleAddress(governance.ModuleName).String())
 	}
 
 	// Module manager
@@ -571,6 +595,9 @@ func New(
 	}
 	if escrowCutover.wire {
 		modules = append(modules, escrow.NewAppModule(app.EscrowKeeper))
+	}
+	if inflowCapCutover.wire {
+		modules = append(modules, inflowcap.NewAppModule(app.InflowCapKeeper))
 	}
 	app.sm = module.NewManager(modules...)
 
@@ -646,7 +673,7 @@ func New(
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
 	app.SetEndBlocker(app.EndBlocker)
-	if authzFeegrant.addStores || ibcCutover.addStores || accountAuthCutover.addStores || escrowCutover.addStores {
+	if authzFeegrant.addStores || ibcCutover.addStores || accountAuthCutover.addStores || escrowCutover.addStores || inflowCapCutover.addStores {
 		var added []string
 		if authzFeegrant.addStores {
 			added = append(added, authzFeegrantStoreKeys...)
@@ -659,6 +686,9 @@ func New(
 		}
 		if escrowCutover.addStores {
 			added = append(added, escrowStoreKeys...)
+		}
+		if inflowCapCutover.addStores {
+			added = append(added, inflowCapStoreKeys...)
 		}
 		app.SetStoreLoader(func(ms storetypes.CommitMultiStore) error {
 			return ms.LoadLatestVersionAndUpgrade(&storetypes.StoreUpgrades{Added: added})
@@ -732,6 +762,9 @@ func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 		return sdk.BeginBlock{}, err
 	}
 	if err := app.checkEscrowActivation(ctx); err != nil {
+		return sdk.BeginBlock{}, err
+	}
+	if err := app.checkInflowCapActivation(ctx); err != nil {
 		return sdk.BeginBlock{}, err
 	}
 	if err := app.MigrateConsensusParamsToNewStore(ctx); err != nil {

@@ -1,0 +1,37 @@
+syntax = "proto3";
+package aether.inflowcap.v1;
+
+import "gogoproto/gogo.proto";
+import "cosmos_proto/cosmos.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/inflowcap";
+
+// Entry lets one token in over one channel, up to a cap on its voucher's
+// total supply on Aether.
+message Entry {
+  // The Aether end of the channel, e.g. "channel-2". The port is always
+  // "transfer".
+  string channel_id = 1;
+  // The token as the other chain sends it, e.g. Injective's
+  // "erc20:0x0C38...4C5d". Its voucher here is
+  // ibc/<hash of transfer/<channel_id>/<denom>>.
+  string denom = 2;
+  // The most of the voucher there may be on Aether, in its smallest unit
+  // (5,000 USDC at 6 decimals is 5000000000). 0 refuses every transfer.
+  string cap = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// Params is the allowlist. A voucher not on it is refused: an empty list
+// closes every inbound path for tokens from other chains. Tokens coming
+// home to Aether are never limited.
+message Params {
+  repeated Entry entries = 1 [(gogoproto.nullable) = false];
+}
+
+message GenesisState {
+  Params params = 1 [(gogoproto.nullable) = false];
+}

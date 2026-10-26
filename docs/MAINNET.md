@@ -121,7 +121,8 @@ in escrow for Aether. Keep that small while the chain is young:
 - **An inflow cap on Aether's side.** Refuse a received packet that would take
   the USDC on Aether over a cap (refused packets are refunded on the sender's
   chain). That bounds the counterparty's escrow, so it bounds what a forged
-  header could release. The design is `docs/IBC-INFLOW-CAP.md`: a small Aether
+  header could release. The design is `docs/IBC-INFLOW-CAP.md` and the code
+  is `x/inflowcap`: a small Aether
   middleware with a fixed cap on the voucher's supply, failing closed (the
   `cosmos/ibc-apps` rate limiter takes only percentages and can't be set
   while supply is 0). The cap is chain-wide (all holders together, not per

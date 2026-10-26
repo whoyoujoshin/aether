@@ -1,6 +1,10 @@
 # IBC inflow cap for mainnet
 
-**Status:** design only. No code yet. For Cosmos SDK v0.50 with ibc-go v8.8.
+**Status:** built, not active on the testnet. The code is `x/inflowcap`
+(module, keeper, `MsgUpdateParams`, queries and the middleware) and
+`app/inflowcap.go` (wiring and activation). For Cosmos SDK v0.50 with
+ibc-go v8.8. It is on from block 1 on fresh chains; on the testnet its
+height is a placeholder (see Activation).
 **Related:** `docs/MAINNET.md` §2 (one USDC path, an inflow cap).
 
 ## Why
@@ -45,11 +49,14 @@ worth it for this.
 A small IBC middleware, outermost on the transfer route in `app/app.go`:
 
 ```go
-ibcRouter.AddRoute(ibctransfertypes.ModuleName,
-    inflowcap.NewIBCModule(
-        ligase.NewIBCModule(transfer.NewIBCModule(app.TransferKeeper), ligaseHost{app}),
-        app.InflowCapKeeper, app.BankKeeper))
+ibcRouter.AddRoute(ibctransfertypes.ModuleName, inflowcap.NewIBCModule(
+    ligase.NewIBCModule(transfer.NewIBCModule(app.TransferKeeper), ligaseHost{app}),
+    inflowCapHost{app}))
 ```
+
+`inflowCapHost` reads the keeper and the bank supply when a packet
+arrives, as `ligaseHost` does, since the module is wired only from its
+activation height.
 
 Outermost, so it sees every received transfer before Ligase acts on a
 memo, and an escrow funded through Ligase counts like any other transfer.
@@ -57,7 +64,8 @@ memo, and an escrow funded through Ligase counts like any other transfer.
 ### On receive
 
 1. Decode the ICS-20 packet data. If it doesn't decode, pass it on
-   (transfer refuses it itself).
+   (transfer refuses it itself). An amount that isn't a positive integer
+   is refused here.
 2. **Tokens coming home** (`ReceiverChainIsSource`: AETH, or anything
    that left Aether and is returning) pass. They unlock Aether's own
    escrow and mint nothing.
@@ -76,15 +84,26 @@ from the supply itself.
 
 ### Parameters
 
-A list of entries `{channel, denom, cap}`, for example the Injective
-channel, `ibc/<hash of transfer/<channel>/<Injective USDC base denom>>`
-and `5000000000` (5,000 USDC at 6 decimals, the launch cap decided on
-2026-10-22). They are set in genesis
+A list of entries `{channel_id, denom, cap}` (`aether.inflowcap.v1.Params`).
+`denom` is the token as the other chain sends it, so an entry can't name
+a voucher of a different channel: the voucher is computed from the two,
+`ibc/<hash of transfer/<channel_id>/<denom>>`. For example `channel-2`,
+Injective's USDC base denom and `5000000000` (5,000 USDC at 6 decimals,
+the launch cap decided on 2026-10-22). At most 100 entries, no voucher
+twice. They are set in genesis
 and changed by an `x/governance` param-change proposal: governance
 executes any routed Msg, so the module needs only a `MsgUpdateParams`
 whose authority is the governance module. An empty list closes every
-inbound voucher path. A query returns each entry with its current supply,
-so wallets and agents can check the room left before sending.
+inbound voucher path. The `Caps` query (`aether.inflowcap.v1.Query`)
+returns each entry with its voucher denom, current supply and the room
+left, so wallets and agents can check before sending; `Params` returns
+the list as set.
+
+A refused packet's acknowledgement carries only the error's code
+(`inflowcap` codes 3 not listed, 4 over the cap, 5 a bad amount). The
+reason is in an `inflow_cap_refused` event with the channel, sender,
+denom, voucher, amount, supply, cap and `reason` (`not_listed`,
+`over_cap`, `bad_amount`).
 
 The mainnet USDC base denom is Injective mainnet's, pinned in `wallet` the
 way `wallet.TestnetUSDC` is. The testnet one is
@@ -111,22 +130,40 @@ way `wallet.TestnetUSDC` is. The testnet one is
 
 ### Activation
 
-It is consensus code: it changes which packets succeed. On a fresh chain
-(`gates.Fresh`) it is on from block 1, with the entries in genesis. On the
-testnet it sits behind its own height like every other gate, and is tried
-first with a low cap on the Injective channel (`channel-2`).
+It is consensus code: it changes which packets succeed, and it adds a
+store, so it uses the restart-driven activation x/escrow does: a node
+that reaches the height without restarting halts there and resumes from
+that block once restarted.
 
-## Tests before it ships
+- **Fresh chains** (`gates.Fresh`): on from block 1, with the entries in
+  genesis. A genesis without an `inflowcap` section starts from the
+  default, which lists nothing, so the mainnet genesis must list the
+  Injective USDC entry.
+- **The testnet:** `InflowCapActivationHeight` is a placeholder
+  (30,000,000), chosen after the devnet run below. No genesis sets a list
+  there, so the activation block sets `testnetInflowEntries`: USDC from
+  Injective over `channel-2` capped at 100 USDC, and OSMO from Osmosis
+  over `channel-3` capped at 1,000 OSMO. Every other voucher (INJ, the
+  dead `channel-1`) is refused from then on. Both caps and the list are
+  set with the height, and governance changes them afterwards.
 
-- **Unit:** a voucher under, at and over the cap; a denom not in the
-  allowlist; AETH coming home over the same channel; a multi-hop denom (a
-  different `ibc/` hash) refused; a cap of 0.
-- **App (`app/`, with the `counterparty` test chain):** a refused
-  transfer's error ack refunds the sender; sending vouchers back frees
-  room; a timed-out send restores the supply; a Ligase escrow memo over
-  the cap is refused as a whole.
-- **Devnet:** the round trip with Helicase and outbound, before a testnet
-  height is set.
+## Tests
+
+- **Unit (`x/inflowcap`), done:** a voucher under, at and over the cap; a
+  cap of 0; a denom not listed, over another channel, or routed through
+  a third chain (a different `ibc/` hash); an empty list; AETH and
+  Aether's own vouchers coming home; bad amounts; inactive; params
+  validation.
+- **App (`app/inflowcap_test.go`, two real apps over ibctesting), done:**
+  a refused transfer's error ack refunds the sender; sending vouchers
+  back frees room; a timed-out send restores the supply; a Ligase escrow
+  memo over the cap is refused as a whole; AETH coming home with nothing
+  listed; `MsgUpdateParams` only from the governance account and only
+  valid; the restarts across the activation and the testnet entries.
+  `app/fresh_chain_test.go` checks it is wired from block 1 with nothing
+  listed.
+- **Devnet, still to do:** the round trip with Helicase and outbound,
+  before a testnet height is set.
 
 ## Risks
 
@@ -140,6 +177,14 @@ first with a low cap on the Injective channel (`channel-2`).
 - **Governance raises the cap.** The first raise should wait until the
   seat hardening has run on the testnet (from 460,800) and the USDC path
   has run at its starting cap.
+
+## Still to do
+
+- The devnet run above, then the testnet height.
+- Injective mainnet's USDC denom pinned in `wallet` and listed in the
+  `aether-1` genesis.
+- Clients: read `Caps` before a transfer onto Aether (agentmcp and the
+  published clients), and name a refusal's reason from its event.
 
 ## Later
 

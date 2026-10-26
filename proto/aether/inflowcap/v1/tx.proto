@@ -1,0 +1,24 @@
+syntax = "proto3";
+package aether.inflowcap.v1;
+
+import "gogoproto/gogo.proto";
+import "cosmos/msg/v1/msg.proto";
+import "aether/inflowcap/v1/inflowcap.proto";
+
+option go_package = "github.com/whoyoujoshin/aether/x/inflowcap";
+
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+}
+
+// MsgUpdateParams replaces the whole allowlist. Its authority is the
+// governance module account, which has no key: it runs only as an
+// x/governance param-change proposal's execute_msg.
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+  string authority = 1;
+  Params params = 2 [(gogoproto.nullable) = false];
+}
+message MsgUpdateParamsResponse {}
