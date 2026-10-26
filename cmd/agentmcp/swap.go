@@ -214,6 +214,9 @@ func swapAeth(ctx context.Context, in swapAethInput) (swapAethOutput, error) {
 		if err != nil {
 			return out, err
 		}
+		if err := checkSwapReturnRoom(c, swapExpected(quote, minOut)); err != nil {
+			return out, err
+		}
 		var sendErr error
 		rec, sendErr = signSwap(c, in, amount, contract, minOut, in.MinOutput != "", &out)
 		if sendErr != nil || rec == nil {

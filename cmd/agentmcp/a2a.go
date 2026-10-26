@@ -38,6 +38,7 @@ var a2aSkills = map[string]func(context.Context, json.RawMessage) (any, error){
 	"get_transaction_status":     a2aRun(coded(toolGetTransactionStatus)),
 	"find_services":              a2aRun(coded(toolFindServicesPublic)),
 	"quote_swap":                 a2aRun(coded(toolQuoteSwap)),
+	"get_inflow_caps":            a2aRun(coded(toolGetInflowCaps)),
 }
 
 func a2aRun[In, Out any](h mcp.ToolHandlerFor[In, Out]) func(context.Context, json.RawMessage) (any, error) {
@@ -332,6 +333,9 @@ func skillFromText(s string) (string, json.RawMessage, bool) {
 	input := func(v any) json.RawMessage { bz, _ := json.Marshal(v); return bz }
 	if h := textHash.FindString(s); h != "" {
 		return "get_transaction_status", input(map[string]string{"hash": h}), true
+	}
+	if has("inflow", "onto aether", "room left") {
+		return "get_inflow_caps", input(map[string]string{}), true
 	}
 	if has("quote", "swap", "osmo") {
 		if m := textAmount.FindStringSubmatch(s); m != nil {

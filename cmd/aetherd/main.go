@@ -34,8 +34,8 @@ import (
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	accountauthcli "github.com/whoyoujoshin/aether/x/accountauth/client/cli"
 	escrowcli "github.com/whoyoujoshin/aether/x/escrow/client/cli"
-	inflowcapcli "github.com/whoyoujoshin/aether/x/inflowcap/client/cli"
 	governancecli "github.com/whoyoujoshin/aether/x/governance/client/cli"
+	inflowcapcli "github.com/whoyoujoshin/aether/x/inflowcap/client/cli"
 	powcli "github.com/whoyoujoshin/aether/x/pow/client/cli"
 	treasurycli "github.com/whoyoujoshin/aether/x/treasury/client/cli"
 )

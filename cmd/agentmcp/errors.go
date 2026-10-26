@@ -80,6 +80,9 @@ const (
 	// fetch_paid: the seller refused this agent's spending mandate (or
 	// wants one), before payment
 	codeMandateRefused = "MANDATE_REFUSED"
+	// swap_aeth, swap_from_test_wallet: Aether's inflow cap wouldn't let
+	// the swapped OSMO back (get_inflow_caps); nothing was sent
+	codeInflowCapped = "INFLOW_CAPPED"
 )
 
 var retryableCodes = map[string]bool{

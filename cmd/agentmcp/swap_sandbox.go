@@ -93,6 +93,9 @@ func swapFromTestWallet(ctx context.Context, in swapFromTestWalletInput) (swapAe
 	if err != nil {
 		return out, err
 	}
+	if err := checkSwapReturnRoom(c, swapExpected(quote, minOut)); err != nil {
+		return out, err
+	}
 
 	bal, err := c.balance(address)
 	if err != nil {

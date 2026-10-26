@@ -69,6 +69,7 @@ var sandboxToolNames = []string{
 	"get_transaction_status",
 	"find_services",
 	"quote_swap",
+	"get_inflow_caps",
 	"swap_from_test_wallet",
 	"find_jobs",
 	"get_job",
@@ -1064,6 +1065,11 @@ func newSandboxServer() *mcp.Server {
 			"the price before the swap and the price it gets, what fees and price impact cost together, and a minOutput for a slippage you choose. " +
 			"Read-only: it reads Osmosis's own estimate and moves nothing. The pool is small and moves with every trade, so quote just before you swap.",
 	}), coded(toolQuoteSwap))
+
+	mcp.AddTool(server, annotate(&mcp.Tool{
+		Name:        "get_inflow_caps",
+		Description: getInflowCapsDescription,
+	}), coded(toolGetInflowCaps))
 
 	mcp.AddTool(server, annotate(&mcp.Tool{
 		Name: "swap_from_test_wallet",
