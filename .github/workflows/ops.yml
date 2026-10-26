@@ -1,0 +1,29 @@
+name: Ops monitors
+
+# chainwatch and the cutover scripts. They do not touch consensus.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: chainwatch and cutover
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: test -z "$(gofmt -l cmd/chainwatch)"
+
+      - name: chainwatch tests
+        run: go test ./cmd/chainwatch/
+
+      - name: cutover script tests
+        run: bash scripts/ops/lib_test.sh

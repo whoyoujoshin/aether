@@ -1,0 +1,13 @@
+# Linux validators for scripts/ops/cutover.sh, in the order they are restarted.
+# One node at a time. The script refuses a node whose power is a third or more.
+#
+# name  ssh            rpc                         validator(40 hex)                          [unit]
+# The validator column is /status .result.validator_info.address on that node.
+# ssh is root@host, or "local" when the script runs on that machine.
+#
+# sync3  root@sync3.example  http://127.0.0.1:26657  CCA35D2800000000000000000000000000000000  aetherd
+# sync4  root@sync4.example  http://127.0.0.1:26657  BCEF78B500000000000000000000000000000000  aetherd
+# seed   root@seed.example   http://127.0.0.1:26657  F94934BD00000000000000000000000000000000  aetherd
+#
+# peer-1 is Windows. It is not in this file. Use scripts/windows/cutover-peer1.ps1
+# in between the Linux nodes, while the others are signing.

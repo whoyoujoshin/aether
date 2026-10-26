@@ -415,6 +415,28 @@ Each event is printed to stdout as one JSON object per line and, with `--webhook
 
 It checks every `--interval` (30s) and does nothing until a new block. The signing check reads each new block's commit (one query per block; after a restart it reads the window back), and the concentration check reads the validator set once per poll. With `--state <file>` a restart reports what happened while it was down; without it, it starts fresh. `--once` with `--state` suits a cron job.
 
+## Height and halt alerts
+
+`cmd/chainwatch` watches one or more CometBFT RPCs and is the thing to run beside minerwatch on the seed. minerwatch follows miner addresses over gRPC; chainwatch follows node tips:
+
+```bash
+chainwatch --node seed=http://127.0.0.1:26657 --node sync3=http://sync3:26657 \
+  --stall-after 3m --behind-blocks 10 --state chainwatch.json
+chainwatch --rpc http://127.0.0.1:26657 --safe-to-stop
+chainwatch --rpc http://127.0.0.1:26657 --safe-to-stop --validator B7F08625
+```
+
+Webhook URLs and the HMAC secret come from `--webhook` / `--discord-webhook` / `--secret` or from `CHAINWATCH_WEBHOOK`, `CHAINWATCH_DISCORD_WEBHOOK` and `CHAINWATCH_SECRET`. JSON webhooks use the same `X-Aether-Signature` header as minerwatch. Deploy and the meaning of each alert: [docs/OPS-RUNBOOK.md](docs/OPS-RUNBOOK.md).
+
+| Event | When |
+|--|--|
+| `tip_stalled` / `tip_resumed` | the highest synced height does not move for `--stall-after` (3m), or no watched node is synced for that long |
+| `node_behind` / `node_synced` | a node reports `catching_up`, or its height is more than `--behind-blocks` (10) behind the tip |
+| `rpc_unreachable` / `rpc_recovered` | `--unreachable-after` (3) failed polls, then the first success |
+| `validator_unsafe_to_stop` / `validator_safe_to_stop` | stopping that validator would leave the others at or under 2/3 of the voting power (CometBFT needs strictly more than 2/3 to commit), or it is back under that line |
+
+`--safe-to-stop` prints the same verdict for every validator and exits 0 when every one of them can be stopped one at a time, or 2 when any cannot. With `--validator` the exit code is about that validator only. A validator at exactly 1/3 is unsafe: the others hold exactly 2/3, and that does not commit.
+
 ## Merged mining (AuxPoW)
 
 Litecoin/Dogecoin-family AuxPoW (chain ID **17776**) may satisfy PoW and earn the reward + retarget difficulty. From block **396,000** (the [seat rule](docs/SEAT-RULE.md)) merged-mined work also counts toward validator seats, credited to the reward address its proof commits to, and seats are held only by addresses with a registered consensus key; before that height only native work picked validators. Pools connect through `cmd/auxpowd`, a bridge speaking the merged-mining RPC Namecoin and Dogecoin use (`createauxblock` / `submitauxblock`); it hands out work from `MergedMiningActivationHeight` (205,000 on the testnet). Plan and status: [docs/MERGED-MINING-PLAN.md](docs/MERGED-MINING-PLAN.md). See also `cmd/auxpowtest` and the whitepaper.
@@ -476,6 +498,7 @@ aetherd query governance proposal <proposal-id>
 | `clients/vectors` | Generates the shared test vectors both clients are checked against |
 | `cmd/powminer` | Native PoW nonce search against live state |
 | `cmd/minerwatch` | Webhook alerts for a miner or validator: submissions, selection, balance, stalls |
+| `cmd/chainwatch` | RPC height and halt alerts, and whether any one validator can be stopped |
 | `cmd/auxpowd` | Merged-mining bridge for Litecoin pools (`createauxblock` / `submitauxblock`) |
 | `cmd/auxpowtest` | Valid test AuxPoW construction; `--auxpowd` acts as a pool against the bridge |
 | `cmd/scryptbench` | Scrypt throughput benchmarks |
@@ -487,6 +510,7 @@ aetherd query governance proposal <proposal-id>
 
 ## Multi-node and further docs
 
+- [Ops runbook](docs/OPS-RUNBOOK.md) — chainwatch height and halt alerts, safe-to-stop, and the dry-run cutover / rollback scripts
 - [Technical Whitepaper](docs/WHITEPAPER.md) — system design, economics, crypto, security limitations (incl. BFT/Top-K and height gates)
 - [Agent & Bot Integration](docs/AGENT_INTEGRATION.md) — participating as software agents (current surface + proposed APIs/policy)
 - [Agent-to-agent payment demo](docs/AGENT_DEMO.md) — a real spend-capped grant and payment, reproducible against any network

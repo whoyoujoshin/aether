@@ -1,0 +1,18 @@
+[Unit]
+Description=Aether height and halt alerts (chainwatch)
+After=network-online.target aetherd.service
+
+[Service]
+# Webhook URLs and the HMAC secret live in this file, mode 600, not here.
+EnvironmentFile=-/root/chainwatch.env
+ExecStart=/root/chainwatch \
+  --node seed=http://127.0.0.1:26657 \
+  --stall-after 3m \
+  --behind-blocks 10 \
+  --state /root/chainwatch.state
+Restart=always
+RestartSec=10
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -8,6 +8,8 @@
 // on track, its balance runs low, its validator's votes stop reaching the
 // chain's commits, any validator holds over a third of the voting power,
 // or the node stops answering or its chain stops making blocks.
+// For several RPCs at once (a node behind the tip, catching_up, or
+// whether any one validator can be stopped), run cmd/chainwatch.
 //
 // Each event is printed to stdout as one JSON object per line and, with
 // --webhook, POSTed there, signed like agentmcp's owner alerts:
