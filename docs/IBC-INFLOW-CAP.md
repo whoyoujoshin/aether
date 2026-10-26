@@ -199,6 +199,28 @@ that block once restarted.
   seat hardening has run on the testnet (from 460,800) and the USDC path
   has run at its starting cap.
 
+## Clients
+
+- **Reading the room:** `get_inflow_caps` on agentmcp (local, the public
+  `/mcp`, the hosted test wallet and A2A), `aether_get_inflow_caps` in the
+  TypeScript and Python toolkits, `get_inflow_caps` in `aether-mcp`,
+  `AETHER_GET_INFLOW_CAPS` in the ElizaOS plugin, and
+  `wallet.Client.InflowCaps`, `AetherClient.inflowCaps()` and
+  `AetherClient.inflow_caps()` in code. Each lists the tokens other chains
+  may send onto Aether, with channel, cap, supply and room, and answers
+  `active: false` on a chain without the cap yet (the node answers the
+  query path "unknown").
+- **Swaps:** `swap_aeth` and `swap_from_test_wallet` bring OSMO back onto
+  Aether over `channel-3`. With the cap on, they refuse with
+  `INFLOW_CAPPED` before sending anything if OSMO isn't listed or the
+  quoted OSMO is over its room. Otherwise the return transfer would be
+  refused, and the OSMO would wait in the swap contract as owed until
+  someone re-sends it.
+- **Shared vectors:** `clients/testdata/inflowcaps.json` holds the Caps
+  answer as a devnet node sent it, one encoded by the Go types, and the
+  node's answer without the module. The Go, TypeScript and Python tests all
+  use it.
+
 ## Listing on aether-1
 
 **Genesis lists nothing.** The Injective channel doesn't exist at
@@ -261,8 +283,6 @@ command refused `channel-0` named as `injective-1` (its client follows
   is on Aether then.
 - Decide `aether-1`'s governance voting period (USDC opens one period
   after the path does).
-- Clients: read `Caps` before a transfer onto Aether (agentmcp and the
-  published clients), and name a refusal's reason from its event.
 
 ## Later
 

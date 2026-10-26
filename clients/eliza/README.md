@@ -43,6 +43,7 @@ Then ask the agent to get itself some testnet AETH: it asks the faucet.
 | `AETHER_CALL_PAID_API` | Calls an API, pays what it asks up to a maximum, returns the answer | yes |
 | `AETHER_REQUEST_TESTNET_FUNDS` | Asks the testnet faucet for starter AETH | no |
 | `AETHER_QUOTE_SWAP` | Quotes swapping AETH for OSMO in the AETH/OSMO pool on Osmosis testnet (OSMO out, cost, a minOutput); quotes only, never swaps | no |
+| `AETHER_GET_INFLOW_CAPS` | The tokens other chains may send onto Aether and the room each has left; more is refused and refunded on the sending chain | no |
 
 The `AETHER_WALLET` provider tells the agent its address and what's left of its budget.
 

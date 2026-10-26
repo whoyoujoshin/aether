@@ -111,6 +111,18 @@ const DEFS: ActionDef[] = [
     },
     examples: [["What would 1 AETH get me in OSMO?", "Quoting the AETH/OSMO pool."]],
   },
+  {
+    tool: "aether_get_inflow_caps", action: "AETHER_GET_INFLOW_CAPS",
+    similes: ["INFLOW_CAPS", "USDC_ROOM", "HOW_MUCH_CAN_COME_ONTO_AETHER"],
+    reply: (r) => {
+      if (!r.active) return "Aether has no inflow cap yet: tokens from other chains come in uncapped.";
+      const caps = r.caps as Row[];
+      if (!caps.length) return "Aether lets no tokens in from other chains right now: any transfer onto it is refused and refunded.";
+      const rows = caps.map((c) => `${c.symbol || c.denom} over ${c.channel}: room ${c.roomDisplay || `${c.room} base units`}`);
+      return `Only these may come onto Aether, up to their room (more is refused and refunded on the sending chain): ${rows.join("; ")}.`;
+    },
+    examples: [["How much USDC can still come onto Aether?", "Reading Aether's inflow caps."]],
+  },
 ];
 
 /** The first JSON object in a model's reply. */

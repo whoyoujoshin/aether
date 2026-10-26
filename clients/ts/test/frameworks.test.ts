@@ -22,7 +22,7 @@ test("AgentKit: actions with zod schemas that answer JSON text and keep the limi
   const provider = aetherActionProvider(kit);
   assert.equal(provider.supportsNetwork(), true);
   const actions = Object.fromEntries(provider.getActions().map((a) => [a.name, a]));
-  assert.equal(Object.keys(actions).length, 7);
+  assert.equal(Object.keys(actions).length, 8);
   const send = actions.aether_send_payment;
   assert.equal(send.schema.safeParse({ to, amount: "0.1 AETH" }).success, false, "idempotency_key is required");
   assert.equal(send.schema.safeParse({ to, amount: "0.1 AETH", idempotency_key: "a", memo: null }).success, true);
@@ -69,5 +69,5 @@ test("GOAT's getTools takes the plugin", async (t) => {
   const { kit } = setup();
   const wallet = { getChain: () => ({ type: "evm", id: 84532 }), getCoreTools: () => [] };
   const tools = await goat.getTools({ wallet, plugins: [aether(kit)] });
-  assert.equal(tools.length, 6);
+  assert.equal(tools.length, 7);
 });

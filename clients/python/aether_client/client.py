@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Union
 
 from .amount import AETH, DENOM, Asset, Assets
+from .inflow_caps import INFLOW_CAPS_PATH, InflowCaps, decode_inflow_caps
 from .keys import Key, is_address
 from .proto import Writer, first, read_fields
 from .rpc import Rpc, RpcError
@@ -142,6 +143,16 @@ class AetherClient:
         resp = self.rpc.abci_query("/cosmos.bank.v1beta1.Query/Balance", Writer().string(1, address).string(2, denom).finish())
         coin = first(resp, 1, b"")
         return int(first(coin, 2, b"0").decode() or "0") if coin else 0
+
+    def inflow_caps(self) -> InflowCaps:
+        """The tokens other chains may send onto Aether and the room each has left (x/inflowcap).
+        active is False on a chain without it yet."""
+        try:
+            return InflowCaps(active=True, caps=decode_inflow_caps(self.rpc.abci_query(INFLOW_CAPS_PATH, b"")))
+        except RpcError as e:
+            if "unknown query path" in str(e).lower():
+                return InflowCaps(active=False)
+            raise
 
     def balances(self, address: str) -> List[Tuple[Asset, int]]:
         """The balance of every asset this client knows, AETH first."""

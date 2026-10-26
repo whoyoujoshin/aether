@@ -71,13 +71,13 @@ test("agent tools: an uncertain send is never repeated under its key", async () 
 
 test("agent tools: read-only without a key; specs and dispatch", async () => {
   const ro = setup({ key: false }).kit;
-  assert.deepEqual(ro.specs().map((t) => t.name), ["aether_get_balance", "aether_get_transaction_status", "aether_find_paid_services", "aether_quote_swap"]);
+  assert.deepEqual(ro.specs().map((t) => t.name), ["aether_get_balance", "aether_get_transaction_status", "aether_find_paid_services", "aether_quote_swap", "aether_get_inflow_caps"]);
   assert.equal(code(await ro.sendPayment({ to: "aether1x", amount: "1 AETH", idempotency_key: "k" })), "READ_ONLY");
   assert.equal(code(await ro.getBalance()), "INVALID_ARGUMENT");
 
   const { kit, to } = setup();
   const openai = kit.toolSpecs() as { type: string; function: { name: string; parameters: { type: string } } }[];
-  assert.equal(openai.length, 7);
+  assert.equal(openai.length, 8);
   for (const t of openai) assert.equal(t.function.parameters.type, "object");
   assert.equal((kit.toolSpecs("anthropic")[0].input_schema as { type: string }).type, "object");
   assert.equal((await kit.call("aether_send_payment", JSON.stringify({ to, amount: "0.1 AETH", idempotency_key: "k1" }))).status, "pending");
