@@ -159,6 +159,28 @@ listed. `cmd/relayer -send` sent 7000stake over `channel-0` and 8000stake
 over `channel-1`; each arrived on Aether as its own `ibc/…` denom,
 relayed by its own worker, with no rejected proposals.
 
+**A relay transaction proposed twice** (found 2026-10-26, on a devnet
+with 1 s blocks). A worker's batch stays proposable for two blocks after
+it was computed (`staleAfter`). With blocks faster than its 2 s cycle,
+the proposer put the same relay transaction in two blocks in a row. The
+second copy was a no-op, but a relay transaction has no signature and
+no sequence, so it had the same hash as the first, and CometBFT's
+transaction index keeps one result per hash: the no-op's empty result
+replaced the one carrying `recv_packet` and `write_acknowledgement`.
+`cmd/outbound` finds Aether's acknowledgements by searching that index,
+so it failed on that packet every cycle and the counterparty never got
+the acknowledgement. The testnet's ~6 s blocks make this rare, but a slow
+cycle there would do the same.
+
+Fixed: `App.FinalizeBlock` remembers the hashes of the last 10 blocks'
+transactions, and `PrepareProposal` leaves out a relay transaction
+already among them. It is the proposer's own memory, not consensus:
+`ProcessProposal` doesn't check it, and a duplicate another proposer
+includes still executes as a no-op (`TestHelicaseRelaysWithoutSignatures`
+covers both). Every validator should run it, since any of them proposes.
+The same devnet then ran the round trip and the inflow cap step
+(`docs/IBC-INFLOW-CAP.md`) with nothing relayed by hand.
+
 To reproduce:
 
 1. Build `aetherd` with `ibcActivationHeight` and `helicaseActivationHeight` set to a small value. This is a local build only; never commit it.

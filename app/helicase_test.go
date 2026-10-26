@@ -64,11 +64,19 @@ func proposeBlock(t *testing.T, chain *ibctesting.TestChain, source HelicaseSour
 		ProposerAddress:    chain.CurrentHeader.ProposerAddress,
 	})
 	require.NoError(t, err)
+	return prep, decideBlock(t, chain, prep.Txs)
+}
 
+// decideBlock has the validators accept, execute and commit a block of
+// txs at the next height, as proposed by someone else.
+func decideBlock(t *testing.T, chain *ibctesting.TestChain, txs [][]byte) *abci.ResponseFinalizeBlock {
+	t.Helper()
+	app := chain.App.(*App)
+	height := app.LastBlockHeight() + 1
 	proc, err := app.ProcessProposal(&abci.RequestProcessProposal{
 		Height:             height,
 		Time:               chain.CurrentHeader.Time,
-		Txs:                prep.Txs,
+		Txs:                txs,
 		NextValidatorsHash: chain.NextVals.Hash(),
 		ProposerAddress:    chain.CurrentHeader.ProposerAddress,
 	})
@@ -78,14 +86,14 @@ func proposeBlock(t *testing.T, chain *ibctesting.TestChain, source HelicaseSour
 	res, err := app.FinalizeBlock(&abci.RequestFinalizeBlock{
 		Height:             height,
 		Time:               chain.CurrentHeader.Time,
-		Txs:                prep.Txs,
+		Txs:                txs,
 		NextValidatorsHash: chain.NextVals.Hash(),
 		ProposerAddress:    chain.CurrentHeader.ProposerAddress,
 	})
 	require.NoError(t, err)
 	commitHelicaseBlock(t, chain, res)
 	chain.Coordinator.IncrementTime()
-	return prep, res
+	return res
 }
 
 // relayViaHelicase replaces chain's SendMsgs: relay messages go into the
@@ -194,9 +202,15 @@ func testHelicaseRelays(t *testing.T, opts ...func(*baseapp.BaseApp)) {
 	require.False(t, appB.IBCKeeper.ChannelKeeper.HasPacketCommitment(chainB.GetContext(), packet.SourcePort, packet.SourceChannel, packet.Sequence),
 		"B must have cleared its commitment once Aether's acknowledgement reached it")
 
-	// A proposer holding a stale batch proposes the same packet again: a
-	// no-op, not a failure and not a second voucher.
-	_, dup := proposeBlock(t, chainA, fixedHelicaseSource{last})
+	// A proposer holding a stale batch leaves out what's already in a
+	// block: the same bytes again would replace the delivering
+	// transaction's result in CometBFT's index (see App.FinalizeBlock).
+	prep, _ := proposeBlock(t, chainA, fixedHelicaseSource{last})
+	require.Empty(t, prep.Txs, "a relay transaction already committed must not be proposed again")
+
+	// Another validator's proposal can still carry it: a no-op, not a
+	// failure and not a second voucher.
+	dup := decideBlock(t, chainA, [][]byte{last})
 	require.Len(t, dup.TxResults, 1)
 	require.Zero(t, dup.TxResults[0].Code, dup.TxResults[0].Log)
 	require.Equal(t, amount, appA.BankKeeper.GetBalance(chainA.GetContext(), chainA.SenderAccount.GetAddress(), voucher).Amount,

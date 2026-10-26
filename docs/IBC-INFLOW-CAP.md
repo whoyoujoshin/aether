@@ -103,7 +103,10 @@ A refused packet's acknowledgement carries only the error's code
 (`inflowcap` codes 3 not listed, 4 over the cap, 5 a bad amount). The
 reason is in an `inflow_cap_refused` event with the channel, sender,
 denom, voucher, amount, supply, cap and `reason` (`not_listed`,
-`over_cap`, `bad_amount`).
+`over_cap`, `bad_amount`). ibc-go keeps an error acknowledgement's events
+but prefixes the event and every key with `ibccallbackerror-`, so search
+for `ibccallbackerror-inflow_cap_refused.ibccallbackerror-reason`
+(`inflowcap.RefusedEvent`, `inflowcap.RefusedKey`).
 
 The mainnet USDC base denom is Injective mainnet's, pinned in `wallet` the
 way `wallet.TestnetUSDC` is. The testnet one is
@@ -162,8 +165,25 @@ that block once restarted.
   valid; the restarts across the activation and the testnet entries.
   `app/fresh_chain_test.go` checks it is wired from block 1 with nothing
   listed.
-- **Devnet, still to do:** the round trip with Helicase and outbound,
-  before a testnet height is set.
+- **Devnet, done (2026-10-26):** an `aether-rc-dev` node (the cap on from
+  block 1, genesis listing the counterparty's `stake` over `channel-0` at
+  100,000) and a `counterpartyd` node, with Helicase relaying onto Aether
+  and `cmd/outbound` onto the counterparty, nothing relayed by hand
+  (`cmd/helicasetest --outbound-key outbound --ligase --inflowcap
+  --inflowcap-unlisted-denom ufoo`). After the usual in, out and Ligase
+  steps the supply was 12,001, room 87,999:
+  - 88,000 (one over) was refused with reason `over_cap`, and the
+    counterparty refunded it once outbound relayed the error ack;
+  - 87,999 filled the cap exactly (room 0);
+  - an Aether user sent 1,000 back, the room became 1,000, and 1,000 came
+    in again;
+  - 100 `ufoo`, not listed, was refused with `not_listed` and refunded.
+
+  The first attempt found a Helicase bug, not a cap one: with 1 s blocks
+  the proposer put the same relay transaction in two blocks, the second
+  copy's empty result replaced the first's in CometBFT's index, and
+  outbound could never find Aether's acknowledgement. Fixed in the same
+  change (see `docs/HELICASE.md`).
 
 ## Risks
 
@@ -180,7 +200,8 @@ that block once restarted.
 
 ## Still to do
 
-- The devnet run above, then the testnet height.
+- The testnet height, with `testnetInflowEntries` checked against what
+  is on Aether then.
 - Injective mainnet's USDC denom pinned in `wallet` and listed in the
   `aether-1` genesis.
 - Clients: read `Caps` before a transfer onto Aether (agentmcp and the

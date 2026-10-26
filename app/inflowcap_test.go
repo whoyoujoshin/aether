@@ -5,6 +5,7 @@ import (
 	"time"
 
 	sdkmath "cosmossdk.io/math"
+	abci "github.com/cometbft/cometbft/abci/types"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -92,6 +93,7 @@ func TestInflowCap_RefusedTransferIsRefunded(t *testing.T) {
 
 	f.send(10, receiver, "")
 	require.False(t, f.lastAckSuccess, "nothing listed: refused")
+	require.Equal(t, inflowcap.ReasonNotListed, refusal(t, f.lastRecv))
 	require.Zero(t, f.supplyA(f.voucher))
 
 	f.capVoucher(1000)
@@ -104,6 +106,7 @@ func TestInflowCap_RefusedTransferIsRefunded(t *testing.T) {
 	before := f.balanceB("uaeth")
 	f.send(1, receiver, "")
 	require.False(t, f.lastAckSuccess, "one over")
+	require.Equal(t, inflowcap.ReasonOverCap, refusal(t, f.lastRecv), "the reason survives ibc-go's error-ack renaming")
 	require.Equal(t, before, f.balanceB("uaeth"), "refunded on B")
 	require.Equal(t, int64(1000), f.supplyA(f.voucher))
 
@@ -113,6 +116,23 @@ func TestInflowCap_RefusedTransferIsRefunded(t *testing.T) {
 	require.Equal(t, f.voucher, caps.Caps[0].VoucherDenom)
 	require.Equal(t, int64(1000), caps.Caps[0].Supply.Int64())
 	require.True(t, caps.Caps[0].Room.IsZero())
+}
+
+// refusal is the reason in a receive's inflow_cap_refused event, as
+// ibc-go renames it for an error acknowledgement.
+func refusal(t *testing.T, events []abci.Event) string {
+	t.Helper()
+	for _, ev := range events {
+		if ev.Type != inflowcap.RefusedEvent {
+			continue
+		}
+		for _, a := range ev.Attributes {
+			if a.Key == inflowcap.RefusedKey(inflowcap.AttributeReason) {
+				return a.Value
+			}
+		}
+	}
+	return ""
 }
 
 // Vouchers sent back burn on Aether, so the room they took is free again.

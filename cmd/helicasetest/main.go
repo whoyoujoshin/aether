@@ -69,6 +69,8 @@ func main() {
 		keyringBackend = flag.String("keyring-backend", "test", "keyring backend for both chains")
 		wait           = flag.Duration("wait", 90*time.Second, "how long to wait for Helicase at each step")
 		withLigase     = flag.Bool("ligase", false, "with --outbound-key: also fund and release an Aether escrow from the counterparty through Ligase")
+		withInflowCap  = flag.Bool("inflowcap", false, "with --outbound-key: also check x/inflowcap; aether's genesis must list --cparty-denom over the new channel with a cap")
+		unlistedDenom  = flag.String("inflowcap-unlisted-denom", "", "with --inflowcap: a counterparty denom aether doesn't list, to check it's refused")
 		outboundKey    = flag.String("outbound-key", "", "if set, cmd/outbound is running with this counterparty key: relay nothing by hand, wait for it, and check it signed the counterparty's side")
 	)
 	flag.Parse()
@@ -180,6 +182,9 @@ func main() {
 	if outbound != "" {
 		if *withLigase {
 			ligaseStep(aetherUserChain, cparty, chanA, chanC, *cpartyDenom, *wait)
+		}
+		if *withInflowCap {
+			inflowCapStep(aetherUserChain, cparty, chanA, chanC, *cpartyDenom, *unlistedDenom, *wait)
 		}
 		// With cmd/outbound running, nothing stays unrelayed long enough
 		// to time out; step 3 runs without it.

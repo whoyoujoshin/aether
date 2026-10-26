@@ -23,6 +23,7 @@ import (
 	sdkmath "cosmossdk.io/math"
 	transfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
 	host "github.com/cosmos/ibc-go/v8/modules/core/24-host"
+	coretypes "github.com/cosmos/ibc-go/v8/modules/core/types"
 )
 
 const (
@@ -37,7 +38,10 @@ const (
 )
 
 // Events. A refusal's reason is only in the event: an acknowledgement
-// carries the error's code, not its message.
+// carries the error's code, not its message. Because the acknowledgement
+// is an error, ibc-go keeps the event but renames it and each of its
+// keys with coretypes.ErrorAttributeKeyPrefix, so in a transaction's
+// result it is RefusedEvent with keys RefusedKey(AttributeReason) etc.
 const (
 	EventTypeRefused = "inflow_cap_refused"
 
@@ -53,6 +57,13 @@ const (
 	ReasonOverCap    = "over_cap"
 	ReasonBadAmount  = "bad_amount"
 )
+
+// RefusedEvent is EventTypeRefused as it appears in a transaction's
+// result (see the events comment).
+const RefusedEvent = coretypes.ErrorAttributeKeyPrefix + EventTypeRefused
+
+// RefusedKey is attribute key as it appears in RefusedEvent.
+func RefusedKey(key string) string { return coretypes.ErrorAttributeKeyPrefix + key }
 
 var (
 	// params -> Params.
