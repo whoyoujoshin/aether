@@ -211,6 +211,17 @@ that block once restarted.
   only after the ack is relayed. Clients should read the room left first.
 - **Refunds depend on outbound.** If `cmd/outbound` is down, refused
   packets wait for it, or for their timeout.
+- **A send that never settles holds its room.** If a send back can't be
+  acknowledged or timed out (the counterparty's client of Aether
+  expired), its record stays and keeps its amount off the room. That
+  matches what the other chain still holds in escrow for it; governance
+  can raise the cap if it matters.
+- **Sends from before activation aren't counted.** The wrapper records
+  only from the activation height. A send back still in flight then, if
+  it fails, is refunded on top of the cap once. At the testnet
+  activation, check that no packets are outstanding on the listed
+  channels first (`aetherd q ibc channel packet-commitments transfer
+  channel-2`, and `channel-3`). Fresh chains are on from block 1.
 - **A forged header can still mint up to the cap.** The cap bounds the
   loss; it doesn't prevent it. `ibcwatch` and a low starting cap stay
   required.
