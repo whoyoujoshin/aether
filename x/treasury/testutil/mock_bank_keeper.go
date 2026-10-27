@@ -41,3 +41,7 @@ func (m *MockBankKeeper) SendCoinsFromModuleToAccount(ctx context.Context, sende
 func (m *MockBankKeeper) GetBalance(ctx context.Context, addr sdk.AccAddress, denom string) sdk.Coin {
 	return sdk.NewCoin(denom, m.Balances.AmountOf(denom))
 }
+
+func (m *MockBankKeeper) GetAllBalances(ctx context.Context, addr sdk.AccAddress) sdk.Coins {
+	return m.Balances
+}

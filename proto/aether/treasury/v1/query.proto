@@ -2,6 +2,7 @@ syntax = "proto3";
 package aether.treasury.v1;
 
 import "gogoproto/gogo.proto";
+import "cosmos/base/v1beta1/coin.proto";
 
 option go_package = "github.com/whoyoujoshin/aether/x/treasury";
 
@@ -35,4 +36,12 @@ message QueryBalanceResponse {
   // currently inaccessible to governance-authorized spends, since
   // Spend checks tracked_balance, not the real bank balance.
   bool ledger_matches_bank_balance = 3;
+  // Everything the treasury module account holds, in every denom: from
+  // FeesToTreasuryActivationHeight the transaction fees it collects,
+  // which may be paid in USDC as well as AETH. The two fields above are
+  // uaeth only; governance's treasury spends are uaeth only.
+  repeated cosmos.base.v1beta1.Coin real_bank_balances = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
+  ];
 }

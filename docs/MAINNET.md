@@ -220,12 +220,29 @@ in escrow for Aether. Keep that small while the chain is young:
 - **Fees.**
   - **Minimum gas price.** The testnet's is zero; mainnet needs one to stop
     spam.
-  - **Accept USDC for gas.** Validators can list USDC in
-    `minimum-gas-prices` (a fee in any listed denom passes), so an agent
-    holding only USDC can still pay its gas.
-  - **Where fees go.** They land in the fee collector, which nothing spends;
-    route them to the treasury (decided 2026-10-22). That is a code change
-    in the mainnet build, so it is on the review's list.
+  - **Accept USDC for gas.** No consensus code: each validator lists USDC
+    in `minimum-gas-prices` next to AETH, and a fee passes if it covers any
+    one listed denom. For example `0.0001uaeth,0.0001ibc/<USDC voucher>`
+    asks 40 of either for a 400,000-gas transaction. The voucher denom is
+    known once governance lists the Injective channel
+    (`docs/IBC-INFLOW-CAP.md`, Listing on aether-1). Checked on an
+    `aether-rc-dev` devnet: with both denoms listed, a fee of 50 in a
+    voucher passed, 30 was refused ("insufficient fees … required: 40"),
+    and 40uaeth passed.
+  - **Where fees go: built** (`app/fees.go`, `FeesToTreasuryActivationHeight`).
+    At the end of every block everything the fee collector holds, in every
+    denom, moves to the treasury module account; the uaeth part is credited
+    to the treasury's ledger, so governance can spend it. A
+    `fees_to_treasury` event carries the amount, and the treasury's
+    `Balance` query lists every denom it holds (`real_bank_balances`). On
+    from block 1 on fresh chains; a placeholder height (30,000,000) on the
+    testnet, where the fee collector holds 0.016374 AETH from since genesis
+    that the first swept block moves. It adds no store, but it changes
+    every block, so validators need a binary carrying the height first. It
+    is on the review's list.
+  - **Still open:** the price itself, which is node configuration and can
+    change without a release. Governance can't spend the treasury's USDC
+    yet: its spends are uaeth only.
 - **Chain ID:** `aether-1`.
 
 ## 5. Review instead of audit
@@ -295,6 +312,6 @@ had.
 | Supply | fair launch (as now) or an allocation | fair launch | **fair launch** |
 | First USDC path | Injective (Noble is being wound down by Circle) | Injective, as on the testnet | **Injective** |
 | Inflow cap | an amount | low at launch, raised by governance | **5,000 USDC**, chain-wide, raised by governance |
-| Fees | a minimum price, USDC accepted, where fees go | accept USDC; fees to the treasury | **accept USDC; fees to the treasury** (the minimum price is still open) |
+| Fees | a minimum price, USDC accepted, where fees go | accept USDC; fees to the treasury | **accept USDC; fees to the treasury** (built: `app/fees.go`; the minimum price is still open) |
 | Operators | who, and how many | seven or more before phase 2 | to define: a draft is in §3 |
 | Legal | — | one consultation before phase 2 | Joshua is researching it |

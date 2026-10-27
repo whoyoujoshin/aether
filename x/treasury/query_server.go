@@ -22,5 +22,6 @@ func (q queryServer) Balance(goCtx context.Context, req *QueryBalanceRequest) (*
 		TrackedBalance:           tracked.String(),
 		RealBankBalance:          real.String(),
 		LedgerMatchesBankBalance: tracked.Equal(real),
+		RealBankBalances:         q.Keeper.GetRealBankBalances(ctx),
 	}, nil
 }

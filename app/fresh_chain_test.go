@@ -80,6 +80,7 @@ func TestFreshChain_EveryModuleFromBlockOne(t *testing.T) {
 	require.True(t, first.InflowCapKeeper.HasParams(ctx))
 	require.Empty(t, first.InflowCapKeeper.GetParams(ctx).Entries)
 	require.True(t, inflowCapHost{first}.Active(ctx))
+	require.True(t, gates.On(ctx, feesToTreasuryActivationHeight), "fees go to the treasury from block 1")
 
 	again := newChainApp(t, db, chainID)
 	require.True(t, again.ibcWired)
