@@ -11,7 +11,11 @@
 // and no risk of forgetting the ML-DSA-44 --gas 400000 requirement, since
 // that's hardcoded here. With --loop (requires --auto-submit), mines and
 // submits continuously, waiting for each submission to be confirmed before
-// starting the next, until interrupted (Ctrl+C).
+// starting the next, until interrupted (Ctrl+C). With --duty below 1,
+// it rests after each round in proportion to the time it spent hashing,
+// so it mines at about that fraction of its full rate: a validator whose
+// miner does more than a third of the work can bring its power, and so
+// its power to halt the chain by going offline, below a third.
 //
 // Usage:
 //
@@ -300,6 +304,7 @@ func main() {
 	fromKey := flag.String("from", "", "keyring name of the miner account (required with --auto-submit)")
 	keyringBackend := flag.String("keyring-backend", "test", "keyring backend the miner account is stored in")
 	loop := flag.Bool("loop", false, "keep mining and submitting continuously (requires --auto-submit); runs until interrupted")
+	duty := flag.Float64("duty", 1, "with --loop: the fraction of the time to spend hashing, above 0 and at most 1. After each round it rests for the hashing time x (1-duty)/duty, so it mines at about duty of its full rate. Seat work, and so voting power, follows its share of all the work: 0.6 takes a miner doing 42% of the work to about 30%")
 	feesStr := flag.String("fees", "0uaeth", "fee per submission; a node with --minimum-gas-prices needs at least gas x that price (400000 gas at 0.0001uaeth is 40uaeth)")
 	flag.Parse()
 
@@ -311,6 +316,10 @@ func main() {
 
 	if *minerStr == "" {
 		fmt.Fprintln(os.Stderr, "error: --miner is required")
+		os.Exit(1)
+	}
+	if !(*duty > 0 && *duty <= 1) {
+		fmt.Fprintf(os.Stderr, "error: --duty must be above 0 and at most 1, got %v\n", *duty)
 		os.Exit(1)
 	}
 	if *loop && !*autoSubmit {
@@ -358,7 +367,9 @@ func main() {
 			fmt.Printf("=== Round %d ===\n", round)
 		}
 
+		started := time.Now()
 		h, _, err := mineOne(*rpcAddr, *grpcAddr, *minerStr, minerAddr, *maxAttempts)
+		hashing := time.Since(started)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			if !*loop {
@@ -369,6 +380,8 @@ func main() {
 			// unreachable node or an unlucky round just starts another.
 			if !errors.Is(err, errNoNonce) {
 				time.Sleep(10 * time.Second)
+			} else {
+				rest(hashing, *duty)
 			}
 			round++
 			continue
@@ -396,6 +409,25 @@ func main() {
 		if !*loop {
 			break
 		}
+		// After the submission, not before: a share held back goes stale.
+		rest(hashing, *duty)
 		round++
 	}
+}
+
+// restFor is how long to rest after hashing for hashing at duty, so the
+// miner hashes for duty of the time: hashing x (1-duty)/duty.
+func restFor(hashing time.Duration, duty float64) time.Duration {
+	if duty >= 1 || duty <= 0 || hashing <= 0 {
+		return 0
+	}
+	return time.Duration(float64(hashing) * (1 - duty) / duty)
+}
+
+func rest(hashing time.Duration, duty float64) {
+	d := restFor(hashing, duty)
+	if d >= time.Second {
+		fmt.Printf("Resting %s (--duty %g after %s hashing)\n\n", d.Round(time.Second), duty, hashing.Round(time.Second))
+	}
+	time.Sleep(d)
 }
