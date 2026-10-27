@@ -200,3 +200,48 @@ func TestInFlight_RecvCountsInFlight(t *testing.T) {
 	require.Zero(t, n.calls)
 	require.Equal(t, inflowcap.ReasonOverCap, refusedReason(t, c))
 }
+
+// Settling a recorded send may not leave more of its voucher than it held:
+// a correct refund re-mints exactly the burn, and a refund path that
+// mints more is refused, so the message fails and nothing lands.
+func TestInFlight_SettlementMayNotGrowHeld(t *testing.T) {
+	voucher := inflowcap.VoucherDenom("channel-2", usdc)
+	sent := channeltypes.Packet{Sequence: 4, SourcePort: "transfer", SourceChannel: "channel-2"}
+	for _, tc := range []struct {
+		name    string
+		record  bool
+		minted  int64
+		timeout bool
+		grew    bool
+	}{
+		{name: "timeout refunds the burn", record: true, minted: 10, timeout: true},
+		{name: "error ack refunds the burn", record: true, minted: 10},
+		{name: "success ack: the burn is final", record: true, minted: 0},
+		{name: "a refund twice the burn", record: true, minted: 20, timeout: true, grew: true},
+		{name: "one unit over the burn", record: true, minted: 11, grew: true},
+		{name: "a send from before activation: not checked", record: false, minted: 10, timeout: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bank := supplyBank{voucher: sdkmath.NewInt(90)}
+			k, ctx := newKeeper(t, bank)
+			if tc.record {
+				k.AddInFlight(ctx, send("channel-2", 4, voucher, 10))
+			}
+			n := &next{onSettle: func() { bank[voucher] = bank[voucher].Add(sdkmath.NewInt(tc.minted)) }}
+			m := inflowcap.NewIBCModule(n, keeperHost{Keeper: k, active: true})
+			var err error
+			if tc.timeout {
+				err = m.OnTimeoutPacket(ctx, sent, nil)
+			} else {
+				err = m.OnAcknowledgementPacket(ctx, sent, nil, nil)
+			}
+			if tc.grew {
+				require.ErrorIs(t, err, inflowcap.ErrSettlementGrew)
+				return // the message fails: the store and the mint revert with it
+			}
+			require.NoError(t, err)
+			_, still := k.GetInFlightSend(ctx, "transfer", "channel-2", 4)
+			require.False(t, still, "released")
+		})
+	}
+}

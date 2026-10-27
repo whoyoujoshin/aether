@@ -114,3 +114,7 @@ func (h inflowCapHost) AddInFlight(ctx sdk.Context, s inflowcap.InFlightSend) {
 func (h inflowCapHost) ReleaseInFlight(ctx sdk.Context, portID, channelID string, sequence uint64) {
 	h.app.InflowCapKeeper.ReleaseInFlight(ctx, portID, channelID, sequence)
 }
+
+func (h inflowCapHost) GetInFlightSend(ctx sdk.Context, portID, channelID string, sequence uint64) (inflowcap.InFlightSend, bool) {
+	return h.app.InflowCapKeeper.GetInFlightSend(ctx, portID, channelID, sequence)
+}

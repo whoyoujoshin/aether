@@ -1,6 +1,8 @@
 package inflowcap
 
 import (
+	"math/big"
+
 	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	transfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
@@ -21,14 +23,23 @@ type Host interface {
 	// a failure would re-mint (Keeper's methods of the same names).
 	InFlight(ctx sdk.Context, voucher string) sdkmath.Int
 	AddInFlight(ctx sdk.Context, s InFlightSend)
+	GetInFlightSend(ctx sdk.Context, portID, channelID string, sequence uint64) (InFlightSend, bool)
 	ReleaseInFlight(ctx sdk.Context, portID, channelID string, sequence uint64)
 }
 
 // IBCModule wraps the transfer route's IBC callbacks. OnRecvPacket
 // checks the cap. Acknowledgements and timeouts of Aether's own sends
 // pass through, and then the send's in-flight record (ICS4Wrapper) is
-// released: in the same step as a failure's refund, so a refund is
-// never refused and never lands on top of room it still held.
+// released: in the same step as a failure's refund, so a refund never
+// lands on top of room it still held.
+//
+// A refund is refused in one case only: settling a recorded send must
+// not leave more of its voucher (supply plus in flight) than there was
+// before. A correct refund re-mints exactly what the send burned, so
+// this only stops a refund path that mints more (a bug like ibc-go's
+// 2024 timeout reentrancy): the message fails, nothing is refunded, and
+// the packet waits for a fixed binary. Sends with no record (from
+// before activation) aren't checked.
 type IBCModule struct {
 	porttypes.IBCModule
 	host Host
@@ -98,27 +109,49 @@ func (m IBCModule) OnRecvPacket(ctx sdk.Context, packet channeltypes.Packet, rel
 // OnAcknowledgementPacket settles one of Aether's sends: transfer refunds
 // it on an error acknowledgement, then its burn stops counting.
 func (m IBCModule) OnAcknowledgementPacket(ctx sdk.Context, packet channeltypes.Packet, acknowledgement []byte, relayer sdk.AccAddress) error {
-	if err := m.IBCModule.OnAcknowledgementPacket(ctx, packet, acknowledgement, relayer); err != nil {
-		return err
-	}
-	m.settled(ctx, packet)
-	return nil
+	return m.settle(ctx, packet, func() error {
+		return m.IBCModule.OnAcknowledgementPacket(ctx, packet, acknowledgement, relayer)
+	})
 }
 
 // OnTimeoutPacket settles one of Aether's sends that timed out: transfer
 // refunds it, then its burn stops counting.
 func (m IBCModule) OnTimeoutPacket(ctx sdk.Context, packet channeltypes.Packet, relayer sdk.AccAddress) error {
-	if err := m.IBCModule.OnTimeoutPacket(ctx, packet, relayer); err != nil {
+	return m.settle(ctx, packet, func() error {
+		return m.IBCModule.OnTimeoutPacket(ctx, packet, relayer)
+	})
+}
+
+// settle runs transfer's settlement of packet, then releases its
+// in-flight record, refusing a settlement that leaves more of the
+// voucher than there was (see IBCModule).
+func (m IBCModule) settle(ctx sdk.Context, packet channeltypes.Packet, next func() error) error {
+	if !m.host.Active(ctx) {
+		return next()
+	}
+	rec, recorded := m.host.GetInFlightSend(ctx, packet.SourcePort, packet.SourceChannel, packet.Sequence)
+	var before *big.Int
+	if recorded {
+		before = m.held(ctx, rec.VoucherDenom)
+	}
+	if err := next(); err != nil {
 		return err
 	}
-	m.settled(ctx, packet)
+	if !recorded {
+		return nil
+	}
+	m.host.ReleaseInFlight(ctx, packet.SourcePort, packet.SourceChannel, packet.Sequence)
+	if after := m.held(ctx, rec.VoucherDenom); after.Cmp(before) > 0 {
+		return ErrSettlementGrew.Wrapf("%s %s over %s sequence %d: held %s before, %s after",
+			rec.Amount, rec.VoucherDenom, packet.SourceChannel, packet.Sequence, before, after)
+	}
 	return nil
 }
 
-func (m IBCModule) settled(ctx sdk.Context, packet channeltypes.Packet) {
-	if m.host.Active(ctx) {
-		m.host.ReleaseInFlight(ctx, packet.SourcePort, packet.SourceChannel, packet.Sequence)
-	}
+// held is voucher's supply plus its sends in flight, as a big.Int so the
+// sum can't overflow (each alone is under 2^256).
+func (m IBCModule) held(ctx sdk.Context, voucher string) *big.Int {
+	return new(big.Int).Add(m.host.Supply(ctx, voucher).Amount.BigInt(), m.host.InFlight(ctx, voucher).BigInt())
 }
 
 // refuse answers with an error acknowledgement, before anything ran, and

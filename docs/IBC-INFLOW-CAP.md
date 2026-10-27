@@ -93,8 +93,15 @@ which records each burned send by port, channel and sequence
 (`InFlightSend`, with a running total per voucher), and the middleware
 releases it once the packet settles: on a success acknowledgement the
 burn is final, and on an error acknowledgement or a timeout the release
-happens in the same step as transfer's refund. A refund is never
-refused. Sends that escrow (AETH, or a voucher forwarded over another
+happens in the same step as transfer's refund. A refund is refused in
+one case only, as a backstop: settling a recorded send may not leave
+more of its voucher (supply plus in flight) than there was before. A
+correct refund re-mints exactly what the send burned, so this stops only
+a refund path that mints more, such as ibc-go's 2024 timeout reentrancy
+(fixed in the ibc-go Aether runs; Aether has no CosmWasm): the message
+fails with `ErrSettlementGrew`, nothing is refunded, and the packet waits
+for a fixed binary. A send with no record (from before activation)
+isn't checked. Sends that escrow (AETH, or a voucher forwarded over another
 channel) don't move the supply and aren't recorded. Genesis exports and
 imports the sends in flight.
 
@@ -241,6 +248,10 @@ that block once restarted.
   activation, check that no packets are outstanding on the listed
   channels first (`aetherd q ibc channel packet-commitments transfer
   channel-2`, and `channel-3`). Fresh chains are on from block 1.
+- **A refund-path bug stops refunds.** The backstop above fails closed:
+  if a settlement ever tried to mint more than its send burned, that
+  packet's acknowledgement or timeout would fail until a fixed binary
+  ships, and its sender would wait for the refund.
 - **A forged header can still mint up to the cap.** The cap bounds the
   loss; it doesn't prevent it. `ibcwatch` and a low starting cap stay
   required.

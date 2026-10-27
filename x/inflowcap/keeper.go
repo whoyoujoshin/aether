@@ -110,6 +110,18 @@ func (k Keeper) AddInFlight(ctx sdk.Context, s InFlightSend) {
 	k.setInFlightTotal(ctx, s.VoucherDenom, k.InFlight(ctx, s.VoucherDenom).Add(s.Amount))
 }
 
+// GetInFlightSend is the recorded send of sequence over port and channel,
+// if there is one.
+func (k Keeper) GetInFlightSend(ctx sdk.Context, portID, channelID string, sequence uint64) (InFlightSend, bool) {
+	bz := ctx.KVStore(k.storeKey).Get(InFlightSendKey(portID, channelID, sequence))
+	if bz == nil {
+		return InFlightSend{}, false
+	}
+	var s InFlightSend
+	k.cdc.MustUnmarshal(bz, &s)
+	return s, true
+}
+
 // ReleaseInFlight forgets the send of sequence over port and channel, if
 // it was recorded, once its packet is settled: a success leaves the burn
 // final, and a failure's refund has just put it back into the supply.
