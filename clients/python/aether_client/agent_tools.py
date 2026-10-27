@@ -217,7 +217,7 @@ class AetherToolkit:
         rows = []
         for c in caps.caps:
             row = {"channel": c.channel, "denom": c.denom, "voucherDenom": c.voucher_denom,
-                   "cap": str(c.cap), "supply": str(c.supply), "room": str(c.room)}
+                   "cap": str(c.cap), "supply": str(c.supply), "inFlight": str(c.in_flight), "room": str(c.room)}
             # Named when known: OSMO, and this client's USDC (both 6 decimals).
             asset = self.client.assets.by_denom(c.voucher_denom)
             symbol = "OSMO" if c.voucher_denom == OSMO_ON_AETHER else (asset.symbol if asset and asset.decimals == 6 else "")

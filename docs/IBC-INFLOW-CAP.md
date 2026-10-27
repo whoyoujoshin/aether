@@ -267,7 +267,7 @@ that block once restarted.
   `AETHER_GET_INFLOW_CAPS` in the ElizaOS plugin, and
   `wallet.Client.InflowCaps`, `AetherClient.inflowCaps()` and
   `AetherClient.inflow_caps()` in code. Each lists the tokens other chains
-  may send onto Aether, with channel, cap, supply and room, and answers
+  may send onto Aether, with channel, cap, supply, sends in flight (`inFlight`) and room, and answers
   `active: false` on a chain without the cap yet (the node answers the
   query path "unknown").
 - **Swaps:** `swap_aeth` and `swap_from_test_wallet` bring OSMO back onto

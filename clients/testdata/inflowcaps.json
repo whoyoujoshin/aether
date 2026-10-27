@@ -1,20 +1,27 @@
 {
-  "note": "x/inflowcap Caps query answers (/aether.inflowcap.v1.Query/Caps over abci_query), base64 as the node returns them, and what each decodes to. Every client's decoder tests against this file; x/inflowcap's TestCapsVectors checks it against the Go types. A node without x/inflowcap answers the query path with code 6 and 'unknown query path': that means no cap, not an error.",
+  "note": "x/inflowcap Caps query answers (/aether.inflowcap.v1.Query/Caps over abci_query), base64 as the node returns them, and what each decodes to. Field 5, in_flight, is absent in answers from nodes before it existed and decodes as 0. Every client's decoder tests against this file; x/inflowcap's TestCapsVectors checks it against the Go types. A node without x/inflowcap answers the query path with code 6 and 'unknown query path': that means no cap, not an error.",
   "inactive": {"code": 6, "log": "unknown query path: unknown request"},
   "vectors": [
     {
       "name": "aether-rc-dev devnet node, 2026-10-26: one entry at its cap",
       "value": "Cm0KGgoJY2hhbm5lbC0wEgVzdGFrZRoGMTAwMDAwEkRpYmMvQzA1M0Q2MzdDQ0EyQTJCQTAzMEUyQzVFRTFCMjhBMTZGNzFDQ0IwRTQ1RThCRTUyNzY2REMxQjI0MUI3Nzg3OBoGMTAwMDAwIgEw",
       "expected": [
-        {"channel": "channel-0", "denom": "stake", "voucherDenom": "ibc/C053D637CCA2A2BA030E2C5EE1B28A16F71CCB0E45E8BE52766DC1B241B77878", "cap": "100000", "supply": "100000", "room": "0"}
+        {"channel": "channel-0", "denom": "stake", "voucherDenom": "ibc/C053D637CCA2A2BA030E2C5EE1B28A16F71CCB0E45E8BE52766DC1B241B77878", "cap": "100000", "supply": "100000", "room": "0", "inFlight": "0"}
       ]
     },
     {
       "name": "the testnet's starting entries: USDC with room, OSMO over a lowered cap",
       "value": "CqQBCkgKCWNoYW5uZWwtMhIwZXJjMjA6MHgwQzM4MmU2ODViYmVlRkU1ZDNkOUMyOWUyOUUzNDFmRUU4RTg0QzVkGgkxMDAwMDAwMDASRGliYy8wNjREODJBNjczMThERDMwRjU0QTRFMTdCNkU0ODdDMjg2NEU4QjA3NUE1ODcxRDNBQ0FEN0E3MTI5RjMyQzVDGggxMDAxMDAwMCIIODk5OTAwMDAKdQoeCgljaGFubmVsLTMSBXVvc21vGgoxMDAwMDAwMDAwEkRpYmMvNDdCRDIwOTE3OTg1OUNERTRBMjgwNjc2M0Q3MTg5QjZFNkZFMTNBMTc4ODBGRTJCNDJERTFFNkMxRTMyOUUyMxoKMTAwMDAwMDEyMyIBMA==",
       "expected": [
-        {"channel": "channel-2", "denom": "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d", "voucherDenom": "ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C", "cap": "100000000", "supply": "10010000", "room": "89990000"},
-        {"channel": "channel-3", "denom": "uosmo", "voucherDenom": "ibc/47BD209179859CDE4A2806763D7189B6E6FE13A17880FE2B42DE1E6C1E329E23", "cap": "1000000000", "supply": "1000000123", "room": "0"}
+        {"channel": "channel-2", "denom": "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d", "voucherDenom": "ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C", "cap": "100000000", "supply": "10010000", "room": "89990000", "inFlight": "0"},
+        {"channel": "channel-3", "denom": "uosmo", "voucherDenom": "ibc/47BD209179859CDE4A2806763D7189B6E6FE13A17880FE2B42DE1E6C1E329E23", "cap": "1000000000", "supply": "1000000123", "room": "0", "inFlight": "0"}
+      ]
+    },
+    {
+      "name": "USDC with a send back still in flight holding part of the room (encoded by x/inflowcap's TestEncodeInFlightVector)",
+      "value": "Cq4BCkgKCWNoYW5uZWwtMhIwZXJjMjA6MHgwQzM4MmU2ODViYmVlRkU1ZDNkOUMyOWUyOUUzNDFmRUU4RTg0QzVkGgkxMDAwMDAwMDASRGliYy8wNjREODJBNjczMThERDMwRjU0QTRFMTdCNkU0ODdDMjg2NEU4QjA3NUE1ODcxRDNBQ0FEN0E3MTI5RjMyQzVDGgg2MDAwMDAwMCIIMTUwMDAwMDAqCDI1MDAwMDAw",
+      "expected": [
+        {"channel": "channel-2", "denom": "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d", "voucherDenom": "ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C", "cap": "100000000", "supply": "60000000", "room": "15000000", "inFlight": "25000000"}
       ]
     }
   ]

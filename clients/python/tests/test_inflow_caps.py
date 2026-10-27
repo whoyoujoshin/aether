@@ -14,7 +14,7 @@ FILE = json.loads((pathlib.Path(__file__).parents[2] / "testdata" / "inflowcaps.
 def test_shared_vectors():
     for v in FILE["vectors"]:
         got = [{"channel": c.channel, "denom": c.denom, "voucherDenom": c.voucher_denom,
-                "cap": str(c.cap), "supply": str(c.supply), "room": str(c.room)}
+                "cap": str(c.cap), "supply": str(c.supply), "room": str(c.room), "inFlight": str(c.in_flight)}
                for c in decode_inflow_caps(base64.b64decode(v["value"]))]
         assert got == v["expected"], v["name"]
 

@@ -170,7 +170,7 @@ export class AetherToolkit {
         // Named when known: OSMO, and this client's USDC (both 6 decimals).
         const asset = this.client.assets.byDenom(c.voucherDenom);
         const symbol = c.voucherDenom === OSMO_ON_AETHER ? "OSMO" : asset?.decimals === 6 ? asset.symbol : "";
-        const row: ToolResult = { channel: c.channel, denom: c.denom, voucherDenom: c.voucherDenom, cap: c.cap.toString(), supply: c.supply.toString(), room: c.room.toString() };
+        const row: ToolResult = { channel: c.channel, denom: c.denom, voucherDenom: c.voucherDenom, cap: c.cap.toString(), supply: c.supply.toString(), inFlight: c.inFlight.toString(), room: c.room.toString() };
         if (symbol) Object.assign(row, { symbol, roomDisplay: `${formatMicro(c.room)} ${symbol}` });
         return row;
       }),

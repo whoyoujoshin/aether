@@ -7,12 +7,12 @@ import { AetherClient, AetherToolkit, decodeInflowCaps, inflowRoom, INFLOW_CAPS_
 // (x/inflowcap's TestCapsVectors checks the same file against the Go types).
 const file = JSON.parse(readFileSync(new URL("../../../testdata/inflowcaps.json", import.meta.url), "utf8"));
 
-type Row = { channel: string; denom: string; voucherDenom: string; cap: string; supply: string; room: string };
+type Row = { channel: string; denom: string; voucherDenom: string; cap: string; supply: string; room: string; inFlight: string };
 
 test("inflow caps: the shared vectors decode as the node's Go types do", () => {
   for (const v of file.vectors as { name: string; value: string; expected: Row[] }[]) {
     const got = decodeInflowCaps(Buffer.from(v.value, "base64")).map((c) => ({
-      channel: c.channel, denom: c.denom, voucherDenom: c.voucherDenom, cap: c.cap.toString(), supply: c.supply.toString(), room: c.room.toString(),
+      channel: c.channel, denom: c.denom, voucherDenom: c.voucherDenom, cap: c.cap.toString(), supply: c.supply.toString(), room: c.room.toString(), inFlight: c.inFlight.toString(),
     }));
     assert.deepEqual(got, v.expected, v.name);
   }
