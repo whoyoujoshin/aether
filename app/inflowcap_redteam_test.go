@@ -434,13 +434,11 @@ func TestRedTeam_PacketsInOneTxCannotExceedCapTogether(t *testing.T) {
 	require.Equal(t, capAmount, f.supplyA(f.voucher))
 }
 
-// Filling the cap, burning the vouchers into a return the counterparty
-// will reject, filling the cap again while that burn is in flight, then
-// relaying the error acknowledgement, remints the burn on top of the
-// second fill. Repeating it adds another cap-full each cycle: the
-// refund is not checked against the cap, and the in-flight burn is not
-// counted as supply.
-func TestRedTeam_InFlightErrorAckRefundExceedsCap(t *testing.T) {
+// A send back that will fail still holds its room while it is in flight:
+// a fresh fill is refused, and the error acknowledgement's refund brings
+// the supply back to the cap, never over it. Before the fix two cycles
+// reached 3000 on a cap of 1000.
+func TestRedTeam_InFlightErrorAckRefundHeldUnderCap(t *testing.T) {
 	f := newInflowCapFixture(t)
 	const capAmount = int64(1000)
 	f.capVoucher(capAmount)
@@ -452,18 +450,24 @@ func TestRedTeam_InFlightErrorAckRefundExceedsCap(t *testing.T) {
 		held := f.supplyA(f.voucher)
 		packet := f.burnRejected(held)
 		require.Equal(t, int64(0), f.supplyA(f.voucher), "cycle %d: burned while in flight", cycle)
+		require.Equal(t, capAmount, f.appA.InflowCapKeeper.InFlight(f.a.GetContext(), f.voucher).Int64(), "cycle %d", cycle)
 		f.send(capAmount, f.payee, "")
-		require.True(t, f.lastAckSuccess, "cycle %d: room looks free while the burn is outstanding", cycle)
+		require.False(t, f.lastAckSuccess, "cycle %d: the burn in flight still holds the room", cycle)
+		require.Equal(t, inflowcap.ReasonOverCap, refusal(t, f.lastRecv))
+		f.send(1, f.payee, "")
+		require.False(t, f.lastAckSuccess, "cycle %d: not even one unit", cycle)
 		f.refundErrorAck(packet)
+		require.Equal(t, capAmount, f.supplyA(f.voucher), "cycle %d: the refund restores the burn", cycle)
+		require.True(t, f.appA.InflowCapKeeper.InFlight(f.a.GetContext(), f.voucher).IsZero(), "cycle %d: released with the refund", cycle)
 	}
-	require.LessOrEqual(t, f.supplyA(f.voucher), capAmount,
-		"in-flight burn is not counted, so the error-ack refund remints over the cap (supply %d, cap %d). Fix: count outstanding voucher sends in the cap (bank supply + in-flight) until the send is finalized",
-		f.supplyA(f.voucher), capAmount)
+	f.send(1, f.payee, "")
+	require.False(t, f.lastAckSuccess, "at the cap after the refunds")
 }
 
-// The same hole on the timeout path: the return is never received, the
-// cap is filled again, and OnTimeoutPacket remints the burn.
-func TestRedTeam_InFlightTimeoutRefundExceedsCap(t *testing.T) {
+// The same with a timeout: the fill while the burn is in flight is
+// refused, and the timeout's refund restores the cap exactly. Before the
+// fix one cycle reached 2000.
+func TestRedTeam_InFlightTimeoutRefundHeldUnderCap(t *testing.T) {
 	f := newInflowCapFixture(t)
 	const capAmount = int64(1000)
 	f.capVoucher(capAmount)
@@ -471,25 +475,45 @@ func TestRedTeam_InFlightTimeoutRefundExceedsCap(t *testing.T) {
 	require.True(t, f.lastAckSuccess)
 
 	timeout := clienttypes.NewHeight(0, uint64(f.b.GetContext().BlockHeight())+20)
-	f.a.SendMsgsOverride = nil
-	msg := ibctransfertypes.NewMsgTransfer("transfer", f.path.EndpointA.ChannelID, sdk.NewInt64Coin(f.voucher, capAmount),
-		f.a.SenderAccount.GetAddress().String(), f.remote, timeout, 0, "")
-	res, err := f.a.SendMsgs(msg)
-	require.NoError(t, err)
-	packet, err := ibctesting.ParsePacketFromEvents(res.Events)
-	require.NoError(t, err)
+	packet := f.sendBack(capAmount, timeout)
 	require.Equal(t, int64(0), f.supplyA(f.voucher))
 
 	f.send(capAmount, f.payee, "")
-	require.True(t, f.lastAckSuccess, "in-flight burn looks like free room")
-	require.Equal(t, capAmount, f.supplyA(f.voucher))
+	require.False(t, f.lastAckSuccess, "the burn in flight still holds the room")
+	require.Equal(t, inflowcap.ReasonOverCap, refusal(t, f.lastRecv))
+	require.Equal(t, int64(0), f.supplyA(f.voucher))
 
 	f.coord.CommitNBlocks(f.b, 25)
 	require.NoError(t, f.path.EndpointA.UpdateClient())
-	require.NoError(t, f.path.EndpointA.TimeoutPacket(packet))
-	require.LessOrEqual(t, f.supplyA(f.voucher), capAmount,
-		"timeout refund reminted the in-flight burn on top of a fresh fill (supply %d, cap %d). Same fix as the error-ack cycle: count in-flight voucher sends against the cap",
-		f.supplyA(f.voucher), capAmount)
+	require.NoError(t, f.path.EndpointA.TimeoutPacket(packet), "the refund itself is never refused")
+	require.Equal(t, capAmount, f.supplyA(f.voucher))
+	require.True(t, f.appA.InflowCapKeeper.InFlight(f.a.GetContext(), f.voucher).IsZero())
+}
+
+// A send back that succeeds frees its room, but only once its
+// acknowledgement comes back, and the Caps query shows it in flight
+// until then.
+func TestRedTeam_SuccessfulSendBackFreesRoomOnAck(t *testing.T) {
+	f := newInflowCapFixture(t)
+	const capAmount = int64(1000)
+	f.capVoucher(capAmount)
+	f.send(capAmount, f.payee, "")
+	require.True(t, f.lastAckSuccess)
+
+	packet := f.sendBack(400, clienttypes.NewHeight(0, 1_000_000))
+	caps, err := inflowcap.NewQueryServerImpl(f.appA.InflowCapKeeper).Caps(f.a.GetContext(), &inflowcap.QueryCapsRequest{})
+	require.NoError(t, err)
+	require.Equal(t, int64(600), caps.Caps[0].Supply.Int64())
+	require.Equal(t, int64(400), caps.Caps[0].InFlight.Int64())
+	require.True(t, caps.Caps[0].Room.IsZero())
+	f.send(1, f.payee, "")
+	require.False(t, f.lastAckSuccess, "not free until acknowledged")
+
+	require.NoError(t, f.path.RelayPacket(packet))
+	require.True(t, f.appA.InflowCapKeeper.InFlight(f.a.GetContext(), f.voucher).IsZero())
+	f.send(400, f.payee, "")
+	require.True(t, f.lastAckSuccess, "the acknowledged burn is final, so its room is free")
+	require.Equal(t, capAmount, f.supplyA(f.voucher))
 }
 
 // Lowering the cap under the supply does not claw back what is already
@@ -573,11 +597,10 @@ func releaseMemo(id uint64) string {
 	return `{"aether":{"release":{"id":"` + strconv.FormatUint(id, 10) + `"}}}`
 }
 
-// A withdraw sends the mailbox's vouchers home. The packet that triggers
-// it is itself a transfer, so it has to fit under the cap; the send it
-// then makes burns the vouchers. Timing that send out and refilling the
-// cap remints them on top, same as any other in-flight refund.
-func TestRedTeam_WithdrawTimeoutRemintsOverCap(t *testing.T) {
+// Ligase's withdraw sends through the same path: while its burn is in
+// flight a fresh fill is refused, and its timeout restores the cap
+// exactly. Before the fix it reached 2000.
+func TestRedTeam_WithdrawTimeoutHeldUnderCap(t *testing.T) {
 	f := newInflowCapFixture(t)
 	const capAmount = int64(1000)
 	f.capVoucher(capAmount)
@@ -590,21 +613,21 @@ func TestRedTeam_WithdrawTimeoutRemintsOverCap(t *testing.T) {
 	require.True(t, f.lastAckSuccess, "the triggering unit fits, then the withdraw burns the mailbox")
 	require.Equal(t, "withdraw", f.result().Action)
 	require.Equal(t, int64(0), f.supplyA(f.voucher), "withdraw burned the vouchers into an in-flight packet")
+	require.Equal(t, capAmount, f.appA.InflowCapKeeper.InFlight(f.a.GetContext(), f.voucher).Int64())
 	packet, err := ibctesting.ParsePacketFromEvents(f.lastRecv)
 	require.NoError(t, err)
 
 	f.send(capAmount, f.payee, "")
-	require.True(t, f.lastAckSuccess, "the burn looks like free room")
-	require.Equal(t, capAmount, f.supplyA(f.voucher))
+	require.False(t, f.lastAckSuccess, "the withdraw in flight still holds the room")
+	require.Equal(t, inflowcap.ReasonOverCap, refusal(t, f.lastRecv))
 
 	// The withdraw packet times out an hour after it was sent.
 	f.coord.IncrementTimeBy(2 * time.Hour)
 	f.coord.CommitBlock(f.b)
 	require.NoError(t, f.path.EndpointA.UpdateClient())
 	require.NoError(t, f.path.EndpointA.TimeoutPacket(packet))
-	require.LessOrEqual(t, f.supplyA(f.voucher), capAmount,
-		"the withdraw's timeout reminted the burned vouchers on top of a fresh fill (supply %d, cap %d). Same fix: in-flight voucher sends still occupy the cap",
-		f.supplyA(f.voucher), capAmount)
+	require.Equal(t, capAmount, f.supplyA(f.voucher))
+	require.True(t, f.appA.InflowCapKeeper.InFlight(f.a.GetContext(), f.voucher).IsZero())
 }
 
 // A hundred entries is the maximum. The update fits a normal gas budget,

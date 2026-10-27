@@ -490,7 +490,9 @@ func New(
 			appCodec,
 			app.keys[ibctransfertypes.StoreKey],
 			noLegacyParamSubspace{},
-			app.IBCKeeper.ChannelKeeper, // ICS4Wrapper: no fee middleware, so this is the base channel keeper directly
+			// ICS4Wrapper: no fee middleware, so the base channel keeper,
+			// behind the inflow cap's record of vouchers in flight.
+			inflowcap.NewICS4Wrapper(app.IBCKeeper.ChannelKeeper, inflowCapHost{app}),
 			app.IBCKeeper.ChannelKeeper,
 			app.IBCKeeper.PortKeeper,
 			app.AccountKeeper,

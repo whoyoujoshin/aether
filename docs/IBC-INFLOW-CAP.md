@@ -74,13 +74,29 @@ memo, and an escrow funded through Ligase counts like any other transfer.
    `ligase.receivedCoin` does.
    - If (channel, denom) isn't in the allowlist, return an error
      acknowledgement: **fail closed**.
-   - If `bank.GetSupply(denom) + amount > cap`, return an error
-     acknowledgement naming the cap.
+   - If `bank.GetSupply(denom) + in flight + amount > cap`, return an
+     error acknowledgement naming the cap. The comparison is `amount >
+     room`, so no sum can overflow: an amount near 2^256 is refused
+     `over_cap` like any other, with an acknowledgement, not a panic that
+     leaves the sender waiting for the timeout.
    - Otherwise pass the packet on.
 
-The supply is read when the packet arrives, so there is no counter to
-keep, no window to reset and nothing to undo: every case below follows
-from the supply itself.
+The supply is read when the packet arrives. The one thing kept is the
+sends **in flight**: a voucher sent back where it came from is burned
+when it leaves, but transfer re-mints it if the packet gets an error
+acknowledgement or times out. Counting only the supply, that burn looks
+like free room, and a fresh fill plus the refund went over the cap (red
+team, PR #171: 2,000 on a cap of 1,000 with one timeout, 3,000 with two
+error-ack cycles, and the same through a Ligase withdraw that times
+out). So the transfer keeper sends through `inflowcap.ICS4Wrapper`,
+which records each burned send by port, channel and sequence
+(`InFlightSend`, with a running total per voucher), and the middleware
+releases it once the packet settles: on a success acknowledgement the
+burn is final, and on an error acknowledgement or a timeout the release
+happens in the same step as transfer's refund. A refund is never
+refused. Sends that escrow (AETH, or a voucher forwarded over another
+channel) don't move the supply and aren't recorded. Genesis exports and
+imports the sends in flight.
 
 ### Parameters
 
@@ -95,14 +111,14 @@ and changed by an `x/governance` param-change proposal: governance
 executes any routed Msg, so the module needs only a `MsgUpdateParams`
 whose authority is the governance module. An empty list closes every
 inbound voucher path. The `Caps` query (`aether.inflowcap.v1.Query`)
-returns each entry with its voucher denom, current supply and the room
-left, so wallets and agents can check before sending; `Params` returns
+returns each entry with its voucher denom, current supply, its sends in
+flight and the room left (cap − supply − in flight), so wallets and agents can check before sending; `Params` returns
 the list as set.
 
 A refused packet's acknowledgement carries only the error's code
 (`inflowcap` codes 3 not listed, 4 over the cap, 5 a bad amount). The
 reason is in an `inflow_cap_refused` event with the channel, sender,
-denom, voucher, amount, supply, cap and `reason` (`not_listed`,
+denom, voucher, amount, supply, in flight, cap and `reason` (`not_listed`,
 `over_cap`, `bad_amount`). ibc-go keeps an error acknowledgement's events
 but prefixes the event and every key with `ibccallbackerror-`, so search
 for `ibccallbackerror-inflow_cap_refused.ibccallbackerror-reason`
@@ -120,8 +136,9 @@ way `wallet.TestnetUSDC` is. The testnet one is
 |---|---|
 | Received, under the cap | Voucher minted; supply rises. |
 | Received, over the cap or not allowlisted | Error ack; nothing minted. Injective refunds the sender once the ack is relayed. |
-| Voucher sent back to Injective | Burned on Aether; supply falls, so room frees up. |
-| That send times out or gets an error ack | Transfer re-mints the refund; supply is back where it was. |
+| Voucher sent back to Injective | Burned on Aether; supply falls, but the send is in flight and still holds its room. |
+| Injective acknowledges it | The burn is final; room frees up. |
+| That send times out or gets an error ack | Transfer re-mints the refund and the send stops being in flight, in one step; supply plus in flight is where it was. |
 | Packet stuck (relayer down, client expired) | Nothing minted, supply unchanged; the funds wait on Injective until the packet times out. |
 | A Ligase escrow funded by a transfer | Counted on the way in like any voucher; moving vouchers into escrow doesn't change supply. |
 
@@ -160,7 +177,9 @@ that block once restarted.
   validation.
 - **App (`app/inflowcap_test.go`, two real apps over ibctesting), done:**
   a refused transfer's error ack refunds the sender; sending vouchers
-  back frees room; a timed-out send restores the supply; a Ligase escrow
+  back frees room once acknowledged; a timed-out send restores the
+  supply; a send in flight holds its room against a fresh fill (error
+  ack, timeout and Ligase withdraw, PR #171's red team); a Ligase escrow
   memo over the cap is refused as a whole; AETH coming home with nothing
   listed; `MsgUpdateParams` only from the governance account and only
   valid; the restarts across the activation and the testnet entries.
