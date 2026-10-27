@@ -159,6 +159,10 @@ aetherd keys add mywallet --keyring-backend test
 go run ./cmd/powminer --miner <your-bech32-address>
 # then run the aetherd tx pow submit command it prints
 # (--fees 40uaeth if your node runs with --minimum-gas-prices=0.0001uaeth)
+
+# Or mine and submit continuously; --duty 0.6 hashes 60% of the time,
+# for a miner whose validator would otherwise hold over a third of the power
+go run ./cmd/powminer --miner <address> --from <key> --auto-submit --loop --duty 0.6
 ```
 
 **Keys:** each account is one ML-DSA-44 keypair — no HD multi-account derivation from a mnemonic.  
