@@ -20,7 +20,16 @@ const usdc = "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d"
 // next stands in for Ligase and transfer: it records that it was called.
 type next struct {
 	porttypes.IBCModule
-	calls int
+	calls     int
+	settleErr error
+}
+
+func (n *next) OnAcknowledgementPacket(sdk.Context, channeltypes.Packet, []byte, sdk.AccAddress) error {
+	return n.settleErr
+}
+
+func (n *next) OnTimeoutPacket(sdk.Context, channeltypes.Packet, sdk.AccAddress) error {
+	return n.settleErr
 }
 
 func (n *next) OnRecvPacket(ctx sdk.Context, packet channeltypes.Packet, relayer sdk.AccAddress) ibcexported.Acknowledgement {
@@ -29,10 +38,20 @@ func (n *next) OnRecvPacket(ctx sdk.Context, packet channeltypes.Packet, relayer
 }
 
 type host struct {
-	active bool
-	params inflowcap.Params
-	supply map[string]sdkmath.Int
+	active   bool
+	params   inflowcap.Params
+	supply   map[string]sdkmath.Int
+	inFlight map[string]sdkmath.Int
 }
+
+func (h host) InFlight(_ sdk.Context, voucher string) sdkmath.Int {
+	if v, ok := h.inFlight[voucher]; ok {
+		return v
+	}
+	return sdkmath.ZeroInt()
+}
+func (h host) AddInFlight(sdk.Context, inflowcap.InFlightSend)     {}
+func (h host) ReleaseInFlight(sdk.Context, string, string, uint64) {}
 
 func (h host) Active(sdk.Context) bool             { return h.active }
 func (h host) Params(sdk.Context) inflowcap.Params { return h.params }

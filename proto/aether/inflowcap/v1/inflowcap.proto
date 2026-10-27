@@ -32,6 +32,24 @@ message Params {
   repeated Entry entries = 1 [(gogoproto.nullable) = false];
 }
 
+// InFlightSend is a voucher Aether burned to send it back where it came
+// from, whose packet is not yet acknowledged or timed out. A send that
+// fails or times out re-mints it, so until then it still takes up room
+// under its cap.
+message InFlightSend {
+  string port_id = 1;
+  string channel_id = 2;
+  uint64 sequence = 3;
+  // ibc/... on Aether.
+  string voucher_denom = 4;
+  string amount = 5 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
 message GenesisState {
   Params params = 1 [(gogoproto.nullable) = false];
+  repeated InFlightSend in_flight = 2 [(gogoproto.nullable) = false];
 }

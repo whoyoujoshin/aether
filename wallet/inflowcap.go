@@ -21,7 +21,7 @@ type InflowCap struct {
 	VoucherDenom string   // ibc/... on Aether
 	Cap          math.Int // base units
 	Supply       math.Int
-	Room         math.Int // Cap - Supply, or 0
+	Room         math.Int // Cap - Supply - sends in flight, or 0
 }
 
 // InflowCaps is the chain's allowlist. Active is false where the node

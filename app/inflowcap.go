@@ -102,3 +102,15 @@ func (h inflowCapHost) Params(ctx sdk.Context) inflowcap.Params {
 func (h inflowCapHost) Supply(ctx sdk.Context, denom string) sdk.Coin {
 	return h.app.BankKeeper.GetSupply(ctx, denom)
 }
+
+func (h inflowCapHost) InFlight(ctx sdk.Context, voucher string) sdkmath.Int {
+	return h.app.InflowCapKeeper.InFlight(ctx, voucher)
+}
+
+func (h inflowCapHost) AddInFlight(ctx sdk.Context, s inflowcap.InFlightSend) {
+	h.app.InflowCapKeeper.AddInFlight(ctx, s)
+}
+
+func (h inflowCapHost) ReleaseInFlight(ctx sdk.Context, portID, channelID string, sequence uint64) {
+	h.app.InflowCapKeeper.ReleaseInFlight(ctx, portID, channelID, sequence)
+}

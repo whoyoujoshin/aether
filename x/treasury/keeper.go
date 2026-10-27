@@ -16,6 +16,7 @@ var ErrInsufficientTreasuryBalance = sdkerrors.Register(ModuleName, 1, "treasury
 type BankKeeper interface {
 	SendCoinsFromModuleToAccount(ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) error
 	GetBalance(ctx context.Context, addr sdk.AccAddress, denom string) sdk.Coin
+	GetAllBalances(ctx context.Context, addr sdk.AccAddress) sdk.Coins
 }
 
 type Keeper struct {
@@ -71,6 +72,13 @@ func (k Keeper) GetTreasuryBalance(ctx sdk.Context) math.Int {
 func (k Keeper) GetRealBankBalance(ctx sdk.Context) math.Int {
 	addr := authtypes.NewModuleAddress(ModuleName)
 	return k.bankKeeper.GetBalance(ctx, addr, "uaeth").Amount
+}
+
+// GetRealBankBalances is everything the treasury module account holds,
+// in every denom: AETH, and from FeesToTreasuryActivationHeight the
+// transaction fees it collects in USDC.
+func (k Keeper) GetRealBankBalances(ctx sdk.Context) sdk.Coins {
+	return k.bankKeeper.GetAllBalances(ctx, authtypes.NewModuleAddress(ModuleName))
 }
 
 func (k Keeper) Heartbeat(ctx sdk.Context) {

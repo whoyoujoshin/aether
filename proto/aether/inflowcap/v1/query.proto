@@ -30,9 +30,16 @@ message CapStatus {
     (gogoproto.customtype) = "cosmossdk.io/math.Int",
     (gogoproto.nullable) = false
   ];
-  // cap - supply, or 0 if the supply is at or over the cap (a cap
+  // cap - supply - in_flight, or 0 if that is at or over the cap (a cap
   // lowered below the supply).
   string room = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  // Vouchers burned by sends back that are not yet acknowledged or timed
+  // out: a failed send re-mints them, so they count against the cap.
+  string in_flight = 5 [
     (cosmos_proto.scalar) = "cosmos.Int",
     (gogoproto.customtype) = "cosmossdk.io/math.Int",
     (gogoproto.nullable) = false

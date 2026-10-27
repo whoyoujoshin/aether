@@ -490,7 +490,9 @@ func New(
 			appCodec,
 			app.keys[ibctransfertypes.StoreKey],
 			noLegacyParamSubspace{},
-			app.IBCKeeper.ChannelKeeper, // ICS4Wrapper: no fee middleware, so this is the base channel keeper directly
+			// ICS4Wrapper: no fee middleware, so the base channel keeper,
+			// behind the inflow cap's record of vouchers in flight.
+			inflowcap.NewICS4Wrapper(app.IBCKeeper.ChannelKeeper, inflowCapHost{app}),
 			app.IBCKeeper.ChannelKeeper,
 			app.IBCKeeper.PortKeeper,
 			app.AccountKeeper,
@@ -777,7 +779,19 @@ func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 }
 
 func (app *App) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
-	return app.sm.EndBlock(ctx)
+	res, err := app.sm.EndBlock(ctx)
+	if err != nil {
+		return res, err
+	}
+	// After every module's EndBlock, so it moves this block's fees too.
+	// BaseApp reports only the events res carries, so the sweep's go on
+	// the end of them.
+	em := sdk.NewEventManager()
+	if err := app.sweepFeesToTreasury(ctx.WithEventManager(em)); err != nil {
+		return res, err
+	}
+	res.Events = append(res.Events, em.ABCIEvents()...)
+	return res, nil
 }
 
 // Required methods
