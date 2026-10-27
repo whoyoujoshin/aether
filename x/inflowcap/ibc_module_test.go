@@ -22,14 +22,25 @@ type next struct {
 	porttypes.IBCModule
 	calls     int
 	settleErr error
+	onSettle  func() // what transfer's settlement does, e.g. mint a refund
 }
 
 func (n *next) OnAcknowledgementPacket(sdk.Context, channeltypes.Packet, []byte, sdk.AccAddress) error {
-	return n.settleErr
+	return n.settle()
 }
 
 func (n *next) OnTimeoutPacket(sdk.Context, channeltypes.Packet, sdk.AccAddress) error {
-	return n.settleErr
+	return n.settle()
+}
+
+func (n *next) settle() error {
+	if n.settleErr != nil {
+		return n.settleErr
+	}
+	if n.onSettle != nil {
+		n.onSettle()
+	}
+	return nil
 }
 
 func (n *next) OnRecvPacket(ctx sdk.Context, packet channeltypes.Packet, relayer sdk.AccAddress) ibcexported.Acknowledgement {
@@ -52,6 +63,9 @@ func (h host) InFlight(_ sdk.Context, voucher string) sdkmath.Int {
 }
 func (h host) AddInFlight(sdk.Context, inflowcap.InFlightSend)     {}
 func (h host) ReleaseInFlight(sdk.Context, string, string, uint64) {}
+func (h host) GetInFlightSend(sdk.Context, string, string, uint64) (inflowcap.InFlightSend, bool) {
+	return inflowcap.InFlightSend{}, false
+}
 
 func (h host) Active(sdk.Context) bool             { return h.active }
 func (h host) Params(sdk.Context) inflowcap.Params { return h.params }

@@ -21,7 +21,8 @@ type InflowCap struct {
 	VoucherDenom string   // ibc/... on Aether
 	Cap          math.Int // base units
 	Supply       math.Int
-	Room         math.Int // Cap - Supply - sends in flight, or 0
+	InFlight     math.Int // sent back from Aether, not yet settled: holds room
+	Room         math.Int // Cap - Supply - InFlight, or 0
 }
 
 // InflowCaps is the chain's allowlist. Active is false where the node
@@ -58,9 +59,13 @@ func (c *Client) InflowCaps(ctx context.Context) (InflowCaps, error) {
 	}
 	out := InflowCaps{Active: true, Caps: make([]InflowCap, 0, len(res.Caps))}
 	for _, s := range res.Caps {
+		inFlight := s.InFlight
+		if inFlight.IsNil() {
+			inFlight = math.ZeroInt() // a node from before in_flight leaves it out
+		}
 		out.Caps = append(out.Caps, InflowCap{
 			Channel: s.Entry.ChannelId, Denom: s.Entry.Denom, VoucherDenom: s.VoucherDenom,
-			Cap: s.Entry.Cap, Supply: s.Supply, Room: s.Room,
+			Cap: s.Entry.Cap, Supply: s.Supply, InFlight: inFlight, Room: s.Room,
 		})
 	}
 	return out, nil

@@ -17,7 +17,9 @@ export interface InflowCap {
   /** Base units. */
   cap: bigint;
   supply: bigint;
-  /** cap - supply, or 0. */
+  /** Sent back from Aether, not yet settled: holds room until it is. 0 from nodes before the field existed. */
+  inFlight: bigint;
+  /** cap - supply - inFlight, or 0. */
   room: bigint;
 }
 
@@ -43,6 +45,7 @@ export function decodeInflowCaps(bytes: Uint8Array): InflowCap[] {
         voucherDenom: text(first(status, 2)?.bytes),
         supply: int(first(status, 3)?.bytes),
         room: int(first(status, 4)?.bytes),
+        inFlight: int(first(status, 5)?.bytes),
       };
     });
 }

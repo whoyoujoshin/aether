@@ -17,7 +17,8 @@ class InflowCap:
     voucher_denom: str  # what it arrives as on Aether (ibc/...)
     cap: int  # base units
     supply: int
-    room: int  # cap - supply, or 0
+    room: int  # cap - supply - in_flight, or 0
+    in_flight: int = 0  # sent back from Aether, not yet settled: holds room until it is
 
 
 @dataclass
@@ -50,5 +51,6 @@ def decode_inflow_caps(buf: bytes) -> List[InflowCap]:
         entry = first(status, 1, b"")
         out.append(InflowCap(
             channel=first(entry, 1, b"").decode(), denom=first(entry, 2, b"").decode(), cap=_int(first(entry, 3, b"")),
-            voucher_denom=first(status, 2, b"").decode(), supply=_int(first(status, 3, b"")), room=_int(first(status, 4, b""))))
+            voucher_denom=first(status, 2, b"").decode(), supply=_int(first(status, 3, b"")), room=_int(first(status, 4, b"")),
+            in_flight=_int(first(status, 5, b""))))
     return out

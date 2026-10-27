@@ -93,8 +93,15 @@ which records each burned send by port, channel and sequence
 (`InFlightSend`, with a running total per voucher), and the middleware
 releases it once the packet settles: on a success acknowledgement the
 burn is final, and on an error acknowledgement or a timeout the release
-happens in the same step as transfer's refund. A refund is never
-refused. Sends that escrow (AETH, or a voucher forwarded over another
+happens in the same step as transfer's refund. A refund is refused in
+one case only, as a backstop: settling a recorded send may not leave
+more of its voucher (supply plus in flight) than there was before. A
+correct refund re-mints exactly what the send burned, so this stops only
+a refund path that mints more, such as ibc-go's 2024 timeout reentrancy
+(fixed in the ibc-go Aether runs; Aether has no CosmWasm): the message
+fails with `ErrSettlementGrew`, nothing is refunded, and the packet waits
+for a fixed binary. A send with no record (from before activation)
+isn't checked. Sends that escrow (AETH, or a voucher forwarded over another
 channel) don't move the supply and aren't recorded. Genesis exports and
 imports the sends in flight.
 
@@ -241,6 +248,18 @@ that block once restarted.
   activation, check that no packets are outstanding on the listed
   channels first (`aetherd q ibc channel packet-commitments transfer
   channel-2`, and `channel-3`). Fresh chains are on from block 1.
+- **A refund-path bug stops refunds.** The backstop above fails closed:
+  if a settlement ever tried to mint more than its send burned, that
+  packet's acknowledgement or timeout would fail until a fixed binary
+  ships, and its sender would wait for the refund. The whole transaction
+  fails with it, refund, record and commitment removal alike, so nothing
+  is lost and the packet can be relayed again. Helicase puts a cycle's
+  relay messages (client update, packets, acks, timeouts) in one
+  transaction, so until the fix every Helicase relay on that path fails
+  too: the path stops, which is the fail-closed answer to a minting bug.
+  A genesis in-flight record whose amount or voucher doesn't match its
+  packet could trip the check falsely; genesis carries only exported
+  records, and the testnet activation starts with none in flight.
 - **A forged header can still mint up to the cap.** The cap bounds the
   loss; it doesn't prevent it. `ibcwatch` and a low starting cap stay
   required.
@@ -256,7 +275,7 @@ that block once restarted.
   `AETHER_GET_INFLOW_CAPS` in the ElizaOS plugin, and
   `wallet.Client.InflowCaps`, `AetherClient.inflowCaps()` and
   `AetherClient.inflow_caps()` in code. Each lists the tokens other chains
-  may send onto Aether, with channel, cap, supply and room, and answers
+  may send onto Aether, with channel, cap, supply, sends in flight (`inFlight`) and room, and answers
   `active: false` on a chain without the cap yet (the node answers the
   query path "unknown").
 - **Swaps:** `swap_aeth` and `swap_from_test_wallet` bring OSMO back onto

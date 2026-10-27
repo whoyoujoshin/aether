@@ -27,7 +27,7 @@ func (g grpcChain) inflowCaps() (wallet.InflowCaps, error) {
 }
 
 const getInflowCapsDescription = "List the tokens other chains may send onto Aether over IBC, each with its channel, the cap on how much of it may be on Aether, " +
-	"how much is there now and the room left. A transfer of any other token, or over the room, is refused and the sending chain refunds it: " +
+	"how much is there now, how much is in flight back out and the room left. A transfer of any other token, or over the room, is refused and the sending chain refunds it: " +
 	"check the room before asking anyone to send USDC (or anything else) onto Aether. Read-only. active=false means this chain has no cap yet."
 
 type getInflowCapsInput struct{}
@@ -39,6 +39,7 @@ type inflowCapDTO struct {
 	Symbol       string `json:"symbol,omitempty" jsonschema:"USDC or OSMO when this server knows the token"`
 	Cap          string `json:"cap" jsonschema:"the most of it there may be on Aether, in base units"`
 	Supply       string `json:"supply" jsonschema:"how much is on Aether now, in base units"`
+	InFlight     string `json:"inFlight" jsonschema:"sent back from Aether and not yet settled, in base units; it holds room until its packet is acknowledged or times out"`
 	Room         string `json:"room" jsonschema:"how much more may come in now, in base units; a transfer over this is refused and refunded on the sending chain"`
 	RoomDisplay  string `json:"roomDisplay,omitempty" jsonschema:"room in whole units, e.g. 4990 USDC"`
 }
@@ -67,7 +68,7 @@ func getInflowCaps() (getInflowCapsOutput, error) {
 	}
 	for _, c := range ic.Caps {
 		d := inflowCapDTO{Channel: c.Channel, Denom: c.Denom, VoucherDenom: c.VoucherDenom,
-			Cap: c.Cap.String(), Supply: c.Supply.String(), Room: c.Room.String()}
+			Cap: c.Cap.String(), Supply: c.Supply.String(), InFlight: c.InFlight.String(), Room: c.Room.String()}
 		if sym := inflowSymbol(c.VoucherDenom); sym != "" {
 			d.Symbol, d.RoomDisplay = sym, formatMicro(c.Room.BigInt())+" "+sym
 		}

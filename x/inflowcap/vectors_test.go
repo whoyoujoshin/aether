@@ -26,6 +26,7 @@ type capsVector struct {
 		Cap          string `json:"cap"`
 		Supply       string `json:"supply"`
 		Room         string `json:"room"`
+		InFlight     string `json:"inFlight"`
 	} `json:"expected"`
 }
 
@@ -52,6 +53,11 @@ func TestCapsVectors(t *testing.T) {
 			require.Equal(t, e.Cap, c.Entry.Cap.String(), v.Name)
 			require.Equal(t, e.Supply, c.Supply.String(), v.Name)
 			require.Equal(t, e.Room, c.Room.String(), v.Name)
+			inFlight := c.InFlight
+			if inFlight.IsNil() {
+				inFlight = sdkmath.ZeroInt() // a node from before in_flight leaves it out
+			}
+			require.Equal(t, e.InFlight, inFlight.String(), v.Name)
 		}
 	}
 }
@@ -64,6 +70,18 @@ func TestEncodeTestnetVector(t *testing.T) {
 	res := inflowcap.QueryCapsResponse{Caps: []inflowcap.CapStatus{
 		{Entry: usdc, VoucherDenom: usdc.VoucherDenom(), Supply: sdkmath.NewInt(10_010_000), Room: sdkmath.NewInt(89_990_000)},
 		{Entry: osmo, VoucherDenom: osmo.VoucherDenom(), Supply: sdkmath.NewInt(1_000_000_123), Room: sdkmath.ZeroInt()},
+	}}
+	bz, err := res.Marshal()
+	require.NoError(t, err)
+	t.Log(base64.StdEncoding.EncodeToString(bz))
+}
+
+// TestEncodeInFlightVector prints the third case's encoding: USDC with a
+// send back still in flight holding part of the room.
+func TestEncodeInFlightVector(t *testing.T) {
+	usdc := inflowcap.Entry{ChannelId: "channel-2", Denom: "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d", Cap: sdkmath.NewInt(100_000_000)}
+	res := inflowcap.QueryCapsResponse{Caps: []inflowcap.CapStatus{
+		{Entry: usdc, VoucherDenom: usdc.VoucherDenom(), Supply: sdkmath.NewInt(60_000_000), InFlight: sdkmath.NewInt(25_000_000), Room: sdkmath.NewInt(15_000_000)},
 	}}
 	bz, err := res.Marshal()
 	require.NoError(t, err)
