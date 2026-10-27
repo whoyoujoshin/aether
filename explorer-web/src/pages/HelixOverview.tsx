@@ -4,10 +4,11 @@ import { useApi } from "../hooks";
 import { AETHER_COLOR, IBC_COLOR, useChain, type ChainView } from "../chain";
 import { TopBar } from "../components/TopBar";
 import { TxHash } from "../components/Hash";
-import { ErrorBanner, MsgTag } from "../components/ui";
+import { ErrorBanner, MsgTag, NoticeBanner } from "../components/ui";
 import {
   HelixHero,
   STATUS_LABEL,
+  counterpartyNotice,
   blockTimeLabel,
   mergedBlocks,
   packetAmount,
@@ -51,7 +52,7 @@ function cards(helix: Helix, stats: Stats | null, view: ChainView): StrandCard[]
   const bridgeCard: StrandCard = {
     key: "bridge",
     title: "IBC bridge",
-    sub: br ? `${br.channelId} ⇄ ${br.counterpartyChannelId}` : "no open transfer channel",
+    sub: br ? `${br.channelId} ⇄ ${br.counterpartyChannelId}` : helix.degraded?.ibc || helix.errors?.ibc ? "counterparty RPC unavailable" : "no open transfer channel",
     color: "#f3efe6",
     border: "var(--border)",
     stats: [
@@ -66,17 +67,18 @@ function cards(helix: Helix, stats: Stats | null, view: ChainView): StrandCard[]
   out.push(bridgeCard);
   if (view !== "aether" && helix.ibc) {
     const b = helix.ibc;
+    const reachable = b.height > 0;
     out.push({
       key: "ibc",
       title: b.name,
-      sub: `BFT · ${blockTimeLabel(b.blockTimeSecs)}`,
+      sub: b.stale ? "last read, RPC unavailable now" : b.viaFallback ? "via fallback RPC" : reachable ? `BFT · ${blockTimeLabel(b.blockTimeSecs)}` : "RPC unavailable",
       color: IBC_COLOR,
       border: "rgba(228,217,198,.28)",
       stats: [
-        ["Height", int(b.height)],
+        ["Height", reachable ? int(b.height) : "—"],
         ["Validators", b.validators ? int(b.validators) : "—"],
         ["Block time", blockTimeLabel(b.blockTimeSecs)],
-        ["Finality", "instant"],
+        ["Finality", reachable && !b.stale ? "instant" : "—"],
       ],
     });
   }
@@ -93,6 +95,7 @@ export default function HelixOverview() {
   const narrow = useNarrow();
   const h = helix.data;
   const name = h?.ibc?.name ?? ibcName ?? "IBC";
+  const ibcNote = counterpartyNotice(h, name);
 
   const title = !h?.ibc || view === "both" ? "Aether helix" : view === "aether" ? "Aether overview" : `${name} overview`;
   const blocks = h ? mergedBlocks(h, view).slice(0, 7) : [];
@@ -110,7 +113,7 @@ export default function HelixOverview() {
           </span>
         </div>
         <ErrorBanner error={helix.error} prefix="Failed to load the chains" />
-        {h?.errors?.ibc && <ErrorBanner error={h.errors.ibc} prefix={`Couldn't read ${name}`} />}
+        {ibcNote && <NoticeBanner>{ibcNote}</NoticeBanner>}
 
         <div className="helix-hero">
           <div className="helix-legend">
@@ -124,8 +127,10 @@ export default function HelixOverview() {
               <div className="strand" style={{ opacity: view === "aether" ? 0.3 : 1 }}>
                 <span className="dot" style={{ background: IBC_COLOR, boxShadow: `0 0 10px ${IBC_COLOR}` }} />
                 <span className="name">{name}</span>
-                <span className="h" style={{ color: IBC_COLOR }}>#{int(h.ibc.height)}</span>
-                <span className="meta">BFT · {blockTimeLabel(h.ibc.blockTimeSecs)}</span>
+                <span className="h" style={{ color: IBC_COLOR }}>{h.ibc.height > 0 ? `#${int(h.ibc.height)}` : "unreachable"}</span>
+                <span className="meta">
+                  {h.ibc.stale ? `cached ${h.ibc.asOf ? timeAgo(h.ibc.asOf) : ""}` : h.ibc.viaFallback ? "fallback RPC" : `BFT · ${blockTimeLabel(h.ibc.blockTimeSecs)}`}
+                </span>
               </div>
             ) : (
               <div className="strand" style={{ opacity: 0.55 }}>

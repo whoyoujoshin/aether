@@ -2,10 +2,11 @@ import { Link } from "react-router-dom";
 import { api, type Helix, type HelixPacket } from "../api";
 import { useApi } from "../hooks";
 import { AETHER_COLOR, IBC_COLOR, useChain } from "../chain";
-import { ErrorBanner } from "../components/ui";
+import { ErrorBanner, NoticeBanner } from "../components/ui";
 import {
   HelixHero,
   STATUS_LABEL,
+  counterpartyNotice,
   blockTimeLabel,
   mergedBlocks,
   packetAmount,
@@ -221,6 +222,7 @@ export default function HelixBlocks() {
   const narrow = useNarrow();
   const h = helix.data;
   const name = h?.ibc?.name ?? ibcName ?? "IBC";
+  const ibcNote = counterpartyNotice(h, name);
   const sub =
     view === "both"
       ? "Both strands on one timeline, newest first. Rungs are IBC packets between the chains."
@@ -250,13 +252,13 @@ export default function HelixBlocks() {
                   <i style={{ background: IBC_COLOR }} />
                   {name} head
                 </div>
-                <div className="v" style={{ color: IBC_COLOR }}>{int(h.ibc.height)}</div>
+                <div className="v" style={{ color: IBC_COLOR }}>{h.ibc.height > 0 ? int(h.ibc.height) : "—"}{h.ibc.stale ? " cached" : ""}</div>
               </div>
             )}
           </div>
         </div>
         <ErrorBanner error={helix.error} prefix="Failed to load the chains" />
-        {h?.errors?.ibc && <ErrorBanner error={h.errors.ibc} prefix={`Couldn't read ${name}`} />}
+        {ibcNote && <NoticeBanner>{ibcNote}</NoticeBanner>}
 
         <div className="helix-hero slim">
           {h ? <HelixHero helix={h} now={now} view={view} width={narrow ? 560 : 1176} height={120} windowSecs={HERO_WINDOW} /> : <div className="loading">Loading…</div>}

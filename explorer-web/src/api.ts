@@ -273,6 +273,28 @@ export interface IBCCoin {
   amount: string;
 }
 
+export interface IBCClient {
+  clientId: string;
+  chainId: string;
+  status: string;
+  attention?: "" | "expiring" | "expired" | "frozen";
+  trustingPeriodSecs: number;
+  unbondingPeriodSecs: number;
+  latestRevision: number;
+  latestHeight: number;
+  consensusTime?: string;
+  expiresAt?: string;
+}
+
+export interface IBCConnection {
+  id: string;
+  state: string;
+  clientId: string;
+  counterpartyClientId: string;
+  counterpartyConnectionId: string;
+  delayPeriodNs: number;
+}
+
 export interface IBCChannel {
   portId: string;
   channelId: string;
@@ -286,16 +308,102 @@ export interface IBCChannel {
   counterpartyChainId: string; // "" if the client state couldn't be read
   trustingPeriodSecs: number;
   unbondingPeriodSecs: number;
+  clientStatus?: string;
+  clientAttention?: "" | "expiring" | "expired" | "frozen";
+  clientExpiresAt?: string;
   packetsSent: number;
   pendingPackets: number;
   escrowAddress: string;
   escrowBalances: IBCCoin[];
 }
 
+export interface IBCRelayer {
+  address: string;
+  packets: number;
+  lastHeight: number;
+  lastTime?: string;
+  lastAction: string;
+  channels: string[];
+}
+
+export interface IBCTransfer {
+  hash: string;
+  height: number;
+  time?: string;
+  direction: "out" | "in";
+  sender: string;
+  receiver: string;
+  amount: string;
+  denom: string;
+  channel: string;
+  sequence?: number;
+  status: "sent" | "received" | "failed";
+}
+
+export interface IBCDenom {
+  denom: string;
+  baseDenom: string;
+  path: string;
+  amount: string;
+  symbol?: string;
+  decimals?: number;
+  origin?: string;
+}
+
 export interface IBCSummary {
   clients: number;
   connections: number;
   channels: IBCChannel[];
+  clientStates?: IBCClient[];
+  connectionStates?: IBCConnection[];
+  relayers?: IBCRelayer[];
+  transfers?: IBCTransfer[];
+  denoms?: IBCDenom[];
+  activityNote?: string;
+}
+
+export interface AAAuthenticator {
+  id: number;
+  kind: "session_key" | "guardian_threshold" | "unknown" | string;
+  expired?: boolean;
+  expiresAt?: string;
+  allowedMsgTypes?: string[];
+  spendLimitUaeth?: string;
+  spentUaeth?: string;
+  pubkey?: string;
+  pubkeyBytes?: number;
+  guardians?: number;
+  threshold?: number;
+  nextSequence?: number;
+  guardianKeys?: string[];
+}
+
+export interface AAAccount {
+  address: string;
+  authenticators: AAAuthenticator[];
+  lastHeight?: number;
+  lastAction?: string;
+}
+
+export interface AATransaction {
+  hash: string;
+  height: number;
+  time?: string;
+  action: string;
+  account: string;
+  signer?: string;
+  code: number;
+  detail?: string;
+}
+
+export interface AAPage {
+  module: string;
+  supported: boolean;
+  summary: string;
+  messages: string[];
+  accounts: AAAccount[];
+  transactions: AATransaction[];
+  note?: string;
 }
 
 export interface SendPermission {
@@ -359,6 +467,10 @@ export interface HelixStrand {
   blockTimeSecs: number; // 0 with fewer than two blocks
   validators: number;
   blocks: HelixBlock[]; // newest first
+  stale?: boolean;
+  asOf?: string;
+  source?: string;
+  viaFallback?: boolean;
 }
 
 export interface PacketStep {
@@ -410,6 +522,7 @@ export interface Helix {
   bridge: HelixBridge | null;
   packets: HelixPacket[]; // newest first
   errors?: Record<string, string>;
+  degraded?: Record<string, string>;
 }
 
 // --- the faucet, through the explorer's /api/faucet/ (cmd/faucet) ---
@@ -537,6 +650,7 @@ export const api = {
   services: () => getJSON<ServiceDirectory>("/api/services"),
   quest: () => getJSON<QuestBoard>("/api/quest"),
   ibc: () => getJSON<IBCSummary>("/api/ibc"),
+  aa: (addr?: string) => getJSON<AAPage>(`/api/aa${addr ? `?addr=${encodeURIComponent(addr)}` : ""}`),
   agents: () => getJSON<AgentCard>("/api/agents"),
   assets: () => getJSON<{ assets: AssetInfo[] }>("/api/assets"),
   helix: (seconds = 96, min = 0, peer?: string | null) =>

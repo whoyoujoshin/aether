@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -105,6 +106,52 @@ func TestHelixPeers_PairsEndpointsWithNames(t *testing.T) {
 
 	ibcRPCEndpoint, ibcName = "", "Osmosis"
 	require.Empty(t, helixPeers())
+
+	ibcRPCEndpoint, ibcName = " https://primary.example| https://fallback.example |https://third.example , https://only.example|", "Osmosis, Injective"
+	require.Equal(t, []helixPeer{
+		{endpoint: "https://primary.example", fallbacks: []string{"https://fallback.example", "https://third.example"}, name: "Osmosis"},
+		{endpoint: "https://only.example", name: "Injective"},
+	}, helixPeers())
+}
+
+func TestCounterpartyNote_NamesARefusalAndDropsUnmarshalNoise(t *testing.T) {
+	// The wording the seed's explorer returned on 2026-10-26.
+	raw := "status: error in json rpc client, with http response metadata: (Status: 403 Forbidden, Protocol HTTP/1.1). error unmarshalling: unexpected end of JSON input"
+	note := counterpartyNote(errors.New(raw), "")
+	require.Contains(t, note, "HTTP 403")
+	require.Contains(t, note, "datacenter")
+	require.NotContains(t, note, "unmarshalling")
+	require.Contains(t, note, "--ibc-rpc")
+
+	cached := counterpartyNote(errors.New(raw), "2026-10-26T12:00:00Z")
+	require.Contains(t, cached, "2026-10-26T12:00:00Z")
+	require.NotContains(t, cached, "--ibc-rpc")
+
+	require.Contains(t, counterpartyNote(errors.New("context deadline exceeded"), ""), "timed out")
+}
+
+func TestIbcSnap_RoundTripAndExpiry(t *testing.T) {
+	key := "https://snap-test.example/rpc"
+	t.Cleanup(func() {
+		ibcSnapMu.Lock()
+		delete(ibcSnaps, key)
+		ibcSnapMu.Unlock()
+	})
+	blocks := []helixBlockDTO{{Height: 9}}
+	storeIbcSnap(key, helixStrandDTO{ChainID: "osmo-test-5", Height: 9, Blocks: blocks})
+	blocks[0].Height = 1 // the stored copy is independent of the caller
+	got, ok := loadIbcSnap(key)
+	require.True(t, ok)
+	require.Equal(t, int64(9), got.strand.Height)
+	require.Equal(t, int64(9), got.strand.Blocks[0].Height)
+
+	ibcSnapMu.Lock()
+	s := ibcSnaps[key]
+	s.at = time.Now().Add(-ibcSnapTTL - time.Minute)
+	ibcSnaps[key] = s
+	ibcSnapMu.Unlock()
+	_, ok = loadIbcSnap(key)
+	require.False(t, ok)
 }
 
 func TestPickPeer_ByChainIDOrNameElseFirst(t *testing.T) {

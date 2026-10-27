@@ -111,6 +111,9 @@ On the seed, in this order:
    next.
 7. **Explorer:** in `aether-explorer.service`, change the Osmosis entry of
    `--ibc-rpc` to `https://rpc.testnet.osmosis.zone` and restart it.
+   Curl that URL from the seed first. A 403 is the provider refusing the
+   seed's address; a second public hostname is a fallback only if the
+   seed can actually read it. See [EXPLORER-IBC.md](EXPLORER-IBC.md).
 8. **Send Claude** the log, both new client IDs, both channel IDs, the
    new denom and the `/healthz` output. Claude updates this page,
    [IBC.md](IBC.md), [OSMOSIS-POOL.md](OSMOSIS-POOL.md) and CLAUDE.md.

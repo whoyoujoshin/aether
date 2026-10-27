@@ -170,8 +170,8 @@ input::placeholder {
 
 .nav-links {
   display: flex;
-  gap: 22px;
-  font-size: 14px;
+  gap: 16px;
+  font-size: 13.5px;
 }
 .topbar.home .nav-links {
   margin-left: auto;
@@ -193,7 +193,7 @@ input::placeholder {
   margin-left: auto;
   display: flex;
   align-items: center;
-  width: 320px;
+  width: 240px;
   height: 36px;
   padding: 0 14px;
   border-radius: 10px;
@@ -1177,6 +1177,33 @@ input::placeholder {
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+}
+.svc-card.attention-expiring {
+  border-color: var(--warn);
+  background: linear-gradient(180deg, oklch(0.8 0.14 80 / 12%), var(--panel) 48%);
+}
+.svc-card.attention-expired,
+.svc-card.attention-frozen {
+  border-color: rgba(240, 80, 110, 0.7);
+  background: linear-gradient(180deg, rgba(240, 80, 110, 0.14), var(--panel) 46%);
+}
+.aa-lookup {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 18px;
+  max-width: 560px;
+}
+.aa-lookup input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--bone);
+  font: 400 14px var(--font-mono);
 }
 .abbr-tile {
   width: 38px;
