@@ -71,6 +71,7 @@ func main() {
 		withLigase     = flag.Bool("ligase", false, "with --outbound-key: also fund and release an Aether escrow from the counterparty through Ligase")
 		withInflowCap  = flag.Bool("inflowcap", false, "with --outbound-key: also check x/inflowcap; aether's genesis must list --cparty-denom over the new channel with a cap")
 		unlistedDenom  = flag.String("inflowcap-unlisted-denom", "", "with --inflowcap: a counterparty denom aether doesn't list, to check it's refused")
+		outboundPID    = flag.Int("outbound-pid", 0, "with --inflowcap: cmd/outbound's process id; it is paused and resumed to keep sends back in flight, to check they hold room under the cap")
 		outboundKey    = flag.String("outbound-key", "", "if set, cmd/outbound is running with this counterparty key: relay nothing by hand, wait for it, and check it signed the counterparty's side")
 	)
 	flag.Parse()
@@ -185,6 +186,9 @@ func main() {
 		}
 		if *withInflowCap {
 			inflowCapStep(aetherUserChain, cparty, chanA, chanC, *cpartyDenom, *unlistedDenom, *wait)
+			if *outboundPID != 0 {
+				inFlightStep(aetherUserChain, cparty, chanA, chanC, *cpartyDenom, helicaseAddr, *outboundPID, *wait)
+			}
 		}
 		// With cmd/outbound running, nothing stays unrelayed long enough
 		// to time out; step 3 runs without it.

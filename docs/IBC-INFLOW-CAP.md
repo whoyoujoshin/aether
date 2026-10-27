@@ -199,6 +199,25 @@ that block once restarted.
     in again;
   - 100 `ufoo`, not listed, was refused with `not_listed` and refunded.
 
+- **Devnet, sends in flight (2026-10-27):** the same setup from `main`
+  after PR #172, with `--outbound-pid` so `cmd/helicasetest` pauses
+  `cmd/outbound` to keep a send back in flight. With the cap full
+  (100,000):
+  - an Aether user sent 1,000 back with a 20 s timeout: supply 99,000,
+    in flight 1,000, room 0; 1,000 sent in meanwhile was refused
+    `over_cap`; Helicase timed the send out (an unsigned relay
+    transaction) and the refund brought supply back to 100,000, in
+    flight 0;
+  - 1,000 sent back to a receiver the counterparty can't decode: in
+    flight 1,000; 1 sent in meanwhile was refused `over_cap`; once
+    `cmd/outbound` resumed, the counterparty's error ack came back
+    through Helicase and the refund brought supply back to 100,000;
+  - both refused transfers were refunded on the counterparty;
+  - a send back that succeeded freed its 1,000 of room only once its
+    ack came back.
+
+  Two runs, both clean; no panics or rejected proposals.
+
   The first attempt found a Helicase bug, not a cap one: with 1 s blocks
   the proposer put the same relay transaction in two blocks, the second
   copy's empty result replaced the first's in CometBFT's index, and
