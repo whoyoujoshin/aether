@@ -221,6 +221,8 @@ running path and hash.
   powers above; more than two-thirds must be back on the new binary.
 - **A settlement fails with `ErrSettlementGrew` (inflowcap code 6):** a
   refund tried to mint more than its send burned. That packet's
-  acknowledgement or timeout keeps failing until a fixed binary ships;
-  nothing else is affected. Tell Joshua and Claude with the tx.
+  acknowledgement or timeout keeps failing until a fixed binary ships.
+  Helicase relays a cycle's messages in one transaction, so every relay
+  onto Aether over that path stalls with it (nothing is lost; the
+  packets wait). Tell Joshua and Claude with the tx.
 - **After H:** don't roll back. Tell Joshua instead.

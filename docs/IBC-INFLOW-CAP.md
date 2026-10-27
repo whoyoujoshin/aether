@@ -251,7 +251,15 @@ that block once restarted.
 - **A refund-path bug stops refunds.** The backstop above fails closed:
   if a settlement ever tried to mint more than its send burned, that
   packet's acknowledgement or timeout would fail until a fixed binary
-  ships, and its sender would wait for the refund.
+  ships, and its sender would wait for the refund. The whole transaction
+  fails with it, refund, record and commitment removal alike, so nothing
+  is lost and the packet can be relayed again. Helicase puts a cycle's
+  relay messages (client update, packets, acks, timeouts) in one
+  transaction, so until the fix every Helicase relay on that path fails
+  too: the path stops, which is the fail-closed answer to a minting bug.
+  A genesis in-flight record whose amount or voucher doesn't match its
+  packet could trip the check falsely; genesis carries only exported
+  records, and the testnet activation starts with none in flight.
 - **A forged header can still mint up to the cap.** The cap bounds the
   loss; it doesn't prevent it. `ibcwatch` and a low starting cap stay
   required.
