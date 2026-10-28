@@ -152,33 +152,65 @@ wallet guardian-cancel <submitter> <account> <sig.json>...
   (agentmcp, the faucet, powminer, `paywall list`) send from the account.
 - **Copying keys:** `copy-key` and `CopyTestKey` carry the record with
   the key.
+- **`aetherd tx ... --from <key>`** reads the same `signs-for.json` in its
+  keyring directory (`cmd/aetherd/signsfor.go`). When `--from` names a
+  rotated key, or the account itself, the transaction is sent from the
+  account and signed by the key, and aetherd says so on stderr.
+  - `bank send <key> ...` does the same.
+  - The other commands that take their sender as the first argument
+    (`bank multi-send`, `feegrant grant`) refuse a rotated key,
+    rather than send from the key's own address.
+  - `aetherd tx sign` still refuses: it checks the signer by the key's own
+    address. Sign and broadcast in one step instead.
+
+## The signing-key rule, off chain
+
+Every check made off chain applies the chain's rule (`wallet.SignsFor`):
+the key that signs for an account is the one stored on it; only an
+account with no stored key yet is signed for by the key its address hashes
+from. Checking only the hash is wrong both ways after a rotation: it
+refuses the new key, and it **accepts the retired one**, whose hash is
+still the address.
+
+- **The rule's users:**
+  - the x402 facilitator;
+  - paywall prepaid and pull sign-in;
+  - mandates;
+  - receipts and receipt delegations;
+  - agentmcp's `--approver` decisions, its `--mandate-file` and the
+    receipts it checks.
+- **Automatic revocation:** a rotation revokes everything the retired key
+  signed. Mandates, approvals and receipts it signed stop verifying.
+- **Reading keys:**
+  - `wallet.CachedAccountKeys` keeps each answer for 30 seconds
+    (`DefaultAccountKeyTTL`), so a verifier can accept a retired key for up
+    to that long after a rotation applies.
+  - A node that can't answer is a refusal (retryable where the protocol
+    has a code for it), never a pass.
+  - `cmd/paywall` and agentmcp read keys from their `--grpc` node.
+- **Without chain access:** `Mandate.Verify`, `Receipt.Verify` and
+  `CheckMandate`/`CheckReceipt` keep the hash-only check. The `...With`
+  forms take the chain's keys.
+- **Creating them:** `NewMandate` and `NewReceiptDelegation` check only the
+  signature, since only the chain knows a rotated owner's key.
+- **Receipts after a payee rotates:** those its retired key signed stop
+  verifying (idea C in the follow-up plan would keep them valid when their
+  payment predates the rotation).
 
 ## Limits and follow-ups
 
-- **`aetherd tx ... --from <key>`** can't sign for a rotated account: the
-  SDK client takes the sender from the key's own address. Use `wallet` or
-  agentmcp.
-- **The rule every verifier needs** is the chain's: the key that signs
-  for an account is the one stored on it; only an account with no stored
-  key yet is signed for by the key its address hashes from. Checking only
-  the hash is wrong both ways after a rotation: it refuses the new key,
-  and it **accepts the retired one**, whose hash is still the address.
-- **x402:** the facilitator (`x402.Facilitator` over `NodeChain`) applies
-  that rule. The upstream spec (x402-foundation/x402#3788) and
-  `@x402/cosmos` need it too.
-- **Off-chain signature checks still check only the hash**, so after a
-  rotation they refuse the new key and keep accepting the retired one:
-  - paywall prepaid sign-in (`paywall/prepaid.go`);
-  - mandates (`paywall/mandate.go`);
-  - payee receipts (`paywall/receipt.go`);
-  - agentmcp's `--approver` decisions (`cmd/agentmcp/approvals.go`).
-
-  Until they apply the rule (a lookup of the account's key on chain), an
-  owner who rotates because a key leaked must also change `--approver`,
-  revoke mandates and move payees, since the leaked key still passes
-  those checks.
 - **Clients:** the TypeScript and Python clients don't build rotation
-  messages yet.
+  messages yet, and their sellers' sign-in checks only the hash. Their
+  vectors are `clients/testdata/rotation.json`:
+  - signing bytes and signatures;
+  - every message's encoding;
+  - a signed `MsgRotateKey` transaction;
+  - a `Rotation` query answer;
+  - the signs-for rule's cases.
+
+  `clients/vectors` checks the file against the Go code.
+- **x402 spec:** `docs/x402/scheme_exact_cosmos.md` step 5 states the rule
+  for x402-foundation/x402#3788; `@x402/cosmos` still needs it.
 - **Shared keys:** a key may sign for several accounts: its own address
   and any account rotated onto it. Each transaction is still bound to one
   account by its account number.

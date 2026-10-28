@@ -143,6 +143,9 @@ func main() {
 	cfg := paywall.Config{
 		PayTo: *payTo, Price: amount, Asset: asset, Network: *chainID, Description: *description,
 		InvoiceTTL: *ttl, Lookup: client.GetTransactionByHash,
+		// The chain's rule on which key signs for an account, so a
+		// rotated account's new key is accepted and its retired key isn't.
+		AccountKeys: wallet.NewCachedAccountKeys(client, wallet.DefaultAccountKeyTTL),
 	}
 	if *exact {
 		cfg.Exact = &paywall.ExactConfig{Settler: x402.NewFacilitator(*chainID, x402.NodeChain{Client: client})}

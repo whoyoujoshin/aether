@@ -58,7 +58,9 @@ func TestMandate_SignVerifyAndRoundTrip(t *testing.T) {
 	other := newAgentKey(t)
 	forged := *back
 	forged.OwnerPubKey = signedMandate(t, other, nil).OwnerPubKey
-	require.ErrorContains(t, forged.Verify(), "not signed by the owner's key")
+	require.ErrorContains(t, forged.Verify(), "bad signature")
+	claims := signedMandate(t, other, func(m *Mandate) { m.Owner = back.Owner })
+	require.ErrorContains(t, claims.Verify(), "not signed by the owner's key")
 }
 
 func TestMandate_RefusesWhatCantBeSigned(t *testing.T) {

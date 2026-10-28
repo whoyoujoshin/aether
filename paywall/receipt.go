@@ -2,6 +2,7 @@ package paywall
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -16,6 +17,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	"github.com/whoyoujoshin/aether/wallet"
 )
 
 // Receipts: with Config.Receipts set, every paid response carries a
@@ -109,7 +111,9 @@ func lines(domain string, fields ...string) []byte {
 }
 
 // NewReceiptDelegation signs, with the payee's key, a delegation of
-// receipts to the account signer until expires.
+// receipts to the account signer until expires, and checks the
+// signature. Whether the key signs for payTo is the verifier's to check
+// (Receipt.VerifyWith).
 func NewReceiptDelegation(payTo, signer string, expires int64, sign Signer) (*ReceiptDelegation, error) {
 	sig, pub, err := sign(DelegationSigningMessage(payTo, signer, expires))
 	if err != nil {
@@ -117,23 +121,33 @@ func NewReceiptDelegation(payTo, signer string, expires int64, sign Signer) (*Re
 	}
 	d := &ReceiptDelegation{PayTo: payTo, Signer: signer, Expires: expires,
 		PayToPubKey: base64.StdEncoding.EncodeToString(pub), Signature: base64.StdEncoding.EncodeToString(sig)}
-	if err := d.verify(); err != nil {
+	if _, err := d.signedByPayToPubKey(); err != nil {
 		return nil, err
 	}
 	return d, nil
 }
 
-func (d *ReceiptDelegation) verify() error {
+func (d *ReceiptDelegation) signedByPayToPubKey() (*mldsa.PubKey, error) {
 	pub, err := decodePubKey(d.PayToPubKey)
 	if err != nil {
-		return fmt.Errorf("delegation: %w", err)
-	}
-	if addressOf(pub) != d.PayTo {
-		return errors.New("delegation: not signed by the payee's key")
+		return nil, fmt.Errorf("delegation: %w", err)
 	}
 	sig, err := base64.StdEncoding.DecodeString(d.Signature)
 	if err != nil || !pub.VerifySignature(DelegationSigningMessage(d.PayTo, d.Signer, d.Expires), sig) {
-		return errors.New("delegation: bad signature")
+		return nil, errors.New("delegation: bad signature")
+	}
+	return pub, nil
+}
+
+func (d *ReceiptDelegation) verify(ctx context.Context, keys wallet.AccountKeys) error {
+	pub, err := d.signedByPayToPubKey()
+	if err != nil {
+		return err
+	}
+	if ok, err := wallet.SignsFor(ctx, keys, d.PayTo, pub.Key); err != nil {
+		return fmt.Errorf("delegation: reading the payee's key: %w", err)
+	} else if !ok {
+		return errors.New("delegation: not signed by the payee's key")
 	}
 	return nil
 }
@@ -160,10 +174,17 @@ func isHexHash(s string) bool {
 	return err == nil && strings.ToLower(s) == s
 }
 
-// Verify checks that the receipt was signed by its payee (directly or by
-// delegation). It says nothing about whether the receipt matches a
-// request: see CheckReceipt.
-func (r *Receipt) Verify() error {
+// Verify checks that the receipt was signed by a key hashing to its
+// payee's address (directly or by delegation): VerifyWith with no chain
+// access.
+func (r *Receipt) Verify() error { return r.VerifyWith(context.Background(), nil) }
+
+// VerifyWith checks that the receipt was signed by the key that signs for
+// its payee (wallet.SignsFor), directly or by a delegation that key
+// signed. The delegated receipt key itself is named by its own address.
+// It says nothing about whether the receipt matches a request: see
+// CheckReceipt.
+func (r *Receipt) VerifyWith(ctx context.Context, keys wallet.AccountKeys) error {
 	if r.X402Version != X402Version {
 		return fmt.Errorf("receipt: unsupported x402Version %d", r.X402Version)
 	}
@@ -174,8 +195,12 @@ func (r *Receipt) Verify() error {
 	if err != nil {
 		return fmt.Errorf("receipt: %w", err)
 	}
-	signer := addressOf(pub)
-	if signer != r.PayTo {
+	direct, err := wallet.SignsFor(ctx, keys, r.PayTo, pub.Key)
+	if err != nil {
+		return fmt.Errorf("receipt: reading the payee's key: %w", err)
+	}
+	if !direct {
+		signer := addressOf(pub)
 		d := r.Delegation
 		if d == nil {
 			return errors.New("receipt: signed by a key that isn't the payee's, with no delegation")
@@ -183,7 +208,7 @@ func (r *Receipt) Verify() error {
 		if d.PayTo != r.PayTo || d.Signer != signer {
 			return errors.New("receipt: the delegation is for another payee or key")
 		}
-		if err := d.verify(); err != nil {
+		if err := d.verify(ctx, keys); err != nil {
 			return fmt.Errorf("receipt: %w", err)
 		}
 		if r.At > d.Expires {
@@ -209,7 +234,13 @@ type ReceiptExpectation struct {
 
 // CheckReceipt verifies r and that it describes exactly this purchase.
 func CheckReceipt(r *Receipt, want ReceiptExpectation) error {
-	if err := r.Verify(); err != nil {
+	return CheckReceiptWith(context.Background(), nil, r, want)
+}
+
+// CheckReceiptWith is CheckReceipt with the payee's key read from the
+// chain (Receipt.VerifyWith).
+func CheckReceiptWith(ctx context.Context, keys wallet.AccountKeys, r *Receipt, want ReceiptExpectation) error {
+	if err := r.VerifyWith(ctx, keys); err != nil {
 		return err
 	}
 	req, resp := sha256.Sum256(want.RequestBody), sha256.Sum256(want.ResponseBody)
@@ -257,7 +288,7 @@ type ReceiptConfig struct {
 }
 
 // checkReceiptConfig makes sure receipts will verify, by signing a probe.
-func checkReceiptConfig(c *ReceiptConfig, payTo string, now int64) error {
+func checkReceiptConfig(c *ReceiptConfig, payTo string, now int64, keys wallet.AccountKeys) error {
 	empty := sha256.Sum256(nil)
 	probe := Receipt{X402Version: X402Version, PayTo: payTo, RequestHash: hex.EncodeToString(empty[:]), At: now, Delegation: c.Delegation}
 	sig, pub, err := c.Sign(ReceiptSigningMessage(probe))
@@ -265,7 +296,7 @@ func checkReceiptConfig(c *ReceiptConfig, payTo string, now int64) error {
 		return err
 	}
 	probe.Signer, probe.Signature = base64.StdEncoding.EncodeToString(pub), base64.StdEncoding.EncodeToString(sig)
-	return probe.Verify()
+	return probe.VerifyWith(context.Background(), keys)
 }
 
 // paidRequest is what a receipt says about the request and payment.

@@ -37,22 +37,37 @@ func (w *Wallet) loadSignsFor(backend, rootDir string) error {
 		return nil
 	}
 	w.signsForFile = filepath.Join(rootDir, SignsForFile)
-	bz, err := os.ReadFile(w.signsForFile)
+	records, err := ReadSignsFor(rootDir)
+	if err != nil {
+		return err
+	}
+	w.signsFor = records
+	return nil
+}
+
+// ReadSignsFor reads keyringDir's record of which account each rotated
+// key signs for (key name to account address); empty if there is none.
+// aetherd reads it too, so `aetherd tx ... --from <key>` sends from the
+// account.
+func ReadSignsFor(keyringDir string) (map[string]string, error) {
+	records := map[string]string{}
+	path := filepath.Join(keyringDir, SignsForFile)
+	bz, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return records, nil
 	}
 	if err != nil {
-		return fmt.Errorf("%s: %w", w.signsForFile, err)
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if err := json.Unmarshal(bz, &w.signsFor); err != nil {
-		return fmt.Errorf("%s: %w", w.signsForFile, err)
+	if err := json.Unmarshal(bz, &records); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	for name, account := range w.signsFor {
+	for name, account := range records {
 		if _, err := sdk.AccAddressFromBech32(account); err != nil {
-			return fmt.Errorf("%s: %s signs for %q: %w", w.signsForFile, name, account, err)
+			return nil, fmt.Errorf("%s: %s signs for %q: %w", path, name, account, err)
 		}
 	}
-	return nil
+	return records, nil
 }
 
 // SignFor records that the named key signs for account (its key was

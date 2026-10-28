@@ -77,12 +77,12 @@ func recordPurchase(p purchase) *receiptDTO {
 		case p.res.truncated:
 			out.Receipt = r
 			out.Problem = "the response was too long to keep whole, so its hash can't be checked (everything else was)"
-			if err := paywall.CheckReceipt(r, expectation(p, true)); err != nil {
+			if err := paywall.CheckReceiptWith(context.Background(), accountKeys, r, expectation(p, true)); err != nil {
 				out.Problem = err.Error()
 			}
 		default:
 			out.Receipt = r
-			if err := paywall.CheckReceipt(r, expectation(p, false)); err != nil {
+			if err := paywall.CheckReceiptWith(context.Background(), accountKeys, r, expectation(p, false)); err != nil {
 				out.Problem = err.Error()
 			} else {
 				out.Verified = true

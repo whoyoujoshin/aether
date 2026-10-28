@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"cosmossdk.io/math"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	"github.com/whoyoujoshin/aether/wallet"
@@ -118,8 +117,9 @@ func verifyDecision(req *approvalRequest, d decisionFile) error {
 		return errors.New("bad public key")
 	}
 	pk := &mldsa.PubKey{Key: pub}
-	want, err := sdk.AccAddressFromBech32(approver)
-	if err != nil || !bytes.Equal(pk.Address(), want) {
+	if ok, err := wallet.SignsFor(context.Background(), accountKeys, approver, pub); err != nil {
+		return fmt.Errorf("reading the approver's key: %w", err)
+	} else if !ok {
 		return fmt.Errorf("not signed by the approver %s", approver)
 	}
 	sig, err := base64.StdEncoding.DecodeString(d.Signature)

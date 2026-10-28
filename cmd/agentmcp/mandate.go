@@ -51,7 +51,7 @@ func loadMandate(path string) error {
 	if err := json.Unmarshal(bz, &m); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
-	if err := m.Verify(); err != nil {
+	if err := m.VerifyWith(context.Background(), accountKeys); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	if m.Network != chainID {

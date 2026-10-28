@@ -39,6 +39,7 @@ type prepaidHarness struct {
 	*harness
 	ledger *FileLedger
 	payTo  string
+	pw     *Paywall
 }
 
 func newPrepaidHarness(t *testing.T, payTo string, ledgerPath string) *prepaidHarness {
@@ -63,7 +64,7 @@ func newPrepaidHarness(t *testing.T, payTo string, ledgerPath string) *prepaidHa
 	})))
 	h.srv = httptest.NewServer(mux)
 	t.Cleanup(h.srv.Close)
-	return &prepaidHarness{harness: h, ledger: led, payTo: payTo}
+	return &prepaidHarness{harness: h, ledger: led, payTo: payTo, pw: p}
 }
 
 type signedReq struct {
