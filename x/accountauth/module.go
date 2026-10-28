@@ -29,7 +29,8 @@ func (AppModuleBasic) RegisterInterfaces(registry cdctypes.InterfaceRegistry) {
 	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgRevokeAuthenticator{})
 	registry.RegisterImplementations((*sdk.Msg)(nil), &MsgExecAuthenticated{})
 	registry.RegisterImplementations((*sdk.Msg)(nil),
-		&MsgRotateKey{}, &MsgCancelPendingRotation{}, &MsgSetRecovery{}, &MsgRecoverKey{}, &MsgGuardianCancel{})
+		&MsgRotateKey{}, &MsgCancelPendingRotation{}, &MsgSetRecovery{}, &MsgRecoverKey{}, &MsgGuardianCancel{},
+		&MsgGuardianSetRecovery{}, &MsgWatchtowerCancel{})
 }
 
 func (AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {

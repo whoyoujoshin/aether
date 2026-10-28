@@ -35,6 +35,7 @@ var rotationKeys = []struct{ name, mnemonic string }{
 	{"next", "legal winner thank year wave sausage worth useful legal winner thank yellow"},
 	{"guardian1", "letter advice cage absurd amount doctor acoustic avoid letter advice cage above"},
 	{"guardian2", "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong"},
+	{"watchtower", "void come effort suffer camp survey warrior heavy shoot primary clutch crush open amazing screen patrol group space point ten exist slush involve unfold"},
 }
 
 const rotationChainID = "aether-rc-vectors"
@@ -101,7 +102,7 @@ func buildRotation(t *testing.T) rotationVectors {
 		keys[k.name] = acc
 		v.Keys = append(v.Keys, rotKeyVector{k.name, k.mnemonic, hex.EncodeToString(seed), hex.EncodeToString(acc.PubKey), acc.Address})
 	}
-	owner, next, g1, g2 := keys["owner"], keys["next"], keys["guardian1"], keys["guardian2"]
+	owner, next, g1, g2, wt := keys["owner"], keys["next"], keys["guardian1"], keys["guardian2"], keys["watchtower"]
 	account := owner.Address
 
 	sign := func(name, label, text string, bz []byte) []byte {
@@ -134,6 +135,18 @@ func buildRotation(t *testing.T) rotationVectors {
 	g1Cancel := sign("guardian1", "guardian cancel (guardian 1, recovery nonce 1)", cancelText,
 		accountauth.GuardianCancelSigningBytes(rotationChainID, account, recoveryNonce))
 
+	watchSig := sign("watchtower", "watchtower cancel (nonce 3)",
+		"aether-accountauth-watchtower-cancel/v1\n"+rotationChainID+"\n"+account+"\n3\n",
+		accountauth.WatchtowerCancelSigningBytes(rotationChainID, account, nonce))
+	newSet := accountauth.RecoverySet{GuardianPubkeys: [][]byte{g1.PubKey, g2.PubKey}, Threshold: 1, WatchtowerPubkeys: [][]byte{wt.PubKey}}
+	g1SetRec := sign("guardian1", "guardian set recovery (guardian 1, recovery nonce 1)",
+		"aether-accountauth-guardian-set-recovery/v1\n"+rotationChainID+"\n"+account+"\n1\n1\nguardians:"+
+			hex.EncodeToString(g1.PubKey)+","+hex.EncodeToString(g2.PubKey)+"\nwatchtowers:"+hex.EncodeToString(wt.PubKey)+"\n",
+		accountauth.GuardianSetRecoverySigningBytes(rotationChainID, account, recoveryNonce, newSet))
+	sign("guardian1", "guardian set recovery, removing the set (guardian 1, recovery nonce 1)",
+		"aether-accountauth-guardian-set-recovery/v1\n"+rotationChainID+"\n"+account+"\n1\n0\nguardians:\nwatchtowers:\n",
+		accountauth.GuardianSetRecoverySigningBytes(rotationChainID, account, recoveryNonce, accountauth.RecoverySet{}))
+
 	// The wallet's builders produce the same proofs.
 	m, err := w.RotateKeyMsg(rotationChainID, account, "next", nonce)
 	require.NoError(t, err)
@@ -154,6 +167,9 @@ func buildRotation(t *testing.T) rotationVectors {
 	addMsg("MsgCancelPendingRotation", &accountauth.MsgCancelPendingRotation{Account: account}, map[string]any{"account": account})
 	setRec := &accountauth.MsgSetRecovery{Account: account, GuardianPubkeys: [][]byte{g1.PubKey, g2.PubKey}, Threshold: 2}
 	addMsg("MsgSetRecovery", setRec, map[string]any{"account": account, "guardianPubkeys": []string{hex.EncodeToString(g1.PubKey), hex.EncodeToString(g2.PubKey)}, "threshold": 2})
+	withWatch := &accountauth.MsgSetRecovery{Account: account, GuardianPubkeys: [][]byte{g1.PubKey, g2.PubKey}, Threshold: 2, WatchtowerPubkeys: [][]byte{wt.PubKey}}
+	addMsg("MsgSetRecovery (with a watchtower)", withWatch, map[string]any{"account": account, "guardianPubkeys": []string{hex.EncodeToString(g1.PubKey), hex.EncodeToString(g2.PubKey)}, "threshold": 2,
+		"watchtowerPubkeys": []string{hex.EncodeToString(wt.PubKey)}})
 	removeRec := &accountauth.MsgSetRecovery{Account: account}
 	addMsg("MsgSetRecovery (remove)", removeRec, map[string]any{"account": account, "guardianPubkeys": []string{}, "threshold": 0})
 	sigs := []*accountauth.GuardianSignature{{Pubkey: g1.PubKey, Signature: g1Recover}, {Pubkey: g2.PubKey, Signature: g2Recover}}
@@ -165,6 +181,15 @@ func buildRotation(t *testing.T) rotationVectors {
 	cancel := &accountauth.MsgGuardianCancel{Submitter: g1.Address, Account: account, GuardianSignatures: []*accountauth.GuardianSignature{{Pubkey: g1.PubKey, Signature: g1Cancel}}}
 	addMsg("MsgGuardianCancel", cancel, map[string]any{"submitter": g1.Address, "account": account,
 		"guardianSignatures": []gsig{{hex.EncodeToString(g1.PubKey), hex.EncodeToString(g1Cancel)}}})
+
+	gsr := &accountauth.MsgGuardianSetRecovery{Submitter: g1.Address, Account: account, GuardianPubkeys: newSet.GuardianPubkeys, Threshold: 1,
+		WatchtowerPubkeys: newSet.WatchtowerPubkeys, GuardianSignatures: []*accountauth.GuardianSignature{{Pubkey: g1.PubKey, Signature: g1SetRec}}}
+	addMsg("MsgGuardianSetRecovery", gsr, map[string]any{"submitter": g1.Address, "account": account,
+		"guardianPubkeys": []string{hex.EncodeToString(g1.PubKey), hex.EncodeToString(g2.PubKey)}, "threshold": 1,
+		"watchtowerPubkeys":  []string{hex.EncodeToString(wt.PubKey)},
+		"guardianSignatures": []gsig{{hex.EncodeToString(g1.PubKey), hex.EncodeToString(g1SetRec)}}})
+	addMsg("MsgWatchtowerCancel", &accountauth.MsgWatchtowerCancel{Submitter: g2.Address, Account: account, WatchtowerPubkey: wt.PubKey, Signature: watchSig},
+		map[string]any{"submitter": g2.Address, "account": account, "watchtowerPubkey": hex.EncodeToString(wt.PubKey), "signature": hex.EncodeToString(watchSig)})
 
 	// MsgRotateKey in a transaction the owner signs, as the clients would
 	// send it.
@@ -184,16 +209,17 @@ func buildRotation(t *testing.T) rotationVectors {
 	req, err := (&accountauth.QueryRotationRequest{Account: account}).Marshal()
 	require.NoError(t, err)
 	state := &accountauth.RotationState{Nonce: 4, RecoveryNonce: 1,
-		Recovery:        &accountauth.RecoverySet{GuardianPubkeys: [][]byte{g1.PubKey, g2.PubKey}, Threshold: 2},
+		Recovery:        &accountauth.RecoverySet{GuardianPubkeys: [][]byte{g1.PubKey, g2.PubKey}, Threshold: 2, WatchtowerPubkeys: [][]byte{wt.PubKey}},
 		PendingRotation: &accountauth.PendingRotation{NewPubkey: next.PubKey, ApplyHeight: 15_400}}
 	resp, err := (&accountauth.QueryRotationResponse{State: state, CurrentPubkey: owner.PubKey, Active: true, DelayBlocks: accountauth.RotationDelayBlocks}).Marshal()
 	require.NoError(t, err)
 	v.Query.Request, v.Query.Response = base64.StdEncoding.EncodeToString(req), base64.StdEncoding.EncodeToString(resp)
 	v.Query.Expected, _ = json.Marshal(map[string]any{
 		"nonce": 4, "recoveryNonce": 1, "recoveryThreshold": 2,
-		"recoveryGuardians": []string{hex.EncodeToString(g1.PubKey), hex.EncodeToString(g2.PubKey)},
-		"pendingRotation":   map[string]any{"newPubkey": pubHex, "applyHeight": 15_400},
-		"pendingRecovery":   nil, "currentPubkey": hex.EncodeToString(owner.PubKey), "active": true, "delayBlocks": accountauth.RotationDelayBlocks,
+		"recoveryGuardians":   []string{hex.EncodeToString(g1.PubKey), hex.EncodeToString(g2.PubKey)},
+		"recoveryWatchtowers": []string{hex.EncodeToString(wt.PubKey)},
+		"pendingRotation":     map[string]any{"newPubkey": pubHex, "applyHeight": 15_400},
+		"pendingRecovery":     nil, "currentPubkey": hex.EncodeToString(owner.PubKey), "active": true, "delayBlocks": accountauth.RotationDelayBlocks,
 	})
 
 	// The signs-for rule, checked here against wallet.SignsFor.

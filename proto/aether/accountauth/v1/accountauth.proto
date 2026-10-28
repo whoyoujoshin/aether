@@ -52,11 +52,20 @@ message GuardianSignature {
 // RotationState).
 
 // RecoverySet is M of N ML-DSA-44 guardians who may rotate the account's
-// key at once and cancel pending changes. It is separate from a
-// guardian_threshold authenticator, which can spend but never rotate.
+// key at once, change this set at once, and cancel pending changes. It is
+// separate from a guardian_threshold authenticator, which can spend but
+// never rotate.
+//
+// watchtower_pubkeys are cancel-only keys (at most 3; only with
+// guardians, and none of them a guardian): any one of them may cancel a
+// change the current key scheduled, and nothing else. A watchtower can't
+// rotate, can't cancel a guardian action (those apply at once), and the
+// guardians can remove it at once, so a hostile or broken one is never a
+// veto the guardians can't lift.
 message RecoverySet {
   repeated bytes guardian_pubkeys = 1;
   uint32 threshold = 2;
+  repeated bytes watchtower_pubkeys = 3;
 }
 
 // PendingRotation is a key change scheduled by the current key.
