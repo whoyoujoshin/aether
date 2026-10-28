@@ -268,14 +268,22 @@ func computeSeats(cands []seatCandidate, prev []seat, topK int64, eligibleTotal 
 
 // computeSeatUpdates is ComputeValidatorUpdates from
 // SeatRuleActivationHeight.
-func (k Keeper) computeSeatUpdates(ctx sdk.Context, epoch int64) []abci.ValidatorUpdate {
+// seatCandidates is every address with seat work in the window ending in
+// epoch, with its work over the window (in the order first seen, oldest
+// epoch first) and whether it is eligible, and each one's work in epoch
+// itself. The rule and the SeatWork query both read the window here.
+func (k Keeper) seatCandidates(ctx sdk.Context, epoch int64) ([]seatCandidate, map[string]math.Int) {
 	window := map[string]math.Int{}
+	current := map[string]math.Int{}
 	var addrs []sdk.AccAddress
 	for e := epoch - SeatWorkWindowEpochs + 1; e <= epoch; e++ {
 		if e < 0 {
 			continue
 		}
 		for _, w := range k.IterateSeatWork(ctx, e) {
+			if e == epoch {
+				current[string(w.Addr)] = w.Work
+			}
 			if cur, ok := window[string(w.Addr)]; ok {
 				window[string(w.Addr)] = cur.Add(w.Work)
 			} else {
@@ -284,15 +292,24 @@ func (k Keeper) computeSeatUpdates(ctx sdk.Context, epoch int64) []abci.Validato
 			}
 		}
 	}
+	cands := make([]seatCandidate, 0, len(addrs))
+	for _, a := range addrs {
+		cands = append(cands, seatCandidate{Addr: a, Work: window[string(a)], Eligible: k.seatEligible(ctx, a)})
+	}
+	return cands, current
+}
+
+// seatEligible: a registered consensus key and no ban.
+func (k Keeper) seatEligible(ctx sdk.Context, a sdk.AccAddress) bool {
+	_, hasKey := k.GetValidatorPubkey(ctx, a)
+	return hasKey && !k.IsBanned(ctx, a)
+}
+
+func (k Keeper) computeSeatUpdates(ctx sdk.Context, epoch int64) []abci.ValidatorUpdate {
+	cands, _ := k.seatCandidates(ctx, epoch)
 	// The oldest epoch in this window isn't in the next one.
 	if e := epoch - SeatWorkWindowEpochs + 1; e >= 0 {
 		k.pruneSeatWork(ctx, e)
-	}
-
-	cands := make([]seatCandidate, 0, len(addrs))
-	for _, a := range addrs {
-		_, hasKey := k.GetValidatorPubkey(ctx, a)
-		cands = append(cands, seatCandidate{Addr: a, Work: window[string(a)], Eligible: hasKey && !k.IsBanned(ctx, a)})
 	}
 
 	active := k.IterateActiveValidators(ctx)

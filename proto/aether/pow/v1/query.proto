@@ -15,6 +15,7 @@ service Query {
   rpc Params(QueryParamsRequest) returns (QueryParamsResponse);
   rpc ValidatorInfo(QueryValidatorInfoRequest) returns (QueryValidatorInfoResponse);
   rpc MinerLeaderboard(QueryMinerLeaderboardRequest) returns (QueryMinerLeaderboardResponse);
+  rpc SeatWork(QuerySeatWorkRequest) returns (QuerySeatWorkResponse);
 }
 
 message QueryDifficultyRequest {}
@@ -117,4 +118,47 @@ message QueryMinerLeaderboardRequest {
 message QueryMinerLeaderboardResponse {
   int64 epoch = 1;
   repeated MinerLeaderboardEntry entries = 2;
+}
+
+// SeatWork reports the seat rule's inputs for the current epoch
+// (docs/SEAT-RULE.md): every address's seat work over the window, whether
+// it is eligible, and the total the 1% bar is measured against, read the
+// way the boundary at the end of the epoch will read them. Seat work is
+// the difficulty an address's accepted submissions met, native and
+// AuxPoW, as a decimal integer.
+message QuerySeatWorkRequest {
+  // An address to report alone. Empty reports every address with seat
+  // work in the window.
+  string address = 1;
+}
+message SeatWorkInfo {
+  string address = 1;
+  // Over the window, and in the current epoch alone.
+  string window_work = 2;
+  string epoch_work = 3;
+  // Has a registered consensus key and isn't banned.
+  bool eligible = 4;
+  // Eligible, with seat work, and at least min_share_bps of bar_total:
+  // a candidate for one of the top_k seats.
+  bool meets_bar = 5;
+}
+message QuerySeatWorkResponse {
+  int64 epoch = 1;
+  // The window is first_epoch through epoch.
+  int64 first_epoch = 2;
+  // The block whose end applies the rule to this window.
+  int64 selection_height = 3;
+  // Whether the seat rule is in force at selection_height.
+  bool seat_rule = 4;
+  // Every address's seat work over the window.
+  string window_total = 5;
+  // What the 1% bar is measured against at selection_height: eligible
+  // addresses' work only from SeatHardeningHeight, else window_total.
+  string bar_total = 6;
+  int64 min_share_bps = 7;
+  int64 top_k = 8;
+  // By window work, highest first, then by address bytes: the order the
+  // rule seats in. With an address in the request, just that one (zero
+  // work if it has none).
+  repeated SeatWorkInfo entries = 9;
 }

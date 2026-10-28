@@ -31,6 +31,7 @@ func GetQueryCmd() *cobra.Command {
 		GetParamsCmd(),
 		GetValidatorInfoCmd(),
 		GetMinerLeaderboardCmd(),
+		GetSeatWorkCmd(),
 	)
 
 	return cmd
@@ -231,6 +232,31 @@ func GetMinerLeaderboardCmd() *cobra.Command {
 			}
 			queryClient := pow.NewQueryClient(clientCtx)
 			res, err := queryClient.MinerLeaderboard(context.Background(), &pow.QueryMinerLeaderboardRequest{Epoch: epoch})
+			if err != nil {
+				return err
+			}
+			return clientCtx.PrintProto(res)
+		},
+	}
+	flags.AddQueryFlagsToCmd(cmd)
+	return cmd
+}
+
+func GetSeatWorkCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "seat-work [address]",
+		Short: "Query the seat rule's window: each address's seat work, eligibility and whether it meets the 1% bar (one address, or all)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+			req := &pow.QuerySeatWorkRequest{}
+			if len(args) == 1 {
+				req.Address = args[0]
+			}
+			res, err := pow.NewQueryClient(clientCtx).SeatWork(context.Background(), req)
 			if err != nil {
 				return err
 			}

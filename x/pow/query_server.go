@@ -5,7 +5,10 @@ import (
 	"context"
 	"sort"
 
+	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/whoyoujoshin/aether/gates"
 )
@@ -157,4 +160,96 @@ func (q queryServer) MinerLeaderboard(goCtx context.Context, req *QueryMinerLead
 	}
 
 	return &QueryMinerLeaderboardResponse{Epoch: epoch, Entries: entries}, nil
+}
+
+// SeatWork reports the window the seat rule reads at the end of the
+// current epoch: the same candidates, eligibility and 1% bar as
+// computeSeatUpdates and computeSeats, in the order they seat in.
+func (q queryServer) SeatWork(goCtx context.Context, req *QuerySeatWorkRequest) (*QuerySeatWorkResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+	var only sdk.AccAddress
+	if req.Address != "" {
+		a, err := sdk.AccAddressFromBech32(req.Address)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "address: %v", err)
+		}
+		only = a
+	}
+
+	epoch := q.Keeper.CurrentEpoch(ctx)
+	length := q.Keeper.GetEpochLength(ctx)
+	if length <= 0 {
+		length = 1
+	}
+	selection := (epoch+1)*length - 1
+	first := epoch - SeatWorkWindowEpochs + 1
+	if first < 0 {
+		first = 0
+	}
+
+	cands, current := q.Keeper.seatCandidates(ctx, epoch)
+	windowTotal, eligibleTotal := math.ZeroInt(), math.ZeroInt()
+	for _, c := range cands {
+		windowTotal = windowTotal.Add(c.Work)
+		if c.Eligible {
+			eligibleTotal = eligibleTotal.Add(c.Work)
+		}
+	}
+	bar := windowTotal
+	if selection >= gates.Height(ctx.ChainID(), SeatHardeningHeight) {
+		bar = eligibleTotal
+	}
+	meetsBar := func(c seatCandidate) bool {
+		return c.Eligible && c.Work.IsPositive() && c.Work.MulRaw(10_000).GTE(bar.MulRaw(SeatMinWorkShareBps))
+	}
+	sort.SliceStable(cands, func(i, j int) bool {
+		if !cands[i].Work.Equal(cands[j].Work) {
+			return cands[i].Work.GT(cands[j].Work)
+		}
+		return bytes.Compare(cands[i].Addr, cands[j].Addr) < 0
+	})
+
+	info := func(c seatCandidate) *SeatWorkInfo {
+		cur, ok := current[string(c.Addr)]
+		if !ok {
+			cur = math.ZeroInt()
+		}
+		return &SeatWorkInfo{
+			Address:    c.Addr.String(),
+			WindowWork: c.Work.String(),
+			EpochWork:  cur.String(),
+			Eligible:   c.Eligible,
+			MeetsBar:   meetsBar(c),
+		}
+	}
+	var entries []*SeatWorkInfo
+	if only != nil {
+		found := false
+		for _, c := range cands {
+			if c.Addr.Equals(only) {
+				entries, found = []*SeatWorkInfo{info(c)}, true
+				break
+			}
+		}
+		if !found {
+			entries = []*SeatWorkInfo{info(seatCandidate{Addr: only, Work: math.ZeroInt(), Eligible: q.Keeper.seatEligible(ctx, only)})}
+		}
+	} else {
+		entries = make([]*SeatWorkInfo, 0, len(cands))
+		for _, c := range cands {
+			entries = append(entries, info(c))
+		}
+	}
+
+	return &QuerySeatWorkResponse{
+		Epoch:           epoch,
+		FirstEpoch:      first,
+		SelectionHeight: selection,
+		SeatRule:        selection >= gates.Height(ctx.ChainID(), SeatRuleActivationHeight),
+		WindowTotal:     windowTotal.String(),
+		BarTotal:        bar.String(),
+		MinShareBps:     SeatMinWorkShareBps,
+		TopK:            q.Keeper.GetTopKSize(ctx),
+		Entries:         entries,
+	}, nil
 }
