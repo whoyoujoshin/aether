@@ -25,4 +25,5 @@ var (
 	ErrNoRecoverySet         = sdkerrors.Register(ModuleName, 18, "no recovery set")
 	ErrRotationNotDelegable  = sdkerrors.Register(ModuleName, 19, "rotation messages can't run through an authenticator")
 	ErrNotWatchtower         = sdkerrors.Register(ModuleName, 20, "not a valid watchtower signature")
+	ErrWatchtowerOwnRemoval  = sdkerrors.Register(ModuleName, 21, "a watchtower can't cancel a change that removes it")
 )
