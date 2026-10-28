@@ -88,6 +88,61 @@ func TestFeesToTreasury_Activation(t *testing.T) {
 	require.Equal(t, ledgerBefore.AddRaw(16_374+40), app.TreasuryKeeper.GetTreasuryBalance(ctx))
 }
 
+// uaeth sent straight to the treasury's address, which the ledger never
+// saw, is credited at the activation block, so governance can spend it.
+// The ledger is only raised: one above the bank balance is left as is.
+func TestFeesToTreasury_CreditsDirectSends(t *testing.T) {
+	const activation = 3
+	defer func(orig int64) { feesToTreasuryActivationHeight = orig }(feesToTreasuryActivationHeight)
+	feesToTreasuryActivationHeight = activation
+
+	app := newTestApp(t, dbm.NewMemDB())
+	initTestChain(t, app)
+	require.NoError(t, finalizeBlock(app, 1))
+	ctx := app.NewUncachedContext(false, cmtproto.Header{Height: 1, Time: testGenesisTime.Add(time.Minute)})
+	gift := sdk.NewCoins(sdk.NewInt64Coin("uaeth", 1_000_001)) // as on the testnet on 10-28
+	sender := sdk.AccAddress("treasury_gift_sender")
+	require.NoError(t, app.BankKeeper.MintCoins(ctx, pow.ModuleName, gift))
+	require.NoError(t, app.BankKeeper.SendCoinsFromModuleToAccount(ctx, pow.ModuleName, sender, gift))
+	require.NoError(t, app.BankKeeper.SendCoins(ctx, sender, authtypes.NewModuleAddress(treasury.ModuleName), gift))
+	_, err := app.Commit()
+	require.NoError(t, err)
+
+	check := func(h int64) sdk.Context {
+		return app.NewUncachedContext(false, cmtproto.Header{Height: h, Time: testGenesisTime.Add(time.Duration(h) * time.Minute)})
+	}
+	query := func(ctx sdk.Context) *treasury.QueryBalanceResponse {
+		res, err := treasury.NewQueryServerImpl(app.TreasuryKeeper).Balance(ctx, &treasury.QueryBalanceRequest{})
+		require.NoError(t, err)
+		return res
+	}
+	finalizeAndCommit(t, app, 2)
+	require.False(t, query(check(3)).LedgerMatchesBankBalance, "before the height the gift is untracked")
+
+	res, err := app.FinalizeBlock(&abci.RequestFinalizeBlock{Height: activation, Time: testGenesisTime.Add(activation * time.Minute)})
+	require.NoError(t, err)
+	_, err = app.Commit()
+	require.NoError(t, err)
+	ctx = check(activation + 1)
+	require.True(t, query(ctx).LedgerMatchesBankBalance, "credited at the activation block")
+	require.True(t, hasEvent(res.Events, EventTypeTreasuryCredited, gift.String()))
+	for _, ev := range res.Events {
+		require.NotEqual(t, EventTypeFeesToTreasury, ev.Type, "no fees, no fee event")
+	}
+
+	// A ledger above the bank balance isn't lowered.
+	require.NoError(t, finalizeBlock(app, activation+1))
+	ctx = check(activation + 1)
+	app.TreasuryKeeper.FundTreasury(ctx, sdkmath.NewInt(5))
+	over := app.TreasuryKeeper.GetTreasuryBalance(ctx)
+	_, err = app.Commit()
+	require.NoError(t, err)
+	finalizeAndCommit(t, app, activation+2)
+	ctx = check(activation + 3)
+	require.Equal(t, over, app.TreasuryKeeper.GetTreasuryBalance(ctx))
+	require.False(t, query(ctx).LedgerMatchesBankBalance, "a ledger over the bank balance still shows")
+}
+
 func hasEvent(events []abci.Event, typ, amount string) bool {
 	for _, ev := range events {
 		if ev.Type != typ {
