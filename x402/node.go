@@ -14,6 +14,11 @@ func (n NodeChain) Account(_ context.Context, address string) (uint64, uint64, e
 	return n.Client.GetAccountInfo(address)
 }
 
+// AccountPubKey makes NodeChain an AccountKeyChain.
+func (n NodeChain) AccountPubKey(ctx context.Context, address string) ([]byte, error) {
+	return n.Client.AccountPubKey(ctx, address)
+}
+
 func (n NodeChain) LatestHeight(context.Context) (int64, error) { return n.Client.GetLatestHeight() }
 
 func (n NodeChain) Simulate(ctx context.Context, txBytes []byte) (uint64, error) {

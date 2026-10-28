@@ -102,9 +102,16 @@ func CopyKey(name string, from, to *Wallet) (Account, error) {
 	if err != nil {
 		return Account{}, err
 	}
-	if dst.Address != src.Address {
+	if dst.KeyAddress != src.KeyAddress {
 		_ = to.kr.Delete(name)
 		return Account{}, errors.New("the copy has a different address; removed it")
+	}
+	// A rotated key goes on signing for its account.
+	if a, ok := from.signsFor[name]; ok {
+		if err := to.SignFor(name, a); err != nil {
+			return Account{}, err
+		}
+		dst.Address = a
 	}
 	return dst, nil
 }

@@ -8,6 +8,7 @@ option go_package = "github.com/whoyoujoshin/aether/x/accountauth";
 
 service Query {
   rpc Authenticators(QueryAuthenticatorsRequest) returns (QueryAuthenticatorsResponse);
+  rpc Rotation(QueryRotationRequest) returns (QueryRotationResponse);
 }
 
 message QueryAuthenticatorsRequest {
@@ -16,3 +17,19 @@ message QueryAuthenticatorsRequest {
 message QueryAuthenticatorsResponse {
   repeated Authenticator authenticators = 1;
 }
+
+message QueryRotationRequest {
+  string account = 1;
+}
+// QueryRotationResponse is the account's rotation record (an empty one if
+// it never rotated or set recovery), its current key, and whether
+// rotation is active at this height. state.nonce is what the next
+// MsgRotateKey's proof of possession covers; state.recovery_nonce is what
+// guardian signatures and MsgRecoverKey's proof of possession cover.
+message QueryRotationResponse {
+  RotationState state = 1;
+  bytes current_pubkey = 2;
+  bool active = 3;
+  int64 delay_blocks = 4;
+}
+

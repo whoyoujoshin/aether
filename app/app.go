@@ -552,7 +552,7 @@ func New(
 	// (see app/accountauth.go for why: same reasoning as authz/feegrant
 	// and IBC above).
 	if accountAuthCutover.wire {
-		app.AccountAuthKeeper = accountauth.NewKeeper(appCodec, app.keys[accountauth.StoreKey], app.MsgServiceRouter())
+		app.AccountAuthKeeper = accountauth.NewKeeper(appCodec, app.keys[accountauth.StoreKey], app.MsgServiceRouter()).WithAccountKeeper(app.AccountKeeper)
 	}
 	if escrowCutover.wire {
 		app.EscrowKeeper = escrow.NewKeeper(appCodec, app.keys[escrow.StoreKey], app.BankKeeper, logger)
@@ -625,8 +625,9 @@ func New(
 	bApp.SetTxEncoder(txConfig.TxEncoder())
 	app.txConfig = txConfig
 
-	// Standard ante handler
-	stdAnteHandler, err := authante.NewAnteHandler(authante.HandlerOptions{
+	// The SDK's ante handler with key rotation's SetPubKeyDecorator
+	// (app/rotation_ante.go).
+	stdAnteHandler, err := newAnteChain(authante.HandlerOptions{
 		AccountKeeper:   app.AccountKeeper,
 		BankKeeper:      app.BankKeeper,
 		SignModeHandler: txConfig.SignModeHandler(),
@@ -658,6 +659,9 @@ func New(
 		// ML-DSA-44.
 		if app.helicaseActive(ctx.BlockHeight()) && isHelicaseTx(tx) {
 			return helicaseAnteHandle(ctx, tx, simulate)
+		}
+		if err := app.checkRotationMsgs(ctx, tx); err != nil {
+			return ctx, err
 		}
 		newCtx, err = pqDecorator.AnteHandle(ctx, tx, simulate, stdAnteHandler)
 		if err == nil && simulate {
@@ -789,6 +793,11 @@ func (app *App) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
 	em := sdk.NewEventManager()
 	if err := app.sweepFeesToTreasury(ctx.WithEventManager(em)); err != nil {
 		return res, err
+	}
+	// Key rotations and recovery-set changes due at this height
+	// (x/accountauth, from RotationActivationHeight).
+	if app.accountAuthWired {
+		app.AccountAuthKeeper.ApplyDueRotations(ctx.WithEventManager(em))
 	}
 	res.Events = append(res.Events, em.ABCIEvents()...)
 	return res, nil

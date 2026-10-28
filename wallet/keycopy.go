@@ -41,7 +41,7 @@ func CopyTestKey(srcDir, dstDir, name string, cdc codec.Codec) (Account, error) 
 	if err != nil {
 		return Account{}, fmt.Errorf("no account %q in %s: %w", name, srcDir, err)
 	}
-	addr, err := sdk.AccAddressFromBech32(acc.Address)
+	addr, err := sdk.AccAddressFromBech32(acc.KeyAddress) // the keyring files go by the key's own address
 	if err != nil {
 		return Account{}, err
 	}
@@ -80,8 +80,13 @@ func CopyTestKey(srcDir, dstDir, name string, cdc codec.Codec) (Account, error) 
 	if err == nil {
 		var got Account
 		got, err = dst.GetAccount(name)
-		if err == nil && got.Address != acc.Address {
+		if err == nil && got.KeyAddress != acc.KeyAddress {
 			err = errors.New("copied key doesn't open to the same address")
+		}
+		// A rotated key goes on signing for its account.
+		if err == nil && acc.Address != acc.KeyAddress {
+			err = dst.SignFor(name, acc.Address)
+			got.Address = acc.Address
 		}
 		if err == nil {
 			return got, nil

@@ -72,6 +72,7 @@ func main() {
 		newSendCmd(),
 		newCopyKeyCmd(),
 	)
+	rootCmd.AddCommand(rotationCmds()...)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)

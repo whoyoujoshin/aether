@@ -1,6 +1,7 @@
 package x402
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -41,6 +42,32 @@ type Chain interface {
 	// TxResult is the result of a transaction in a block; found is false
 	// until it's in one.
 	TxResult(ctx context.Context, hash string) (found bool, code uint32, log string, err error)
+}
+
+// AccountKeyChain is a Chain that reads the key stored on an account
+// (nil if the account has signed nothing yet). With it the facilitator
+// applies the chain's own rule (docs/PQ-KEY-ROTATION.md): the key that
+// signs for an account is the one stored on it, and only an account with
+// no stored key is signed for by the key its address hashes from. After
+// a rotation that accepts the new key, whose address isn't the payer's,
+// and refuses the retired one, whose address still is. A Chain without it
+// accepts only a key whose address is the payer's.
+type AccountKeyChain interface {
+	AccountPubKey(ctx context.Context, address string) ([]byte, error)
+}
+
+// signsFor reports whether pub signs for account (payer).
+func (f *Facilitator) signsFor(ctx context.Context, account string, payer sdk.AccAddress, pub cryptotypes.PubKey) (bool, error) {
+	if kc, ok := f.Chain.(AccountKeyChain); ok {
+		onChain, err := kc.AccountPubKey(ctx, account)
+		if err != nil {
+			return false, err
+		}
+		if len(onChain) > 0 {
+			return bytes.Equal(onChain, pub.Bytes()), nil
+		}
+	}
+	return sdk.AccAddress(pub.Address()).Equals(payer), nil
 }
 
 // Facilitator verifies and settles exact payments on one Aether chain.
@@ -270,7 +297,12 @@ func (f *Facilitator) check(ctx context.Context, p PaymentPayload, req PaymentRe
 	if err := enc.InterfaceRegistry.UnpackAny(si.PublicKey, &pub); err != nil {
 		return c, ReasonSigner
 	}
-	if _, ok := pub.(*mldsa.PubKey); !ok || !sdk.AccAddress(pub.Address()).Equals(payer) {
+	if _, ok := pub.(*mldsa.PubKey); !ok {
+		return c, ReasonSigner
+	}
+	if ok, err := f.signsFor(ctx, send.FromAddress, payer, pub); err != nil {
+		return c, ReasonUnexpectedVerify
+	} else if !ok {
 		return c, ReasonSigner
 	}
 	// The payer pays the fee itself.

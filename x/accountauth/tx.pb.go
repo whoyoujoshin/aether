@@ -343,6 +343,519 @@ func (m *MsgExecAuthenticatedResponse) GetResults() [][]byte {
 	return nil
 }
 
+// MsgRotateKey, signed by the account's current key, schedules its key
+// to become new_pubkey RotationDelayBlocks later. new_key_signature is
+// new_pubkey's signature over RotateKeySigningBytes (proof that whoever
+// rotates holds the new key).
+type MsgRotateKey struct {
+	Account         string `protobuf:"bytes,1,opt,name=account,proto3" json:"account,omitempty"`
+	NewPubkey       []byte `protobuf:"bytes,2,opt,name=new_pubkey,json=newPubkey,proto3" json:"new_pubkey,omitempty"`
+	NewKeySignature []byte `protobuf:"bytes,3,opt,name=new_key_signature,json=newKeySignature,proto3" json:"new_key_signature,omitempty"`
+}
+
+func (m *MsgRotateKey) Reset()         { *m = MsgRotateKey{} }
+func (m *MsgRotateKey) String() string { return proto.CompactTextString(m) }
+func (*MsgRotateKey) ProtoMessage()    {}
+func (*MsgRotateKey) Descriptor() ([]byte, []int) {
+	return fileDescriptor_dd463ac18fcecd2f, []int{6}
+}
+func (m *MsgRotateKey) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgRotateKey) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgRotateKey.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgRotateKey) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgRotateKey.Merge(m, src)
+}
+func (m *MsgRotateKey) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgRotateKey) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgRotateKey.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgRotateKey proto.InternalMessageInfo
+
+func (m *MsgRotateKey) GetAccount() string {
+	if m != nil {
+		return m.Account
+	}
+	return ""
+}
+
+func (m *MsgRotateKey) GetNewPubkey() []byte {
+	if m != nil {
+		return m.NewPubkey
+	}
+	return nil
+}
+
+func (m *MsgRotateKey) GetNewKeySignature() []byte {
+	if m != nil {
+		return m.NewKeySignature
+	}
+	return nil
+}
+
+type MsgRotateKeyResponse struct {
+	ApplyHeight int64 `protobuf:"varint,1,opt,name=apply_height,json=applyHeight,proto3" json:"apply_height,omitempty"`
+}
+
+func (m *MsgRotateKeyResponse) Reset()         { *m = MsgRotateKeyResponse{} }
+func (m *MsgRotateKeyResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgRotateKeyResponse) ProtoMessage()    {}
+func (*MsgRotateKeyResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_dd463ac18fcecd2f, []int{7}
+}
+func (m *MsgRotateKeyResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgRotateKeyResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgRotateKeyResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgRotateKeyResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgRotateKeyResponse.Merge(m, src)
+}
+func (m *MsgRotateKeyResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgRotateKeyResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgRotateKeyResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgRotateKeyResponse proto.InternalMessageInfo
+
+func (m *MsgRotateKeyResponse) GetApplyHeight() int64 {
+	if m != nil {
+		return m.ApplyHeight
+	}
+	return 0
+}
+
+// MsgCancelPendingRotation, signed by the account's current key, cancels
+// its pending key change and pending recovery-set change.
+type MsgCancelPendingRotation struct {
+	Account string `protobuf:"bytes,1,opt,name=account,proto3" json:"account,omitempty"`
+}
+
+func (m *MsgCancelPendingRotation) Reset()         { *m = MsgCancelPendingRotation{} }
+func (m *MsgCancelPendingRotation) String() string { return proto.CompactTextString(m) }
+func (*MsgCancelPendingRotation) ProtoMessage()    {}
+func (*MsgCancelPendingRotation) Descriptor() ([]byte, []int) {
+	return fileDescriptor_dd463ac18fcecd2f, []int{8}
+}
+func (m *MsgCancelPendingRotation) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgCancelPendingRotation) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgCancelPendingRotation.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgCancelPendingRotation) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgCancelPendingRotation.Merge(m, src)
+}
+func (m *MsgCancelPendingRotation) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgCancelPendingRotation) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgCancelPendingRotation.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgCancelPendingRotation proto.InternalMessageInfo
+
+func (m *MsgCancelPendingRotation) GetAccount() string {
+	if m != nil {
+		return m.Account
+	}
+	return ""
+}
+
+type MsgCancelPendingRotationResponse struct {
+}
+
+func (m *MsgCancelPendingRotationResponse) Reset()         { *m = MsgCancelPendingRotationResponse{} }
+func (m *MsgCancelPendingRotationResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgCancelPendingRotationResponse) ProtoMessage()    {}
+func (*MsgCancelPendingRotationResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_dd463ac18fcecd2f, []int{9}
+}
+func (m *MsgCancelPendingRotationResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgCancelPendingRotationResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgCancelPendingRotationResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgCancelPendingRotationResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgCancelPendingRotationResponse.Merge(m, src)
+}
+func (m *MsgCancelPendingRotationResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgCancelPendingRotationResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgCancelPendingRotationResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgCancelPendingRotationResponse proto.InternalMessageInfo
+
+// MsgSetRecovery, signed by the account's current key, schedules its
+// recovery set to become (guardian_pubkeys, threshold)
+// RotationDelayBlocks later. No guardians and threshold 0 removes it.
+type MsgSetRecovery struct {
+	Account         string   `protobuf:"bytes,1,opt,name=account,proto3" json:"account,omitempty"`
+	GuardianPubkeys [][]byte `protobuf:"bytes,2,rep,name=guardian_pubkeys,json=guardianPubkeys,proto3" json:"guardian_pubkeys,omitempty"`
+	Threshold       uint32   `protobuf:"varint,3,opt,name=threshold,proto3" json:"threshold,omitempty"`
+}
+
+func (m *MsgSetRecovery) Reset()         { *m = MsgSetRecovery{} }
+func (m *MsgSetRecovery) String() string { return proto.CompactTextString(m) }
+func (*MsgSetRecovery) ProtoMessage()    {}
+func (*MsgSetRecovery) Descriptor() ([]byte, []int) {
+	return fileDescriptor_dd463ac18fcecd2f, []int{10}
+}
+func (m *MsgSetRecovery) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgSetRecovery) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgSetRecovery.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgSetRecovery) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgSetRecovery.Merge(m, src)
+}
+func (m *MsgSetRecovery) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgSetRecovery) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgSetRecovery.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgSetRecovery proto.InternalMessageInfo
+
+func (m *MsgSetRecovery) GetAccount() string {
+	if m != nil {
+		return m.Account
+	}
+	return ""
+}
+
+func (m *MsgSetRecovery) GetGuardianPubkeys() [][]byte {
+	if m != nil {
+		return m.GuardianPubkeys
+	}
+	return nil
+}
+
+func (m *MsgSetRecovery) GetThreshold() uint32 {
+	if m != nil {
+		return m.Threshold
+	}
+	return 0
+}
+
+type MsgSetRecoveryResponse struct {
+	ApplyHeight int64 `protobuf:"varint,1,opt,name=apply_height,json=applyHeight,proto3" json:"apply_height,omitempty"`
+}
+
+func (m *MsgSetRecoveryResponse) Reset()         { *m = MsgSetRecoveryResponse{} }
+func (m *MsgSetRecoveryResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgSetRecoveryResponse) ProtoMessage()    {}
+func (*MsgSetRecoveryResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_dd463ac18fcecd2f, []int{11}
+}
+func (m *MsgSetRecoveryResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgSetRecoveryResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgSetRecoveryResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgSetRecoveryResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgSetRecoveryResponse.Merge(m, src)
+}
+func (m *MsgSetRecoveryResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgSetRecoveryResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgSetRecoveryResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgSetRecoveryResponse proto.InternalMessageInfo
+
+func (m *MsgSetRecoveryResponse) GetApplyHeight() int64 {
+	if m != nil {
+		return m.ApplyHeight
+	}
+	return 0
+}
+
+// MsgRecoverKey makes new_pubkey the account's key at once, authorized
+// by its recovery set: guardian_signatures over RecoverKeySigningBytes,
+// at least the threshold of them, and new_key_signature over
+// RotateKeySigningBytes at recovery_nonce. It clears any pending change.
+// Anyone may submit it and pays the fee.
+type MsgRecoverKey struct {
+	Submitter          string               `protobuf:"bytes,1,opt,name=submitter,proto3" json:"submitter,omitempty"`
+	Account            string               `protobuf:"bytes,2,opt,name=account,proto3" json:"account,omitempty"`
+	NewPubkey          []byte               `protobuf:"bytes,3,opt,name=new_pubkey,json=newPubkey,proto3" json:"new_pubkey,omitempty"`
+	NewKeySignature    []byte               `protobuf:"bytes,4,opt,name=new_key_signature,json=newKeySignature,proto3" json:"new_key_signature,omitempty"`
+	GuardianSignatures []*GuardianSignature `protobuf:"bytes,5,rep,name=guardian_signatures,json=guardianSignatures,proto3" json:"guardian_signatures,omitempty"`
+}
+
+func (m *MsgRecoverKey) Reset()         { *m = MsgRecoverKey{} }
+func (m *MsgRecoverKey) String() string { return proto.CompactTextString(m) }
+func (*MsgRecoverKey) ProtoMessage()    {}
+func (*MsgRecoverKey) Descriptor() ([]byte, []int) {
+	return fileDescriptor_dd463ac18fcecd2f, []int{12}
+}
+func (m *MsgRecoverKey) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgRecoverKey) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgRecoverKey.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgRecoverKey) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgRecoverKey.Merge(m, src)
+}
+func (m *MsgRecoverKey) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgRecoverKey) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgRecoverKey.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgRecoverKey proto.InternalMessageInfo
+
+func (m *MsgRecoverKey) GetSubmitter() string {
+	if m != nil {
+		return m.Submitter
+	}
+	return ""
+}
+
+func (m *MsgRecoverKey) GetAccount() string {
+	if m != nil {
+		return m.Account
+	}
+	return ""
+}
+
+func (m *MsgRecoverKey) GetNewPubkey() []byte {
+	if m != nil {
+		return m.NewPubkey
+	}
+	return nil
+}
+
+func (m *MsgRecoverKey) GetNewKeySignature() []byte {
+	if m != nil {
+		return m.NewKeySignature
+	}
+	return nil
+}
+
+func (m *MsgRecoverKey) GetGuardianSignatures() []*GuardianSignature {
+	if m != nil {
+		return m.GuardianSignatures
+	}
+	return nil
+}
+
+type MsgRecoverKeyResponse struct {
+}
+
+func (m *MsgRecoverKeyResponse) Reset()         { *m = MsgRecoverKeyResponse{} }
+func (m *MsgRecoverKeyResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgRecoverKeyResponse) ProtoMessage()    {}
+func (*MsgRecoverKeyResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_dd463ac18fcecd2f, []int{13}
+}
+func (m *MsgRecoverKeyResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgRecoverKeyResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgRecoverKeyResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgRecoverKeyResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgRecoverKeyResponse.Merge(m, src)
+}
+func (m *MsgRecoverKeyResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgRecoverKeyResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgRecoverKeyResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgRecoverKeyResponse proto.InternalMessageInfo
+
+// MsgGuardianCancel cancels the account's pending key change and pending
+// recovery-set change, authorized by its recovery set's signatures over
+// GuardianCancelSigningBytes. Anyone may submit it.
+type MsgGuardianCancel struct {
+	Submitter          string               `protobuf:"bytes,1,opt,name=submitter,proto3" json:"submitter,omitempty"`
+	Account            string               `protobuf:"bytes,2,opt,name=account,proto3" json:"account,omitempty"`
+	GuardianSignatures []*GuardianSignature `protobuf:"bytes,3,rep,name=guardian_signatures,json=guardianSignatures,proto3" json:"guardian_signatures,omitempty"`
+}
+
+func (m *MsgGuardianCancel) Reset()         { *m = MsgGuardianCancel{} }
+func (m *MsgGuardianCancel) String() string { return proto.CompactTextString(m) }
+func (*MsgGuardianCancel) ProtoMessage()    {}
+func (*MsgGuardianCancel) Descriptor() ([]byte, []int) {
+	return fileDescriptor_dd463ac18fcecd2f, []int{14}
+}
+func (m *MsgGuardianCancel) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgGuardianCancel) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgGuardianCancel.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgGuardianCancel) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgGuardianCancel.Merge(m, src)
+}
+func (m *MsgGuardianCancel) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgGuardianCancel) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgGuardianCancel.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgGuardianCancel proto.InternalMessageInfo
+
+func (m *MsgGuardianCancel) GetSubmitter() string {
+	if m != nil {
+		return m.Submitter
+	}
+	return ""
+}
+
+func (m *MsgGuardianCancel) GetAccount() string {
+	if m != nil {
+		return m.Account
+	}
+	return ""
+}
+
+func (m *MsgGuardianCancel) GetGuardianSignatures() []*GuardianSignature {
+	if m != nil {
+		return m.GuardianSignatures
+	}
+	return nil
+}
+
+type MsgGuardianCancelResponse struct {
+}
+
+func (m *MsgGuardianCancelResponse) Reset()         { *m = MsgGuardianCancelResponse{} }
+func (m *MsgGuardianCancelResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgGuardianCancelResponse) ProtoMessage()    {}
+func (*MsgGuardianCancelResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_dd463ac18fcecd2f, []int{15}
+}
+func (m *MsgGuardianCancelResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgGuardianCancelResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgGuardianCancelResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgGuardianCancelResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgGuardianCancelResponse.Merge(m, src)
+}
+func (m *MsgGuardianCancelResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgGuardianCancelResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgGuardianCancelResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgGuardianCancelResponse proto.InternalMessageInfo
+
 func init() {
 	proto.RegisterType((*MsgRegisterAuthenticator)(nil), "aether.accountauth.v1.MsgRegisterAuthenticator")
 	proto.RegisterType((*MsgRegisterAuthenticatorResponse)(nil), "aether.accountauth.v1.MsgRegisterAuthenticatorResponse")
@@ -350,45 +863,77 @@ func init() {
 	proto.RegisterType((*MsgRevokeAuthenticatorResponse)(nil), "aether.accountauth.v1.MsgRevokeAuthenticatorResponse")
 	proto.RegisterType((*MsgExecAuthenticated)(nil), "aether.accountauth.v1.MsgExecAuthenticated")
 	proto.RegisterType((*MsgExecAuthenticatedResponse)(nil), "aether.accountauth.v1.MsgExecAuthenticatedResponse")
+	proto.RegisterType((*MsgRotateKey)(nil), "aether.accountauth.v1.MsgRotateKey")
+	proto.RegisterType((*MsgRotateKeyResponse)(nil), "aether.accountauth.v1.MsgRotateKeyResponse")
+	proto.RegisterType((*MsgCancelPendingRotation)(nil), "aether.accountauth.v1.MsgCancelPendingRotation")
+	proto.RegisterType((*MsgCancelPendingRotationResponse)(nil), "aether.accountauth.v1.MsgCancelPendingRotationResponse")
+	proto.RegisterType((*MsgSetRecovery)(nil), "aether.accountauth.v1.MsgSetRecovery")
+	proto.RegisterType((*MsgSetRecoveryResponse)(nil), "aether.accountauth.v1.MsgSetRecoveryResponse")
+	proto.RegisterType((*MsgRecoverKey)(nil), "aether.accountauth.v1.MsgRecoverKey")
+	proto.RegisterType((*MsgRecoverKeyResponse)(nil), "aether.accountauth.v1.MsgRecoverKeyResponse")
+	proto.RegisterType((*MsgGuardianCancel)(nil), "aether.accountauth.v1.MsgGuardianCancel")
+	proto.RegisterType((*MsgGuardianCancelResponse)(nil), "aether.accountauth.v1.MsgGuardianCancelResponse")
 }
 
 func init() { proto.RegisterFile("aether/accountauth/v1/tx.proto", fileDescriptor_dd463ac18fcecd2f) }
 
 var fileDescriptor_dd463ac18fcecd2f = []byte{
-	// 525 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x54, 0xcf, 0x8b, 0xd3, 0x40,
-	0x14, 0x6e, 0xd2, 0xba, 0x8b, 0xaf, 0xeb, 0xaf, 0x6c, 0x77, 0x8d, 0x41, 0x42, 0x08, 0x82, 0xf1,
-	0x57, 0x86, 0xed, 0x22, 0xca, 0xde, 0x56, 0x50, 0x51, 0x28, 0x48, 0x3c, 0xe9, 0x65, 0x49, 0x93,
-	0x71, 0x12, 0xdd, 0x64, 0x96, 0xcc, 0x4c, 0x6d, 0xf1, 0xa4, 0xe0, 0x55, 0xfc, 0x53, 0xfc, 0x33,
-	0x3c, 0xee, 0xd1, 0xa3, 0xb4, 0x07, 0xff, 0x0a, 0x41, 0x3a, 0x4d, 0x4a, 0xb2, 0x4d, 0x64, 0x7b,
-	0xcb, 0xcb, 0xfb, 0xbe, 0xef, 0x7d, 0xf3, 0xe6, 0x63, 0xc0, 0xf4, 0x31, 0x8f, 0x70, 0x86, 0xfc,
-	0x20, 0xa0, 0x22, 0xe5, 0xbe, 0xe0, 0x11, 0x1a, 0xed, 0x21, 0x3e, 0x76, 0x4f, 0x32, 0xca, 0xa9,
-	0xb6, 0xb3, 0xe8, 0xbb, 0xa5, 0xbe, 0x3b, 0xda, 0x33, 0x7a, 0x84, 0x12, 0x2a, 0x11, 0x68, 0xfe,
-	0xb5, 0x00, 0x1b, 0xd7, 0x03, 0xca, 0x12, 0xca, 0x50, 0xc2, 0xc8, 0x5c, 0x24, 0x61, 0x24, 0x6f,
-	0xdc, 0x20, 0x94, 0x92, 0x63, 0x8c, 0x64, 0x35, 0x14, 0xef, 0x90, 0x9f, 0x4e, 0xf2, 0xd6, 0xed,
-	0x7a, 0x03, 0xe5, 0x79, 0x12, 0x68, 0x7f, 0x53, 0x40, 0x1f, 0x30, 0xe2, 0x61, 0x12, 0x33, 0x8e,
-	0xb3, 0x43, 0xc1, 0x23, 0x9c, 0xf2, 0x38, 0xf0, 0x39, 0xcd, 0x34, 0x1d, 0x36, 0x73, 0x86, 0xae,
-	0x58, 0x8a, 0x73, 0xd1, 0x2b, 0x4a, 0xed, 0x25, 0x5c, 0xf2, 0xcb, 0x50, 0x5d, 0xb5, 0x14, 0xa7,
-	0xdb, 0xbf, 0xe5, 0xd6, 0x1e, 0xcc, 0xad, 0xc8, 0x7a, 0x55, 0xea, 0xc1, 0xd6, 0x97, 0x3f, 0x3f,
-	0xee, 0x16, 0xca, 0x76, 0x1f, 0xac, 0x26, 0x3f, 0x1e, 0x66, 0x27, 0x34, 0x65, 0x58, 0xbb, 0x0c,
-	0x6a, 0x1c, 0x4a, 0x4b, 0x1d, 0x4f, 0x8d, 0x43, 0xfb, 0x15, 0xec, 0x4a, 0xce, 0x88, 0x7e, 0xc0,
-	0xe7, 0x3d, 0xc1, 0x42, 0x43, 0x2d, 0x34, 0xce, 0xb8, 0xb0, 0xc0, 0xac, 0x57, 0x2c, 0x3c, 0xd8,
-	0x5f, 0x55, 0xe8, 0x0d, 0x18, 0x79, 0x3a, 0xc6, 0x41, 0x09, 0x80, 0x43, 0x6d, 0x17, 0x36, 0x58,
-	0x4c, 0x52, 0x9c, 0xe5, 0x13, 0xf3, 0xaa, 0x6c, 0x45, 0xad, 0x5a, 0xb9, 0x03, 0x57, 0x2b, 0x1b,
-	0x39, 0x8a, 0x43, 0xbd, 0x2d, 0x8d, 0x5d, 0xa9, 0xfc, 0x7f, 0x11, 0x6a, 0x0e, 0x74, 0x12, 0x46,
-	0x98, 0xde, 0xb1, 0xda, 0x4e, 0xb7, 0xdf, 0x73, 0x17, 0x09, 0x70, 0x8b, 0x04, 0xb8, 0x87, 0xe9,
-	0xc4, 0x93, 0x08, 0xed, 0x0d, 0x6c, 0x13, 0xe1, 0x67, 0x61, 0xec, 0xa7, 0x47, 0x73, 0x07, 0x3e,
-	0x17, 0x19, 0x66, 0xfa, 0x05, 0x49, 0x74, 0x1a, 0xee, 0xe9, 0x79, 0xce, 0x78, 0x5d, 0x10, 0x3c,
-	0x8d, 0x9c, 0xfd, 0xc5, 0x0e, 0xba, 0xf3, 0x55, 0xe5, 0xc7, 0xb2, 0x1f, 0xc3, 0xcd, 0xba, 0x35,
-	0x2c, 0xef, 0x4a, 0x87, 0xcd, 0x0c, 0x33, 0x71, 0xcc, 0x99, 0xae, 0x58, 0x6d, 0x67, 0xcb, 0x2b,
-	0xca, 0xfe, 0x5f, 0x15, 0xda, 0x03, 0x46, 0xb4, 0xcf, 0x0a, 0xec, 0xd4, 0xe7, 0x0f, 0x35, 0xd8,
-	0x6c, 0x0a, 0x88, 0xf1, 0x68, 0x4d, 0xc2, 0xd2, 0xe5, 0x27, 0xd8, 0xae, 0x8b, 0xcf, 0x83, 0xff,
-	0xe9, 0xad, 0xc0, 0x8d, 0x87, 0x6b, 0xc1, 0x97, 0xc3, 0x05, 0x5c, 0x5b, 0x8d, 0xd1, 0xbd, 0x66,
-	0xad, 0x15, 0xb0, 0xb1, 0xbf, 0x06, 0xb8, 0x18, 0xfb, 0xe4, 0xd9, 0xcf, 0xa9, 0xa9, 0x9c, 0x4e,
-	0x4d, 0xe5, 0xf7, 0xd4, 0x54, 0xbe, 0xcf, 0xcc, 0xd6, 0xe9, 0xcc, 0x6c, 0xfd, 0x9a, 0x99, 0xad,
-	0xb7, 0xf7, 0x49, 0xcc, 0x23, 0x31, 0x74, 0x03, 0x9a, 0xa0, 0x8f, 0x11, 0x9d, 0x50, 0xf1, 0x9e,
-	0xb2, 0x28, 0x4e, 0x51, 0xfe, 0xaa, 0x8c, 0xcb, 0x0f, 0xc9, 0x70, 0x43, 0xa6, 0x6f, 0xff, 0x5f,
-	0x00, 0x00, 0x00, 0xff, 0xff, 0xe0, 0x05, 0x0a, 0x02, 0xf5, 0x04, 0x00, 0x00,
+	// 868 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xb4, 0x56, 0xcd, 0x8e, 0xe3, 0x44,
+	0x10, 0x1e, 0x27, 0x61, 0x47, 0xa9, 0x64, 0x32, 0x3b, 0xde, 0x99, 0x5d, 0xaf, 0x19, 0xac, 0x60,
+	0x16, 0x91, 0xfd, 0xb3, 0xd9, 0xac, 0x10, 0xb0, 0x9c, 0x76, 0x11, 0xbf, 0xab, 0x48, 0x23, 0xef,
+	0x09, 0x24, 0x14, 0x1c, 0xa7, 0x69, 0x9b, 0x49, 0xdc, 0x91, 0xbb, 0x9d, 0x8c, 0xc5, 0x69, 0x90,
+	0xb8, 0x22, 0x2e, 0xbc, 0x07, 0x27, 0x9e, 0x81, 0xe3, 0x1c, 0x39, 0xa2, 0x99, 0x03, 0x4f, 0x81,
+	0x84, 0xdc, 0xfe, 0x89, 0x9d, 0xd8, 0x56, 0xb2, 0xd2, 0xdc, 0xd2, 0xd5, 0x5f, 0x55, 0x7d, 0xf5,
+	0x55, 0x55, 0xc7, 0xa0, 0x98, 0x88, 0xd9, 0xc8, 0xd3, 0x4d, 0xcb, 0x22, 0xbe, 0xcb, 0x4c, 0x9f,
+	0xd9, 0xfa, 0xfc, 0x89, 0xce, 0xce, 0xb4, 0x99, 0x47, 0x18, 0x11, 0x8f, 0xa2, 0x7b, 0x2d, 0x73,
+	0xaf, 0xcd, 0x9f, 0xc8, 0x87, 0x98, 0x60, 0xc2, 0x11, 0x7a, 0xf8, 0x2b, 0x02, 0xcb, 0x77, 0x2c,
+	0x42, 0xa7, 0x84, 0xea, 0x53, 0x8a, 0xc3, 0x20, 0x53, 0x8a, 0xe3, 0x8b, 0xbb, 0x98, 0x10, 0x3c,
+	0x41, 0x3a, 0x3f, 0x8d, 0xfc, 0x1f, 0x74, 0xd3, 0x0d, 0xe2, 0xab, 0xf7, 0x8a, 0x09, 0x64, 0xf3,
+	0x71, 0xa0, 0xfa, 0xab, 0x00, 0xd2, 0x80, 0x62, 0x03, 0x61, 0x87, 0x32, 0xe4, 0x3d, 0xf7, 0x99,
+	0x8d, 0x5c, 0xe6, 0x58, 0x26, 0x23, 0x9e, 0x28, 0xc1, 0x6e, 0xec, 0x21, 0x09, 0x5d, 0xa1, 0xd7,
+	0x34, 0x92, 0xa3, 0xf8, 0x35, 0xec, 0x99, 0x59, 0xa8, 0x54, 0xeb, 0x0a, 0xbd, 0x56, 0xff, 0x9e,
+	0x56, 0x58, 0x98, 0x96, 0x0b, 0x6b, 0xe4, 0x5d, 0x9f, 0xb5, 0x7f, 0xfe, 0xf7, 0x8f, 0x07, 0x49,
+	0x64, 0xb5, 0x0f, 0xdd, 0x32, 0x3e, 0x06, 0xa2, 0x33, 0xe2, 0x52, 0x24, 0x76, 0xa0, 0xe6, 0x8c,
+	0x39, 0xa5, 0x86, 0x51, 0x73, 0xc6, 0xea, 0x09, 0xdc, 0xe6, 0x3e, 0x73, 0x72, 0x8a, 0x36, 0xad,
+	0x20, 0x8a, 0x51, 0x4b, 0x62, 0xac, 0xb0, 0xe8, 0x82, 0x52, 0x1c, 0x31, 0xe1, 0xa0, 0xfe, 0x52,
+	0x83, 0xc3, 0x01, 0xc5, 0x9f, 0x9d, 0x21, 0x2b, 0x03, 0x40, 0x63, 0xf1, 0x36, 0xdc, 0xa0, 0x0e,
+	0x76, 0x91, 0x17, 0x67, 0x8c, 0x4f, 0x59, 0x2a, 0xb5, 0x3c, 0x95, 0xfb, 0x70, 0x33, 0xa7, 0xc8,
+	0xd0, 0x19, 0x4b, 0x75, 0x4e, 0x6c, 0x3f, 0x67, 0xff, 0x6a, 0x2c, 0xf6, 0xa0, 0x31, 0xa5, 0x98,
+	0x4a, 0x8d, 0x6e, 0xbd, 0xd7, 0xea, 0x1f, 0x6a, 0xd1, 0x04, 0x68, 0xc9, 0x04, 0x68, 0xcf, 0xdd,
+	0xc0, 0xe0, 0x08, 0xf1, 0x1b, 0xb8, 0x85, 0x7d, 0xd3, 0x1b, 0x3b, 0xa6, 0x3b, 0x0c, 0x19, 0x98,
+	0xcc, 0xf7, 0x10, 0x95, 0xde, 0xe0, 0x8e, 0xbd, 0x92, 0x3e, 0x7d, 0x11, 0x7b, 0xbc, 0x4a, 0x1c,
+	0x0c, 0x11, 0xaf, 0x9a, 0xe8, 0xb3, 0x56, 0x28, 0x55, 0x5c, 0x96, 0xfa, 0x11, 0x1c, 0x17, 0xc9,
+	0x90, 0xf6, 0x4a, 0x82, 0x5d, 0x0f, 0x51, 0x7f, 0xc2, 0xa8, 0x24, 0x74, 0xeb, 0xbd, 0xb6, 0x91,
+	0x1c, 0xd5, 0x73, 0x01, 0xda, 0xa1, 0xc8, 0x84, 0x99, 0x0c, 0xbd, 0x44, 0x41, 0x45, 0xb3, 0xde,
+	0x02, 0x70, 0xd1, 0x62, 0x38, 0xf3, 0x47, 0xa7, 0x28, 0xe0, 0xf2, 0xb5, 0x8d, 0xa6, 0x8b, 0x16,
+	0x27, 0xdc, 0x20, 0x3e, 0x80, 0x83, 0xf0, 0xfa, 0x14, 0x05, 0xcb, 0x52, 0xb9, 0x82, 0x6d, 0x63,
+	0xdf, 0x45, 0x8b, 0x97, 0x28, 0x48, 0xd9, 0xaf, 0xf4, 0xf9, 0x63, 0xde, 0xc4, 0x94, 0x42, 0xca,
+	0xfa, 0x6d, 0x68, 0x9b, 0xb3, 0xd9, 0x24, 0x18, 0xda, 0xc8, 0xc1, 0x76, 0xc4, 0xa7, 0x6e, 0xb4,
+	0xb8, 0xed, 0x4b, 0x6e, 0x52, 0x5f, 0xf0, 0xc5, 0xf9, 0xd4, 0x74, 0x2d, 0x34, 0x39, 0x41, 0xee,
+	0xd8, 0x71, 0xa3, 0x38, 0x0e, 0x71, 0xcb, 0x2b, 0x59, 0x49, 0xaf, 0xf2, 0x61, 0x2f, 0x8c, 0x91,
+	0x0e, 0xda, 0xb9, 0x00, 0x9d, 0x01, 0xc5, 0xaf, 0x10, 0x33, 0x90, 0x45, 0xe6, 0xc8, 0xab, 0x12,
+	0xea, 0x3e, 0xdc, 0x4c, 0xbb, 0x1e, 0xa9, 0x45, 0xa5, 0x1a, 0x97, 0x7d, 0x3f, 0xb1, 0x47, 0x9a,
+	0x51, 0xf1, 0x18, 0x9a, 0xcc, 0xf6, 0x10, 0xb5, 0xc9, 0x24, 0x1a, 0xb7, 0x3d, 0x63, 0x69, 0x58,
+	0xe1, 0xf9, 0x09, 0x5f, 0xb0, 0x0c, 0x85, 0x6d, 0x84, 0xfa, 0x4f, 0x80, 0x3d, 0xbe, 0x4c, 0xdc,
+	0x35, 0x6c, 0xf4, 0x31, 0x34, 0xa9, 0x3f, 0x9a, 0x3a, 0x8c, 0xa5, 0x5b, 0xb2, 0x34, 0x54, 0x2c,
+	0x4a, 0x7e, 0x0c, 0xea, 0x1b, 0x8d, 0x41, 0xa3, 0x70, 0x0c, 0xae, 0x73, 0x3d, 0x3a, 0xa1, 0x74,
+	0xcb, 0x7a, 0xd4, 0x3b, 0x70, 0x94, 0x2b, 0x3f, 0xed, 0xec, 0x9f, 0x02, 0x1c, 0x0c, 0x28, 0x4e,
+	0xa2, 0x46, 0x63, 0xf0, 0xda, 0xe2, 0x94, 0x54, 0x54, 0xbf, 0x86, 0x8a, 0xde, 0x84, 0xbb, 0x6b,
+	0xbc, 0x93, 0xaa, 0xfa, 0xbf, 0xef, 0x42, 0x7d, 0x40, 0xb1, 0x78, 0x2e, 0xc0, 0x51, 0xf1, 0xdf,
+	0x8a, 0x5e, 0x42, 0xa6, 0xec, 0xdd, 0x97, 0x3f, 0xdc, 0xd2, 0x21, 0x9d, 0xce, 0x9f, 0xe0, 0x56,
+	0xd1, 0xbf, 0xc2, 0xe3, 0xaa, 0x78, 0x6b, 0x70, 0xf9, 0x83, 0xad, 0xe0, 0x69, 0x72, 0x1f, 0x0e,
+	0xd6, 0xff, 0x1d, 0x1e, 0x96, 0xc7, 0x5a, 0x03, 0xcb, 0x4f, 0xb7, 0x00, 0xa7, 0x69, 0xbf, 0x83,
+	0xe6, 0xf2, 0x49, 0x7d, 0xa7, 0x82, 0x7a, 0x02, 0x92, 0x1f, 0x6e, 0x00, 0x4a, 0xc3, 0x87, 0x6d,
+	0x2d, 0x7e, 0xf4, 0x2a, 0xda, 0x5a, 0xe8, 0x50, 0xd5, 0xd6, 0xca, 0x27, 0x51, 0xb4, 0xa0, 0x95,
+	0x7d, 0x0e, 0xdf, 0x2d, 0x8f, 0x93, 0x81, 0xc9, 0x8f, 0x37, 0x82, 0xa5, 0x49, 0xbe, 0x07, 0xc8,
+	0x3c, 0x59, 0xf7, 0xaa, 0x66, 0x20, 0x41, 0xc9, 0x8f, 0x36, 0x41, 0xa5, 0x19, 0x26, 0xd0, 0x59,
+	0xd9, 0xfd, 0x5e, 0xb9, 0x7f, 0x1e, 0x29, 0xbf, 0xbf, 0x29, 0x32, 0xc9, 0xf6, 0xe2, 0xf3, 0xbf,
+	0x2e, 0x15, 0xe1, 0xe2, 0x52, 0x11, 0xfe, 0xb9, 0x54, 0x84, 0xdf, 0xae, 0x94, 0x9d, 0x8b, 0x2b,
+	0x65, 0xe7, 0xef, 0x2b, 0x65, 0xe7, 0xdb, 0x47, 0xd8, 0x61, 0xb6, 0x3f, 0xd2, 0x2c, 0x32, 0xd5,
+	0x17, 0x36, 0x09, 0x88, 0xff, 0x23, 0xa1, 0xb6, 0xe3, 0xea, 0xf1, 0x47, 0xe4, 0x59, 0xf6, 0xbb,
+	0x71, 0x74, 0x83, 0x7f, 0x6c, 0x3c, 0xfd, 0x3f, 0x00, 0x00, 0xff, 0xff, 0x76, 0xcf, 0xbb, 0x77,
+	0xe4, 0x0a, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -406,6 +951,11 @@ type MsgClient interface {
 	RegisterAuthenticator(ctx context.Context, in *MsgRegisterAuthenticator, opts ...grpc.CallOption) (*MsgRegisterAuthenticatorResponse, error)
 	RevokeAuthenticator(ctx context.Context, in *MsgRevokeAuthenticator, opts ...grpc.CallOption) (*MsgRevokeAuthenticatorResponse, error)
 	ExecAuthenticated(ctx context.Context, in *MsgExecAuthenticated, opts ...grpc.CallOption) (*MsgExecAuthenticatedResponse, error)
+	RotateKey(ctx context.Context, in *MsgRotateKey, opts ...grpc.CallOption) (*MsgRotateKeyResponse, error)
+	CancelPendingRotation(ctx context.Context, in *MsgCancelPendingRotation, opts ...grpc.CallOption) (*MsgCancelPendingRotationResponse, error)
+	SetRecovery(ctx context.Context, in *MsgSetRecovery, opts ...grpc.CallOption) (*MsgSetRecoveryResponse, error)
+	RecoverKey(ctx context.Context, in *MsgRecoverKey, opts ...grpc.CallOption) (*MsgRecoverKeyResponse, error)
+	GuardianCancel(ctx context.Context, in *MsgGuardianCancel, opts ...grpc.CallOption) (*MsgGuardianCancelResponse, error)
 }
 
 type msgClient struct {
@@ -443,11 +993,61 @@ func (c *msgClient) ExecAuthenticated(ctx context.Context, in *MsgExecAuthentica
 	return out, nil
 }
 
+func (c *msgClient) RotateKey(ctx context.Context, in *MsgRotateKey, opts ...grpc.CallOption) (*MsgRotateKeyResponse, error) {
+	out := new(MsgRotateKeyResponse)
+	err := c.cc.Invoke(ctx, "/aether.accountauth.v1.Msg/RotateKey", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) CancelPendingRotation(ctx context.Context, in *MsgCancelPendingRotation, opts ...grpc.CallOption) (*MsgCancelPendingRotationResponse, error) {
+	out := new(MsgCancelPendingRotationResponse)
+	err := c.cc.Invoke(ctx, "/aether.accountauth.v1.Msg/CancelPendingRotation", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) SetRecovery(ctx context.Context, in *MsgSetRecovery, opts ...grpc.CallOption) (*MsgSetRecoveryResponse, error) {
+	out := new(MsgSetRecoveryResponse)
+	err := c.cc.Invoke(ctx, "/aether.accountauth.v1.Msg/SetRecovery", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) RecoverKey(ctx context.Context, in *MsgRecoverKey, opts ...grpc.CallOption) (*MsgRecoverKeyResponse, error) {
+	out := new(MsgRecoverKeyResponse)
+	err := c.cc.Invoke(ctx, "/aether.accountauth.v1.Msg/RecoverKey", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) GuardianCancel(ctx context.Context, in *MsgGuardianCancel, opts ...grpc.CallOption) (*MsgGuardianCancelResponse, error) {
+	out := new(MsgGuardianCancelResponse)
+	err := c.cc.Invoke(ctx, "/aether.accountauth.v1.Msg/GuardianCancel", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MsgServer is the server API for Msg service.
 type MsgServer interface {
 	RegisterAuthenticator(context.Context, *MsgRegisterAuthenticator) (*MsgRegisterAuthenticatorResponse, error)
 	RevokeAuthenticator(context.Context, *MsgRevokeAuthenticator) (*MsgRevokeAuthenticatorResponse, error)
 	ExecAuthenticated(context.Context, *MsgExecAuthenticated) (*MsgExecAuthenticatedResponse, error)
+	RotateKey(context.Context, *MsgRotateKey) (*MsgRotateKeyResponse, error)
+	CancelPendingRotation(context.Context, *MsgCancelPendingRotation) (*MsgCancelPendingRotationResponse, error)
+	SetRecovery(context.Context, *MsgSetRecovery) (*MsgSetRecoveryResponse, error)
+	RecoverKey(context.Context, *MsgRecoverKey) (*MsgRecoverKeyResponse, error)
+	GuardianCancel(context.Context, *MsgGuardianCancel) (*MsgGuardianCancelResponse, error)
 }
 
 // UnimplementedMsgServer can be embedded to have forward compatible implementations.
@@ -462,6 +1062,21 @@ func (*UnimplementedMsgServer) RevokeAuthenticator(ctx context.Context, req *Msg
 }
 func (*UnimplementedMsgServer) ExecAuthenticated(ctx context.Context, req *MsgExecAuthenticated) (*MsgExecAuthenticatedResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExecAuthenticated not implemented")
+}
+func (*UnimplementedMsgServer) RotateKey(ctx context.Context, req *MsgRotateKey) (*MsgRotateKeyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RotateKey not implemented")
+}
+func (*UnimplementedMsgServer) CancelPendingRotation(ctx context.Context, req *MsgCancelPendingRotation) (*MsgCancelPendingRotationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CancelPendingRotation not implemented")
+}
+func (*UnimplementedMsgServer) SetRecovery(ctx context.Context, req *MsgSetRecovery) (*MsgSetRecoveryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetRecovery not implemented")
+}
+func (*UnimplementedMsgServer) RecoverKey(ctx context.Context, req *MsgRecoverKey) (*MsgRecoverKeyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RecoverKey not implemented")
+}
+func (*UnimplementedMsgServer) GuardianCancel(ctx context.Context, req *MsgGuardianCancel) (*MsgGuardianCancelResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GuardianCancel not implemented")
 }
 
 func RegisterMsgServer(s grpc1.Server, srv MsgServer) {
@@ -522,6 +1137,96 @@ func _Msg_ExecAuthenticated_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Msg_RotateKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgRotateKey)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).RotateKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/aether.accountauth.v1.Msg/RotateKey",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).RotateKey(ctx, req.(*MsgRotateKey))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_CancelPendingRotation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgCancelPendingRotation)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).CancelPendingRotation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/aether.accountauth.v1.Msg/CancelPendingRotation",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).CancelPendingRotation(ctx, req.(*MsgCancelPendingRotation))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_SetRecovery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgSetRecovery)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).SetRecovery(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/aether.accountauth.v1.Msg/SetRecovery",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).SetRecovery(ctx, req.(*MsgSetRecovery))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_RecoverKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgRecoverKey)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).RecoverKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/aether.accountauth.v1.Msg/RecoverKey",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).RecoverKey(ctx, req.(*MsgRecoverKey))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_GuardianCancel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgGuardianCancel)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).GuardianCancel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/aether.accountauth.v1.Msg/GuardianCancel",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).GuardianCancel(ctx, req.(*MsgGuardianCancel))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var Msg_serviceDesc = _Msg_serviceDesc
 var _Msg_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "aether.accountauth.v1.Msg",
@@ -538,6 +1243,26 @@ var _Msg_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExecAuthenticated",
 			Handler:    _Msg_ExecAuthenticated_Handler,
+		},
+		{
+			MethodName: "RotateKey",
+			Handler:    _Msg_RotateKey_Handler,
+		},
+		{
+			MethodName: "CancelPendingRotation",
+			Handler:    _Msg_CancelPendingRotation_Handler,
+		},
+		{
+			MethodName: "SetRecovery",
+			Handler:    _Msg_SetRecovery_Handler,
+		},
+		{
+			MethodName: "RecoverKey",
+			Handler:    _Msg_RecoverKey_Handler,
+		},
+		{
+			MethodName: "GuardianCancel",
+			Handler:    _Msg_GuardianCancel_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -774,6 +1499,365 @@ func (m *MsgExecAuthenticatedResponse) MarshalToSizedBuffer(dAtA []byte) (int, e
 	return len(dAtA) - i, nil
 }
 
+func (m *MsgRotateKey) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgRotateKey) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgRotateKey) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.NewKeySignature) > 0 {
+		i -= len(m.NewKeySignature)
+		copy(dAtA[i:], m.NewKeySignature)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.NewKeySignature)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.NewPubkey) > 0 {
+		i -= len(m.NewPubkey)
+		copy(dAtA[i:], m.NewPubkey)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.NewPubkey)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Account) > 0 {
+		i -= len(m.Account)
+		copy(dAtA[i:], m.Account)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Account)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgRotateKeyResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgRotateKeyResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgRotateKeyResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.ApplyHeight != 0 {
+		i = encodeVarintTx(dAtA, i, uint64(m.ApplyHeight))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgCancelPendingRotation) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgCancelPendingRotation) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgCancelPendingRotation) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Account) > 0 {
+		i -= len(m.Account)
+		copy(dAtA[i:], m.Account)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Account)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgCancelPendingRotationResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgCancelPendingRotationResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgCancelPendingRotationResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgSetRecovery) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgSetRecovery) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgSetRecovery) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Threshold != 0 {
+		i = encodeVarintTx(dAtA, i, uint64(m.Threshold))
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.GuardianPubkeys) > 0 {
+		for iNdEx := len(m.GuardianPubkeys) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.GuardianPubkeys[iNdEx])
+			copy(dAtA[i:], m.GuardianPubkeys[iNdEx])
+			i = encodeVarintTx(dAtA, i, uint64(len(m.GuardianPubkeys[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.Account) > 0 {
+		i -= len(m.Account)
+		copy(dAtA[i:], m.Account)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Account)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgSetRecoveryResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgSetRecoveryResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgSetRecoveryResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.ApplyHeight != 0 {
+		i = encodeVarintTx(dAtA, i, uint64(m.ApplyHeight))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgRecoverKey) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgRecoverKey) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgRecoverKey) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.GuardianSignatures) > 0 {
+		for iNdEx := len(m.GuardianSignatures) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.GuardianSignatures[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTx(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
+	if len(m.NewKeySignature) > 0 {
+		i -= len(m.NewKeySignature)
+		copy(dAtA[i:], m.NewKeySignature)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.NewKeySignature)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.NewPubkey) > 0 {
+		i -= len(m.NewPubkey)
+		copy(dAtA[i:], m.NewPubkey)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.NewPubkey)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Account) > 0 {
+		i -= len(m.Account)
+		copy(dAtA[i:], m.Account)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Account)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Submitter) > 0 {
+		i -= len(m.Submitter)
+		copy(dAtA[i:], m.Submitter)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Submitter)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgRecoverKeyResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgRecoverKeyResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgRecoverKeyResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgGuardianCancel) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgGuardianCancel) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgGuardianCancel) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.GuardianSignatures) > 0 {
+		for iNdEx := len(m.GuardianSignatures) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.GuardianSignatures[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTx(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.Account) > 0 {
+		i -= len(m.Account)
+		copy(dAtA[i:], m.Account)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Account)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Submitter) > 0 {
+		i -= len(m.Submitter)
+		copy(dAtA[i:], m.Submitter)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Submitter)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgGuardianCancelResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgGuardianCancelResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgGuardianCancelResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintTx(dAtA []byte, offset int, v uint64) int {
 	offset -= sovTx(v)
 	base := offset
@@ -883,6 +1967,167 @@ func (m *MsgExecAuthenticatedResponse) Size() (n int) {
 			n += 1 + l + sovTx(uint64(l))
 		}
 	}
+	return n
+}
+
+func (m *MsgRotateKey) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Account)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.NewPubkey)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.NewKeySignature)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	return n
+}
+
+func (m *MsgRotateKeyResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ApplyHeight != 0 {
+		n += 1 + sovTx(uint64(m.ApplyHeight))
+	}
+	return n
+}
+
+func (m *MsgCancelPendingRotation) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Account)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	return n
+}
+
+func (m *MsgCancelPendingRotationResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	return n
+}
+
+func (m *MsgSetRecovery) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Account)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	if len(m.GuardianPubkeys) > 0 {
+		for _, b := range m.GuardianPubkeys {
+			l = len(b)
+			n += 1 + l + sovTx(uint64(l))
+		}
+	}
+	if m.Threshold != 0 {
+		n += 1 + sovTx(uint64(m.Threshold))
+	}
+	return n
+}
+
+func (m *MsgSetRecoveryResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ApplyHeight != 0 {
+		n += 1 + sovTx(uint64(m.ApplyHeight))
+	}
+	return n
+}
+
+func (m *MsgRecoverKey) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Submitter)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.Account)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.NewPubkey)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.NewKeySignature)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	if len(m.GuardianSignatures) > 0 {
+		for _, e := range m.GuardianSignatures {
+			l = e.Size()
+			n += 1 + l + sovTx(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *MsgRecoverKeyResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	return n
+}
+
+func (m *MsgGuardianCancel) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Submitter)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.Account)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	if len(m.GuardianSignatures) > 0 {
+		for _, e := range m.GuardianSignatures {
+			l = e.Size()
+			n += 1 + l + sovTx(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *MsgGuardianCancelResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	return n
 }
 
@@ -1492,6 +2737,1023 @@ func (m *MsgExecAuthenticatedResponse) Unmarshal(dAtA []byte) error {
 			m.Results = append(m.Results, make([]byte, postIndex-iNdEx))
 			copy(m.Results[len(m.Results)-1], dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgRotateKey) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgRotateKey: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgRotateKey: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Account = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NewPubkey", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.NewPubkey = append(m.NewPubkey[:0], dAtA[iNdEx:postIndex]...)
+			if m.NewPubkey == nil {
+				m.NewPubkey = []byte{}
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NewKeySignature", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.NewKeySignature = append(m.NewKeySignature[:0], dAtA[iNdEx:postIndex]...)
+			if m.NewKeySignature == nil {
+				m.NewKeySignature = []byte{}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgRotateKeyResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgRotateKeyResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgRotateKeyResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ApplyHeight", wireType)
+			}
+			m.ApplyHeight = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ApplyHeight |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgCancelPendingRotation) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgCancelPendingRotation: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgCancelPendingRotation: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Account = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgCancelPendingRotationResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgCancelPendingRotationResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgCancelPendingRotationResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgSetRecovery) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgSetRecovery: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgSetRecovery: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Account = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GuardianPubkeys", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.GuardianPubkeys = append(m.GuardianPubkeys, make([]byte, postIndex-iNdEx))
+			copy(m.GuardianPubkeys[len(m.GuardianPubkeys)-1], dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Threshold", wireType)
+			}
+			m.Threshold = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Threshold |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgSetRecoveryResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgSetRecoveryResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgSetRecoveryResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ApplyHeight", wireType)
+			}
+			m.ApplyHeight = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ApplyHeight |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgRecoverKey) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgRecoverKey: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgRecoverKey: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Submitter", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Submitter = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Account = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NewPubkey", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.NewPubkey = append(m.NewPubkey[:0], dAtA[iNdEx:postIndex]...)
+			if m.NewPubkey == nil {
+				m.NewPubkey = []byte{}
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NewKeySignature", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.NewKeySignature = append(m.NewKeySignature[:0], dAtA[iNdEx:postIndex]...)
+			if m.NewKeySignature == nil {
+				m.NewKeySignature = []byte{}
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GuardianSignatures", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.GuardianSignatures = append(m.GuardianSignatures, &GuardianSignature{})
+			if err := m.GuardianSignatures[len(m.GuardianSignatures)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgRecoverKeyResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgRecoverKeyResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgRecoverKeyResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgGuardianCancel) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgGuardianCancel: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgGuardianCancel: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Submitter", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Submitter = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Account = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GuardianSignatures", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.GuardianSignatures = append(m.GuardianSignatures, &GuardianSignature{})
+			if err := m.GuardianSignatures[len(m.GuardianSignatures)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgGuardianCancelResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgGuardianCancelResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgGuardianCancelResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTx(dAtA[iNdEx:])

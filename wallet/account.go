@@ -18,9 +18,14 @@ const mnemonicEntropySize = 256
 // exposes only what a caller needs (name, address, pubkey bytes), not
 // the underlying keyring record type.
 type Account struct {
-	Name    string
+	Name string
+	// Address is the account the key signs for: its own address, or the
+	// account it was rotated onto (SignFor).
 	Address string
 	PubKey  []byte
+	// KeyAddress is the address the key derives on its own. It differs
+	// from Address only for a key rotated onto another account.
+	KeyAddress string
 }
 
 // Wallet wraps a real SDK keyring, scoped to a specific backend and
@@ -30,6 +35,10 @@ type Account struct {
 type Wallet struct {
 	kr  keyring.Keyring
 	cdc codec.Codec
+	// signsFor maps a key name to the account it signs for when that
+	// isn't its own address (a rotated key), kept in signsForFile.
+	signsFor     map[string]string
+	signsForFile string
 }
 
 // NewWallet opens (or creates) a keyring at the given directory using
@@ -50,7 +59,11 @@ func NewWallet(appName, backend, rootDir string, cdc codec.Codec) (*Wallet, erro
 	if err != nil {
 		return nil, err
 	}
-	return &Wallet{kr: kr, cdc: cdc}, nil
+	w := &Wallet{kr: kr, cdc: cdc}
+	if err := w.loadSignsFor(backend, rootDir); err != nil {
+		return nil, err
+	}
+	return w, nil
 }
 
 func recordToAccount(name string, record *keyring.Record) (Account, error) {
@@ -63,10 +76,23 @@ func recordToAccount(name string, record *keyring.Record) (Account, error) {
 		return Account{}, err
 	}
 	return Account{
-		Name:    name,
-		Address: addr.String(),
-		PubKey:  pub.Bytes(),
+		Name:       name,
+		Address:    addr.String(),
+		PubKey:     pub.Bytes(),
+		KeyAddress: addr.String(),
 	}, nil
+}
+
+// account is recordToAccount with the key's rotated account, if any.
+func (w *Wallet) account(name string, record *keyring.Record) (Account, error) {
+	acc, err := recordToAccount(name, record)
+	if err != nil {
+		return Account{}, err
+	}
+	if a, ok := w.signsFor[name]; ok {
+		acc.Address = a
+	}
+	return acc, nil
 }
 
 // CreateAccount generates a new, independent ML-DSA-44 keypair (no HD
@@ -119,7 +145,7 @@ func (w *Wallet) ListAccounts() ([]Account, error) {
 	}
 	accounts := make([]Account, 0, len(records))
 	for _, r := range records {
-		acc, err := recordToAccount(r.Name, r)
+		acc, err := w.account(r.Name, r)
 		if err != nil {
 			return nil, err
 		}
@@ -133,10 +159,16 @@ func (w *Wallet) GetAccount(name string) (Account, error) {
 	if err != nil {
 		return Account{}, err
 	}
-	return recordToAccount(name, record)
+	return w.account(name, record)
 }
 
 func (w *Wallet) DeleteAccount(name string) error {
+	if _, ok := w.signsFor[name]; ok {
+		delete(w.signsFor, name)
+		if err := w.saveSignsFor(); err != nil {
+			return err
+		}
+	}
 	return w.kr.Delete(name)
 }
 
