@@ -100,9 +100,8 @@ rotation. The delay helps only if someone notices in time, and a hosted
 watchtower notices around the clock. It can't take the account over, so it
 is safe to run as a service and sell over x402.
 
-**What a watchtower can do:** cancel a change the current key scheduled
-(a key change, or a change to the recovery set, such as a thief removing
-it).
+**What a watchtower can do:** cancel a change the current key scheduled:
+a key change, or a change to the recovery set that keeps this watchtower.
 
 **Gas:** each signature a rotation handler verifies (a guardian's, a
 watchtower's, a new key's proof) costs `SignatureVerifyGas` (2,000, the
@@ -130,10 +129,25 @@ stuck on a stolen key. So:
 3. Watchtowers come only with guardians (at least one), so someone can
    always lift them. A key can't be both a guardian and a watchtower, and a
    set holds at most 3 watchtowers.
+4. A watchtower can't cancel a change that removes it (Gitty's devnet
+   review; Joshua chose this over letting the owner replace guardians
+   past it).
+   - **The case it fixes:** the guardians are gone (their keys lost) and
+     the watchtower has turned hostile. The owner schedules a change
+     without it, which applies after the delay, and is then free to
+     rotate. With a key change and its removal both pending, the
+     watchtower can still cancel the key change.
+   - **What it gives up:** a thief holding the key can schedule the
+     watchtower's removal too. Cancelling that is the guardians' job, and
+     it takes the full delay, so they have at least a day. A watchtower
+     whose removal is pending can still cancel any rotation meanwhile.
+   - **Two watchtowers:** one may cancel a change that removes only the
+     other.
 
 `TestWatchtower_GuardiansOverrideAHostileOne` plays the case through: a
 watchtower vetoes the owner's rotation, the guardians remove it at once,
-and its signatures stop counting. A recovery goes through even with a
+and its signatures stop counting. `TestWatchtower_CantBlockItsOwnRemoval`
+plays rule 4 through with the guardians gone. A recovery goes through even with a
 watchtower present, because it applies at once.
 
 ### The ante handler
@@ -348,7 +362,9 @@ Upgrade checklist:
   - the filtered router, called directly past the ante: authz
     `DispatchActions` and `Grant`, a governance proposal;
   - the router each ICA and accountauth keeper holds.
-- **`x/accountauth/watchtower_test.go`:**
+- **`x/accountauth/watchtower_test.go`** (also: guardian signatures
+  charged once each, and a key change and a set change due in the same
+  block both still applying after either is dropped):
   - set rules (guardians needed, at most 3, never a guardian);
   - cancelling a current-key rotation and a thief's removal of the set;
   - a stale nonce, an outsider and a guardian are refused;
