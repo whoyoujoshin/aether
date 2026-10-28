@@ -66,7 +66,7 @@ not at deploy time. A node running old code diverges at the activation
 height: it accepts transactions the new code rejects, or rejects
 transactions the new code accepts. The chains split. They do not halt. This is how
 `x/accountauth` itself went live (block 122,000), and how IBC, escrow,
-and the inflow cap went live.
+and the inflow cap goes live at block 511,920.
 
 The mechanism is in `gates/gates.go`:
 
@@ -222,7 +222,10 @@ Each step is separately testable.
 1. **AccountKeeper and MsgRotateKey.** Add an `AccountKeeper` to
    `x/accountauth`. `MsgRotateKey` schedules a pubkey change. It
    carries a signature by the new key (proof of possession) over the
-   account, the new pubkey, and a nonce. Sequence is not touched. A
+   chain ID, the account, the new pubkey, and a nonce. The nonce is
+   the account's sequence or a rotation counter, so the signature
+   cannot be replayed on another chain or for a later rotation.
+   Sequence is not touched. A
    current-key rotation takes effect after the delay. After this step,
    the old key fails and the new key works for transactions that omit
    the pubkey, once the delay has passed.
@@ -238,7 +241,9 @@ Each step is separately testable.
    can force the change through against the other.
 
 4. **RecoveryThreshold.** The separate authenticator and the immediate
-   recovery path on `MsgRotateKey`.
+   recovery path on `MsgRotateKey`. The new-key proof of possession
+   is required on the recovery path as well, not only when the
+   current key rotates.
 
 5. **Off-chain verifiers and clients.** `x402/exact.go`, the #3788
    spec, `@x402/cosmos`, and the wallet/agentmcp/keyring signing path.
