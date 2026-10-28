@@ -17,6 +17,7 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
@@ -204,13 +205,14 @@ func TestKeyRotation_EndToEnd(t *testing.T) {
 	require.Equal(t, balance, c.app.BankKeeper.GetBalance(c.ctx(), owner, "uaeth").Amount.Int64())
 
 	// An authz grant for a rotation message is refused: a grantee could
-	// move the address to its own key.
+	// move the address to its own key. authz's router doesn't have the
+	// type (rotationFilteredRouter), as on an older binary.
 	exp := e2eGenesisTime.Add(time.Hour)
 	grant, err := authz.NewMsgGrant(owner, c.addr("stranger"), authz.NewGenericAuthorization(sdk.MsgTypeURL(&accountauth.MsgRotateKey{})), &exp)
 	require.NoError(t, err)
 	res = c.deliver("next", owner, grant)
-	require.Equal(t, accountauth.ErrRotationNotDelegable.ABCICode(), res.Code, res.Log)
-	require.Equal(t, accountauth.ModuleName, res.Codespace)
+	require.Equal(t, sdkerrors.ErrInvalidType.ABCICode(), res.Code, res.Log)
+	require.Contains(t, res.Log, "MsgRotateKey doesn't exist")
 
 	// The wallet, told the new key signs for the account, sends from it.
 	require.NoError(t, c.w.SignFor("next", owner.String()))

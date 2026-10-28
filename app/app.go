@@ -441,7 +441,7 @@ func New(
 		oldStore: consensusParamsStore{storeKey: app.keys["consensus"]},
 	})
 
-	app.GovernanceKeeper = governance.NewKeeper(appCodec, app.keys[governance.StoreKey], app.BankKeeper, app.PowKeeper, app.TreasuryKeeper, bApp.MsgServiceRouter())
+	app.GovernanceKeeper = governance.NewKeeper(appCodec, app.keys[governance.StoreKey], app.BankKeeper, app.PowKeeper, app.TreasuryKeeper, rotationFilteredRouter{bApp.MsgServiceRouter()})
 
 	// SetBankKeeper is the SDK's own (self-described "ugly") v0.50
 	// compatibility hook; both keepers need it for SendAuthorization
@@ -451,7 +451,7 @@ func New(
 		app.AuthzKeeper = authzkeeper.NewKeeper(
 			runtime.NewKVStoreService(app.keys[authzkeeper.StoreKey]),
 			appCodec,
-			bApp.MsgServiceRouter(),
+			rotationFilteredRouter{bApp.MsgServiceRouter()},
 			app.AccountKeeper,
 		).SetBankKeeper(app.BankKeeper)
 		app.FeeGrantKeeper = feegrantkeeper.NewKeeper(
@@ -509,7 +509,7 @@ func New(
 			app.IBCKeeper.ChannelKeeper,
 			app.IBCKeeper.PortKeeper,
 			app.ScopedICAControllerKeeper,
-			app.MsgServiceRouter(),
+			rotationFilteredRouter{app.MsgServiceRouter()},
 			authtypes.NewModuleAddress(governance.ModuleName).String(),
 		)
 		app.ICAHostKeeper = icahostkeeper.NewKeeper(
@@ -521,7 +521,7 @@ func New(
 			app.IBCKeeper.PortKeeper,
 			app.AccountKeeper,
 			app.ScopedICAHostKeeper,
-			app.MsgServiceRouter(),
+			rotationFilteredRouter{app.MsgServiceRouter()},
 			authtypes.NewModuleAddress(governance.ModuleName).String(),
 		)
 		// Needed for the host's own module-safe query passthrough
@@ -552,7 +552,7 @@ func New(
 	// (see app/accountauth.go for why: same reasoning as authz/feegrant
 	// and IBC above).
 	if accountAuthCutover.wire {
-		app.AccountAuthKeeper = accountauth.NewKeeper(appCodec, app.keys[accountauth.StoreKey], app.MsgServiceRouter()).WithAccountKeeper(app.AccountKeeper)
+		app.AccountAuthKeeper = accountauth.NewKeeper(appCodec, app.keys[accountauth.StoreKey], rotationFilteredRouter{app.MsgServiceRouter()}).WithAccountKeeper(app.AccountKeeper)
 	}
 	if escrowCutover.wire {
 		app.EscrowKeeper = escrow.NewKeeper(appCodec, app.keys[escrow.StoreKey], app.BankKeeper, logger)

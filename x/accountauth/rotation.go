@@ -58,6 +58,16 @@ const MaxRecoveryGuardians = 10
 // MaxWatchtowers bounds a recovery set's cancel-only keys.
 const MaxWatchtowers = 3
 
+// SignatureVerifyGas is charged for each ML-DSA-44 signature a rotation
+// handler verifies (guardian, watchtower, new-key proof): the ante
+// handler's price for one (app.go's SigGasConsumer).
+const SignatureVerifyGas = 2000
+
+func verifyCharged(ctx sdk.Context, pub, msg, sig []byte, what string) bool {
+	ctx.GasMeter().ConsumeGas(SignatureVerifyGas, "accountauth: verify "+what+" signature")
+	return (&mldsa.PubKey{Key: pub}).VerifySignature(msg, sig)
+}
+
 // Event types and attributes.
 const (
 	EventTypeRotationScheduled = "key_rotation_scheduled"
@@ -130,18 +140,32 @@ func (k Keeper) clearDue(ctx sdk.Context, height int64, account sdk.AccAddress) 
 // clearPending drops the account's pending key and recovery-set changes.
 // It reports whether there was one.
 func (k Keeper) clearPending(ctx sdk.Context, account sdk.AccAddress, st *RotationState) bool {
-	had := false
-	if st.PendingRotation != nil {
-		k.clearDue(ctx, st.PendingRotation.ApplyHeight, account)
-		st.PendingRotation = nil
-		had = true
-	}
-	if st.PendingRecovery != nil {
-		k.clearDue(ctx, st.PendingRecovery.ApplyHeight, account)
-		st.PendingRecovery = nil
-		had = true
-	}
+	had := st.PendingRotation != nil || st.PendingRecovery != nil
+	k.dropPendingRotation(ctx, account, st)
+	k.dropPendingRecovery(ctx, account, st)
 	return had
+}
+
+// dropPendingRotation and dropPendingRecovery drop one pending change. A
+// key change and a recovery-set change scheduled in the same block share
+// a due entry (height, account), so it is removed only if the other isn't
+// due then too.
+func (k Keeper) dropPendingRotation(ctx sdk.Context, account sdk.AccAddress, st *RotationState) {
+	if p := st.PendingRotation; p != nil {
+		if st.PendingRecovery == nil || st.PendingRecovery.ApplyHeight != p.ApplyHeight {
+			k.clearDue(ctx, p.ApplyHeight, account)
+		}
+		st.PendingRotation = nil
+	}
+}
+
+func (k Keeper) dropPendingRecovery(ctx sdk.Context, account sdk.AccAddress, st *RotationState) {
+	if p := st.PendingRecovery; p != nil {
+		if st.PendingRotation == nil || st.PendingRotation.ApplyHeight != p.ApplyHeight {
+			k.clearDue(ctx, p.ApplyHeight, account)
+		}
+		st.PendingRecovery = nil
+	}
 }
 
 // RotateKeySigningBytes is what the new key signs to prove it is held:
@@ -190,6 +214,15 @@ func WatchtowerCancelSigningBytes(chainID, account string, nonce uint64) []byte 
 	return h.Sum(nil)
 }
 
+func containsKey(keys [][]byte, key []byte) bool {
+	for _, k := range keys {
+		if bytes.Equal(k, key) {
+			return true
+		}
+	}
+	return false
+}
+
 func hexJoin(keys [][]byte) string {
 	parts := make([]string, len(keys))
 	for i, k := range keys {
@@ -236,7 +269,7 @@ func checkNewKey(ctx sdk.Context, account string, acc sdk.AccountI, nonce uint64
 	if bytes.Equal(acc.GetPubKey().Bytes(), newPubkey) {
 		return sdkerrors.Wrap(ErrInvalidNewKey, "new key is the account's current key")
 	}
-	if !(&mldsa.PubKey{Key: newPubkey}).VerifySignature(RotateKeySigningBytes(ctx.ChainID(), account, nonce, newPubkey), sig) {
+	if !verifyCharged(ctx, newPubkey, RotateKeySigningBytes(ctx.ChainID(), account, nonce, newPubkey), sig, "new key") {
 		return sdkerrors.Wrap(ErrInvalidNewKey, "new_key_signature doesn't verify: sign RotateKeySigningBytes with the new key at the current nonce")
 	}
 	return nil
@@ -292,8 +325,10 @@ func newRecoverySet(pubkeys [][]byte, threshold uint32, watchtowers [][]byte) *R
 }
 
 // recoveryApproves: at least the threshold of distinct guardians in set
-// signed signingBytes.
-func recoveryApproves(set *RecoverySet, signingBytes []byte, sigs []*GuardianSignature) error {
+// signed signingBytes. Each signature verified is charged; one from a key
+// that isn't a guardian, or from a guardian already counted, isn't
+// verified, and none is once the threshold is met.
+func recoveryApproves(ctx sdk.Context, set *RecoverySet, signingBytes []byte, sigs []*GuardianSignature) error {
 	if set == nil || len(set.GuardianPubkeys) == 0 {
 		return sdkerrors.Wrap(ErrNoRecoverySet, "the account has no recovery set")
 	}
@@ -303,10 +338,13 @@ func recoveryApproves(set *RecoverySet, signingBytes []byte, sigs []*GuardianSig
 	}
 	valid := map[string]bool{}
 	for _, s := range sigs {
-		if s == nil || !registered[string(s.Pubkey)] {
+		if uint32(len(valid)) >= set.Threshold {
+			break
+		}
+		if s == nil || !registered[string(s.Pubkey)] || valid[string(s.Pubkey)] {
 			continue
 		}
-		if (&mldsa.PubKey{Key: s.Pubkey}).VerifySignature(signingBytes, s.Signature) {
+		if verifyCharged(ctx, s.Pubkey, signingBytes, s.Signature, "recovery guardian") {
 			valid[string(s.Pubkey)] = true
 		}
 	}
@@ -404,7 +442,7 @@ func (k msgServer) RecoverKey(goCtx context.Context, msg *MsgRecoverKey) (*MsgRe
 		return nil, err
 	}
 	st := k.GetRotationState(ctx, account)
-	if err := recoveryApproves(st.Recovery, RecoverKeySigningBytes(ctx.ChainID(), msg.Account, st.RecoveryNonce, msg.NewPubkey), msg.GuardianSignatures); err != nil {
+	if err := recoveryApproves(ctx, st.Recovery, RecoverKeySigningBytes(ctx.ChainID(), msg.Account, st.RecoveryNonce, msg.NewPubkey), msg.GuardianSignatures); err != nil {
 		return nil, err
 	}
 	if err := checkNewKey(ctx, msg.Account, acc, st.RecoveryNonce, msg.NewPubkey, msg.NewKeySignature); err != nil {
@@ -434,7 +472,7 @@ func (k msgServer) GuardianCancel(goCtx context.Context, msg *MsgGuardianCancel)
 		return nil, err
 	}
 	st := k.GetRotationState(ctx, account)
-	if err := recoveryApproves(st.Recovery, GuardianCancelSigningBytes(ctx.ChainID(), msg.Account, st.RecoveryNonce), msg.GuardianSignatures); err != nil {
+	if err := recoveryApproves(ctx, st.Recovery, GuardianCancelSigningBytes(ctx.ChainID(), msg.Account, st.RecoveryNonce), msg.GuardianSignatures); err != nil {
 		return nil, err
 	}
 	if !k.clearPending(ctx, account, &st) {
@@ -467,13 +505,10 @@ func (k msgServer) GuardianSetRecovery(goCtx context.Context, msg *MsgGuardianSe
 	}
 	st := k.GetRotationState(ctx, account)
 	set := RecoverySet{GuardianPubkeys: msg.GuardianPubkeys, Threshold: msg.Threshold, WatchtowerPubkeys: msg.WatchtowerPubkeys}
-	if err := recoveryApproves(st.Recovery, GuardianSetRecoverySigningBytes(ctx.ChainID(), msg.Account, st.RecoveryNonce, set), msg.GuardianSignatures); err != nil {
+	if err := recoveryApproves(ctx, st.Recovery, GuardianSetRecoverySigningBytes(ctx.ChainID(), msg.Account, st.RecoveryNonce, set), msg.GuardianSignatures); err != nil {
 		return nil, err
 	}
-	if st.PendingRecovery != nil {
-		k.clearDue(ctx, st.PendingRecovery.ApplyHeight, account)
-		st.PendingRecovery = nil
-	}
+	k.dropPendingRecovery(ctx, account, &st)
 	st.Recovery = newRecoverySet(msg.GuardianPubkeys, msg.Threshold, msg.WatchtowerPubkeys)
 	// Signatures made for the old set, and by its watchtowers, don't carry
 	// over.
@@ -486,9 +521,14 @@ func (k msgServer) GuardianSetRecovery(goCtx context.Context, msg *MsgGuardianSe
 }
 
 // WatchtowerCancel cancels the pending changes, all of them scheduled by
-// the current key, on one watchtower's signature. It doesn't touch the
-// recovery nonce, so a watchtower can't make the guardians' signatures
-// stale.
+// the current key, on one watchtower's signature: a key change, and a
+// recovery-set change that keeps this watchtower. A change that removes it
+// isn't its to cancel (Gitty's review): if the guardians are gone, a
+// hostile watchtower could otherwise cancel every change for good and
+// leave the owner stuck on its key. A thief's removal of the watchtower is
+// still the guardians' to cancel, and takes the full delay. It doesn't
+// touch the recovery nonce, so a watchtower can't make the guardians'
+// signatures stale.
 func (k msgServer) WatchtowerCancel(goCtx context.Context, msg *MsgWatchtowerCancel) (*MsgWatchtowerCancelResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 	if err := rotationActive(ctx); err != nil {
@@ -499,19 +539,25 @@ func (k msgServer) WatchtowerCancel(goCtx context.Context, msg *MsgWatchtowerCan
 		return nil, err
 	}
 	st := k.GetRotationState(ctx, account)
-	listed := false
-	if st.Recovery != nil {
-		for _, w := range st.Recovery.WatchtowerPubkeys {
-			listed = listed || bytes.Equal(w, msg.WatchtowerPubkey)
-		}
-	}
-	if !listed {
+	if st.Recovery == nil || !containsKey(st.Recovery.WatchtowerPubkeys, msg.WatchtowerPubkey) {
 		return nil, sdkerrors.Wrap(ErrNotWatchtower, "the key isn't one of the account's watchtowers")
 	}
-	if !(&mldsa.PubKey{Key: msg.WatchtowerPubkey}).VerifySignature(WatchtowerCancelSigningBytes(ctx.ChainID(), msg.Account, st.Nonce), msg.Signature) {
+	if !verifyCharged(ctx, msg.WatchtowerPubkey, WatchtowerCancelSigningBytes(ctx.ChainID(), msg.Account, st.Nonce), msg.Signature, "watchtower") {
 		return nil, sdkerrors.Wrap(ErrNotWatchtower, "signature doesn't verify: sign WatchtowerCancelSigningBytes at the account's current nonce")
 	}
-	if !k.clearPending(ctx, account, &st) {
+	cancelled := false
+	if st.PendingRotation != nil {
+		k.dropPendingRotation(ctx, account, &st)
+		cancelled = true
+	}
+	if p := st.PendingRecovery; p != nil && p.Recovery != nil && containsKey(p.Recovery.WatchtowerPubkeys, msg.WatchtowerPubkey) {
+		k.dropPendingRecovery(ctx, account, &st)
+		cancelled = true
+	}
+	if !cancelled {
+		if st.PendingRecovery != nil {
+			return nil, sdkerrors.Wrap(ErrNothingPending, "the pending recovery-set change removes this watchtower, so it can't cancel it")
+		}
 		return nil, sdkerrors.Wrap(ErrNothingPending, "no pending key or recovery-set change")
 	}
 	st.Nonce++

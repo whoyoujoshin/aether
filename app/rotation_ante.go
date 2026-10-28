@@ -4,6 +4,7 @@ import (
 	"bytes"
 
 	errorsmod "cosmossdk.io/errors"
+	"github.com/cosmos/cosmos-sdk/baseapp"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -117,20 +118,20 @@ const maxRotationWalkDepth = 6
 // mode.
 //
 // Before RotationActivationHeight it refuses any transaction that holds a
-// rotation message or an authz grant for one, at any depth it looks. A
-// node still on an older binary can't decode those types; one on this
-// binary would process them; if a block carried one the two would get
-// different results and the chain would halt. Refusing them in CheckTx
-// keeps them out of every mempool, so no honest proposer of either
-// binary includes one while validators upgrade.
+// rotation message, at any depth it looks. A node still on an older binary
+// can't decode those types; one on this binary would process them; if a
+// block carried one the two would get different results and the chain
+// would halt. Refusing them in CheckTx keeps them out of every mempool, so
+// no honest proposer of either binary includes one while validators
+// upgrade.
 //
 // From the height, a rotation message must be at the top level of the
-// transaction, signed by the account's own key (or, for MsgRecoverKey and
-// MsgGuardianCancel, submitted with its guardians' signatures). Inside an
-// authz MsgExec, an x/accountauth MsgExecAuthenticated or a governance
-// proposal it is refused, and so is an authz grant for one: a grantee
-// holding such a grant could otherwise move the granter's address to a
-// key of its own.
+// transaction: inside an authz MsgExec, an x/accountauth
+// MsgExecAuthenticated or a governance proposal it is refused here, with
+// a clear error. rotationFilteredRouter enforces the same rule at the
+// handlers, for paths no ante handler sees, and refuses authz grants for
+// rotation messages (a grantee could otherwise move the granter's address
+// to a key of its own).
 func (app *App) checkRotationMsgs(ctx sdk.Context, tx sdk.Tx) error {
 	active := gates.On(ctx, accountauth.RotationActivationHeight)
 	for _, m := range tx.GetMsgs() {
@@ -150,11 +151,6 @@ func (app *App) checkRotationMsgs(ctx sdk.Context, tx sdk.Tx) error {
 func (app *App) walkNestedRotation(ctx sdk.Context, m sdk.Msg, active bool, depth int) error {
 	var inner []sdk.Msg
 	switch msg := m.(type) {
-	case *authz.MsgGrant:
-		if a, err := msg.GetAuthorization(); err == nil && a != nil && accountauth.IsRotationMsgTypeURL(a.MsgTypeURL()) {
-			return errorsmod.Wrapf(accountauth.ErrRotationNotDelegable, "an authz grant for %s", a.MsgTypeURL())
-		}
-		return nil
 	case *authz.MsgExec:
 		msgs, err := msg.GetMessages()
 		if err != nil {
@@ -208,4 +204,31 @@ func (app *App) unpackMsgs(anys []*codectypes.Any) []sdk.Msg {
 		}
 	}
 	return out
+}
+
+// rotationFilteredRouter is the app's message router without the rotation
+// messages (accountauth.IsRotationMsg). Every keeper that dispatches inner
+// messages gets it: authz (MsgExec, and MsgGrant's check that the granted
+// type exists), interchain accounts, x/governance and x/accountauth's
+// ExecAuthenticated. Only the top level of a transaction, routed by
+// baseapp itself, reaches the rotation handlers, so the rule holds even
+// where no ante handler runs (an ICA packet, a proposal executing at the
+// end of a block), and not only for what checkRotationMsgs can see.
+//
+// An authz grant for a rotation message is therefore refused the way an
+// older binary, which has no such type, refuses it ("doesn't exist").
+type rotationFilteredRouter struct{ baseapp.MessageRouter }
+
+func (r rotationFilteredRouter) Handler(msg sdk.Msg) baseapp.MsgServiceHandler {
+	if accountauth.IsRotationMsg(msg) {
+		return nil
+	}
+	return r.MessageRouter.Handler(msg)
+}
+
+func (r rotationFilteredRouter) HandlerByTypeURL(typeURL string) baseapp.MsgServiceHandler {
+	if accountauth.IsRotationMsgTypeURL(typeURL) {
+		return nil
+	}
+	return r.MessageRouter.HandlerByTypeURL(typeURL)
 }

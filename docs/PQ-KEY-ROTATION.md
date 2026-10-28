@@ -50,7 +50,9 @@ Every account gets a rotation record (gRPC `aether.accountauth.v1.Query/Rotation
 - **Delayed changes:** changes by the current key apply in the
   `EndBlocker` of their height (`ApplyDueRotations`, with a due index so
   each block reads only what is due), with `key_rotation_applied` (or
-  `key_rotation_failed`) and `recovery_set_applied` events.
+  `key_rotation_failed`) and `recovery_set_applied` events. A change due
+  at block H applies after H's transactions, so a cancel included in
+  block H itself still stops it; from H+1 it has applied.
 - **Recovery set versus guardian authenticator:** the recovery set is
   separate from a `guardian_threshold` authenticator. Authenticators never
   rotate: `ExecAuthenticated` refuses all seven messages.
@@ -98,9 +100,14 @@ rotation. The delay helps only if someone notices in time, and a hosted
 watchtower notices around the clock. It can't take the account over, so it
 is safe to run as a service and sell over x402.
 
-**What a watchtower can do:** cancel a change the current key scheduled
-(a key change, or a change to the recovery set, such as a thief removing
-it).
+**What a watchtower can do:** cancel a change the current key scheduled:
+a key change, or a change to the recovery set that keeps this watchtower.
+
+**Gas:** each signature a rotation handler verifies (a guardian's, a
+watchtower's, a new key's proof) costs `SignatureVerifyGas` (2,000, the
+ante's price for an ML-DSA-44 verify). A repeat of a guardian already
+counted, a key that isn't a guardian, and anything past the threshold
+aren't verified at all.
 
 **What it can't do:**
 - rotate, recover or spend;
@@ -122,10 +129,25 @@ stuck on a stolen key. So:
 3. Watchtowers come only with guardians (at least one), so someone can
    always lift them. A key can't be both a guardian and a watchtower, and a
    set holds at most 3 watchtowers.
+4. A watchtower can't cancel a change that removes it (Gitty's devnet
+   review; Joshua chose this over letting the owner replace guardians
+   past it).
+   - **The case it fixes:** the guardians are gone (their keys lost) and
+     the watchtower has turned hostile. The owner schedules a change
+     without it, which applies after the delay, and is then free to
+     rotate. With a key change and its removal both pending, the
+     watchtower can still cancel the key change.
+   - **What it gives up:** a thief holding the key can schedule the
+     watchtower's removal too. Cancelling that is the guardians' job, and
+     it takes the full delay, so they have at least a day. A watchtower
+     whose removal is pending can still cancel any rotation meanwhile.
+   - **Two watchtowers:** one may cancel a change that removes only the
+     other.
 
 `TestWatchtower_GuardiansOverrideAHostileOne` plays the case through: a
 watchtower vetoes the owner's rotation, the guardians remove it at once,
-and its signatures stop counting. A recovery goes through even with a
+and its signatures stop counting. `TestWatchtower_CantBlockItsOwnRemoval`
+plays rule 4 through with the guardians gone. A recovery goes through even with a
 watchtower present, because it applies at once.
 
 ### The ante handler
@@ -147,12 +169,27 @@ watchtower present, because it applies at once.
 - **`checkRotationMsgs`** runs before the chain, in every mode:
   - From the height, a rotation message must be at the top level of a
     transaction. It is refused inside authz `MsgExec`,
-    `MsgExecAuthenticated` or a governance proposal, and so is an authz
-    grant for one: a grantee could otherwise move the granter's address
-    onto its own key. Messages nested more than 6 deep are refused.
+    `MsgExecAuthenticated` or a governance proposal, with a clear error.
+    Messages nested more than 6 deep are refused.
   - Before the height, any transaction reaching a rotation type is
-    refused, nested or not, and so is a grant for one. See activation
-    below.
+    refused, nested or not. See activation below.
+- **`rotationFilteredRouter`** enforces the same rule at the handlers.
+  Every keeper that dispatches inner messages gets the app's router
+  without the rotation messages:
+  - authz;
+  - interchain accounts (host and controller);
+  - x/governance;
+  - x/accountauth.
+
+  Only baseapp's own top-level routing reaches the rotation handlers. That
+  covers the paths no ante handler sees: an ICA packet, executed by the
+  host keeper, and a proposal executing at the end of a block (Grok's
+  red-team, finding 1).
+- **authz grants:** a grant for a rotation message is refused by authz
+  itself, with "doesn't exist", because its router has no such type. A
+  grantee could otherwise move the granter's address onto its own key. An
+  older binary, which has no rotation types, refuses the same grant the
+  same way, so the two can't disagree on it while validators upgrade.
 
 ## Delay versus balance
 
@@ -193,6 +230,11 @@ wallet watchtower-sign <watchtower> <account> [--out sig.json]   # at the accoun
 wallet watchtower-cancel <submitter> <account> <sig.json>
 ```
 
+- **Gas:** the commands that send take `--gas` (default `auto`: simulate,
+  then 1.3 times what it used) and `--fees`. A full recovery set is tens of
+  kilobytes; on a devnet, setting 10 guardians and 3 watchtowers used
+  826,825 gas, so the old fixed 400,000 ran out. They wait for the block
+  and report a failure there (out of gas, say) as an error.
 - **Guardian signatures:** each guardian signs on their own machine at
   the account's current recovery nonce. The submitter collects the files,
   which name the account, the action, the nonce and the approved new
@@ -315,9 +357,14 @@ Upgrade checklist:
   - an authz grant for `MsgRotateKey` is refused;
   - before the height on a testnet chain ID, the stock refusal applies;
   - the SDK version guard.
-- **`app/rotation_walk_test.go`:** every nesting case before and after
-  the height.
-- **`x/accountauth/watchtower_test.go`:**
+- **`app/rotation_walk_test.go`:**
+  - every nesting case before and after the height;
+  - the filtered router, called directly past the ante: authz
+    `DispatchActions` and `Grant`, a governance proposal;
+  - the router each ICA and accountauth keeper holds.
+- **`x/accountauth/watchtower_test.go`** (also: guardian signatures
+  charged once each, and a key change and a set change due in the same
+  block both still applying after either is dropped):
   - set rules (guardians needed, at most 3, never a guardian);
   - cancelling a current-key rotation and a thief's removal of the set;
   - a stale nonce, an outsider and a guardian are refused;

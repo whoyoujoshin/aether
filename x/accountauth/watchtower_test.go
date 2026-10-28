@@ -3,6 +3,8 @@ package accountauth
 import (
 	"testing"
 
+	storetypes "cosmossdk.io/store/types"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -63,12 +65,71 @@ func TestWatchtower_CancelsTheCurrentKeysChanges(t *testing.T) {
 	require.True(t, hasEventType(f.ctx, EventTypeRotationCancelled))
 	require.Equal(t, rn, f.state().RecoveryNonce, "the guardians' signatures stay good")
 
-	// A thief holding the key tries to remove the set, watchtower and all.
-	_, err = f.ms.SetRecovery(f.ctx, &MsgSetRecovery{Account: f.addr()})
+	// A set change that keeps the watchtower is its to cancel.
+	_, err = f.ms.SetRecovery(f.ctx, &MsgSetRecovery{Account: f.addr(), GuardianPubkeys: pubs(g), Threshold: 1, WatchtowerPubkeys: [][]byte{w.pub}})
 	require.NoError(t, err)
 	require.NoError(t, f.watchtowerCancel(w))
 	require.Nil(t, f.state().PendingRecovery)
+
+	// A thief holding the key tries to remove the set, watchtower and all.
+	// That isn't the watchtower's to cancel; the guardians' it is.
+	_, err = f.ms.SetRecovery(f.ctx, &MsgSetRecovery{Account: f.addr()})
+	require.NoError(t, err)
+	require.ErrorContains(t, f.watchtowerCancel(w), "removes this watchtower")
+	require.NotNil(t, f.state().PendingRecovery)
+	sb := GuardianCancelSigningBytes(rotChain, f.addr(), f.state().RecoveryNonce)
+	_, err = f.ms.GuardianCancel(f.ctx, &MsgGuardianCancel{Submitter: f.addr(), Account: f.addr(),
+		GuardianSignatures: []*GuardianSignature{g[0].guardianSig(t, sb), g[1].guardianSig(t, sb)}})
+	require.NoError(t, err)
+	require.Nil(t, f.state().PendingRecovery)
 	require.NotNil(t, f.state().Recovery)
+}
+
+// Gitty's second case: the guardians are gone (their keys lost) and the
+// watchtower has turned hostile. It still cancels the owner's rotations,
+// but not the owner's removal of it, which applies after the delay;
+// then the owner rotates. With both pending, it cancels only the key
+// change.
+func TestWatchtower_CantBlockItsOwnRemoval(t *testing.T) {
+	f := newRotFixture(t, rotChain, 10)
+	lost, bad := recoverySet(t, 2), newRotKey(t)
+	f.installRecovery(lost, 2, bad)
+
+	_, err := f.ms.RotateKey(f.ctx, f.rotateMsg(newRotKey(t), f.state().Nonce))
+	require.NoError(t, err)
+	fresh := recoverySet(t, 2)
+	res, err := f.ms.SetRecovery(f.ctx, &MsgSetRecovery{Account: f.addr(), GuardianPubkeys: pubs(fresh), Threshold: 2})
+	require.NoError(t, err)
+	require.NoError(t, f.watchtowerCancel(bad), "the key change is still its to cancel")
+	require.Nil(t, f.state().PendingRotation)
+	require.NotNil(t, f.state().PendingRecovery, "its own removal isn't")
+	require.ErrorContains(t, f.watchtowerCancel(bad), "removes this watchtower")
+
+	f.at(res.ApplyHeight)
+	f.k.ApplyDueRotations(f.ctx)
+	require.Equal(t, pubs(fresh), f.state().Recovery.GuardianPubkeys)
+	require.Empty(t, f.state().Recovery.WatchtowerPubkeys)
+	next := newRotKey(t)
+	rot, err := f.ms.RotateKey(f.ctx, f.rotateMsg(next, f.state().Nonce))
+	require.NoError(t, err)
+	require.ErrorIs(t, f.watchtowerCancel(bad), ErrNotWatchtower, "gone")
+	f.at(rot.ApplyHeight)
+	f.k.ApplyDueRotations(f.ctx)
+	require.Equal(t, next.pub, f.currentKey(), "unstuck")
+}
+
+// With two watchtowers, one may cancel a change that removes only the
+// other; neither may cancel a change that removes itself.
+func TestWatchtower_RemovalIsPerWatchtower(t *testing.T) {
+	f := newRotFixture(t, rotChain, 10)
+	g, w1, w2 := recoverySet(t, 1), newRotKey(t), newRotKey(t)
+	f.installRecovery(g, 1, w1, w2)
+	dropW2 := &MsgSetRecovery{Account: f.addr(), GuardianPubkeys: pubs(g), Threshold: 1, WatchtowerPubkeys: [][]byte{w1.pub}}
+	_, err := f.ms.SetRecovery(f.ctx, dropW2)
+	require.NoError(t, err)
+	require.ErrorContains(t, f.watchtowerCancel(w2), "removes this watchtower")
+	require.NoError(t, f.watchtowerCancel(w1))
+	require.Nil(t, f.state().PendingRecovery)
 }
 
 // Gitty's case: a watchtower gone bad cancels every change the owner
@@ -162,4 +223,49 @@ func TestWatchtower_GateAndDelegation(t *testing.T) {
 	require.True(t, IsRotationMsg(&MsgGuardianSetRecovery{}))
 	require.True(t, IsRotationMsgTypeURL("/aether.accountauth.v1.MsgWatchtowerCancel"))
 	require.True(t, IsRotationMsgTypeURL("/aether.accountauth.v1.MsgGuardianSetRecovery"))
+}
+
+// Each guardian signature checked costs gas; repeats of a counted
+// guardian, keys that aren't guardians and anything past the threshold
+// aren't checked at all.
+func TestRecoveryApproves_ChargesPerSignature(t *testing.T) {
+	f := newRotFixture(t, rotChain, 10)
+	g := recoverySet(t, 3)
+	set := &RecoverySet{GuardianPubkeys: pubs(g), Threshold: 2}
+	sb := GuardianCancelSigningBytes(rotChain, f.addr(), 0)
+	outsider := newRotKey(t)
+	measure := func(sigs ...*GuardianSignature) (uint64, error) {
+		ctx := f.ctx.WithGasMeter(storetypes.NewGasMeter(1 << 40))
+		err := recoveryApproves(ctx, set, sb, sigs)
+		return ctx.GasMeter().GasConsumed(), err
+	}
+	g0 := g[0].guardianSig(t, sb)
+	used, err := measure(g0, g0, g0, outsider.guardianSig(t, sb), g[1].guardianSig(t, sb), g[2].guardianSig(t, sb))
+	require.NoError(t, err)
+	require.Equal(t, uint64(2*SignatureVerifyGas), used, "g0 once, g1, then the threshold is met")
+
+	used, err = measure(g0, g0, g0, g0)
+	require.ErrorIs(t, err, ErrThresholdNotMet)
+	require.Equal(t, uint64(SignatureVerifyGas), used, "one guardian, however often it repeats")
+}
+
+// A key change and a set change scheduled in the same block share a due
+// entry. Dropping one (the guardians replacing the set at once, or a
+// watchtower cancelling only the key change) must leave the other due.
+func TestPending_SharedDueEntry(t *testing.T) {
+	f := newRotFixture(t, rotChain, 10)
+	g := recoverySet(t, 2)
+	f.installRecovery(g, 2)
+	next := newRotKey(t)
+	rot, err := f.ms.RotateKey(f.ctx, f.rotateMsg(next, f.state().Nonce))
+	require.NoError(t, err)
+	set, err := f.ms.SetRecovery(f.ctx, &MsgSetRecovery{Account: f.addr(), GuardianPubkeys: pubs(g), Threshold: 1})
+	require.NoError(t, err)
+	require.Equal(t, rot.ApplyHeight, set.ApplyHeight, "same block, same due entry")
+
+	require.NoError(t, f.guardianSetRecovery(g, RecoverySet{GuardianPubkeys: pubs(g), Threshold: 2}))
+	require.Nil(t, f.state().PendingRecovery)
+	f.at(rot.ApplyHeight)
+	f.k.ApplyDueRotations(f.ctx)
+	require.Equal(t, next.pub, f.currentKey(), "the key change still applied")
 }
