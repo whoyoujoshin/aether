@@ -1,7 +1,6 @@
 package x402
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -20,6 +19,7 @@ import (
 
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	"github.com/whoyoujoshin/aether/wallet"
 )
 
 // maxTxBytes bounds the transaction a payload may carry: a one-message
@@ -56,18 +56,13 @@ type AccountKeyChain interface {
 	AccountPubKey(ctx context.Context, address string) ([]byte, error)
 }
 
-// signsFor reports whether pub signs for account (payer).
-func (f *Facilitator) signsFor(ctx context.Context, account string, payer sdk.AccAddress, pub cryptotypes.PubKey) (bool, error) {
+// signsFor reports whether pub signs for account (wallet.SignsFor).
+func (f *Facilitator) signsFor(ctx context.Context, account string, pub cryptotypes.PubKey) (bool, error) {
+	var keys wallet.AccountKeys
 	if kc, ok := f.Chain.(AccountKeyChain); ok {
-		onChain, err := kc.AccountPubKey(ctx, account)
-		if err != nil {
-			return false, err
-		}
-		if len(onChain) > 0 {
-			return bytes.Equal(onChain, pub.Bytes()), nil
-		}
+		keys = kc
 	}
-	return sdk.AccAddress(pub.Address()).Equals(payer), nil
+	return wallet.SignsFor(ctx, keys, account, pub.Bytes())
 }
 
 // Facilitator verifies and settles exact payments on one Aether chain.
@@ -280,8 +275,7 @@ func (f *Facilitator) check(ctx context.Context, p PaymentPayload, req PaymentRe
 	if !send.Amount.Equal(sdk.NewCoins(sdk.NewCoin(req.Asset, amount))) {
 		return c, ReasonAmountMismatch
 	}
-	payer, err := sdk.AccAddressFromBech32(send.FromAddress)
-	if err != nil {
+	if _, err := sdk.AccAddressFromBech32(send.FromAddress); err != nil {
 		return c, ReasonMessage
 	}
 
@@ -300,7 +294,7 @@ func (f *Facilitator) check(ctx context.Context, p PaymentPayload, req PaymentRe
 	if _, ok := pub.(*mldsa.PubKey); !ok {
 		return c, ReasonSigner
 	}
-	if ok, err := f.signsFor(ctx, send.FromAddress, payer, pub); err != nil {
+	if ok, err := f.signsFor(ctx, send.FromAddress, pub); err != nil {
 		return c, ReasonUnexpectedVerify
 	} else if !ok {
 		return c, ReasonSigner

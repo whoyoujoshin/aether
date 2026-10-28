@@ -17,6 +17,8 @@ service Msg {
   rpc SetRecovery(MsgSetRecovery) returns (MsgSetRecoveryResponse);
   rpc RecoverKey(MsgRecoverKey) returns (MsgRecoverKeyResponse);
   rpc GuardianCancel(MsgGuardianCancel) returns (MsgGuardianCancelResponse);
+  rpc GuardianSetRecovery(MsgGuardianSetRecovery) returns (MsgGuardianSetRecoveryResponse);
+  rpc WatchtowerCancel(MsgWatchtowerCancel) returns (MsgWatchtowerCancelResponse);
 }
 
 // MsgRegisterAuthenticator is signed by the account's own primary
@@ -79,13 +81,15 @@ message MsgCancelPendingRotation {
 message MsgCancelPendingRotationResponse {}
 
 // MsgSetRecovery, signed by the account's current key, schedules its
-// recovery set to become (guardian_pubkeys, threshold)
-// RotationDelayBlocks later. No guardians and threshold 0 removes it.
+// recovery set to become (guardian_pubkeys, threshold,
+// watchtower_pubkeys) RotationDelayBlocks later. No guardians and
+// threshold 0 removes it, watchtowers too.
 message MsgSetRecovery {
   option (cosmos.msg.v1.signer) = "account";
   string account = 1;
   repeated bytes guardian_pubkeys = 2;
   uint32 threshold = 3;
+  repeated bytes watchtower_pubkeys = 4;
 }
 message MsgSetRecoveryResponse {
   int64 apply_height = 1;
@@ -116,4 +120,36 @@ message MsgGuardianCancel {
   repeated GuardianSignature guardian_signatures = 3;
 }
 message MsgGuardianCancelResponse {}
+
+// MsgGuardianSetRecovery replaces the account's recovery set at once,
+// authorized by the current set's signatures over
+// GuardianSetRecoverySigningBytes (at least its threshold), at
+// recovery_nonce. It drops a pending recovery-set change. This is how the
+// guardians remove a watchtower: a watchtower can only cancel what the
+// current key schedules, and this applies at once. Anyone may submit it.
+message MsgGuardianSetRecovery {
+  option (cosmos.msg.v1.signer) = "submitter";
+  string submitter = 1;
+  string account = 2;
+  repeated bytes guardian_pubkeys = 3;
+  uint32 threshold = 4;
+  repeated bytes watchtower_pubkeys = 5;
+  repeated GuardianSignature guardian_signatures = 6;
+}
+message MsgGuardianSetRecoveryResponse {}
+
+// MsgWatchtowerCancel cancels the account's pending key change and
+// pending recovery-set change, both of which only the current key
+// schedules, authorized by one of its watchtowers: signature over
+// WatchtowerCancelSigningBytes at the account's nonce, which every
+// current-key action advances, so a signature can't be replayed against
+// a later change. Anyone may submit it.
+message MsgWatchtowerCancel {
+  option (cosmos.msg.v1.signer) = "submitter";
+  string submitter = 1;
+  string account = 2;
+  bytes watchtower_pubkey = 3;
+  bytes signature = 4;
+}
+message MsgWatchtowerCancelResponse {}
 

@@ -59,6 +59,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"cosmossdk.io/math"
@@ -827,4 +828,25 @@ func version() string {
 		return info.Main.Version
 	}
 	return "(devel)"
+}
+
+// accountKeys reads the key stored on an account from --grpc, for the
+// chain's rule on which key signs for it (wallet.SignsFor): the
+// approver's decisions, the owner's mandate and sellers' receipts. After
+// an account rotates its key, its new key is accepted and its retired key
+// isn't. Tests replace it.
+var accountKeys wallet.AccountKeys = lazyAccountKeys{}
+
+type lazyAccountKeys struct{}
+
+var (
+	accountKeysOnce   sync.Once
+	accountKeysCached *wallet.CachedAccountKeys
+)
+
+func (lazyAccountKeys) AccountPubKey(ctx context.Context, address string) ([]byte, error) {
+	accountKeysOnce.Do(func() {
+		accountKeysCached = wallet.NewCachedAccountKeys(wallet.DialAccountKeys{Endpoint: grpcEndpoint}, wallet.DefaultAccountKeyTTL)
+	})
+	return accountKeysCached.AccountPubKey(ctx, address)
 }

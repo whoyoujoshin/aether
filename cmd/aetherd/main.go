@@ -73,6 +73,9 @@ func main() {
 			if err := client.SetCmdClientContextHandler(initClientCtx, cmd); err != nil {
 				return err
 			}
+			if err := applySignsFor(cmd); err != nil {
+				return err
+			}
 			customAppTemplate, customAppConfig := initAppConfig()
 			return server.InterceptConfigsPreRunHandler(cmd, customAppTemplate, customAppConfig, cmtcfg.DefaultConfig())
 		},
@@ -122,6 +125,7 @@ func main() {
 		inflowcapcli.NewTxCmd(),
 	)
 	setDefaultGas(txCmd, defaultGasLimit)
+	wrapPositionalSenders(txCmd)
 	rootCmd.AddCommand(txCmd)
 
 	queryCmd := &cobra.Command{

@@ -37,9 +37,11 @@ Every account gets a rotation record (gRPC `aether.accountauth.v1.Query/Rotation
 |---|---|---|
 | `MsgRotateKey{account, new_pubkey, new_key_signature}` | the current key | the new key takes over after `RotationDelayBlocks` (15,300, about a day at 5.6 s) |
 | `MsgCancelPendingRotation{account}` | the current key | drops a pending key change and a pending recovery-set change |
-| `MsgSetRecovery{account, guardian_pubkeys, threshold}` | the current key | after the same delay, M of N guardians (at most 10) may recover the account; no keys and threshold 0 removes the set |
+| `MsgSetRecovery{account, guardian_pubkeys, threshold, watchtower_pubkeys}` | the current key | after the same delay, M of N guardians (at most 10) may recover the account, with up to 3 cancel-only watchtowers; no keys and threshold 0 removes the set |
 | `MsgRecoverKey{submitter, account, new_pubkey, new_key_signature, guardian_signatures}` | anyone, with M guardian signatures | the new key takes over **at once**, and any pending change is dropped |
 | `MsgGuardianCancel{submitter, account, guardian_signatures}` | anyone, with M guardian signatures | drops pending changes |
+| `MsgGuardianSetRecovery{submitter, account, guardian_pubkeys, threshold, watchtower_pubkeys, guardian_signatures}` | anyone, with M guardian signatures | replaces the recovery set **at once** (empty: removes it); drops a pending set change |
+| `MsgWatchtowerCancel{submitter, account, watchtower_pubkey, signature}` | anyone, with one watchtower's signature | drops pending changes, which only the current key schedules |
 
 - **Proof of possession:** every new key signs
   `RotateKeySigningBytes(chain, account, nonce, new_pubkey)`, so nobody can
@@ -51,12 +53,15 @@ Every account gets a rotation record (gRPC `aether.accountauth.v1.Query/Rotation
   `key_rotation_failed`) and `recovery_set_applied` events.
 - **Recovery set versus guardian authenticator:** the recovery set is
   separate from a `guardian_threshold` authenticator. Authenticators never
-  rotate: `ExecAuthenticated` refuses all five messages.
+  rotate: `ExecAuthenticated` refuses all seven messages.
 
 ### Two nonces
 
-- `nonce` covers the current key's proofs and advances on every action by
-  the current key (rotate, cancel, set recovery).
+- `nonce` covers the current key's proofs and watchtower signatures, and
+  advances on every action by the current key (rotate, cancel, set
+  recovery), on a watchtower cancel and on a guardian set change. A
+  watchtower's signature therefore can't cancel a change scheduled after
+  it.
 - `recovery_nonce` covers guardian signatures and `MsgRecoverKey`'s proof.
   It advances on every guardian action and whenever a new recovery set
   applies.
@@ -75,11 +80,53 @@ The sha256 of newline-separated text, domain-separated by its first line:
 aether-accountauth-rotate/v1\n<chain-id>\n<account>\n<nonce>\n<new pubkey hex>\n
 aether-accountauth-recover/v1\n<chain-id>\n<account>\n<recovery nonce>\n<new pubkey hex>\n
 aether-accountauth-guardian-cancel/v1\n<chain-id>\n<account>\n<recovery nonce>\n
+aether-accountauth-guardian-set-recovery/v1\n<chain-id>\n<account>\n<recovery nonce>\n<threshold>\nguardians:<hex>,<hex>...\nwatchtowers:<hex>,...\n
+aether-accountauth-watchtower-cancel/v1\n<chain-id>\n<account>\n<nonce>\n
 ```
 
 (`accountauth.RotateKeySigningBytes`, `RecoverKeySigningBytes`,
-`GuardianCancelSigningBytes`; `MsgRecoverKey`'s own proof uses the rotate
-format at the recovery nonce.)
+`GuardianCancelSigningBytes`, `GuardianSetRecoverySigningBytes`,
+`WatchtowerCancelSigningBytes`; `MsgRecoverKey`'s own proof uses the
+rotate format at the recovery nonce. Keys in the set line are hex, in the
+message's order, and an empty list is empty.)
+
+### Watchtowers
+
+A watchtower is a cancel-only key in the recovery set. It covers
+rotation's weak spot: a thief who steals the current key and schedules a
+rotation. The delay helps only if someone notices in time, and a hosted
+watchtower notices around the clock. It can't take the account over, so it
+is safe to run as a service and sell over x402.
+
+**What a watchtower can do:** cancel a change the current key scheduled
+(a key change, or a change to the recovery set, such as a thief removing
+it).
+
+**What it can't do:**
+- rotate, recover or spend;
+- cancel anything the guardians do, since their actions apply at once;
+- move the recovery nonce, so it can't make the guardians' signatures
+  stale.
+
+**The rules that keep it from becoming a veto (Gitty's review):** a
+watchtower that can cancel its own removal would be permanent. Hacked,
+hostile or just buggy, it could block every rotation, leaving an owner
+stuck on a stolen key. So:
+
+1. A watchtower cancels only what the current key schedules.
+2. The guardians, at their threshold, replace the recovery set at once
+   (`MsgGuardianSetRecovery`). That is how they remove a watchtower, and a
+   watchtower can't stop it. It is immediate rather than delayed: the
+   guardians can already replace the key at once, so a delay would protect
+   nothing.
+3. Watchtowers come only with guardians (at least one), so someone can
+   always lift them. A key can't be both a guardian and a watchtower, and a
+   set holds at most 3 watchtowers.
+
+`TestWatchtower_GuardiansOverrideAHostileOne` plays the case through: a
+watchtower vetoes the owner's rotation, the guardians remove it at once,
+and its signatures stop counting. A recovery goes through even with a
+watchtower present, because it applies at once.
 
 ### The ante handler
 
@@ -116,6 +163,8 @@ own key, or removing the recovery set. For a day the owner can still:
 
 - cancel it with the current key, if they still have it (`wallet
   cancel-rotation`);
+- have a watchtower cancel it (`watchtower-cancel`), which is the point of
+  running one;
 - have the guardians cancel it (`guardian-cancel`);
 - have the guardians recover the account onto a fresh key at once
   (`recover-key`), which drops the thief's pending change.
@@ -133,11 +182,15 @@ wallet rotation <name-or-address>
 wallet rotate-key <name> <new-key-name>                       # applies after the delay
 wallet sign-for <new-key-name> <account>                      # once it has applied
 wallet cancel-rotation <name>
-wallet set-recovery <name> <threshold> <guardian>...          # hex keys or key names
+wallet set-recovery <name> <threshold> <guardian>... [--watchtower <key>]...   # hex keys or key names
 wallet guardian-sign <guardian> <account> recover <new-pubkey> [--out sig.json]
 wallet guardian-sign <guardian> <account> cancel [--out sig.json]
+wallet guardian-sign <guardian> <account> set-recovery <threshold> <guardian>... [--watchtower <key>]... [--out sig.json]
 wallet recover-key <submitter> <account> <new-key-name> <sig.json>...
 wallet guardian-cancel <submitter> <account> <sig.json>...
+wallet guardian-set-recovery <submitter> <account> <sig.json>...  # at once; how guardians remove a watchtower
+wallet watchtower-sign <watchtower> <account> [--out sig.json]   # at the account's current nonce
+wallet watchtower-cancel <submitter> <account> <sig.json>
 ```
 
 - **Guardian signatures:** each guardian signs on their own machine at
@@ -152,33 +205,65 @@ wallet guardian-cancel <submitter> <account> <sig.json>...
   (agentmcp, the faucet, powminer, `paywall list`) send from the account.
 - **Copying keys:** `copy-key` and `CopyTestKey` carry the record with
   the key.
+- **`aetherd tx ... --from <key>`** reads the same `signs-for.json` in its
+  keyring directory (`cmd/aetherd/signsfor.go`). When `--from` names a
+  rotated key, or the account itself, the transaction is sent from the
+  account and signed by the key, and aetherd says so on stderr.
+  - `bank send <key> ...` does the same.
+  - The other commands that take their sender as the first argument
+    (`bank multi-send`, `feegrant grant`) refuse a rotated key,
+    rather than send from the key's own address.
+  - `aetherd tx sign` still refuses: it checks the signer by the key's own
+    address. Sign and broadcast in one step instead.
+
+## The signing-key rule, off chain
+
+Every check made off chain applies the chain's rule (`wallet.SignsFor`):
+the key that signs for an account is the one stored on it; only an
+account with no stored key yet is signed for by the key its address hashes
+from. Checking only the hash is wrong both ways after a rotation: it
+refuses the new key, and it **accepts the retired one**, whose hash is
+still the address.
+
+- **The rule's users:**
+  - the x402 facilitator;
+  - paywall prepaid and pull sign-in;
+  - mandates;
+  - receipts and receipt delegations;
+  - agentmcp's `--approver` decisions, its `--mandate-file` and the
+    receipts it checks.
+- **Automatic revocation:** a rotation revokes everything the retired key
+  signed. Mandates, approvals and receipts it signed stop verifying.
+- **Reading keys:**
+  - `wallet.CachedAccountKeys` keeps each answer for 30 seconds
+    (`DefaultAccountKeyTTL`), so a verifier can accept a retired key for up
+    to that long after a rotation applies.
+  - A node that can't answer is a refusal (retryable where the protocol
+    has a code for it), never a pass.
+  - `cmd/paywall` and agentmcp read keys from their `--grpc` node.
+- **Without chain access:** `Mandate.Verify`, `Receipt.Verify` and
+  `CheckMandate`/`CheckReceipt` keep the hash-only check. The `...With`
+  forms take the chain's keys.
+- **Creating them:** `NewMandate` and `NewReceiptDelegation` check only the
+  signature, since only the chain knows a rotated owner's key.
+- **Receipts after a payee rotates:** those its retired key signed stop
+  verifying (idea C in the follow-up plan would keep them valid when their
+  payment predates the rotation).
 
 ## Limits and follow-ups
 
-- **`aetherd tx ... --from <key>`** can't sign for a rotated account: the
-  SDK client takes the sender from the key's own address. Use `wallet` or
-  agentmcp.
-- **The rule every verifier needs** is the chain's: the key that signs
-  for an account is the one stored on it; only an account with no stored
-  key yet is signed for by the key its address hashes from. Checking only
-  the hash is wrong both ways after a rotation: it refuses the new key,
-  and it **accepts the retired one**, whose hash is still the address.
-- **x402:** the facilitator (`x402.Facilitator` over `NodeChain`) applies
-  that rule. The upstream spec (x402-foundation/x402#3788) and
-  `@x402/cosmos` need it too.
-- **Off-chain signature checks still check only the hash**, so after a
-  rotation they refuse the new key and keep accepting the retired one:
-  - paywall prepaid sign-in (`paywall/prepaid.go`);
-  - mandates (`paywall/mandate.go`);
-  - payee receipts (`paywall/receipt.go`);
-  - agentmcp's `--approver` decisions (`cmd/agentmcp/approvals.go`).
-
-  Until they apply the rule (a lookup of the account's key on chain), an
-  owner who rotates because a key leaked must also change `--approver`,
-  revoke mandates and move payees, since the leaked key still passes
-  those checks.
 - **Clients:** the TypeScript and Python clients don't build rotation
-  messages yet.
+  messages yet, and their sellers' sign-in checks only the hash. Their
+  vectors are `clients/testdata/rotation.json`:
+  - signing bytes and signatures;
+  - every message's encoding;
+  - a signed `MsgRotateKey` transaction;
+  - a `Rotation` query answer;
+  - the signs-for rule's cases.
+
+  `clients/vectors` checks the file against the Go code.
+- **x402 spec:** `docs/x402/scheme_exact_cosmos.md` step 5 states the rule
+  for x402-foundation/x402#3788; `@x402/cosmos` still needs it.
 - **Shared keys:** a key may sign for several accounts: its own address
   and any account rotated onto it. Each transaction is still bound to one
   account by its account number.
@@ -232,6 +317,15 @@ Upgrade checklist:
   - the SDK version guard.
 - **`app/rotation_walk_test.go`:** every nesting case before and after
   the height.
+- **`x/accountauth/watchtower_test.go`:**
+  - set rules (guardians needed, at most 3, never a guardian);
+  - cancelling a current-key rotation and a thief's removal of the set;
+  - a stale nonce, an outsider and a guardian are refused;
+  - the recovery nonce is untouched;
+  - the hostile-watchtower case;
+  - guardian set changes (threshold, a mismatched set, no replay,
+    removal);
+  - the gate.
 - **`wallet/rotation_test.go`:** the signs-for record (persisted, copied,
   removed, bad file refused) and the message builders' proofs.
 - **`x402/rotation_test.go`:** a retired key is refused; a rotated payer is accepted only with its

@@ -227,6 +227,9 @@ func recoverySet(t *testing.T, n int) []rotKey {
 }
 
 func pubs(keys []rotKey) [][]byte {
+	if len(keys) == 0 {
+		return nil
+	}
 	out := make([][]byte, len(keys))
 	for i, k := range keys {
 		out[i] = k.pub
@@ -236,9 +239,9 @@ func pubs(keys []rotKey) [][]byte {
 
 // Setting a recovery set waits the delay too: a thief holding the key
 // can't install guardians and recover at once.
-func (f *rotFixture) installRecovery(guardians []rotKey, threshold uint32) {
+func (f *rotFixture) installRecovery(guardians []rotKey, threshold uint32, watchtowers ...rotKey) {
 	f.t.Helper()
-	res, err := f.ms.SetRecovery(f.ctx, &MsgSetRecovery{Account: f.addr(), GuardianPubkeys: pubs(guardians), Threshold: threshold})
+	res, err := f.ms.SetRecovery(f.ctx, &MsgSetRecovery{Account: f.addr(), GuardianPubkeys: pubs(guardians), Threshold: threshold, WatchtowerPubkeys: pubs(watchtowers)})
 	require.NoError(f.t, err)
 	before := f.state().Recovery
 	f.at(res.ApplyHeight - 1)
@@ -248,6 +251,7 @@ func (f *rotFixture) installRecovery(guardians []rotKey, threshold uint32) {
 	f.k.ApplyDueRotations(f.ctx)
 	require.Equal(f.t, pubs(guardians), f.state().Recovery.GuardianPubkeys)
 	require.Equal(f.t, threshold, f.state().Recovery.Threshold)
+	require.Equal(f.t, pubs(watchtowers), f.state().Recovery.WatchtowerPubkeys)
 	require.True(f.t, hasEventType(f.ctx, EventTypeRecoveryApplied))
 }
 

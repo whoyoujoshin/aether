@@ -1,6 +1,7 @@
 package paywall
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -13,6 +14,9 @@ import (
 
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	"github.com/whoyoujoshin/aether/wallet"
 )
 
 // A spending mandate is an owner's signed statement that an agent's
@@ -67,7 +71,9 @@ func MandateSigningMessage(m Mandate) []byte {
 }
 
 // NewMandate fills in an ID if m has none, signs m with the owner's key
-// and checks the result.
+// and checks the signature. Whether that key signs for m.Owner is
+// checked by whoever verifies it (VerifyWith): the owner may have rotated
+// its key, which only the chain knows.
 func NewMandate(m Mandate, sign Signer) (*Mandate, error) {
 	m.Version = MandateVersion
 	if m.ID == "" {
@@ -86,7 +92,7 @@ func NewMandate(m Mandate, sign Signer) (*Mandate, error) {
 	}
 	m.OwnerPubKey = base64.StdEncoding.EncodeToString(pub)
 	m.Signature = base64.StdEncoding.EncodeToString(sig)
-	if err := m.Verify(); err != nil {
+	if _, err := m.signedByOwnerPubKey(); err != nil {
 		return nil, err
 	}
 	return &m, nil
@@ -122,27 +128,46 @@ func (m *Mandate) wellFormed() error {
 	return nil
 }
 
-// Verify checks that the mandate is well formed and signed by its owner.
-// It says nothing about any payment: see CheckMandate.
-func (m *Mandate) Verify() error {
+// Verify checks that the mandate is well formed and signed by a key that
+// hashes to its owner's address: VerifyWith with no chain access.
+func (m *Mandate) Verify() error { return m.VerifyWith(context.Background(), nil) }
+
+// VerifyWith checks that the mandate is well formed and signed by the key
+// that signs for its owner (wallet.SignsFor): after the owner rotates its
+// key, mandates its retired key signed no longer verify. It says nothing
+// about any payment: see CheckMandate.
+func (m *Mandate) VerifyWith(ctx context.Context, keys wallet.AccountKeys) error {
+	pub, err := m.signedByOwnerPubKey()
+	if err != nil {
+		return err
+	}
+	if ok, err := wallet.SignsFor(ctx, keys, m.Owner, pub.Key); err != nil {
+		return fmt.Errorf("mandate: reading the owner's key: %w", err)
+	} else if !ok {
+		return errors.New("mandate: not signed by the owner's key")
+	}
+	return nil
+}
+
+// signedByOwnerPubKey checks the mandate is well formed and that
+// OwnerPubKey signed it, and returns that key. Whether the key signs for
+// Owner is VerifyWith's to check.
+func (m *Mandate) signedByOwnerPubKey() (*mldsa.PubKey, error) {
 	if m.Version != MandateVersion {
-		return fmt.Errorf("mandate: unsupported version %d", m.Version)
+		return nil, fmt.Errorf("mandate: unsupported version %d", m.Version)
 	}
 	if err := m.wellFormed(); err != nil {
-		return err
+		return nil, err
 	}
 	pub, err := decodePubKey(m.OwnerPubKey)
 	if err != nil {
-		return fmt.Errorf("mandate: %w", err)
-	}
-	if addressOf(pub) != m.Owner {
-		return errors.New("mandate: not signed by the owner's key")
+		return nil, fmt.Errorf("mandate: %w", err)
 	}
 	sig, err := base64.StdEncoding.DecodeString(m.Signature)
 	if err != nil || !pub.VerifySignature(MandateSigningMessage(*m), sig) {
-		return errors.New("mandate: bad signature")
+		return nil, errors.New("mandate: bad signature")
 	}
-	return nil
+	return pub, nil
 }
 
 // MandateExpectation is what a seller knows about a request. Payer is
@@ -160,7 +185,13 @@ type MandateExpectation struct {
 
 // CheckMandate verifies m and that it covers this payment.
 func CheckMandate(m *Mandate, want MandateExpectation) error {
-	if err := m.Verify(); err != nil {
+	return CheckMandateWith(context.Background(), nil, m, want)
+}
+
+// CheckMandateWith is CheckMandate with the owner's key read from the
+// chain (Mandate.VerifyWith).
+func CheckMandateWith(ctx context.Context, keys wallet.AccountKeys, m *Mandate, want MandateExpectation) error {
+	if err := m.VerifyWith(ctx, keys); err != nil {
 		return err
 	}
 	if m.Network != want.Network {
@@ -280,7 +311,7 @@ func (p *Paywall) MandateGate(next http.Handler) http.Handler {
 		}
 		m, err := DecodeMandate(header)
 		if err == nil {
-			err = CheckMandate(m, p.mandateExpectation(""))
+			err = CheckMandateWith(r.Context(), p.cfg.AccountKeys, m, p.mandateExpectation(""))
 		}
 		if err != nil {
 			writeMandateError(w, "MANDATE_REFUSED", err.Error())
@@ -303,7 +334,7 @@ func (p *Paywall) MandatePayerCheck(next http.Handler) http.Handler {
 		payer, _ := Settlement(w.Header())
 		m, err := DecodeMandate(header)
 		if err == nil {
-			err = CheckMandate(m, p.mandateExpectation(payer))
+			err = CheckMandateWith(r.Context(), p.cfg.AccountKeys, m, p.mandateExpectation(payer))
 		}
 		if err != nil {
 			writeMandateError(w, "MANDATE_REFUSED", err.Error())

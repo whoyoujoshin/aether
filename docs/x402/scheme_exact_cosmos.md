@@ -104,8 +104,16 @@ The facilitator refuses the payment, with the reason in brackets, unless all of 
    is a `MsgSend` to `payTo` whose `amount` is exactly `amount` of `asset`
    and nothing else (`..._message`, `..._recipient_mismatch`, `..._amount_mismatch`).
 5. There is exactly one signer, in `SIGN_MODE_DIRECT`. Its public key is a
-   type the chain accepts, and its address is the message's `from_address`
-   (`..._signer`).
+   type the chain accepts, and it is the key that signs for the message's
+   `from_address`: the key stored on that account
+   (`cosmos.auth.v1beta1.Query/AccountInfo`, `pub_key`), or, if the account
+   has no key stored yet, a key whose address is `from_address`
+   (`..._signer`). On a chain where an account's key never changes, the
+   stored key's address is always the account's, so this is the same as
+   checking the address. A chain that lets an account change its key (Aether
+   does) keeps the address and stores the new key: checking only the
+   address would accept the retired key, which the chain then refuses, and
+   refuse the new one, which the chain accepts.
 6. The fee has no `granter`, and its `payer` is empty or the signer (`..._fee`).
 7. `timeout_height`, if set, is above the latest block (`..._expired`).
 8. The signer info's sequence is at least the account's current sequence

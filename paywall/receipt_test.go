@@ -159,8 +159,10 @@ func TestReceipt_Delegated(t *testing.T) {
 	// Nor does it cover another key, or come from anyone but the payee.
 	other := newAgentKey(t)
 	forged, err := NewReceiptDelegation(h.payee.address, receiptKey.address, delegation.Expires, other.sign)
-	require.Error(t, err)
-	require.Nil(t, forged)
+	require.NoError(t, err, "signed correctly, by a key that isn't the payee's")
+	withForged := *r
+	withForged.Delegation = forged
+	require.ErrorContains(t, withForged.Verify(), "not signed by the payee's key")
 	noDelegation := *r
 	noDelegation.Delegation = nil
 	require.Error(t, noDelegation.Verify())

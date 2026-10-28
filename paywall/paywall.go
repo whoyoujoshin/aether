@@ -45,6 +45,12 @@ type Config struct {
 	// wallet.ErrTransactionNotFound if it isn't in a block.
 	Lookup func(hash string) (*wallet.TransactionDetail, error)
 	Now    func() time.Time
+	// AccountKeys reads the key stored on an account, for the chain's
+	// rule on which key signs for it (wallet.SignsFor): signed prepaid
+	// and pull requests, mandates and receipts. Nil checks only that a
+	// key hashes to the address, which after a key rotation refuses the
+	// new key and accepts the retired one; cmd/paywall always sets it.
+	AccountKeys wallet.AccountKeys
 
 	// Prepaid, if set, also offers the aether-prepaid scheme.
 	Prepaid *PrepaidConfig
@@ -132,7 +138,7 @@ func New(cfg Config) (*Paywall, error) {
 		if cfg.Receipts.Sign == nil {
 			return nil, errors.New("receipts need a signer")
 		}
-		if err := checkReceiptConfig(cfg.Receipts, cfg.PayTo, cfg.Now().Unix()); err != nil {
+		if err := checkReceiptConfig(cfg.Receipts, cfg.PayTo, cfg.Now().Unix(), cfg.AccountKeys); err != nil {
 			return nil, fmt.Errorf("receipts wouldn't verify: %w", err)
 		}
 	}

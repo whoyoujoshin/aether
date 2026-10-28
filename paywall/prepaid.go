@@ -191,8 +191,10 @@ func (p *Paywall) verifySignedIn(domain string, r *http.Request, raw json.RawMes
 		return nil, &refusal{code: ErrInvalidSignature, message: "pubKey must be a base64 ML-DSA-44 public key"}
 	}
 	pub := &mldsa.PubKey{Key: pubBytes}
-	if !bytes.Equal(pub.Address(), accAddr) {
-		return nil, &refusal{code: ErrInvalidSignature, message: "pubKey does not belong to account"}
+	if ok, err := wallet.SignsFor(r.Context(), p.cfg.AccountKeys, accAddr.String(), pubBytes); err != nil {
+		return nil, &refusal{code: ErrNotConfirmed, message: "can't read the account's key from the chain; retry"}
+	} else if !ok {
+		return nil, &refusal{code: ErrInvalidSignature, message: "pubKey does not sign for account"}
 	}
 	sig, err := base64.StdEncoding.DecodeString(pay.Signature)
 	if err != nil {

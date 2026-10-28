@@ -24,4 +24,5 @@ var (
 	ErrNothingPending        = sdkerrors.Register(ModuleName, 17, "nothing pending")
 	ErrNoRecoverySet         = sdkerrors.Register(ModuleName, 18, "no recovery set")
 	ErrRotationNotDelegable  = sdkerrors.Register(ModuleName, 19, "rotation messages can't run through an authenticator")
+	ErrNotWatchtower         = sdkerrors.Register(ModuleName, 20, "not a valid watchtower signature")
 )
