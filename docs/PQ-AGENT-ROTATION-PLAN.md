@@ -25,17 +25,16 @@ ML-DSA only.
 After a successful rotation in block N:
 
 1. The account address is unchanged.
-2. The old pubkey cannot authorize any message in block N or later,
-   including a message already in the mempool that lands in the same
-   block.
-3. The new pubkey can.
+2. From the apply height, only the new key can authorize. The old key
+   cannot. There is no mempool or same-block exception; the delay is
+   the protection.
+3. The new pubkey can, from the apply height.
 4. Registered authenticators (session keys, spending guardians) are
    unchanged.
 5. Open escrows that name the account as payer or payee still settle
    to that account.
-6. The rotation and the revocation of the old key are the same
-   transaction. There is no block in which both keys work, and no
-   block in which neither does.
+6. The rotation is one transaction that schedules the change. It
+   applies at a later height. From that height only the new key signs.
 
 ## Why the ante path has to change
 
@@ -63,8 +62,9 @@ So the ante path must change. The change is one decorator.
 ### What a height-gate is
 
 Aether activates consensus-affecting changes at a specific block height,
-not at deploy time. A node running old code halts at the activation
-height rather than computing a different AppHash. This is how
+not at deploy time. A node running old code diverges at the activation
+height: it accepts transactions the new code rejects, or rejects
+transactions the new code accepts. The chains split. They do not halt. This is how
 `x/accountauth` itself went live (block 122,000), and how IBC, escrow,
 and the inflow cap went live.
 
@@ -92,8 +92,7 @@ unconditional. That is a consensus failure.
 The swap is therefore gated. Below the activation height, the ante
 chain uses the stock `SetPubKeyDecorator`. At and above it, the chain
 uses the Aether replacement. A node that has not restarted with the
-new binary halts at the activation height, the same way it would for
-any other gated change.
+new binary splits at the activation height. It does not halt.
 
 ### How to wire it
 
@@ -162,7 +161,13 @@ A recovery-threshold rotation applies immediately. The guardians are
 the recovery path; delaying them defeats the point.
 
 The delay is a chain parameter, height-gated with the rest of the
-change. The value is Joshua's decision; the plan does not pick it.
+change. It is one day, about 15,300 blocks at the current block time:
+long enough for guardians to notice and cancel.
+
+The delay protects the account, not the balance. A leaked key can
+spend until the change applies. Only an immediate recovery rotation
+stops that. An owner who wants the balance protected registers a
+recovery threshold before the key leaks.
 
 ## Recovery
 
@@ -173,8 +178,7 @@ Recovery is a separate authenticator, `RecoveryThreshold`, registered
 by the current key, with its own M of N that is higher than the
 spending set. `MsgRotateKey` accepts either:
 
-- A signature from the current key (the account pubkey, or the current
-  override), or
+- A signature from the current key (the account pubkey), or
 - A set of recovery-guardian signatures that meets the threshold.
 
 A spending-guardian threshold is not consulted. An account with no
@@ -216,18 +220,22 @@ sign for is unusable.
 Each step is separately testable.
 
 1. **AccountKeeper and MsgRotateKey.** Add an `AccountKeeper` to
-   `x/accountauth`. `MsgRotateKey` schedules a pubkey change. Sequence
-   is not touched. A current-key rotation takes effect after the delay.
-   After this step, the old key fails and the new key works for
-   transactions that omit the pubkey, once the delay has passed.
+   `x/accountauth`. `MsgRotateKey` schedules a pubkey change. It
+   carries a signature by the new key (proof of possession) over the
+   account, the new pubkey, and a nonce. Sequence is not touched. A
+   current-key rotation takes effect after the delay. After this step,
+   the old key fails and the new key works for transactions that omit
+   the pubkey, once the delay has passed.
 
 2. **RotatingSetPubKeyDecorator.** The replacement decorator, gated on
    `gates.On`. After this step, the new key works for transactions that
    include the pubkey.
 
-3. **Delay and cancellation.** The scheduled change, the delay
-   parameter, and the guardian cancel/override. A leaked key cannot
-   rotate faster than a guardian can cancel.
+3. **Delay and cancellation.** An EndBlocker applies due rotations.
+   The current key can cancel its own pending rotation. Recovery
+   guardians can cancel or override. With no recovery set, the owner
+   and a thief holding the key can only cancel each other; neither
+   can force the change through against the other.
 
 4. **RecoveryThreshold.** The separate authenticator and the immediate
    recovery path on `MsgRotateKey`.
