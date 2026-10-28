@@ -18,6 +18,8 @@ function formatSeatWork(n: string | undefined): string {
   if (!n || n === "0") return "0";
   try {
     const big = BigInt(n);
+    if (big >= 1_000_000_000_000_000n) return `${(Number(big) / 1e15).toFixed(2)}P`;
+    if (big >= 1_000_000_000_000n) return `${(Number(big) / 1e12).toFixed(2)}T`;
     if (big >= 1_000_000_000n) return `${(Number(big) / 1e9).toFixed(2)}B`;
     if (big >= 1_000_000n) return `${(Number(big) / 1e6).toFixed(2)}M`;
     if (big >= 1_000n) return `${(Number(big) / 1e3).toFixed(1)}k`;
@@ -55,23 +57,28 @@ export default function Validators() {
   const set = useApi(api.validatorSet, [], 10000);
 
   // Seat work for each validator: the 3-epoch window the seat rule
-  // measures the 1% bar against. One request per account; the set is
-  // small (TopKSize is 21).
+  // measures the 1% bar against. Keyed on the sorted account list so a
+  // 10s validator-set refresh doesn't re-query. Reloaded every 60s.
+  const accountsKey = [...(set.data?.validators ?? []).map((v) => v.account).filter(Boolean)].sort().join(",");
   const [seat, setSeat] = useState<Map<string, MinerStatus>>(new Map());
   useEffect(() => {
-    const accounts = (set.data?.validators ?? []).map((v) => v.account).filter(Boolean);
+    const accounts = accountsKey ? accountsKey.split(",") : [];
     if (accounts.length === 0) return;
     let cancelled = false;
-    Promise.all(
-      accounts.map((a) => api.miner(a).then((st) => [a, st] as const).catch(() => null))
-    ).then((rows) => {
-      if (cancelled) return;
-      const m = new Map<string, MinerStatus>();
-      for (const r of rows) if (r) m.set(r[0], r[1]);
-      setSeat(m);
-    });
-    return () => { cancelled = true; };
-  }, [set.data]);
+    const load = () => {
+      Promise.all(
+        accounts.map((a) => api.miner(a).then((st) => [a, st] as const).catch(() => null))
+      ).then((rows) => {
+        if (cancelled) return;
+        const m = new Map<string, MinerStatus>();
+        for (const r of rows) if (r) m.set(r[0], r[1]);
+        setSeat(m);
+      });
+    };
+    load();
+    const id = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [accountsKey]);
   const leaderboard = useApi(() => api.leaderboard(), [], 10000);
   const located = useApi(api.locations, [], 60000);
   const [tab, setTab] = useState<(typeof TABS)[number]>("Signers");
