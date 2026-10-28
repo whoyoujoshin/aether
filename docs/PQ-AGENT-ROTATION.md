@@ -1,7 +1,6 @@
 # PQ agent identity: rotate the key, keep the account
 
-**Status:** design. Not built. First artifact is this note and a failing
-test that encodes the property.
+**Status:** design. Not built. Addresses the review of the first draft.
 
 ## Why
 
@@ -25,9 +24,11 @@ only.
 After a successful rotation in block N:
 
 1. The account address is unchanged.
-2. The old pubkey cannot authorize any message in block N or later.
+2. The old pubkey cannot authorize any message in block N or later,
+   including a message already in the mempool that lands in the same
+   block.
 3. The new pubkey can.
-4. Registered authenticators (session keys, guardian thresholds) are
+4. Registered authenticators (session keys, spending guardians) are
    unchanged.
 5. Open escrows that name the account as payer or payee still settle
    to that account.
@@ -37,21 +38,72 @@ After a successful rotation in block N:
 
 ## How
 
-The account stores an override pubkey. Signature verification for that
-account uses the override when one is set, and the address-derived key
-otherwise. A rotation message, signed by the current key (or by a
-guardian threshold that meets the account's recovery policy), installs
-the new pubkey and clears any in-flight sequence that the old key
-could still use.
+### Ante change (required)
 
-The override is consulted by the existing signature path. It is not a
-new ante handler and not a bypass of `PostQuantumDecorator`. The
-decorator still requires an ML-DSA signature; it verifies it against
-the override pubkey instead of the one implied by the address.
+The override is not visible to the stock ante chain, and the design
+says so.
 
-A rotation signed only by the current key is the normal case. A
-rotation signed by guardians is the recovery case, for when the
-primary key is lost. Both land in the same block as the revocation.
+`PostQuantumDecorator` is a type gate only. Real verification is
+`SigVerificationDecorator`, which uses `acc.GetPubKey()`.
+`SetPubKeyDecorator` refuses a pubkey whose `Address()` does not match
+the signer, and skips if a pubkey is already set. An override stored
+only in `x/accountauth` is never consulted.
+
+Rotation therefore changes the ante path. Two decorators learn to
+resolve the pubkey:
+
+- `SetPubKeyDecorator` accepts a pubkey that does not match the
+  address when the account has an override set to that pubkey, and
+  sets it on the account.
+- `SigVerificationDecorator` verifies against the override pubkey when
+  one is set, instead of the pubkey stored on the account.
+
+`PostQuantumDecorator` is unchanged: it still rejects any signer whose
+pubkey is not ML-DSA. The override must be ML-DSA; a rotation that
+installs anything else fails in the decorator.
+
+This is a consensus change. It is height-gated, the same way
+`x/accountauth` itself was, and it does not bypass the type gate.
+
+### Override and rotation message
+
+The account stores an override pubkey in `x/accountauth`. Empty means
+no override; verification uses the account pubkey as today.
+
+`MsgRotateKey` installs the override. It is signed by the current key
+(the account pubkey, or the current override). It carries the new
+ML-DSA pubkey. On success the override is the new pubkey, the account
+address is unchanged, and the old key is no longer accepted.
+
+The account sequence continues. It is not reset. A reset would make a
+previously signed old-key transaction valid again under a fresh
+sequence. Continuing closes that window.
+
+### Same-block rule
+
+A transaction signed by the old key may already be in the mempool when
+the rotation lands. Tx order is not a guarantee.
+
+The rule: once a rotation for an account is included in a block, any
+later message in that block signed by the old key for that account is
+rejected. The rotation is processed before any other message from that
+account in the same block, or the other message fails verification
+against the override. Both keys never work in the same block.
+
+### Recovery
+
+Spending guardians do not rotate the key. A spending guardian that can
+rotate can take the account.
+
+Recovery is a distinct guardian threshold, registered separately, with
+a higher M of N than the spending set. `MsgRotateKey` signed by the
+recovery guardians installs the override the same way a current-key
+rotation does. An account with no recovery guardians cannot rotate
+without the current key; that is accepted.
+
+The fee for a recovery rotation is paid by the submitter, matching
+`MsgExecAuthenticated`. The fee for a current-key rotation is paid by
+the account.
 
 ## What this is not
 
@@ -61,24 +113,23 @@ primary key is lost. Both land in the same block as the revocation.
 - Not a change to escrow, reputation, or the seat rule. They already
   key by address; once the address is stable under rotation, they
   follow for free.
+- Not a bypass of `PostQuantumDecorator`.
 
-## Open questions
+## Decisions
 
-- Sequence: does the rotation reset the account sequence, or continue
-  it? Continuing avoids a replay window; resetting is simpler and
-  matches "new key, fresh start." Prefer continue.
-- Guardian recovery: is the existing guardian threshold enough, or
-  does recovery need a distinct, higher threshold? Prefer the
-  existing one, so an account that set guardians for spending can
-  use them for recovery without a second registration.
-- Fee: the rotation pays its own fee from the account. A recovery
-  rotation, submitted by anyone, needs the fee paid by the submitter
-  or by a feegrant. Prefer the submitter, matching how
-  `MsgExecAuthenticated` already works for guardians.
+- Sequence continues. It is not reset.
+- Recovery is a separate, higher guardian threshold. Spending
+  guardians cannot rotate.
+- The ante path changes. `SetPubKeyDecorator` and
+  `SigVerificationDecorator` resolve through the override. This is
+  consensus and height-gated.
+- Same-block: after a rotation is included, old-key messages for that
+  account in the same block fail.
 
 ## First test
 
-`x/accountauth/rotation_test.go` (this branch) encodes the property
-and fails because rotation is not implemented. It should pass, without
-changing its assertions, once the override and the rotation message
-exist.
+`x/accountauth/rotation_test.go` should set up an account with a
+balance, an authenticator, and an open escrow, submit `MsgRotateKey`,
+and assert the six properties. It fails today because the message and
+the override do not exist. The assertions are the property; they are
+not weakened when the implementation lands.
