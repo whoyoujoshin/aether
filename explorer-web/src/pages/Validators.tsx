@@ -1,10 +1,33 @@
-import { useState } from "react";
-import { api, NodeLocation, ValidatorSetEntry } from "../api";
+import { useEffect, useState } from "react";
+import { api, MinerStatus, NodeLocation, ValidatorSetEntry } from "../api";
 import { Globe, GlobePin } from "../components/Globe";
 import { useApi } from "../hooks";
 import { AddressLink } from "../components/Hash";
 import { ErrorBanner, HeadStat, Legend, StackBar, Tabs, pct } from "../components/ui";
 import { int, truncate, utc } from "../format";
+
+
+function formatShare(share: string | undefined): string {
+  if (!share) return "—";
+  const n = Number(share);
+  if (Number.isNaN(n)) return "—";
+  return `${(n * 100).toFixed(n < 0.001 ? 3 : 1)}%`;
+}
+
+function formatSeatWork(n: string | undefined): string {
+  if (!n || n === "0") return "0";
+  try {
+    const big = BigInt(n);
+    if (big >= 1_000_000_000_000_000n) return `${(Number(big) / 1e15).toFixed(2)}P`;
+    if (big >= 1_000_000_000_000n) return `${(Number(big) / 1e12).toFixed(2)}T`;
+    if (big >= 1_000_000_000n) return `${(Number(big) / 1e9).toFixed(2)}B`;
+    if (big >= 1_000_000n) return `${(Number(big) / 1e6).toFixed(2)}M`;
+    if (big >= 1_000n) return `${(Number(big) / 1e3).toFixed(1)}k`;
+    return n;
+  } catch {
+    return n;
+  }
+}
 
 function formatTenure(ratio: string): string {
   const n = Number(ratio);
@@ -19,7 +42,7 @@ const statusColor: Record<ValidatorSetEntry["status"], string> = {
   banned: "var(--danger)",
 };
 
-const SIGNER_COLS = "40px minmax(0,1.4fr) minmax(0,1.3fr) 110px 170px 100px";
+const SIGNER_COLS = "40px minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) 90px 150px 90px";
 const MINER_COLS = "40px minmax(0,1fr) 220px 90px";
 const shareColors = ["#c0503a", "#d8d1c5", "#9a9186", "#6b645b", "#3a342e"];
 
@@ -32,6 +55,30 @@ function place(l: NodeLocation | undefined): string {
 
 export default function Validators() {
   const set = useApi(api.validatorSet, [], 10000);
+
+  // Seat work for each validator: the 3-epoch window the seat rule
+  // measures the 1% bar against. Keyed on the sorted account list so a
+  // 10s validator-set refresh doesn't re-query. Reloaded every 60s.
+  const accountsKey = [...(set.data?.validators ?? []).map((v) => v.account).filter(Boolean)].sort().join(",");
+  const [seat, setSeat] = useState<Map<string, MinerStatus>>(new Map());
+  useEffect(() => {
+    const accounts = accountsKey ? accountsKey.split(",") : [];
+    if (accounts.length === 0) return;
+    let cancelled = false;
+    const load = () => {
+      Promise.all(
+        accounts.map((a) => api.miner(a).then((st) => [a, st] as const).catch(() => null))
+      ).then((rows) => {
+        if (cancelled) return;
+        const m = new Map<string, MinerStatus>();
+        for (const r of rows) if (r) m.set(r[0], r[1]);
+        setSeat(m);
+      });
+    };
+    load();
+    const id = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [accountsKey]);
   const leaderboard = useApi(() => api.leaderboard(), [], 10000);
   const located = useApi(api.locations, [], 60000);
   const [tab, setTab] = useState<(typeof TABS)[number]>("Signers");
@@ -160,6 +207,9 @@ export default function Validators() {
                   <span>#</span>
                   <span>Validator</span>
                   <span>Voting power</span>
+                  <span title="Seat work over the 3-epoch window, the share the 1% bar is measured against">
+                    Seat work
+                  </span>
                   <span className="right" title="Time spent bonded out of the time it's been eligible">
                     Tenure
                   </span>
@@ -199,6 +249,15 @@ export default function Validators() {
                       </div>
                       <div className="power-bar">
                         <div style={{ width: `${(v.votingPower / maxPower) * 100}%` }} />
+                      </div>
+                    </div>
+                    <div title={seat.get(v.account)?.seatWork ? `window ${seat.get(v.account)!.seatWork} of ${seat.get(v.account)!.seatWorkTotal ?? "—"}` : "seat work not reported"}>
+                      <div className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 500, gap: 8 }}>
+                        <span className="ellipsis">{formatSeatWork(seat.get(v.account)?.seatWork)}</span>
+                        <span className="muted">{formatShare(seat.get(v.account)?.workShare)}</span>
+                      </div>
+                      <div className="power-bar">
+                        <div style={{ width: `${Math.min(100, (Number(seat.get(v.account)?.workShare ?? 0) || 0) * 100)}%` }} />
                       </div>
                     </div>
                     <span className="right mono" style={{ fontSize: 13 }}>
