@@ -2,6 +2,7 @@ package treasury
 
 import (
 	"context"
+	"fmt"
 
 	sdkerrors "cosmossdk.io/errors"
 	"cosmossdk.io/math"
@@ -79,6 +80,29 @@ func (k Keeper) GetRealBankBalance(ctx sdk.Context) math.Int {
 // transaction fees it collects in USDC.
 func (k Keeper) GetRealBankBalances(ctx sdk.Context) sdk.Coins {
 	return k.bankKeeper.GetAllBalances(ctx, authtypes.NewModuleAddress(ModuleName))
+}
+
+// SpendCoin pays coin, a denom other than uaeth, from the treasury's
+// module account to recipient, as a passed treasury-spend proposal does
+// from x/governance's TreasuryCoinSpendActivationHeight. The ledger tracks
+// uaeth only, so the bank balance is the limit: ErrInsufficientTreasuryBalance
+// if it can't cover coin. uaeth goes through Spend, never here.
+func (k Keeper) SpendCoin(ctx sdk.Context, recipient sdk.AccAddress, coin sdk.Coin) error {
+	if coin.Denom == "uaeth" {
+		return fmt.Errorf("uaeth is spent through the ledger (Spend), not SpendCoin")
+	}
+	if !coin.Amount.IsPositive() {
+		return fmt.Errorf("non-positive amount %s", coin)
+	}
+	held := k.bankKeeper.GetBalance(ctx, authtypes.NewModuleAddress(ModuleName), coin.Denom)
+	if held.Amount.LT(coin.Amount) {
+		return sdkerrors.Wrapf(ErrInsufficientTreasuryBalance, "treasury holds %s, less than requested %s", held, coin)
+	}
+	if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, ModuleName, recipient, sdk.NewCoins(coin)); err != nil {
+		return err
+	}
+	ctx.Logger().Info("Treasury spend executed", "recipient", recipient.String(), "amount", coin.String())
+	return nil
 }
 
 func (k Keeper) Heartbeat(ctx sdk.Context) {

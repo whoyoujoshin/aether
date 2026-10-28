@@ -3,7 +3,9 @@
 **Draft.** `H` isn't chosen yet (Linear AET-6). Both
 `InflowCapActivationHeight` (`app/inflowcap.go`) and
 `FeesToTreasuryActivationHeight` (`app/fees.go`) are the 30,000,000
-placeholder until a PR sets them to `H`. Every `H` below means that number.
+placeholder until a PR sets them to `H`. `TreasuryCoinSpendActivationHeight` (`x/governance/types.go`) moves with
+them (an app test checks it equals the fees height). Every `H` below
+means that number.
 
 **For:** the four validators (seed, sync3, sync4, peer-1), plus any other
 node running `aetherd`. **Deadline:** every node on the new binary before
@@ -27,6 +29,12 @@ block **H − 1** is committed.
   never saw (1.000001 AETH on 10-28, so `ledger_matches_bank_balance`
   reads false), is credited at H with a `treasury_ledger_credited` event,
   so governance can spend it; the ledger is only ever raised.
+- **Treasury spends in any denom** (`x/governance`,
+  `TreasuryCoinSpendActivationHeight`). A treasury-spend proposal's amount
+  may be one coin, e.g. `1000000ibc/064D…` for 1 USDC (CLI:
+  `submit-proposal <recipient> 1000000 <deposit> --denom ibc/064D…`), paid
+  from the treasury's bank balance; a plain integer is still uaeth through
+  the ledger. Before H a coin amount is refused at submission, as always.
 
 **It adds a store, so every node halts at H and needs one restart there**
 (the same mechanism as x/escrow at 161,000, `docs/CUTOVER-161000.md`).
@@ -63,6 +71,7 @@ From the commit that merged H (`main`):
 git fetch origin && git checkout origin/main
 grep -n "InflowCapActivationHeight int64 = " app/inflowcap.go      # must show H
 grep -n "FeesToTreasuryActivationHeight int64 = " app/fees.go     # must show H
+grep -n "TreasuryCoinSpendActivationHeight int64 = " x/governance/types.go   # must show H
 grep -n "SeatHardeningHeight int64 = 460_800" x/pow/seat_hardening.go
 go version                             # go1.26.10
 go test ./x/inflowcap/... ./app

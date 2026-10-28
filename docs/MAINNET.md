@@ -244,8 +244,12 @@ in escrow for Aether. Keep that small while the chain is young:
     every block, so validators need a binary carrying the height first. It
     is on the review's list.
   - **Still open:** the price itself, which is node configuration and can
-    change without a release. Governance can't spend the treasury's USDC
-    yet: its spends are uaeth only.
+    change without a release.
+  - **Governance spends the treasury's USDC** (AET-27): a treasury-spend
+    proposal's amount may be one coin of any denom the treasury holds,
+    paid from its bank balance; uaeth still goes through the ledger. On
+    from block 1 on fresh chains, at the fees height on the testnet
+    (`TreasuryCoinSpendActivationHeight`). No new message type or field.
 - **Chain ID:** `aether-1`.
 
 ## 5. Review instead of audit

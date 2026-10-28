@@ -42,7 +42,12 @@ func NewSubmitProposalCmd() *cobra.Command {
 NOT a denom-suffixed coin string like 5000000uaeth. This has caused a real
 submission mistake before: the amount was accepted as-is with no denom
 suffix stripped, and would only have failed much later, at execution,
-had the proposal passed.`,
+had the proposal passed.
+
+To spend another denom the treasury holds (from the chain's
+TreasuryCoinSpendActivationHeight; refused before it), keep [amount] a
+plain integer in that denom's base units and name the denom with --denom,
+e.g. 1 USDC: 1000000 --denom ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C.`,
 		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
@@ -57,18 +62,30 @@ had the proposal passed.`,
 				return err
 			}
 
+			amount := args[1]
+			denom, _ := cmd.Flags().GetString(flagDenom)
+			if denom != "" && denom != governance.SpendLedgerDenom {
+				amount += denom
+				if _, err := governance.ParseSpendAmount(amount); err != nil {
+					return err
+				}
+			}
+
 			msg := &governance.MsgSubmitProposal{
 				Proposer:  clientCtx.GetFromAddress().String(),
 				Recipient: args[0],
-				Amount:    args[1],
+				Amount:    amount,
 				Deposit:   args[2],
 			}
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
 	}
+	cmd.Flags().String(flagDenom, "", "spend this denom instead of uaeth: [amount] is in its base units (e.g. ibc/064D... for USDC, 1000000 per USDC)")
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }
+
+const flagDenom = "denom"
 
 // NewSubmitParamChangeProposalCmd is the generic path for proposing any
 // authority-gated message on any module -- e.g. x/consensus's

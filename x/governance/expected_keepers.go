@@ -23,4 +23,7 @@ type PowKeeper interface {
 
 type TreasuryKeeper interface {
 	Spend(ctx sdk.Context, recipient sdk.AccAddress, amount math.Int) error
+	// SpendCoin pays a denom other than uaeth from the treasury's bank
+	// balance (TreasuryCoinSpendActivationHeight).
+	SpendCoin(ctx sdk.Context, recipient sdk.AccAddress, coin sdk.Coin) error
 }

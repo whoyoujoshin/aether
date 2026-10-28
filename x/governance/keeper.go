@@ -527,6 +527,17 @@ func (k Keeper) executeTreasurySpend(ctx sdk.Context, proposal Proposal) error {
 		return sdkerrors.Wrapf(err, "invalid recipient address on passed proposal %d", proposal.Id)
 	}
 
+	if gates.On(ctx, TreasuryCoinSpendActivationHeight) {
+		coin, err := ParseSpendAmount(proposal.Amount)
+		if err != nil {
+			return sdkerrors.Wrapf(ErrInvalidDeposit, "%s on passed proposal %d", err, proposal.Id)
+		}
+		if coin.Denom != SpendLedgerDenom {
+			return k.treasuryKeeper.SpendCoin(ctx, recipientAddr, coin)
+		}
+		return k.treasuryKeeper.Spend(ctx, recipientAddr, coin.Amount)
+	}
+
 	amount, ok := math.NewIntFromString(proposal.Amount)
 	if !ok || !amount.IsPositive() {
 		return sdkerrors.Wrapf(ErrInvalidDeposit, "invalid or non-positive amount %q on passed proposal %d", proposal.Amount, proposal.Id)

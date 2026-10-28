@@ -6,8 +6,14 @@ import (
 )
 
 type MockTreasuryKeeper struct {
-	SpendCalls []SpendCall
-	SpendErr   error
+	SpendCalls     []SpendCall
+	SpendErr       error
+	SpendCoinCalls []SpendCoinCall
+}
+
+type SpendCoinCall struct {
+	Recipient sdk.AccAddress
+	Coin      sdk.Coin
 }
 
 type SpendCall struct {
@@ -24,5 +30,13 @@ func (m *MockTreasuryKeeper) Spend(ctx sdk.Context, recipient sdk.AccAddress, am
 		return m.SpendErr
 	}
 	m.SpendCalls = append(m.SpendCalls, SpendCall{Recipient: recipient, Amount: amount})
+	return nil
+}
+
+func (m *MockTreasuryKeeper) SpendCoin(ctx sdk.Context, recipient sdk.AccAddress, coin sdk.Coin) error {
+	if m.SpendErr != nil {
+		return m.SpendErr
+	}
+	m.SpendCoinCalls = append(m.SpendCoinCalls, SpendCoinCall{Recipient: recipient, Coin: coin})
 	return nil
 }
