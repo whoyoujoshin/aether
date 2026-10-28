@@ -17,10 +17,12 @@ import (
 // store, so an un-restarted node halts at it rather than run it without.
 // On a fresh chain it is on from block 1, with the list from genesis.
 //
-// A placeholder far past the testnet's tip: the testnet height is chosen
-// after a devnet round trip with Helicase and outbound, together with
-// testnetInflowEntries.
-const InflowCapActivationHeight int64 = 30_000_000
+// On the testnet: 511,920, the middle of epoch 355 (720 blocks from either
+// boundary), chosen on 2026-10-28 at tip ~488,500, about 16:40 UTC on
+// Thursday 2026-10-29 at 5.64 s blocks (docs/UPGRADE-INFLOWCAP-FEES.md).
+// Every node needs a binary carrying it before then, and one restart at it.
+// Earlier binaries carried 30,000,000 as a placeholder.
+const InflowCapActivationHeight int64 = 511_920
 
 // inflowCapActivationHeight is what New() reads, so tests can cross the
 // activation at a small height.

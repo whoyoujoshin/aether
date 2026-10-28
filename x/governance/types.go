@@ -118,9 +118,8 @@ const ParamChangeGovernanceActivationHeight int64 = 90000
 // so a node on the old binary decodes every transaction the same way.
 //
 // It moves with app.FeesToTreasuryActivationHeight (an app test checks
-// they're equal); both are the 30,000,000 placeholder on the testnet
-// until the upgrade PR sets H. Fresh chains have it from block 1.
-const TreasuryCoinSpendActivationHeight int64 = 30_000_000
+// they're equal): 511,920 on the testnet, block 1 on fresh chains.
+const TreasuryCoinSpendActivationHeight int64 = 511_920
 
 // QuorumActiveValidatorCountActivationHeight gates a change to
 // computeQuorumThreshold: before this height, quorum is 60% of

@@ -1,11 +1,14 @@
-# Inflow cap and fees-to-treasury upgrade: on at block H
+# Inflow cap and fees-to-treasury upgrade: on at block 511,920
 
-**Draft.** `H` isn't chosen yet (Linear AET-6). Both
-`InflowCapActivationHeight` (`app/inflowcap.go`) and
-`FeesToTreasuryActivationHeight` (`app/fees.go`) are the 30,000,000
-placeholder until a PR sets them to `H`. `TreasuryCoinSpendActivationHeight` (`x/governance/types.go`) moves with
-them (an app test checks it equals the fees height). Every `H` below
-means that number.
+**H = 511,920** (Linear AET-6, chosen by Joshua on 2026-10-28 at tip
+~488,500). It is the middle of epoch 355, 720 blocks from the boundaries
+at the ends of 511,199 and 512,639. At 5.64 s blocks it is about 16:40
+UTC (11:40 AM CDT) on Thursday 2026-10-29; block times of 5.6 to 5.9 s
+move that by about an hour and a half either way. `InflowCapActivationHeight`
+(`app/inflowcap.go`), `FeesToTreasuryActivationHeight` (`app/fees.go`)
+and `TreasuryCoinSpendActivationHeight` (`x/governance/types.go`) are all
+511,920; earlier binaries carried 30,000,000. Every `H` below means
+511,920; **H − 600 = 511,320** is the abort line.
 
 **For:** the four validators (seed, sync3, sync4, peer-1), plus any other
 node running `aetherd`. **Deadline:** every node on the new binary before
@@ -41,7 +44,7 @@ block **H − 1** is committed.
 A node on the new binary runs exactly as before until then. A node still
 on the old binary at H splits from the others.
 
-## Before you pick H: the restart needs more than two-thirds of the power
+## Before H: the restart needs more than two-thirds of the power
 
 Blocks resume after H only once validators holding **more than 2/3 of
 the voting power** have restarted. At 472,590 peer-1 held 42.3%, so
@@ -53,15 +56,19 @@ together had 57.7%. Either:
   peer-1 is under a third. Then sync3, sync4 and the seed restart the
   chain on their own and peer-1 catches up after.
 
-Check the powers before choosing:
+Both hold for 511,920: peer-1's miner has run at `--duty 0.6` since
+2026-10-28 03:55 UTC (488,451; peer-1 44.1% at 488,464 with 34.5% of
+epoch 339's work), so it should be under a third about three boundaries
+later (~492,479), and H is in Joshua's day. Check the powers again the
+evening before:
 
 ```bash
 curl -s localhost:26657/validators | jq -r '.result.validators[] | "\(.address) \(.voting_power)"'
 ```
 
-Pick H at least a day out (a build, four swaps and a margin), and not
+H had to be at least a day out (a build, four swaps and a margin), and not
 within ~100 blocks of a seat boundary (the end of `n × 1440 − 1`), so a
-boundary and the halt don't land together.
+boundary and the halt don't land together. 511,920 is 720 from each.
 
 ## 1. Build once, on a workstation (never on a validator), with Go 1.26.10
 
@@ -69,9 +76,9 @@ From the commit that merged H (`main`):
 
 ```bash
 git fetch origin && git checkout origin/main
-grep -n "InflowCapActivationHeight int64 = " app/inflowcap.go      # must show H
-grep -n "FeesToTreasuryActivationHeight int64 = " app/fees.go     # must show H
-grep -n "TreasuryCoinSpendActivationHeight int64 = " x/governance/types.go   # must show H
+grep -n "InflowCapActivationHeight int64 = " app/inflowcap.go      # must show 511_920
+grep -n "FeesToTreasuryActivationHeight int64 = " app/fees.go     # must show 511_920
+grep -n "TreasuryCoinSpendActivationHeight int64 = " x/governance/types.go   # must show 511_920
 grep -n "SeatHardeningHeight int64 = 460_800" x/pow/seat_hardening.go
 go version                             # go1.26.10
 go test ./x/inflowcap/... ./app
@@ -143,6 +150,14 @@ Copy-Item C:\aether-data\peer1-ensure.ps1 C:\aether-data\peer1-ensure.ps1.pre-in
 
 Every `aetherd` command on DardenPC takes `--home C:\aether-peer1`. Keep
 the VPN off.
+
+**While the swaps are mixed, send no inflow cap messages.** The new
+binary knows `x/inflowcap`'s message types (`MsgUpdateParams`, directly or
+inside a param-change proposal) and the old one doesn't: a node on the
+old binary can't decode such a transaction, one on the new binary decodes
+it and charges its fee, and the two disagree on the block. Nobody needs to
+send one before H (the testnet list is set by H itself); keep it that way
+until all four run the new binary, and do the swaps in one sitting.
 
 **Abort rule.** If all four aren't on the new binary by **H − 600**, put
 every swapped node back on `.pre-inflowcap` (`aetherd-3ad12a6.exe` on

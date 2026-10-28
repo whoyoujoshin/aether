@@ -242,7 +242,7 @@ in escrow for Aether. Keep that small while the chain is young:
     couldn't spend it) is credited the same way, with a
     `treasury_ledger_credited` event; the ledger is only raised. The treasury's
     `Balance` query lists every denom it holds (`real_bank_balances`). On
-    from block 1 on fresh chains; a placeholder height (30,000,000) on the
+    from block 1 on fresh chains; at 511,920 on the
     testnet, where the fee collector holds 0.016374 AETH from since genesis
     that the first swept block moves. It adds no store, but it changes
     every block, so validators need a binary carrying the height first. It

@@ -21,15 +21,16 @@ import (
 //
 // Fees may be paid in USDC as well as AETH: which denoms a node accepts
 // is its minimum-gas-prices, and a fee passes if it covers any one of
-// them. USDC fees land in the treasury account; governance's spends are
-// uaeth only.
+// them. USDC fees land in the treasury account; from the same height
+// governance can spend them (x/governance TreasuryCoinSpendActivationHeight).
 //
 // It adds no store, so nothing halts at it, but it changes what each
 // block does, so every validator needs a binary carrying the height
 // before the chain reaches it. On a fresh chain it is on from block 1.
 //
-// A placeholder far past the testnet's tip, chosen with the operator.
-const FeesToTreasuryActivationHeight int64 = 30_000_000
+// On the testnet: 511,920, with InflowCapActivationHeight (one upgrade,
+// docs/UPGRADE-INFLOWCAP-FEES.md). Earlier binaries carried 30,000,000.
+const FeesToTreasuryActivationHeight int64 = 511_920
 
 // feesToTreasuryActivationHeight is what the EndBlocker reads, so tests
 // can cross the activation at a small height.
