@@ -133,3 +133,72 @@ balance, an authenticator, and an open escrow, submit `MsgRotateKey`,
 and assert the six properties. It fails today because the message and
 the override do not exist. The assertions are the property; they are
 not weakened when the implementation lands.
+
+## Fix strategy
+
+The ante change is smaller than the first revision said, and it is
+still required.
+
+### What works without an ante change
+
+`SigVerificationDecorator` uses `acc.GetPubKey()`. If `MsgRotateKey`
+sets the account pubkey to the new key, every later transaction
+verifies against it. The old key fails, the new key works, the
+address is untouched, and the sequence continues because nothing
+resets it. `x/accountauth` needs an `AccountKeeper` to do the set.
+
+### What still needs an ante change
+
+`SetPubKeyDecorator` checks `pubkey.Address() == signer` before it
+checks whether the account already has a pubkey. A transaction from
+the new key that includes its pubkey — which the SDK includes by
+default — fails that check, because the new key's address is not the
+account address.
+
+The fix is a replacement for `SetPubKeyDecorator`, used in place of
+the stock one when the ante chain is built. It accepts a pubkey that
+does not match the signer address only when that pubkey equals the
+pubkey already on the account. Any other mismatch is still rejected.
+`SigVerificationDecorator` is unchanged. `PostQuantumDecorator` is
+unchanged.
+
+This is still a consensus change and still height-gated. It is one
+decorator, not a rewrite of the ante chain.
+
+### Same-block rule
+
+Transactions in a block are processed in order. A transaction that
+lands after the rotation sees the new pubkey and fails if it was
+signed by the old key. A transaction that lands before the rotation
+sees the old pubkey and succeeds.
+
+The rotation handler records the account in a transient store. A
+check at the start of `MsgRotateKey` rejects the rotation if that
+account has already had a message succeed in the same block. The
+proposer orders the rotation first, or the rotation fails and can be
+resubmitted. Both keys never succeed in the same block.
+
+### Recovery
+
+A separate `RecoveryThreshold` authenticator, registered by the
+current key, with its own M of N. `MsgRotateKey` accepts either the
+current key or a recovery-threshold signature set. A spending
+guardian threshold is not consulted. An account with no recovery
+threshold can only rotate with the current key.
+
+### Order of work
+
+1. Add `AccountKeeper` to `x/accountauth` and `MsgRotateKey` that sets
+   the account pubkey. Sequence is not touched.
+2. Replace `SetPubKeyDecorator` with the version that accepts the
+   account's own pubkey. Height-gate the swap.
+3. Transient store for the same-block check.
+4. `RecoveryThreshold` authenticator and the recovery path on
+   `MsgRotateKey`.
+5. Remove the `t.Fatal` in `rotation_test.go`. The assertions run
+   unchanged.
+
+Each step is separately testable. Step 1 makes the old key fail and
+the new key work for transactions that omit the pubkey. Step 2 makes
+it work for transactions that include it. Step 3 closes the
+same-block gap. Step 4 adds recovery.
