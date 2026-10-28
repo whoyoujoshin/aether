@@ -58,6 +58,16 @@ const MaxRecoveryGuardians = 10
 // MaxWatchtowers bounds a recovery set's cancel-only keys.
 const MaxWatchtowers = 3
 
+// SignatureVerifyGas is charged for each ML-DSA-44 signature a rotation
+// handler verifies (guardian, watchtower, new-key proof): the ante
+// handler's price for one (app.go's SigGasConsumer).
+const SignatureVerifyGas = 2000
+
+func verifyCharged(ctx sdk.Context, pub, msg, sig []byte, what string) bool {
+	ctx.GasMeter().ConsumeGas(SignatureVerifyGas, "accountauth: verify "+what+" signature")
+	return (&mldsa.PubKey{Key: pub}).VerifySignature(msg, sig)
+}
+
 // Event types and attributes.
 const (
 	EventTypeRotationScheduled = "key_rotation_scheduled"
@@ -236,7 +246,7 @@ func checkNewKey(ctx sdk.Context, account string, acc sdk.AccountI, nonce uint64
 	if bytes.Equal(acc.GetPubKey().Bytes(), newPubkey) {
 		return sdkerrors.Wrap(ErrInvalidNewKey, "new key is the account's current key")
 	}
-	if !(&mldsa.PubKey{Key: newPubkey}).VerifySignature(RotateKeySigningBytes(ctx.ChainID(), account, nonce, newPubkey), sig) {
+	if !verifyCharged(ctx, newPubkey, RotateKeySigningBytes(ctx.ChainID(), account, nonce, newPubkey), sig, "new key") {
 		return sdkerrors.Wrap(ErrInvalidNewKey, "new_key_signature doesn't verify: sign RotateKeySigningBytes with the new key at the current nonce")
 	}
 	return nil
@@ -292,8 +302,10 @@ func newRecoverySet(pubkeys [][]byte, threshold uint32, watchtowers [][]byte) *R
 }
 
 // recoveryApproves: at least the threshold of distinct guardians in set
-// signed signingBytes.
-func recoveryApproves(set *RecoverySet, signingBytes []byte, sigs []*GuardianSignature) error {
+// signed signingBytes. Each signature verified is charged; one from a key
+// that isn't a guardian, or from a guardian already counted, isn't
+// verified, and none is once the threshold is met.
+func recoveryApproves(ctx sdk.Context, set *RecoverySet, signingBytes []byte, sigs []*GuardianSignature) error {
 	if set == nil || len(set.GuardianPubkeys) == 0 {
 		return sdkerrors.Wrap(ErrNoRecoverySet, "the account has no recovery set")
 	}
@@ -303,10 +315,13 @@ func recoveryApproves(set *RecoverySet, signingBytes []byte, sigs []*GuardianSig
 	}
 	valid := map[string]bool{}
 	for _, s := range sigs {
-		if s == nil || !registered[string(s.Pubkey)] {
+		if uint32(len(valid)) >= set.Threshold {
+			break
+		}
+		if s == nil || !registered[string(s.Pubkey)] || valid[string(s.Pubkey)] {
 			continue
 		}
-		if (&mldsa.PubKey{Key: s.Pubkey}).VerifySignature(signingBytes, s.Signature) {
+		if verifyCharged(ctx, s.Pubkey, signingBytes, s.Signature, "recovery guardian") {
 			valid[string(s.Pubkey)] = true
 		}
 	}
@@ -404,7 +419,7 @@ func (k msgServer) RecoverKey(goCtx context.Context, msg *MsgRecoverKey) (*MsgRe
 		return nil, err
 	}
 	st := k.GetRotationState(ctx, account)
-	if err := recoveryApproves(st.Recovery, RecoverKeySigningBytes(ctx.ChainID(), msg.Account, st.RecoveryNonce, msg.NewPubkey), msg.GuardianSignatures); err != nil {
+	if err := recoveryApproves(ctx, st.Recovery, RecoverKeySigningBytes(ctx.ChainID(), msg.Account, st.RecoveryNonce, msg.NewPubkey), msg.GuardianSignatures); err != nil {
 		return nil, err
 	}
 	if err := checkNewKey(ctx, msg.Account, acc, st.RecoveryNonce, msg.NewPubkey, msg.NewKeySignature); err != nil {
@@ -434,7 +449,7 @@ func (k msgServer) GuardianCancel(goCtx context.Context, msg *MsgGuardianCancel)
 		return nil, err
 	}
 	st := k.GetRotationState(ctx, account)
-	if err := recoveryApproves(st.Recovery, GuardianCancelSigningBytes(ctx.ChainID(), msg.Account, st.RecoveryNonce), msg.GuardianSignatures); err != nil {
+	if err := recoveryApproves(ctx, st.Recovery, GuardianCancelSigningBytes(ctx.ChainID(), msg.Account, st.RecoveryNonce), msg.GuardianSignatures); err != nil {
 		return nil, err
 	}
 	if !k.clearPending(ctx, account, &st) {
@@ -467,7 +482,7 @@ func (k msgServer) GuardianSetRecovery(goCtx context.Context, msg *MsgGuardianSe
 	}
 	st := k.GetRotationState(ctx, account)
 	set := RecoverySet{GuardianPubkeys: msg.GuardianPubkeys, Threshold: msg.Threshold, WatchtowerPubkeys: msg.WatchtowerPubkeys}
-	if err := recoveryApproves(st.Recovery, GuardianSetRecoverySigningBytes(ctx.ChainID(), msg.Account, st.RecoveryNonce, set), msg.GuardianSignatures); err != nil {
+	if err := recoveryApproves(ctx, st.Recovery, GuardianSetRecoverySigningBytes(ctx.ChainID(), msg.Account, st.RecoveryNonce, set), msg.GuardianSignatures); err != nil {
 		return nil, err
 	}
 	if st.PendingRecovery != nil {
@@ -508,7 +523,7 @@ func (k msgServer) WatchtowerCancel(goCtx context.Context, msg *MsgWatchtowerCan
 	if !listed {
 		return nil, sdkerrors.Wrap(ErrNotWatchtower, "the key isn't one of the account's watchtowers")
 	}
-	if !(&mldsa.PubKey{Key: msg.WatchtowerPubkey}).VerifySignature(WatchtowerCancelSigningBytes(ctx.ChainID(), msg.Account, st.Nonce), msg.Signature) {
+	if !verifyCharged(ctx, msg.WatchtowerPubkey, WatchtowerCancelSigningBytes(ctx.ChainID(), msg.Account, st.Nonce), msg.Signature, "watchtower") {
 		return nil, sdkerrors.Wrap(ErrNotWatchtower, "signature doesn't verify: sign WatchtowerCancelSigningBytes at the account's current nonce")
 	}
 	if !k.clearPending(ctx, account, &st) {

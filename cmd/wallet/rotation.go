@@ -5,11 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
-	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/spf13/cobra"
 
@@ -23,7 +24,7 @@ import (
 // RotationDelayBlocks, or at once by its recovery guardians.
 
 func rotationCmds() []*cobra.Command {
-	return []*cobra.Command{
+	cmds := []*cobra.Command{
 		newPubkeyCmd(),
 		newRotationCmd(),
 		newRotateKeyCmd(),
@@ -37,11 +38,31 @@ func rotationCmds() []*cobra.Command {
 		newWatchtowerCancelCmd(),
 		newSignForCmd(),
 	}
+	for _, c := range cmds {
+		switch c.Name() { // the ones that send a transaction (sendMsg)
+		case "rotate-key", "cancel-rotation", "set-recovery", "recover-key", "guardian-cancel", "guardian-set-recovery", "watchtower-cancel":
+			addTxFlags(c)
+		}
+	}
+	return cmds
 }
 
 func keyHash(pub []byte) string {
 	sum := sha256.Sum256(pub)
 	return hex.EncodeToString(sum[:8])
+}
+
+// rotationGas and rotationFees are the rotation commands' --gas and
+// --fees. A full recovery set with its signatures is tens of kilobytes
+// (an ML-DSA-44 key is 1,312 bytes, a signature 2,420), so a fixed limit
+// runs out: "auto" simulates first and adds a margin.
+var rotationGas, rotationFees string
+
+const simulatedGasMargin = 1.3
+
+func addTxFlags(c *cobra.Command) {
+	c.Flags().StringVar(&rotationGas, "gas", "auto", `gas limit, or "auto" to simulate the transaction first (times 1.3)`)
+	c.Flags().StringVar(&rotationFees, "fees", "0uaeth", "fees to pay, e.g. 2000uaeth (the node's minimum gas price decides what it accepts)")
 }
 
 // sendMsg signs msg with keyName for account and broadcasts it.
@@ -50,10 +71,29 @@ func sendMsg(w *wallet.Wallet, client *wallet.Client, keyName, account string, m
 	if err != nil {
 		return fmt.Errorf("account %s (does it exist on chain yet?): %w", account, err)
 	}
-	signed, err := w.BuildAndSignMsgTx(keyName, msg, wallet.TxParams{
-		ChainID: chainID, AccountNumber: number, Sequence: sequence, GasLimit: 400_000,
-		Fees: sdk.NewCoins(sdk.NewCoin("uaeth", math.ZeroInt())),
-	})
+	fees, err := sdk.ParseCoinsNormalized(rotationFees)
+	if err != nil {
+		return fmt.Errorf("--fees %q: %w", rotationFees, err)
+	}
+	params := wallet.TxParams{ChainID: chainID, AccountNumber: number, Sequence: sequence, Fees: fees}
+	switch rotationGas {
+	case "", "auto":
+		params.GasLimit = 50_000_000 // only for the simulation
+		probe, err := w.BuildAndSignMsgTx(keyName, msg, params)
+		if err != nil {
+			return err
+		}
+		used, err := client.Simulate(context.Background(), probe.Bytes)
+		if err != nil {
+			return fmt.Errorf("simulating it (or set --gas): %w", err)
+		}
+		params.GasLimit = uint64(float64(used) * simulatedGasMargin)
+	default:
+		if params.GasLimit, err = strconv.ParseUint(rotationGas, 10, 64); err != nil {
+			return fmt.Errorf(`--gas %q: a number, or "auto"`, rotationGas)
+		}
+	}
+	signed, err := w.BuildAndSignMsgTx(keyName, msg, params)
 	if err != nil {
 		return err
 	}
@@ -65,8 +105,27 @@ func sendMsg(w *wallet.Wallet, client *wallet.Client, keyName, account string, m
 		return fmt.Errorf("refused (code %d): %s", res.Code, res.RawLog)
 	}
 	fmt.Printf("Tx hash: %s\n", res.TxHash)
-	return nil
+	// Passing CheckTx isn't succeeding: a transaction short of gas is
+	// accepted, then fails in its block. Wait for the block's answer.
+	for deadline := time.Now().Add(txWait); time.Now().Before(deadline); time.Sleep(time.Second) {
+		d, err := client.GetTransactionByHash(res.TxHash)
+		if errors.Is(err, wallet.ErrTransactionNotFound) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("looking the transaction up: %w", err)
+		}
+		if d.Code != 0 {
+			return fmt.Errorf("failed in block %d (code %d, gas %d of %d): %s", d.Height, d.Code, d.GasUsed, d.GasWanted, d.RawLog)
+		}
+		fmt.Printf("In block %d (gas %d of %d).\n", d.Height, d.GasUsed, d.GasWanted)
+		return nil
+	}
+	return fmt.Errorf("not in a block after %s: check it with `aetherd q tx %s`", txWait, res.TxHash)
 }
+
+// txWait is how long sendMsg waits for a transaction to land.
+const txWait = 60 * time.Second
 
 func withClient(f func(w *wallet.Wallet, c *wallet.Client) error) error {
 	w, err := newWallet()

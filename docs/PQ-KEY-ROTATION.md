@@ -50,7 +50,9 @@ Every account gets a rotation record (gRPC `aether.accountauth.v1.Query/Rotation
 - **Delayed changes:** changes by the current key apply in the
   `EndBlocker` of their height (`ApplyDueRotations`, with a due index so
   each block reads only what is due), with `key_rotation_applied` (or
-  `key_rotation_failed`) and `recovery_set_applied` events.
+  `key_rotation_failed`) and `recovery_set_applied` events. A change due
+  at block H applies after H's transactions, so a cancel included in
+  block H itself still stops it; from H+1 it has applied.
 - **Recovery set versus guardian authenticator:** the recovery set is
   separate from a `guardian_threshold` authenticator. Authenticators never
   rotate: `ExecAuthenticated` refuses all seven messages.
@@ -101,6 +103,12 @@ is safe to run as a service and sell over x402.
 **What a watchtower can do:** cancel a change the current key scheduled
 (a key change, or a change to the recovery set, such as a thief removing
 it).
+
+**Gas:** each signature a rotation handler verifies (a guardian's, a
+watchtower's, a new key's proof) costs `SignatureVerifyGas` (2,000, the
+ante's price for an ML-DSA-44 verify). A repeat of a guardian already
+counted, a key that isn't a guardian, and anything past the threshold
+aren't verified at all.
 
 **What it can't do:**
 - rotate, recover or spend;
@@ -208,6 +216,11 @@ wallet watchtower-sign <watchtower> <account> [--out sig.json]   # at the accoun
 wallet watchtower-cancel <submitter> <account> <sig.json>
 ```
 
+- **Gas:** the commands that send take `--gas` (default `auto`: simulate,
+  then 1.3 times what it used) and `--fees`. A full recovery set is tens of
+  kilobytes; on a devnet, setting 10 guardians and 3 watchtowers used
+  826,825 gas, so the old fixed 400,000 ran out. They wait for the block
+  and report a failure there (out of gas, say) as an error.
 - **Guardian signatures:** each guardian signs on their own machine at
   the account's current recovery nonce. The submitter collects the files,
   which name the account, the action, the nonce and the approved new

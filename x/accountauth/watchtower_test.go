@@ -3,6 +3,8 @@ package accountauth
 import (
 	"testing"
 
+	storetypes "cosmossdk.io/store/types"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -162,4 +164,28 @@ func TestWatchtower_GateAndDelegation(t *testing.T) {
 	require.True(t, IsRotationMsg(&MsgGuardianSetRecovery{}))
 	require.True(t, IsRotationMsgTypeURL("/aether.accountauth.v1.MsgWatchtowerCancel"))
 	require.True(t, IsRotationMsgTypeURL("/aether.accountauth.v1.MsgGuardianSetRecovery"))
+}
+
+// Each guardian signature checked costs gas; repeats of a counted
+// guardian, keys that aren't guardians and anything past the threshold
+// aren't checked at all.
+func TestRecoveryApproves_ChargesPerSignature(t *testing.T) {
+	f := newRotFixture(t, rotChain, 10)
+	g := recoverySet(t, 3)
+	set := &RecoverySet{GuardianPubkeys: pubs(g), Threshold: 2}
+	sb := GuardianCancelSigningBytes(rotChain, f.addr(), 0)
+	outsider := newRotKey(t)
+	measure := func(sigs ...*GuardianSignature) (uint64, error) {
+		ctx := f.ctx.WithGasMeter(storetypes.NewGasMeter(1 << 40))
+		err := recoveryApproves(ctx, set, sb, sigs)
+		return ctx.GasMeter().GasConsumed(), err
+	}
+	g0 := g[0].guardianSig(t, sb)
+	used, err := measure(g0, g0, g0, outsider.guardianSig(t, sb), g[1].guardianSig(t, sb), g[2].guardianSig(t, sb))
+	require.NoError(t, err)
+	require.Equal(t, uint64(2*SignatureVerifyGas), used, "g0 once, g1, then the threshold is met")
+
+	used, err = measure(g0, g0, g0, g0)
+	require.ErrorIs(t, err, ErrThresholdNotMet)
+	require.Equal(t, uint64(SignatureVerifyGas), used, "one guardian, however often it repeats")
 }
