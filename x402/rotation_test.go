@@ -47,3 +47,30 @@ func TestVerifyRotatedPayer(t *testing.T) {
 		require.Equal(t, ReasonSigner, got.InvalidReason, name)
 	}
 }
+
+// After a rotation the retired key still hashes to the account's address;
+// the account now holds another key, so the retired key no longer signs
+// for it. A payer that never rotated (its stored key is its own, or none
+// yet) is accepted as before.
+func TestVerifyRetiredKeyRefused(t *testing.T) {
+	s := newSigner(t)
+	acc, err := s.w.GetAccount("payer")
+	require.NoError(t, err)
+	req := requirement()
+	tx := s.sign(t, []sdk.Msg{send(s.addr, payTo, sdk.NewCoins(sdk.NewInt64Coin("uaeth", 500)))}, 7, 3, 0)
+	ctx := context.Background()
+	plain := &fakeChain{number: 7, sequence: 3, height: 100}
+
+	successor := newSigner(t)
+	newAcc, err := successor.w.GetAccount("payer")
+	require.NoError(t, err)
+	rotated := keyedChain{fakeChain: plain, keys: map[string][]byte{s.addr: newAcc.PubKey}}
+	got := NewFacilitator(testChain, rotated).Verify(ctx, payloadFor(req, tx), req)
+	require.Equal(t, ReasonSigner, got.InvalidReason)
+
+	for name, key := range map[string][]byte{"its own key on chain": acc.PubKey, "no key on chain yet": nil} {
+		c := keyedChain{fakeChain: plain, keys: map[string][]byte{s.addr: key}}
+		got = NewFacilitator(testChain, c).Verify(ctx, payloadFor(req, tx), req)
+		require.Equal(t, VerifyResponse{IsValid: true, Payer: s.addr}, got, name)
+	}
+}

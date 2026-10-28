@@ -11,6 +11,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	"github.com/whoyoujoshin/aether/x/accountauth"
@@ -145,9 +147,12 @@ func (c *Client) Rotation(ctx context.Context, account string) (*accountauth.Que
 
 // AccountPubKey is the ML-DSA-44 key stored on the account, which signs
 // for it: after a rotation not the key its address derives from. Nil if
-// the account has signed nothing yet.
+// the account has signed nothing yet or doesn't exist.
 func (c *Client) AccountPubKey(ctx context.Context, address string) ([]byte, error) {
 	resp, err := c.authClient.AccountInfo(ctx, &authtypes.QueryAccountInfoRequest{Address: address})
+	if status.Code(err) == codes.NotFound {
+		return nil, nil // no account yet, so no key
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -158,21 +158,25 @@ wallet guardian-cancel <submitter> <account> <sig.json>...
 - **`aetherd tx ... --from <key>`** can't sign for a rotated account: the
   SDK client takes the sender from the key's own address. Use `wallet` or
   agentmcp.
-- **x402:** the facilitator (`x402.Facilitator` over `NodeChain`) accepts
-  a rotated payer by checking that the signing key is the one stored on
-  the account. The upstream spec (x402-foundation/x402#3788) and
-  `@x402/cosmos` need the same rule: verify against the account's on-chain
-  key, not only the hash of the transaction's key.
-- **Off-chain signature checks still tie an address to the hash of its
-  key**, so they refuse a rotated account until they look the key up on
-  chain the way the facilitator does:
+- **The rule every verifier needs** is the chain's: the key that signs
+  for an account is the one stored on it; only an account with no stored
+  key yet is signed for by the key its address hashes from. Checking only
+  the hash is wrong both ways after a rotation: it refuses the new key,
+  and it **accepts the retired one**, whose hash is still the address.
+- **x402:** the facilitator (`x402.Facilitator` over `NodeChain`) applies
+  that rule. The upstream spec (x402-foundation/x402#3788) and
+  `@x402/cosmos` need it too.
+- **Off-chain signature checks still check only the hash**, so after a
+  rotation they refuse the new key and keep accepting the retired one:
   - paywall prepaid sign-in (`paywall/prepaid.go`);
   - mandates (`paywall/mandate.go`);
   - payee receipts (`paywall/receipt.go`);
   - agentmcp's `--approver` decisions (`cmd/agentmcp/approvals.go`).
 
-  Until then, an owner who rotates sets `--approver`, mandates and payees
-  to addresses whose keys they hold.
+  Until they apply the rule (a lookup of the account's key on chain), an
+  owner who rotates because a key leaked must also change `--approver`,
+  revoke mandates and move payees, since the leaked key still passes
+  those checks.
 - **Clients:** the TypeScript and Python clients don't build rotation
   messages yet.
 - **Shared keys:** a key may sign for several accounts: its own address
@@ -230,5 +234,5 @@ Upgrade checklist:
   the height.
 - **`wallet/rotation_test.go`:** the signs-for record (persisted, copied,
   removed, bad file refused) and the message builders' proofs.
-- **`x402/rotation_test.go`:** a rotated payer is accepted only with its
+- **`x402/rotation_test.go`:** a retired key is refused; a rotated payer is accepted only with its
   on-chain key.

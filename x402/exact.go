@@ -44,23 +44,30 @@ type Chain interface {
 	TxResult(ctx context.Context, hash string) (found bool, code uint32, log string, err error)
 }
 
-// AccountKeyChain is a Chain that reads the key stored on an account.
-// After a key rotation (docs/PQ-KEY-ROTATION.md) the payer's address is
-// no longer the hash of the key that signs for it; the facilitator then
-// accepts the payment if that key is the one on the account. A Chain
-// without it accepts only keys whose address is the payer's.
+// AccountKeyChain is a Chain that reads the key stored on an account
+// (nil if the account has signed nothing yet). With it the facilitator
+// applies the chain's own rule (docs/PQ-KEY-ROTATION.md): the key that
+// signs for an account is the one stored on it, and only an account with
+// no stored key is signed for by the key its address hashes from. After
+// a rotation that accepts the new key, whose address isn't the payer's,
+// and refuses the retired one, whose address still is. A Chain without it
+// accepts only a key whose address is the payer's.
 type AccountKeyChain interface {
 	AccountPubKey(ctx context.Context, address string) ([]byte, error)
 }
 
-// isRotatedKey: pub is the key stored on account, which signs for it.
-func (f *Facilitator) isRotatedKey(ctx context.Context, account string, pub []byte) bool {
-	kc, ok := f.Chain.(AccountKeyChain)
-	if !ok {
-		return false
+// signsFor reports whether pub signs for account (payer).
+func (f *Facilitator) signsFor(ctx context.Context, account string, payer sdk.AccAddress, pub cryptotypes.PubKey) (bool, error) {
+	if kc, ok := f.Chain.(AccountKeyChain); ok {
+		onChain, err := kc.AccountPubKey(ctx, account)
+		if err != nil {
+			return false, err
+		}
+		if len(onChain) > 0 {
+			return bytes.Equal(onChain, pub.Bytes()), nil
+		}
 	}
-	onChain, err := kc.AccountPubKey(ctx, account)
-	return err == nil && len(onChain) > 0 && bytes.Equal(onChain, pub)
+	return sdk.AccAddress(pub.Address()).Equals(payer), nil
 }
 
 // Facilitator verifies and settles exact payments on one Aether chain.
@@ -293,7 +300,9 @@ func (f *Facilitator) check(ctx context.Context, p PaymentPayload, req PaymentRe
 	if _, ok := pub.(*mldsa.PubKey); !ok {
 		return c, ReasonSigner
 	}
-	if !sdk.AccAddress(pub.Address()).Equals(payer) && !f.isRotatedKey(ctx, send.FromAddress, pub.Bytes()) {
+	if ok, err := f.signsFor(ctx, send.FromAddress, payer, pub); err != nil {
+		return c, ReasonUnexpectedVerify
+	} else if !ok {
 		return c, ReasonSigner
 	}
 	// The payer pays the fee itself.
