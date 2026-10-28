@@ -147,12 +147,27 @@ watchtower present, because it applies at once.
 - **`checkRotationMsgs`** runs before the chain, in every mode:
   - From the height, a rotation message must be at the top level of a
     transaction. It is refused inside authz `MsgExec`,
-    `MsgExecAuthenticated` or a governance proposal, and so is an authz
-    grant for one: a grantee could otherwise move the granter's address
-    onto its own key. Messages nested more than 6 deep are refused.
+    `MsgExecAuthenticated` or a governance proposal, with a clear error.
+    Messages nested more than 6 deep are refused.
   - Before the height, any transaction reaching a rotation type is
-    refused, nested or not, and so is a grant for one. See activation
-    below.
+    refused, nested or not. See activation below.
+- **`rotationFilteredRouter`** enforces the same rule at the handlers.
+  Every keeper that dispatches inner messages gets the app's router
+  without the rotation messages:
+  - authz;
+  - interchain accounts (host and controller);
+  - x/governance;
+  - x/accountauth.
+
+  Only baseapp's own top-level routing reaches the rotation handlers. That
+  covers the paths no ante handler sees: an ICA packet, executed by the
+  host keeper, and a proposal executing at the end of a block (Grok's
+  red-team, finding 1).
+- **authz grants:** a grant for a rotation message is refused by authz
+  itself, with "doesn't exist", because its router has no such type. A
+  grantee could otherwise move the granter's address onto its own key. An
+  older binary, which has no rotation types, refuses the same grant the
+  same way, so the two can't disagree on it while validators upgrade.
 
 ## Delay versus balance
 
@@ -315,8 +330,11 @@ Upgrade checklist:
   - an authz grant for `MsgRotateKey` is refused;
   - before the height on a testnet chain ID, the stock refusal applies;
   - the SDK version guard.
-- **`app/rotation_walk_test.go`:** every nesting case before and after
-  the height.
+- **`app/rotation_walk_test.go`:**
+  - every nesting case before and after the height;
+  - the filtered router, called directly past the ante: authz
+    `DispatchActions` and `Grant`, a governance proposal;
+  - the router each ICA and accountauth keeper holds.
 - **`x/accountauth/watchtower_test.go`:**
   - set rules (guardians needed, at most 3, never a guardian);
   - cancelling a current-key rotation and a thief's removal of the set;
