@@ -177,7 +177,11 @@ in escrow for Aether. Keep that small while the chain is young:
   sandbox funder, service payee and decoy keys are all in `keyring-backend
   test`, which is unencrypted on disk. Mainnet money needs an encrypted
   keyring on a machine that is not a validator. "Never build on a validator"
-  stays too.
+  stays too. **Built (AET-26):** services open a `file` keyring
+  unattended from a passphrase file (`AETHER_KEYRING_PASSPHRASE_FILE`, a
+  systemd encrypted credential), `wallet copy-key` moves ML-DSA keys into
+  one (the SDK's `keys export` can't), and `docs/SERVICE-KEYS.md` moves the
+  testnet seed's keys: the hot ones encrypted, the payee off the server.
 
 ## 4. The mainnet genesis and build
 
