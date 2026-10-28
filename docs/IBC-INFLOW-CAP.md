@@ -4,7 +4,7 @@
 (module, keeper, `MsgUpdateParams`, queries and the middleware) and
 `app/inflowcap.go` (wiring and activation). For Cosmos SDK v0.50 with
 ibc-go v8.8. It is on from block 1 on fresh chains; on the testnet its
-height is a placeholder (see Activation).
+height is 511,920 (see Activation).
 **Related:** `docs/MAINNET.md` §2 (one USDC path, an inflow cap).
 
 ## Why
@@ -167,8 +167,9 @@ that block once restarted.
 - **Fresh chains** (`gates.Fresh`): on from block 1. A genesis without an
   `inflowcap` section starts from the default, which lists nothing. On
   `aether-1` that is what genesis should have: see Listing on aether-1.
-- **The testnet:** `InflowCapActivationHeight` is a placeholder
-  (30,000,000), chosen after the devnet run below. No genesis sets a list
+- **The testnet:** `InflowCapActivationHeight` is 511,920 (chosen
+  2026-10-28, about 16:40 UTC on 2026-10-29; runbook
+  `docs/UPGRADE-INFLOWCAP-FEES.md`). No genesis sets a list
   there, so the activation block sets `testnetInflowEntries`: USDC from
   Injective over `channel-2` capped at 100 USDC, and OSMO from Osmosis
   over `channel-3` capped at 1,000 OSMO. Every other voucher (INJ, the

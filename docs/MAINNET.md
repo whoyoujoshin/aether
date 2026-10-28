@@ -177,7 +177,11 @@ in escrow for Aether. Keep that small while the chain is young:
   sandbox funder, service payee and decoy keys are all in `keyring-backend
   test`, which is unencrypted on disk. Mainnet money needs an encrypted
   keyring on a machine that is not a validator. "Never build on a validator"
-  stays too.
+  stays too. **Built (AET-26):** services open a `file` keyring
+  unattended from a passphrase file (`AETHER_KEYRING_PASSPHRASE_FILE`, a
+  systemd encrypted credential), `wallet copy-key` moves ML-DSA keys into
+  one (the SDK's `keys export` can't), and `docs/SERVICE-KEYS.md` moves the
+  testnet seed's keys: the hot ones encrypted, the payee off the server.
 
 ## 4. The mainnet genesis and build
 
@@ -238,14 +242,18 @@ in escrow for Aether. Keep that small while the chain is young:
     couldn't spend it) is credited the same way, with a
     `treasury_ledger_credited` event; the ledger is only raised. The treasury's
     `Balance` query lists every denom it holds (`real_bank_balances`). On
-    from block 1 on fresh chains; a placeholder height (30,000,000) on the
+    from block 1 on fresh chains; at 511,920 on the
     testnet, where the fee collector holds 0.016374 AETH from since genesis
     that the first swept block moves. It adds no store, but it changes
     every block, so validators need a binary carrying the height first. It
     is on the review's list.
   - **Still open:** the price itself, which is node configuration and can
-    change without a release. Governance can't spend the treasury's USDC
-    yet: its spends are uaeth only.
+    change without a release.
+  - **Governance spends the treasury's USDC** (AET-27): a treasury-spend
+    proposal's amount may be one coin of any denom the treasury holds,
+    paid from its bank balance; uaeth still goes through the ledger. On
+    from block 1 on fresh chains, at the fees height on the testnet
+    (`TreasuryCoinSpendActivationHeight`). No new message type or field.
 - **Chain ID:** `aether-1`.
 
 ## 5. Review instead of audit

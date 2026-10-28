@@ -11,6 +11,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/bech32"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/whoyoujoshin/aether/gates"
@@ -20,8 +22,10 @@ import (
 // The seat rule (x/pow/seats.go, docs/SEAT-RULE.md) seats the top miners
 // by seat work, the difficulty their accepted submissions met over the
 // last pow.SeatWorkWindowEpochs epochs, and gives each power in
-// proportion. There is no query for seat work, so it is read from x/pow's
-// store, and power from the validator set CometBFT holds.
+// proportion. Seat work comes from x/pow's SeatWork query, which also
+// says who is eligible and what the 1% bar is measured against; a node
+// from before that query has its store read instead. Power comes from
+// the validator set CometBFT holds.
 
 // Why an address can't be seated under the seat rule.
 const (
@@ -44,9 +48,55 @@ type seatWindow struct {
 	total math.Int
 	// current is each address's seat work in epoch itself.
 	current map[string]math.Int
+	// From the SeatWork query only (fromQuery): each address's
+	// eligibility and the total the 1% bar is measured against.
+	fromQuery bool
+	eligible  map[string]bool
+	bar       math.Int
 }
 
 func (c *Client) seatWindow(at context.Context, height, epoch int64) (*seatWindow, error) {
+	res, err := pow.NewQueryClient(c.conn).SeatWork(at, &pow.QuerySeatWorkRequest{})
+	switch {
+	case err == nil && res.Epoch == epoch:
+		return seatWindowFromQuery(res)
+	case err != nil && status.Code(err) != codes.Unimplemented:
+		return nil, fmt.Errorf("seat work: %w", err)
+	}
+	return c.seatWindowFromStore(at, height, epoch)
+}
+
+func seatWindowFromQuery(res *pow.QuerySeatWorkResponse) (*seatWindow, error) {
+	w := &seatWindow{work: map[string]math.Int{}, current: map[string]math.Int{}, fromQuery: true, eligible: map[string]bool{}}
+	var ok bool
+	if w.total, ok = math.NewIntFromString(res.WindowTotal); !ok {
+		return nil, fmt.Errorf("seat work: window total %q", res.WindowTotal)
+	}
+	if w.bar, ok = math.NewIntFromString(res.BarTotal); !ok {
+		return nil, fmt.Errorf("seat work: bar total %q", res.BarTotal)
+	}
+	for _, e := range res.Entries {
+		work, ok := math.NewIntFromString(e.WindowWork)
+		if !ok {
+			return nil, fmt.Errorf("seat work of %s: %q", e.Address, e.WindowWork)
+		}
+		cur, ok := math.NewIntFromString(e.EpochWork)
+		if !ok {
+			return nil, fmt.Errorf("seat work of %s this epoch: %q", e.Address, e.EpochWork)
+		}
+		w.order = append(w.order, e.Address)
+		w.work[e.Address] = work
+		if cur.IsPositive() {
+			w.current[e.Address] = cur
+		}
+		w.eligible[e.Address] = e.Eligible
+	}
+	return w, nil
+}
+
+// seatWindowFromStore reads the window from x/pow's store, for a node
+// without the SeatWork query.
+func (c *Client) seatWindowFromStore(at context.Context, height, epoch int64) (*seatWindow, error) {
 	cmt := cmtservice.NewServiceClient(c.conn)
 	w := &seatWindow{work: map[string]math.Int{}, total: math.ZeroInt(), current: map[string]math.Int{}}
 	for e := epoch - pow.SeatWorkWindowEpochs + 1; e <= epoch; e++ {
@@ -196,18 +246,26 @@ func (c *Client) applySeatRule(at context.Context, st *MinerStatus) error {
 	if err != nil {
 		return err
 	}
-	elig, err := c.eligibility(at, st.Height, w.order)
-	if err != nil {
-		return err
-	}
-	// From SeatHardeningHeight the 1% bar is measured against eligible
-	// work only, as computeSeats does with eligibleTotal.
-	bar := w.total
-	if st.Epoch.SelectionHeight >= gates.Height(st.ChainID, pow.SeatHardeningHeight) {
-		bar = math.ZeroInt()
+	eligible, bar := w.eligible, w.bar
+	if !w.fromQuery {
+		// Two lookups per address in the window, which the query saves.
+		elig, err := c.eligibility(at, st.Height, w.order)
+		if err != nil {
+			return err
+		}
+		eligible = make(map[string]bool, len(w.order))
 		for i, a := range w.order {
-			if elig[i].registered && !elig[i].banned {
-				bar = bar.Add(w.work[a])
+			eligible[a] = elig[i].registered && !elig[i].banned
+		}
+		// From SeatHardeningHeight the 1% bar is measured against eligible
+		// work only, as computeSeats does with eligibleTotal.
+		bar = w.total
+		if st.Epoch.SelectionHeight >= gates.Height(st.ChainID, pow.SeatHardeningHeight) {
+			bar = math.ZeroInt()
+			for _, a := range w.order {
+				if eligible[a] {
+					bar = bar.Add(w.work[a])
+				}
 			}
 		}
 	}
@@ -216,8 +274,8 @@ func (c *Client) applySeatRule(at context.Context, st *MinerStatus) error {
 		work math.Int
 	}
 	var qualified []cand
-	for i, a := range w.order {
-		if elig[i].registered && !elig[i].banned && qualifies(w.work[a], bar) {
+	for _, a := range w.order {
+		if eligible[a] && qualifies(w.work[a], bar) {
 			qualified = append(qualified, cand{a, w.work[a]})
 		}
 	}

@@ -23,6 +23,10 @@
 # X-Aether-Bench-Key draw new wallets from the payments benchmark's own
 # allowance (200 a day, enough for 15 thirteen-task runs) instead of the per-caller one (docs/BENCHMARK.md).
 # Hand it to whoever runs the benchmark as AETHER_BENCH_KEY, not in a chat.
+#
+# KEYRING_BACKEND=file (docs/SERVICE-KEYS.md) runs the funder from an
+# encrypted keyring: copy the key in first (wallet copy-key) and make the
+# credential /etc/credstore.encrypted/aether-sandbox-keyring.
 set -euo pipefail
 REPO=${REPO:-$(pwd)}
 # Once scripts/querynode/point.sh has moved the services to the query node
@@ -37,6 +41,11 @@ USDC="--usdc-path transfer/channel-2 --usdc-base-denom erc20:0x0C382e685bbeeFE5d
 . "$(dirname "$0")/../lib/prebuilt.sh"
 prebuilt_check
 no_build_on_validator
+# The funder signs unattended: KEYRING_BACKEND=file keeps it in an encrypted
+# keyring, its passphrase the systemd credential $CREDSTORE/$CRED.
+. "$(dirname "$0")/../lib/keyring.sh"
+CRED=${CRED:-aether-sandbox-keyring}
+keyring_check "$CRED"
 
 [ -n "${PREBUILT:-}" ] || echo "== Building from $(git -C "$REPO" log -1 --format='%h %s')"
 place_bin agentmcp /root/agentmcp-sandbox.new ./cmd/agentmcp
@@ -44,12 +53,14 @@ place_bin aetherd /root/aetherd-keys.tmp ./cmd/aetherd
 mv /root/agentmcp-sandbox.new /root/agentmcp-sandbox
 
 mkdir -p "$KEYDIR" && chmod 700 "$KEYDIR"
-if ! /root/aetherd-keys.tmp keys show sandbox-funder --keyring-backend test --keyring-dir "$KEYDIR" >/dev/null 2>&1; then
+if ! keyring_keys "$CRED" /root/aetherd-keys.tmp show sandbox-funder --keyring-dir "$KEYDIR" >/dev/null 2>&1; then
+  # An encrypted keyring gets its key copied in (wallet copy-key), never made here.
+  [ "$KEYRING_BACKEND" = test ] || { echo "no sandbox-funder in the file keyring in $KEYDIR: copy it in first (docs/SERVICE-KEYS.md)" >&2; exit 1; }
   echo "== Creating the funder key (its mnemonic is in $KEYDIR/funder-mnemonic.txt: keep it there or back it up)"
   /root/aetherd-keys.tmp keys add sandbox-funder --keyring-backend test --keyring-dir "$KEYDIR" > "$KEYDIR/funder-mnemonic.txt" 2>&1
   chmod 600 "$KEYDIR/funder-mnemonic.txt"
 fi
-FUNDER=$(/root/aetherd-keys.tmp keys show sandbox-funder -a --keyring-backend test --keyring-dir "$KEYDIR")
+FUNDER=$(keyring_keys "$CRED" /root/aetherd-keys.tmp show sandbox-funder -a --keyring-dir "$KEYDIR")
 if [ ! -s "$KEYDIR/bench-key" ]; then
   echo "== Creating the benchmark key ($KEYDIR/bench-key)"
   (umask 077 && openssl rand -hex 24 > "$KEYDIR/bench-key")
@@ -66,8 +77,9 @@ Description=Aether hosted test wallet (custodial testnet wallets over MCP)
 After=network-online.target
 
 [Service]
-ExecStart=/root/agentmcp-sandbox --sandbox-http 127.0.0.1:8092 --grpc $GRPC --chain-id $CHAIN_ID --rpc "" --keyring-dir $KEYDIR --keyring-backend test --sandbox-funder sandbox-funder --sandbox-secret-file $KEYDIR/token-secret --sandbox-bench-key-file $KEYDIR/bench-key --sandbox-bench-per-day 200 $LISTINGS --sandbox-grant-usdc "${USDC_GRANT:-0.01 USDC}" $USDC
+ExecStart=/root/agentmcp-sandbox --sandbox-http 127.0.0.1:8092 --grpc $GRPC --chain-id $CHAIN_ID --rpc "" --keyring-dir $KEYDIR --keyring-backend $KEYRING_BACKEND --sandbox-funder sandbox-funder --sandbox-secret-file $KEYDIR/token-secret --sandbox-bench-key-file $KEYDIR/bench-key --sandbox-bench-per-day 200 $LISTINGS --sandbox-grant-usdc "${USDC_GRANT:-0.01 USDC}" $USDC
 Environment=HOME=/root
+$(keyring_unit_lines "$CRED")
 Restart=always
 RestartSec=2
 NoNewPrivileges=true

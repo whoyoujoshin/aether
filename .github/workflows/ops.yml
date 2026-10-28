@@ -31,3 +31,6 @@ jobs:
 
       - name: query node script tests
         run: bash scripts/querynode/lib_test.sh
+
+      - name: keyring script tests
+        run: bash scripts/lib/keyring_test.sh

@@ -107,6 +107,20 @@ const AmountValidationActivationHeight int64 = 90000
 // height immediately before the coordinated cutover.
 const ParamChangeGovernanceActivationHeight int64 = 90000
 
+// TreasuryCoinSpendActivationHeight lets a treasury-spend proposal's
+// amount be one coin of any denom the treasury holds ("1000000ibc/064D…",
+// the USDC that fees bring from FeesToTreasuryActivationHeight), not only
+// a plain uaeth integer. uaeth still goes through x/treasury's ledger
+// (Spend); any other denom is paid from the treasury's bank balance
+// (SpendCoin), with no ledger. Below the height submission and execution
+// are exactly as before, so a coin amount is refused at submission as it
+// always was. No new message type or field: the amount stays a string,
+// so a node on the old binary decodes every transaction the same way.
+//
+// It moves with app.FeesToTreasuryActivationHeight (an app test checks
+// they're equal): 511,920 on the testnet, block 1 on fresh chains.
+const TreasuryCoinSpendActivationHeight int64 = 511_920
+
 // QuorumActiveValidatorCountActivationHeight gates a change to
 // computeQuorumThreshold: before this height, quorum is 60% of
 // x/pow's GetTopKSize (the fixed target validator-set size, e.g. 21);

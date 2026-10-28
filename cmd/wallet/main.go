@@ -70,6 +70,7 @@ func main() {
 		newListCmd(),
 		newBalanceCmd(),
 		newSendCmd(),
+		newCopyKeyCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -284,4 +285,48 @@ func resolveAddress(nameOrAddress string) (string, error) {
 		return "", fmt.Errorf("%q is not a valid address and no account with that name was found: %w", nameOrAddress, err)
 	}
 	return account.Address, nil
+}
+
+// newCopyKeyCmd moves service keys off the unencrypted test keyring
+// (docs/SERVICE-KEYS.md): it copies keys, address unchanged, into another
+// keyring, typically an encrypted "file" one. The destination's
+// passphrase comes from AETHER_KEYRING_PASSPHRASE_FILE, or is asked for
+// (twice, when the keyring is new). The source keeps its copy until you
+// delete it.
+func newCopyKeyCmd() *cobra.Command {
+	var toDir, toBackend string
+	cmd := &cobra.Command{
+		Use:   "copy-key <name>... --to-dir <dir> [--to-backend file]",
+		Short: "Copy keys, address unchanged, from this keyring into another (e.g. test into an encrypted file keyring)",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if toDir == "" {
+				return fmt.Errorf("--to-dir is required")
+			}
+			if toDir == keyringDir && toBackend == keyringBackend {
+				return fmt.Errorf("the destination is the source")
+			}
+			from, err := newWallet()
+			if err != nil {
+				return err
+			}
+			registry := codectypes.NewInterfaceRegistry()
+			mldsa.RegisterInterfaces(registry)
+			to, err := wallet.NewWallet("aetherd", toBackend, toDir, codec.NewProtoCodec(registry))
+			if err != nil {
+				return err
+			}
+			for _, name := range args {
+				acc, err := wallet.CopyKey(name, from, to)
+				if err != nil {
+					return fmt.Errorf("%s: %w", name, err)
+				}
+				fmt.Printf("%s %s copied to the %s keyring in %s\n", acc.Name, acc.Address, toBackend, toDir)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&toDir, "to-dir", "", "the destination keyring directory")
+	cmd.Flags().StringVar(&toBackend, "to-backend", "file", "the destination keyring backend")
+	return cmd
 }

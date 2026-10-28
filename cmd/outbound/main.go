@@ -29,6 +29,7 @@ import (
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/counterparty"
 	"github.com/whoyoujoshin/aether/relayer"
+	"github.com/whoyoujoshin/aether/wallet"
 )
 
 func main() {
@@ -62,7 +63,11 @@ func main() {
 		log.Fatal(err)
 	}
 	cpartyEnc := counterparty.MakeEncodingConfig(*cpartyBech32)
-	kr, err := relayer.OpenCounterpartyKeyring(*keyringBack, *cpartyHome, os.Stdin, cpartyEnc.Codec)
+	kin, err := wallet.KeyringInput(*keyringBack)
+	if err != nil {
+		log.Fatalf("keyring: %v", err)
+	}
+	kr, err := relayer.OpenCounterpartyKeyring(*keyringBack, *cpartyHome, kin, cpartyEnc.Codec)
 	if err != nil {
 		log.Fatalf("opening keyring: %v", err)
 	}

@@ -45,7 +45,11 @@ func (k msgServer) SubmitProposal(goCtx context.Context, msg *MsgSubmitProposal)
 	// status already committed to PASSED beforehand). Gated on
 	// AmountValidationActivationHeight per the same discipline as every
 	// other fix in this project -- see that constant's doc comment.
-	if gates.On(ctx, AmountValidationActivationHeight) {
+	if gates.On(ctx, TreasuryCoinSpendActivationHeight) {
+		if _, err := ParseSpendAmount(msg.Amount); err != nil {
+			return nil, sdkerrors.Wrapf(ErrInvalidAmount, "%s", err)
+		}
+	} else if gates.On(ctx, AmountValidationActivationHeight) {
 		amount, ok := math.NewIntFromString(msg.Amount)
 		if !ok || !amount.IsPositive() {
 			return nil, sdkerrors.Wrapf(ErrInvalidAmount, "invalid or non-positive amount %q", msg.Amount)

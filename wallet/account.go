@@ -2,7 +2,6 @@ package wallet
 
 import (
 	"errors"
-	"os"
 
 	"github.com/cosmos/go-bip39"
 
@@ -37,8 +36,15 @@ type Wallet struct {
 // the given backend ("test", "file", "os"). appName should match the
 // chain's binary name ("aetherd") for consistency with existing
 // keyring data.
+//
+// A "file" keyring is encrypted on disk; a service opens one unattended by
+// naming its passphrase file in KeyringPassphraseFileEnv.
 func NewWallet(appName, backend, rootDir string, cdc codec.Codec) (*Wallet, error) {
-	kr, err := keyring.New(appName, backend, rootDir, os.Stdin, cdc, func(options *keyring.Options) {
+	in, err := KeyringInput(backend)
+	if err != nil {
+		return nil, err
+	}
+	kr, err := keyring.New(appName, backend, rootDir, in, cdc, func(options *keyring.Options) {
 		options.SupportedAlgos = append(options.SupportedAlgos, mldsa.Algo)
 	})
 	if err != nil {

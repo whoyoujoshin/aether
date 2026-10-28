@@ -4,14 +4,20 @@ import { useApi } from "../hooks";
 import { AddressLink, CopyButton } from "../components/Hash";
 import { ProposalStatusBadge } from "../components/StatusBadge";
 import { ErrorBanner, HeadStat, StackBar, pct } from "../components/ui";
-import { aeth, duration, utc } from "../format";
+import { aeth, coins, duration, utc } from "../format";
+
+/** A treasury spend's amount: a plain integer is uaeth; from the coin-spend
+ *  height it may be one coin of another denom, e.g. USDC. */
+function spendAmount(amount: string): string {
+  return /^\d*$/.test(amount) ? aeth(amount || "0") : coins(amount);
+}
 
 function kind(p: Proposal): string {
   return p.proposalType === "PROPOSAL_TYPE_PARAM_CHANGE" ? "ParamChange" : p.proposalType === "PROPOSAL_TYPE_TREASURY_SPEND" ? "TreasurySpend" : p.proposalType.replace("PROPOSAL_TYPE_", "");
 }
 
 function title(p: Proposal): string {
-  if (p.proposalType === "PROPOSAL_TYPE_TREASURY_SPEND") return `Spend ${aeth(p.amount || "0")} from the treasury`;
+  if (p.proposalType === "PROPOSAL_TYPE_TREASURY_SPEND") return `Spend ${spendAmount(p.amount)} from the treasury`;
   if (p.proposalType === "PROPOSAL_TYPE_PARAM_CHANGE") return "Change module parameters";
   return `Proposal #${p.id}`;
 }
@@ -60,7 +66,7 @@ function LiveVote({ p, activeValidators }: { p: Proposal; activeValidators: numb
         <div className="dim" style={{ fontSize: 15, lineHeight: 1.55, marginTop: 10, maxWidth: 560 }}>
           {p.proposalType === "PROPOSAL_TYPE_TREASURY_SPEND" ? (
             <>
-              If it passes, {aeth(p.amount || "0")} goes from the treasury to <AddressLink address={p.recipient} copy={false} />.
+              If it passes, {spendAmount(p.amount)} goes from the treasury to <AddressLink address={p.recipient} copy={false} />.
             </>
           ) : (
             "If it passes, the chain executes the proposal's parameter change."

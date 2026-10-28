@@ -130,3 +130,23 @@ func TestSpend_RejectsAmountExceedingTrackedBalance(t *testing.T) {
 	require.Error(t, err)
 	require.Empty(t, mockBank.SendCalls, "an over-limit spend must never reach the bank keeper")
 }
+
+// SpendCoin pays a denom other than uaeth from the bank balance, never
+// more than the treasury holds, and leaves the uaeth ledger alone.
+func TestSpendCoin_PaysFromTheBankBalance(t *testing.T) {
+	k, ctx, mockBank := setupKeeper(t)
+	const usdc = "ibc/064D82A67318DD30F54A4E17B6E487C2864E8B075A5871D3ACAD7A7129F32C5C"
+	k.FundTreasury(ctx, math.NewInt(5_000_000))
+	mockBank.Balances = sdk.NewCoins(sdk.NewInt64Coin("uaeth", 5_000_000), sdk.NewInt64Coin(usdc, 3_000_000))
+	recipient := sdk.AccAddress("treasury_spend_test_re")
+
+	require.ErrorIs(t, k.SpendCoin(ctx, recipient, sdk.NewInt64Coin(usdc, 3_000_001)), treasury.ErrInsufficientTreasuryBalance)
+	require.Error(t, k.SpendCoin(ctx, recipient, sdk.NewInt64Coin("uaeth", 1)), "uaeth goes through the ledger")
+	require.Error(t, k.SpendCoin(ctx, recipient, sdk.Coin{Denom: usdc, Amount: math.ZeroInt()}))
+	require.Empty(t, mockBank.SendCalls)
+
+	require.NoError(t, k.SpendCoin(ctx, recipient, sdk.NewInt64Coin(usdc, 1_000_000)))
+	require.Len(t, mockBank.SendCalls, 1)
+	require.Equal(t, "1000000"+usdc, mockBank.SendCalls[0].Coins.String())
+	require.True(t, k.GetTreasuryBalance(ctx).Equal(math.NewInt(5_000_000)), "the ledger is uaeth only")
+}

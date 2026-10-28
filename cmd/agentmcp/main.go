@@ -6,11 +6,14 @@
 //
 // SECURITY MODEL (read before deploying this anywhere real):
 //
-// This server holds a real, unencrypted signing key for one dedicated
-// "agent" account (keyring backend "test" -- unavoidable for
-// unattended signing; there is no human present to type a passphrase
-// on every tool call). Anyone with filesystem access to --keyring-dir
-// can sign as this account. It runs in one of two modes:
+// This server holds a real signing key for one dedicated "agent"
+// account. With keyring backend "test" (the default) the key is
+// unencrypted on disk; with "file" it is encrypted, and the server reads
+// the passphrase from the file AETHER_KEYRING_PASSPHRASE_FILE names (a
+// systemd credential on a server: docs/SERVICE-KEYS.md), since no human
+// is present to type it. Either way, anyone who can read --keyring-dir
+// and that passphrase, or run code as this server, can sign as this
+// account. It runs in one of two modes:
 //
 // Hot-wallet mode (default): payments come from the agent account's
 // own balance. The only guards are this server's own per-transaction
@@ -447,7 +450,7 @@ func main() {
 	flag.StringVar(&grpcEndpoint, "grpc", "localhost:9090", "node gRPC endpoint")
 	flag.StringVar(&chainID, "chain-id", "aether-testnet-1", "chain ID")
 	flag.StringVar(&keyringDir, "keyring-dir", defaultKeyringDir(), "directory for the agent's dedicated keyring")
-	flag.StringVar(&keyringBackend, "keyring-backend", "test", `keyring backend -- "test" (unencrypted) is required for unattended signing; see this file's package doc comment before using anything but a small, disposable balance`)
+	flag.StringVar(&keyringBackend, "keyring-backend", "test", `keyring backend -- "test" (unencrypted) or "file" (encrypted, its passphrase read from the file $AETHER_KEYRING_PASSPHRASE_FILE names); see this file's package doc comment before using anything but a small, disposable balance`)
 	flag.StringVar(&accountName, "account-name", "agent", "name of the managed account within the keyring")
 	flag.Int64Var(&perTxLimit, "per-tx-limit", 1_000_000, "maximum uaeth spendable in a single send_aeth call")
 	flag.Int64Var(&dailyLimit, "daily-limit", 5_000_000, "maximum uaeth spendable in any rolling 24h window")
