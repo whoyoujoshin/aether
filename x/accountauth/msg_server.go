@@ -133,6 +133,12 @@ func (k msgServer) ExecAuthenticated(goCtx context.Context, msg *MsgExecAuthenti
 		msgs[i] = m
 	}
 	for _, m := range msgs {
+		// The recovery set is the only way besides the account's own key
+		// to change its key: a session key or a guardian_threshold
+		// authenticator never rotates.
+		if IsRotationMsg(m) {
+			return nil, sdkerrors.Wrapf(ErrRotationNotDelegable, "%s", sdk.MsgTypeURL(m))
+		}
 		signers, _, err := k.cdc.GetMsgV1Signers(m)
 		if err != nil {
 			return nil, sdkerrors.Wrap(ErrInvalidAuthenticator, err.Error())

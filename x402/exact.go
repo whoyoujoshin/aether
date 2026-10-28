@@ -1,6 +1,7 @@
 package x402
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -41,6 +42,25 @@ type Chain interface {
 	// TxResult is the result of a transaction in a block; found is false
 	// until it's in one.
 	TxResult(ctx context.Context, hash string) (found bool, code uint32, log string, err error)
+}
+
+// AccountKeyChain is a Chain that reads the key stored on an account.
+// After a key rotation (docs/PQ-KEY-ROTATION.md) the payer's address is
+// no longer the hash of the key that signs for it; the facilitator then
+// accepts the payment if that key is the one on the account. A Chain
+// without it accepts only keys whose address is the payer's.
+type AccountKeyChain interface {
+	AccountPubKey(ctx context.Context, address string) ([]byte, error)
+}
+
+// isRotatedKey: pub is the key stored on account, which signs for it.
+func (f *Facilitator) isRotatedKey(ctx context.Context, account string, pub []byte) bool {
+	kc, ok := f.Chain.(AccountKeyChain)
+	if !ok {
+		return false
+	}
+	onChain, err := kc.AccountPubKey(ctx, account)
+	return err == nil && len(onChain) > 0 && bytes.Equal(onChain, pub)
 }
 
 // Facilitator verifies and settles exact payments on one Aether chain.
@@ -270,7 +290,10 @@ func (f *Facilitator) check(ctx context.Context, p PaymentPayload, req PaymentRe
 	if err := enc.InterfaceRegistry.UnpackAny(si.PublicKey, &pub); err != nil {
 		return c, ReasonSigner
 	}
-	if _, ok := pub.(*mldsa.PubKey); !ok || !sdk.AccAddress(pub.Address()).Equals(payer) {
+	if _, ok := pub.(*mldsa.PubKey); !ok {
+		return c, ReasonSigner
+	}
+	if !sdk.AccAddress(pub.Address()).Equals(payer) && !f.isRotatedKey(ctx, send.FromAddress, pub.Bytes()) {
 		return c, ReasonSigner
 	}
 	// The payer pays the fee itself.

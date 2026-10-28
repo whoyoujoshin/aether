@@ -11,6 +11,7 @@ type Keeper struct {
 	cdc      codec.Codec
 	storeKey storetypes.StoreKey
 	router   baseapp.MessageRouter
+	ak       AccountKeeper // key rotation; see WithAccountKeeper
 }
 
 func NewKeeper(cdc codec.Codec, storeKey storetypes.StoreKey, router baseapp.MessageRouter) Keeper {

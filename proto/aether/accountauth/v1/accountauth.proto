@@ -43,3 +43,46 @@ message GuardianSignature {
   bytes pubkey = 1;
   bytes signature = 2;
 }
+
+// Key rotation (docs/PQ-KEY-ROTATION.md): an account keeps its address
+// while the ML-DSA-44 key that signs for it changes. A rotation by the
+// current key, and any change to the recovery set, apply after
+// RotationDelayBlocks; recovery guardians rotate at once, and can cancel
+// a pending change. Every rotation signature covers a nonce (see
+// RotationState).
+
+// RecoverySet is M of N ML-DSA-44 guardians who may rotate the account's
+// key at once and cancel pending changes. It is separate from a
+// guardian_threshold authenticator, which can spend but never rotate.
+message RecoverySet {
+  repeated bytes guardian_pubkeys = 1;
+  uint32 threshold = 2;
+}
+
+// PendingRotation is a key change scheduled by the current key.
+message PendingRotation {
+  bytes new_pubkey = 1;
+  int64 apply_height = 2;
+}
+
+// PendingRecovery is a recovery-set change scheduled by the current key.
+// An empty recovery removes the set.
+message PendingRecovery {
+  RecoverySet recovery = 1;
+  int64 apply_height = 2;
+}
+
+// RotationState is one account's rotation record. It has two nonces so
+// that the current key can't keep the guardians' signatures stale: nonce
+// advances on the current key's own changes and covers MsgRotateKey's
+// proof of possession; recovery_nonce advances only when the guardians
+// act or the recovery set changes, and covers their signatures and
+// MsgRecoverKey's proof of possession.
+message RotationState {
+  uint64 nonce = 1;
+  RecoverySet recovery = 2;           // the active recovery set, if any
+  PendingRotation pending_rotation = 3;
+  PendingRecovery pending_recovery = 4;
+  uint64 recovery_nonce = 5;
+}
+

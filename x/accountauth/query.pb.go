@@ -116,32 +116,159 @@ func (m *QueryAuthenticatorsResponse) GetAuthenticators() []*Authenticator {
 	return nil
 }
 
+type QueryRotationRequest struct {
+	Account string `protobuf:"bytes,1,opt,name=account,proto3" json:"account,omitempty"`
+}
+
+func (m *QueryRotationRequest) Reset()         { *m = QueryRotationRequest{} }
+func (m *QueryRotationRequest) String() string { return proto.CompactTextString(m) }
+func (*QueryRotationRequest) ProtoMessage()    {}
+func (*QueryRotationRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_8639632855486411, []int{2}
+}
+func (m *QueryRotationRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *QueryRotationRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_QueryRotationRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *QueryRotationRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryRotationRequest.Merge(m, src)
+}
+func (m *QueryRotationRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *QueryRotationRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryRotationRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryRotationRequest proto.InternalMessageInfo
+
+func (m *QueryRotationRequest) GetAccount() string {
+	if m != nil {
+		return m.Account
+	}
+	return ""
+}
+
+// QueryRotationResponse is the account's rotation record (an empty one if
+// it never rotated or set recovery), its current key, and whether
+// rotation is active at this height. state.nonce is what the next
+// MsgRotateKey's proof of possession covers; state.recovery_nonce is what
+// guardian signatures and MsgRecoverKey's proof of possession cover.
+type QueryRotationResponse struct {
+	State         *RotationState `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	CurrentPubkey []byte         `protobuf:"bytes,2,opt,name=current_pubkey,json=currentPubkey,proto3" json:"current_pubkey,omitempty"`
+	Active        bool           `protobuf:"varint,3,opt,name=active,proto3" json:"active,omitempty"`
+	DelayBlocks   int64          `protobuf:"varint,4,opt,name=delay_blocks,json=delayBlocks,proto3" json:"delay_blocks,omitempty"`
+}
+
+func (m *QueryRotationResponse) Reset()         { *m = QueryRotationResponse{} }
+func (m *QueryRotationResponse) String() string { return proto.CompactTextString(m) }
+func (*QueryRotationResponse) ProtoMessage()    {}
+func (*QueryRotationResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_8639632855486411, []int{3}
+}
+func (m *QueryRotationResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *QueryRotationResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_QueryRotationResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *QueryRotationResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryRotationResponse.Merge(m, src)
+}
+func (m *QueryRotationResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *QueryRotationResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryRotationResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryRotationResponse proto.InternalMessageInfo
+
+func (m *QueryRotationResponse) GetState() *RotationState {
+	if m != nil {
+		return m.State
+	}
+	return nil
+}
+
+func (m *QueryRotationResponse) GetCurrentPubkey() []byte {
+	if m != nil {
+		return m.CurrentPubkey
+	}
+	return nil
+}
+
+func (m *QueryRotationResponse) GetActive() bool {
+	if m != nil {
+		return m.Active
+	}
+	return false
+}
+
+func (m *QueryRotationResponse) GetDelayBlocks() int64 {
+	if m != nil {
+		return m.DelayBlocks
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*QueryAuthenticatorsRequest)(nil), "aether.accountauth.v1.QueryAuthenticatorsRequest")
 	proto.RegisterType((*QueryAuthenticatorsResponse)(nil), "aether.accountauth.v1.QueryAuthenticatorsResponse")
+	proto.RegisterType((*QueryRotationRequest)(nil), "aether.accountauth.v1.QueryRotationRequest")
+	proto.RegisterType((*QueryRotationResponse)(nil), "aether.accountauth.v1.QueryRotationResponse")
 }
 
 func init() { proto.RegisterFile("aether/accountauth/v1/query.proto", fileDescriptor_8639632855486411) }
 
 var fileDescriptor_8639632855486411 = []byte{
-	// 262 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x52, 0x4c, 0x4c, 0x2d, 0xc9,
-	0x48, 0x2d, 0xd2, 0x4f, 0x4c, 0x4e, 0xce, 0x2f, 0xcd, 0x2b, 0x49, 0x2c, 0x2d, 0xc9, 0xd0, 0x2f,
-	0x33, 0xd4, 0x2f, 0x2c, 0x4d, 0x2d, 0xaa, 0xd4, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x12, 0x85,
-	0x28, 0xd1, 0x43, 0x52, 0xa2, 0x57, 0x66, 0x28, 0x25, 0x92, 0x9e, 0x9f, 0x9e, 0x0f, 0x56, 0xa1,
-	0x0f, 0x62, 0x41, 0x14, 0x4b, 0xa9, 0x63, 0x37, 0x0f, 0x59, 0x2f, 0x58, 0xa1, 0x92, 0x19, 0x97,
-	0x54, 0x20, 0xc8, 0x12, 0xc7, 0xd2, 0x92, 0x8c, 0xd4, 0xbc, 0x92, 0xcc, 0xe4, 0xc4, 0x92, 0xfc,
-	0xa2, 0xe2, 0xa0, 0xd4, 0xc2, 0xd2, 0xd4, 0xe2, 0x12, 0x21, 0x09, 0x2e, 0x76, 0xa8, 0x16, 0x09,
-	0x46, 0x05, 0x46, 0x0d, 0xce, 0x20, 0x18, 0x57, 0x29, 0x9b, 0x4b, 0x1a, 0xab, 0xbe, 0xe2, 0x82,
-	0xfc, 0xbc, 0xe2, 0x54, 0x21, 0x1f, 0x2e, 0xbe, 0x44, 0x14, 0x19, 0x09, 0x46, 0x05, 0x66, 0x0d,
-	0x6e, 0x23, 0x15, 0x3d, 0xac, 0xbe, 0xd0, 0x43, 0x31, 0x26, 0x08, 0x4d, 0xaf, 0x51, 0x03, 0x23,
-	0x17, 0x2b, 0xd8, 0x36, 0xa1, 0x72, 0x2e, 0x3e, 0x54, 0x1b, 0x85, 0x0c, 0x71, 0x98, 0x88, 0xdb,
-	0x57, 0x52, 0x46, 0xa4, 0x68, 0x81, 0x78, 0xc8, 0xc9, 0xed, 0xc4, 0x23, 0x39, 0xc6, 0x0b, 0x8f,
-	0xe4, 0x18, 0x1f, 0x3c, 0x92, 0x63, 0x9c, 0xf0, 0x58, 0x8e, 0xe1, 0xc2, 0x63, 0x39, 0x86, 0x1b,
-	0x8f, 0xe5, 0x18, 0xa2, 0x74, 0xd2, 0x33, 0x4b, 0x32, 0x4a, 0x93, 0xf4, 0x92, 0xf3, 0x73, 0xf5,
-	0xcb, 0x33, 0xf2, 0x2b, 0xf3, 0x4b, 0xb3, 0xf2, 0x8b, 0x33, 0x32, 0xf3, 0xf4, 0xa1, 0x51, 0x50,
-	0x81, 0x1c, 0xea, 0x49, 0x6c, 0xe0, 0x60, 0x37, 0x06, 0x04, 0x00, 0x00, 0xff, 0xff, 0xe6, 0x82,
-	0xde, 0xcc, 0xf1, 0x01, 0x00, 0x00,
+	// 398 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x92, 0xbf, 0x6e, 0xe2, 0x40,
+	0x10, 0xc6, 0xd9, 0xe3, 0xe0, 0xb8, 0x85, 0xa3, 0x58, 0xc1, 0xc9, 0xf2, 0x49, 0x96, 0x41, 0x77,
+	0x3a, 0x4b, 0x41, 0x76, 0x20, 0x52, 0x8a, 0x74, 0xa1, 0x48, 0x95, 0x22, 0xd9, 0x74, 0x69, 0xd0,
+	0xda, 0x59, 0x61, 0x07, 0xe2, 0x05, 0x7b, 0x16, 0xe2, 0xb7, 0xc8, 0xcb, 0xe4, 0x1d, 0x52, 0x52,
+	0xa6, 0x8c, 0xa0, 0xc8, 0x6b, 0x44, 0xac, 0x8d, 0x04, 0x08, 0xf2, 0xa7, 0xf3, 0x7e, 0xfe, 0x7e,
+	0x3b, 0xdf, 0xce, 0x0c, 0x6e, 0x30, 0x0e, 0x3e, 0x8f, 0x1c, 0xe6, 0x79, 0x42, 0x86, 0xc0, 0x24,
+	0xf8, 0xce, 0xa4, 0xed, 0x8c, 0x25, 0x8f, 0x12, 0x7b, 0x14, 0x09, 0x10, 0xa4, 0x9e, 0x5a, 0xec,
+	0x35, 0x8b, 0x3d, 0x69, 0xeb, 0xb5, 0xbe, 0xe8, 0x0b, 0xe5, 0x70, 0x96, 0x5f, 0xa9, 0x59, 0xff,
+	0xbf, 0xfb, 0xbe, 0x75, 0x56, 0x19, 0x9b, 0xc7, 0x58, 0xbf, 0x5c, 0x16, 0x39, 0x95, 0xe0, 0xf3,
+	0x10, 0x02, 0x8f, 0x81, 0x88, 0x62, 0xca, 0xc7, 0x92, 0xc7, 0x40, 0x34, 0xfc, 0x23, 0x43, 0x34,
+	0x64, 0x22, 0xeb, 0x27, 0x5d, 0x1d, 0x9b, 0x03, 0xfc, 0x67, 0x27, 0x17, 0x8f, 0x44, 0x18, 0x73,
+	0x72, 0x8e, 0xab, 0x6c, 0xe3, 0x8f, 0x86, 0xcc, 0xbc, 0x55, 0xee, 0xfc, 0xb5, 0x77, 0xbe, 0xc2,
+	0xde, 0xb8, 0x86, 0x6e, 0xb1, 0xcd, 0x43, 0x5c, 0x53, 0xc5, 0xa8, 0x00, 0x06, 0x81, 0x08, 0x3f,
+	0x8e, 0xf7, 0x88, 0x70, 0x7d, 0x0b, 0xc9, 0x92, 0x9d, 0xe0, 0x42, 0x0c, 0x0c, 0xb8, 0x22, 0xf6,
+	0x07, 0x5a, 0x71, 0x57, 0x4b, 0x2f, 0x4d, 0x11, 0xf2, 0x0f, 0x57, 0x3d, 0x19, 0x45, 0x3c, 0x84,
+	0xde, 0x48, 0xba, 0x03, 0x9e, 0x68, 0xdf, 0x4c, 0x64, 0x55, 0xe8, 0xaf, 0x4c, 0xbd, 0x50, 0x22,
+	0xf9, 0x8d, 0x8b, 0xcc, 0x83, 0x60, 0xc2, 0xb5, 0xbc, 0x89, 0xac, 0x12, 0xcd, 0x4e, 0xa4, 0x81,
+	0x2b, 0x37, 0x7c, 0xc8, 0x92, 0x9e, 0x3b, 0x14, 0xde, 0x20, 0xd6, 0xbe, 0x9b, 0xc8, 0xca, 0xd3,
+	0xb2, 0xd2, 0xba, 0x4a, 0xea, 0xbc, 0x22, 0x5c, 0x50, 0xb9, 0xc9, 0x14, 0x57, 0x37, 0x7b, 0x4b,
+	0xda, 0x7b, 0xa2, 0xee, 0x9f, 0x9f, 0xde, 0xf9, 0x0a, 0x92, 0x35, 0x88, 0xe3, 0xd2, 0xea, 0xf1,
+	0xe4, 0xe0, 0x3d, 0x7e, 0x6b, 0x1a, 0x7a, 0xeb, 0x73, 0xe6, 0xb4, 0x4c, 0xf7, 0xec, 0x69, 0x6e,
+	0xa0, 0xd9, 0xdc, 0x40, 0x2f, 0x73, 0x03, 0x3d, 0x2c, 0x8c, 0xdc, 0x6c, 0x61, 0xe4, 0x9e, 0x17,
+	0x46, 0xee, 0xba, 0xd5, 0x0f, 0xc0, 0x97, 0xae, 0xed, 0x89, 0x3b, 0x67, 0xea, 0x8b, 0x44, 0xc8,
+	0x5b, 0x11, 0xfb, 0x41, 0xe8, 0x64, 0x3b, 0x7d, 0xbf, 0xbe, 0xc6, 0x6e, 0x51, 0xed, 0xf1, 0xd1,
+	0x5b, 0x00, 0x00, 0x00, 0xff, 0xff, 0x6f, 0x5e, 0x01, 0x9a, 0x42, 0x03, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -157,6 +284,7 @@ const _ = grpc.SupportPackageIsVersion4
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type QueryClient interface {
 	Authenticators(ctx context.Context, in *QueryAuthenticatorsRequest, opts ...grpc.CallOption) (*QueryAuthenticatorsResponse, error)
+	Rotation(ctx context.Context, in *QueryRotationRequest, opts ...grpc.CallOption) (*QueryRotationResponse, error)
 }
 
 type queryClient struct {
@@ -176,9 +304,19 @@ func (c *queryClient) Authenticators(ctx context.Context, in *QueryAuthenticator
 	return out, nil
 }
 
+func (c *queryClient) Rotation(ctx context.Context, in *QueryRotationRequest, opts ...grpc.CallOption) (*QueryRotationResponse, error) {
+	out := new(QueryRotationResponse)
+	err := c.cc.Invoke(ctx, "/aether.accountauth.v1.Query/Rotation", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QueryServer is the server API for Query service.
 type QueryServer interface {
 	Authenticators(context.Context, *QueryAuthenticatorsRequest) (*QueryAuthenticatorsResponse, error)
+	Rotation(context.Context, *QueryRotationRequest) (*QueryRotationResponse, error)
 }
 
 // UnimplementedQueryServer can be embedded to have forward compatible implementations.
@@ -187,6 +325,9 @@ type UnimplementedQueryServer struct {
 
 func (*UnimplementedQueryServer) Authenticators(ctx context.Context, req *QueryAuthenticatorsRequest) (*QueryAuthenticatorsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Authenticators not implemented")
+}
+func (*UnimplementedQueryServer) Rotation(ctx context.Context, req *QueryRotationRequest) (*QueryRotationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Rotation not implemented")
 }
 
 func RegisterQueryServer(s grpc1.Server, srv QueryServer) {
@@ -211,6 +352,24 @@ func _Query_Authenticators_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Query_Rotation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryRotationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).Rotation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/aether.accountauth.v1.Query/Rotation",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).Rotation(ctx, req.(*QueryRotationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var Query_serviceDesc = _Query_serviceDesc
 var _Query_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "aether.accountauth.v1.Query",
@@ -219,6 +378,10 @@ var _Query_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Authenticators",
 			Handler:    _Query_Authenticators_Handler,
+		},
+		{
+			MethodName: "Rotation",
+			Handler:    _Query_Rotation_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -292,6 +455,93 @@ func (m *QueryAuthenticatorsResponse) MarshalToSizedBuffer(dAtA []byte) (int, er
 	return len(dAtA) - i, nil
 }
 
+func (m *QueryRotationRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *QueryRotationRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QueryRotationRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Account) > 0 {
+		i -= len(m.Account)
+		copy(dAtA[i:], m.Account)
+		i = encodeVarintQuery(dAtA, i, uint64(len(m.Account)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *QueryRotationResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *QueryRotationResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QueryRotationResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.DelayBlocks != 0 {
+		i = encodeVarintQuery(dAtA, i, uint64(m.DelayBlocks))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.Active {
+		i--
+		if m.Active {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.CurrentPubkey) > 0 {
+		i -= len(m.CurrentPubkey)
+		copy(dAtA[i:], m.CurrentPubkey)
+		i = encodeVarintQuery(dAtA, i, uint64(len(m.CurrentPubkey)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.State != nil {
+		{
+			size, err := m.State.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintQuery(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintQuery(dAtA []byte, offset int, v uint64) int {
 	offset -= sovQuery(v)
 	base := offset
@@ -327,6 +577,42 @@ func (m *QueryAuthenticatorsResponse) Size() (n int) {
 			l = e.Size()
 			n += 1 + l + sovQuery(uint64(l))
 		}
+	}
+	return n
+}
+
+func (m *QueryRotationRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Account)
+	if l > 0 {
+		n += 1 + l + sovQuery(uint64(l))
+	}
+	return n
+}
+
+func (m *QueryRotationResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.State != nil {
+		l = m.State.Size()
+		n += 1 + l + sovQuery(uint64(l))
+	}
+	l = len(m.CurrentPubkey)
+	if l > 0 {
+		n += 1 + l + sovQuery(uint64(l))
+	}
+	if m.Active {
+		n += 2
+	}
+	if m.DelayBlocks != 0 {
+		n += 1 + sovQuery(uint64(m.DelayBlocks))
 	}
 	return n
 }
@@ -482,6 +768,247 @@ func (m *QueryAuthenticatorsResponse) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipQuery(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *QueryRotationRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowQuery
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: QueryRotationRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: QueryRotationRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthQuery
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Account = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipQuery(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *QueryRotationResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowQuery
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: QueryRotationResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: QueryRotationResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field State", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQuery
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.State == nil {
+				m.State = &RotationState{}
+			}
+			if err := m.State.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CurrentPubkey", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthQuery
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.CurrentPubkey = append(m.CurrentPubkey[:0], dAtA[iNdEx:postIndex]...)
+			if m.CurrentPubkey == nil {
+				m.CurrentPubkey = []byte{}
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Active", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Active = bool(v != 0)
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DelayBlocks", wireType)
+			}
+			m.DelayBlocks = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DelayBlocks |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipQuery(dAtA[iNdEx:])

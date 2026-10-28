@@ -12,6 +12,11 @@ service Msg {
   rpc RegisterAuthenticator(MsgRegisterAuthenticator) returns (MsgRegisterAuthenticatorResponse);
   rpc RevokeAuthenticator(MsgRevokeAuthenticator) returns (MsgRevokeAuthenticatorResponse);
   rpc ExecAuthenticated(MsgExecAuthenticated) returns (MsgExecAuthenticatedResponse);
+  rpc RotateKey(MsgRotateKey) returns (MsgRotateKeyResponse);
+  rpc CancelPendingRotation(MsgCancelPendingRotation) returns (MsgCancelPendingRotationResponse);
+  rpc SetRecovery(MsgSetRecovery) returns (MsgSetRecoveryResponse);
+  rpc RecoverKey(MsgRecoverKey) returns (MsgRecoverKeyResponse);
+  rpc GuardianCancel(MsgGuardianCancel) returns (MsgGuardianCancelResponse);
 }
 
 // MsgRegisterAuthenticator is signed by the account's own primary
@@ -50,3 +55,65 @@ message MsgExecAuthenticated {
 message MsgExecAuthenticatedResponse {
   repeated bytes results = 1;
 }
+
+// MsgRotateKey, signed by the account's current key, schedules its key
+// to become new_pubkey RotationDelayBlocks later. new_key_signature is
+// new_pubkey's signature over RotateKeySigningBytes (proof that whoever
+// rotates holds the new key).
+message MsgRotateKey {
+  option (cosmos.msg.v1.signer) = "account";
+  string account = 1;
+  bytes new_pubkey = 2;
+  bytes new_key_signature = 3;
+}
+message MsgRotateKeyResponse {
+  int64 apply_height = 1;
+}
+
+// MsgCancelPendingRotation, signed by the account's current key, cancels
+// its pending key change and pending recovery-set change.
+message MsgCancelPendingRotation {
+  option (cosmos.msg.v1.signer) = "account";
+  string account = 1;
+}
+message MsgCancelPendingRotationResponse {}
+
+// MsgSetRecovery, signed by the account's current key, schedules its
+// recovery set to become (guardian_pubkeys, threshold)
+// RotationDelayBlocks later. No guardians and threshold 0 removes it.
+message MsgSetRecovery {
+  option (cosmos.msg.v1.signer) = "account";
+  string account = 1;
+  repeated bytes guardian_pubkeys = 2;
+  uint32 threshold = 3;
+}
+message MsgSetRecoveryResponse {
+  int64 apply_height = 1;
+}
+
+// MsgRecoverKey makes new_pubkey the account's key at once, authorized
+// by its recovery set: guardian_signatures over RecoverKeySigningBytes,
+// at least the threshold of them, and new_key_signature over
+// RotateKeySigningBytes at recovery_nonce. It clears any pending change.
+// Anyone may submit it and pays the fee.
+message MsgRecoverKey {
+  option (cosmos.msg.v1.signer) = "submitter";
+  string submitter = 1;
+  string account = 2;
+  bytes new_pubkey = 3;
+  bytes new_key_signature = 4;
+  repeated GuardianSignature guardian_signatures = 5;
+}
+message MsgRecoverKeyResponse {}
+
+// MsgGuardianCancel cancels the account's pending key change and pending
+// recovery-set change, authorized by its recovery set's signatures over
+// GuardianCancelSigningBytes. Anyone may submit it.
+message MsgGuardianCancel {
+  option (cosmos.msg.v1.signer) = "submitter";
+  string submitter = 1;
+  string account = 2;
+  repeated GuardianSignature guardian_signatures = 3;
+}
+message MsgGuardianCancelResponse {}
+
