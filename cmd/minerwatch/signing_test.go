@@ -187,3 +187,50 @@ func TestMissLimit(t *testing.T) {
 		}
 	}
 }
+
+// The first read of the set only records it; after that each consensus
+// address that gains power for the first time is reported once.
+func TestValidatorNew(t *testing.T) {
+	src := &fakeSource{height: 10, snaps: map[string]snapshot{addr: validatorStatus(10)},
+		vals: map[string]int64{cons: 40, "SEED": 20, "SYNC3": 20, "SYNC4": 20}}
+	var out strings.Builder
+	w := signingWatcher(src, &out, config{newValidators: true})
+	ctx := context.Background()
+
+	w.poll(ctx)
+	if names, _ := delivered(t, &out); len(names) != 0 {
+		t.Fatalf("first read: events = %v, want none", names)
+	}
+	if len(w.state.Validators) != 4 {
+		t.Fatalf("recorded %v, want the four", w.state.Validators)
+	}
+
+	src.height, src.snaps[addr] = 11, validatorStatus(11)
+	src.vals["NEWCOMER"] = 10 // 10 of 110
+	w.poll(ctx)
+	names, bodies := delivered(t, &out)
+	if strings.Join(names, ",") != EventValidatorNew {
+		t.Fatalf("events = %v, want validator_new", names)
+	}
+	if bodies[0]["consensusAddress"] != "NEWCOMER" || bodies[0]["powerShare"] != "0.0909" || bodies[0]["address"] != nil {
+		t.Fatalf("body = %v", bodies[0])
+	}
+
+	src.height, src.snaps[addr] = 12, validatorStatus(12)
+	src.vals["NEWCOMER"] = 20
+	w.poll(ctx) // already seen: no repeat as its power grows
+	if names, _ := delivered(t, &out); len(names) != 0 {
+		t.Fatalf("events = %v, want none", names)
+	}
+
+	// Leaving and coming back isn't new.
+	src.height, src.snaps[addr] = 13, validatorStatus(13)
+	delete(src.vals, "SEED")
+	w.poll(ctx)
+	src.height, src.snaps[addr] = 14, validatorStatus(14)
+	src.vals["SEED"] = 20
+	w.poll(ctx)
+	if names, _ := delivered(t, &out); len(names) != 0 {
+		t.Fatalf("events = %v, want none", names)
+	}
+}

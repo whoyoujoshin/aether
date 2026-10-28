@@ -17,11 +17,16 @@ import (
 //   - power_concentrated: one validator holds more than a share of the
 //     voting power (a third by default). Above a third, that validator
 //     going offline stops the chain on its own: removal needs blocks.
+//   - validator_new: a consensus address not seen before gains voting
+//     power. Under the seat rule a newcomer's power rises at most 10
+//     points of the total per boundary, so a takeover by fresh accounts
+//     shows here boundaries before it reaches a third.
 const (
 	EventSigningLow             = "signing_low"
 	EventSigningRecovered       = "signing_recovered"
 	EventPowerConcentrated      = "power_concentrated"
 	EventPowerConcentrationEase = "power_concentration_eased"
+	EventValidatorNew           = "validator_new"
 )
 
 // signRing is one validator's last results, true for signed.
@@ -144,10 +149,10 @@ func (w *watcher) checkSigning(ctx context.Context, h int64, snaps []snapshot) {
 	}
 }
 
-// checkConcentration alerts when a validator's share of the voting
-// power passes the threshold, and when it's back at or under it.
-func (w *watcher) checkConcentration(ctx context.Context, h int64, snaps []snapshot) {
-	if w.cfg.concentrationAbove <= 0 {
+// checkValidatorSet reads the validator set once for power_concentrated
+// and validator_new.
+func (w *watcher) checkValidatorSet(ctx context.Context, h int64, snaps []snapshot) {
+	if w.cfg.concentrationAbove <= 0 && !w.cfg.newValidators {
 		return
 	}
 	powers, total, err := w.src.ValidatorSet(ctx, h)
@@ -164,6 +169,54 @@ func (w *watcher) checkConcentration(ctx context.Context, h int64, snaps []snaps
 			miners[s.ConsensusAddress] = a
 		}
 	}
+	if w.cfg.newValidators {
+		w.checkNewValidators(ctx, h, powers, total, miners)
+	}
+	if w.cfg.concentrationAbove > 0 {
+		w.checkConcentration(ctx, h, powers, total, miners)
+	}
+}
+
+// checkNewValidators alerts once for each consensus address that gains
+// voting power without having been seen before. The first read of the
+// set only records it.
+func (w *watcher) checkNewValidators(ctx context.Context, h int64, powers map[string]int64, total int64, miners map[string]string) {
+	first := w.state.Validators == nil
+	if first {
+		w.state.Validators = map[string]bool{}
+	}
+	cons := make([]string, 0, len(powers))
+	for c, p := range powers {
+		if p > 0 && !w.state.Validators[c] {
+			cons = append(cons, c)
+		}
+	}
+	sort.Strings(cons)
+	for _, c := range cons {
+		w.state.Validators[c] = true
+		if first {
+			continue
+		}
+		share := float64(powers[c]) / float64(total)
+		who := "validator " + short(c)
+		if a := miners[c]; a != "" {
+			who = fmt.Sprintf("%s (validator %s)", a, short(c))
+		}
+		w.out.deliver(ctx, Event{Name: EventValidatorNew, Address: miners[c], Height: h, key: c, Fields: map[string]any{
+			"consensusAddress": c,
+			"votingPower":      powers[c],
+			"totalVotingPower": total,
+			"powerShare":       strconv.FormatFloat(share, 'f', 4, 64),
+			"validators":       len(powers),
+			"message": fmt.Sprintf("%s, not seen before, joined the validator set with %.1f%% of the voting power. Under the seat rule its power can rise at most 10 points of the total per boundary: check whose miner this is.",
+				who, 100*share),
+		}})
+	}
+}
+
+// checkConcentration alerts when a validator's share of the voting
+// power passes the threshold, and when it's back at or under it.
+func (w *watcher) checkConcentration(ctx context.Context, h int64, powers map[string]int64, total int64, miners map[string]string) {
 	if w.state.Concentrated == nil {
 		w.state.Concentrated = map[string]bool{}
 	}
