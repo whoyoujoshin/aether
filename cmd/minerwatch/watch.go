@@ -77,6 +77,7 @@ type config struct {
 	signingWindow      int     // commits a watched validator's signing is counted over
 	signingWarnBelow   float64 // signing_low under this share of the window signed; 0: never
 	concentrationAbove float64 // power_concentrated over this share of the voting power; 0: never
+	newValidators      bool    // validator_new when an unseen consensus address gains power
 }
 
 // snapshot is everything one poll learns about an address.

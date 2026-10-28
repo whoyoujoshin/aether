@@ -39,22 +39,35 @@ var feesToTreasuryActivationHeight = FeesToTreasuryActivationHeight
 // moved, with the amount.
 const EventTypeFeesToTreasury = "fees_to_treasury"
 
+// EventTypeTreasuryCredited reports uaeth the treasury held that its
+// ledger didn't track (sent straight to its address), now credited.
+const EventTypeTreasuryCredited = "treasury_ledger_credited"
+
 // sweepFeesToTreasury moves everything the fee collector holds into the
-// treasury, from the activation height on.
+// treasury, from the activation height on, and brings the treasury's
+// ledger up to its uaeth bank balance: uaeth sent straight to the
+// treasury's address lands without the ledger knowing, and Spend reads
+// the ledger, so governance couldn't spend it. The ledger is only ever
+// raised; one above the bank balance stays visible in the Balance query.
 func (app *App) sweepFeesToTreasury(ctx sdk.Context) error {
 	if !gates.On(ctx, feesToTreasuryActivationHeight) {
 		return nil
 	}
 	fees := app.BankKeeper.GetAllBalances(ctx, authtypes.NewModuleAddress(authtypes.FeeCollectorName))
-	if fees.IsZero() {
-		return nil
+	if !fees.IsZero() {
+		if err := app.BankKeeper.SendCoinsFromModuleToModule(ctx, authtypes.FeeCollectorName, treasury.ModuleName, fees); err != nil {
+			return err
+		}
+		app.TreasuryKeeper.FundTreasury(ctx, fees.AmountOf("uaeth"))
+		ctx.EventManager().EmitEvent(sdk.NewEvent(EventTypeFeesToTreasury,
+			sdk.NewAttribute(sdk.AttributeKeyAmount, fees.String()),
+		))
 	}
-	if err := app.BankKeeper.SendCoinsFromModuleToModule(ctx, authtypes.FeeCollectorName, treasury.ModuleName, fees); err != nil {
-		return err
+	if untracked := app.TreasuryKeeper.GetRealBankBalance(ctx).Sub(app.TreasuryKeeper.GetTreasuryBalance(ctx)); untracked.IsPositive() {
+		app.TreasuryKeeper.FundTreasury(ctx, untracked)
+		ctx.EventManager().EmitEvent(sdk.NewEvent(EventTypeTreasuryCredited,
+			sdk.NewAttribute(sdk.AttributeKeyAmount, sdk.NewCoin("uaeth", untracked).String()),
+		))
 	}
-	app.TreasuryKeeper.FundTreasury(ctx, fees.AmountOf("uaeth"))
-	ctx.EventManager().EmitEvent(sdk.NewEvent(EventTypeFeesToTreasury,
-		sdk.NewAttribute(sdk.AttributeKeyAmount, fees.String()),
-	))
 	return nil
 }

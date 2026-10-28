@@ -23,7 +23,10 @@ block **H − 1** is committed.
 - **Fees to the treasury** (`app/fees.go`). At the end of every block
   from H, everything in `fee_collector` (every denom) moves to the
   treasury, the uaeth credited to its ledger, with a `fees_to_treasury`
-  event.
+  event. Uaeth sent straight to the treasury's address, which its ledger
+  never saw (1.000001 AETH on 10-28, so `ledger_matches_bank_balance`
+  reads false), is credited at H with a `treasury_ledger_credited` event,
+  so governance can spend it; the ledger is only ever raised.
 
 **It adds a store, so every node halts at H and needs one restart there**
 (the same mechanism as x/escrow at 161,000, `docs/CUTOVER-161000.md`).
@@ -201,7 +204,9 @@ aetherd q treasury balance -o json | jq .real_bank_balances
 - A small USDC transfer from Injective arrives; one over the room is
   refused `over_cap` and refunded on Injective after `outbound.exe`
   relays the error ack.
-- `fees_to_treasury` events appear in blocks that carried fees.
+- `fees_to_treasury` events appear in blocks that carried fees, the H
+  block has a `treasury_ledger_credited` event, and the treasury's
+  `Balance` query reads `ledger_matches_bank_balance: true`.
 
 Send Joshua the commit, the height each node restarted at, and peer-1's
 running path and hash.
@@ -222,7 +227,7 @@ running path and hash.
 - **A settlement fails with `ErrSettlementGrew` (inflowcap code 6):** a
   refund tried to mint more than its send burned. That packet's
   acknowledgement or timeout keeps failing until a fixed binary ships.
-  Helicase relays a cycle's messages in one transaction, so every relay
-  onto Aether over that path stalls with it (nothing is lost; the
-  packets wait). Tell Joshua and Claude with the tx.
+  Helicase sends each relay message as its own transaction, so the rest
+  of the path keeps moving; the failing one is proposed again every ~10
+  blocks. Tell Joshua and Claude with the tx.
 - **After H:** don't roll back. Tell Joshua instead.

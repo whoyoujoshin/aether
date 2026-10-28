@@ -91,6 +91,10 @@ type stateFile struct {
 	// Concentrated holds the consensus addresses power_concentrated was
 	// last reported for.
 	Concentrated map[string]bool `json:"concentrated,omitempty"`
+	// Validators holds every consensus address seen with voting power;
+	// validator_new fires for one that isn't in it. The first poll that
+	// reads the set only records it.
+	Validators map[string]bool `json:"validators,omitempty"`
 }
 
 type watcher struct {
@@ -184,7 +188,7 @@ func (w *watcher) poll(ctx context.Context) {
 		}
 	}
 	w.checkSigning(ctx, h, snaps)
-	w.checkConcentration(ctx, h, snaps)
+	w.checkValidatorSet(ctx, h, snaps)
 	w.lastHeight = h
 	if w.statePath != "" {
 		if err := saveState(w.statePath, w.state); err != nil {
@@ -269,6 +273,7 @@ func main() {
 	signingWindow := flag.Int("signing-window", 60, "count a watched validator's signatures over this many recent commits (x/pow removes at more than half missed of 60, or of 1,440 from the hardening height)")
 	signingWarnBelow := flag.Float64("signing-warn-below", 0.8, "signing_low when a watched validator signed less than this share of the window; 0: never")
 	concentrationAbove := flag.Float64("concentration-above", 1.0/3, "power_concentrated when any validator holds more than this share of the voting power; 0: never")
+	newValidators := flag.Bool("new-validators", true, "validator_new when a consensus address not seen before gains voting power")
 	statePath := flag.String("state", "", "remember what was reported in this file, so a restart catches up instead of starting fresh")
 	once := flag.Bool("once", false, "poll once and exit (with --state, suits a cron job)")
 	quiet := flag.Bool("quiet", false, "don't print events to stdout")
@@ -279,7 +284,7 @@ func main() {
 		log.Fatal(err)
 	}
 	cfg := config{lowBalance: math.ZeroInt(), atRiskBlocks: *atRiskBlocks, noWorkAt: *noWorkAt,
-		signingWindow: *signingWindow, signingWarnBelow: *signingWarnBelow, concentrationAbove: *concentrationAbove}
+		signingWindow: *signingWindow, signingWarnBelow: *signingWarnBelow, concentrationAbove: *concentrationAbove, newValidators: *newValidators}
 	if *lowBalance != "" {
 		if cfg.lowBalance, err = wallet.ParseAmount(*lowBalance); err != nil {
 			log.Fatalf("--low-balance: %v", err)

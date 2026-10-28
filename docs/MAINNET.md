@@ -233,7 +233,10 @@ in escrow for Aether. Keep that small while the chain is young:
     At the end of every block everything the fee collector holds, in every
     denom, moves to the treasury module account; the uaeth part is credited
     to the treasury's ledger, so governance can spend it. A
-    `fees_to_treasury` event carries the amount, and the treasury's
+    `fees_to_treasury` event carries the amount. Uaeth sent straight to
+    the treasury's address (which the ledger never saw, so governance
+    couldn't spend it) is credited the same way, with a
+    `treasury_ledger_credited` event; the ledger is only raised. The treasury's
     `Balance` query lists every denom it holds (`real_bank_balances`). On
     from block 1 on fresh chains; a placeholder height (30,000,000) on the
     testnet, where the fee collector holds 0.016374 AETH from since genesis

@@ -8,7 +8,7 @@ Nothing in this runbook changes consensus. Builds happen on a workstation or in 
 
 | Process | What it watches | Where |
 |---|---|---|
-| `aether-minerwatch` (`cmd/minerwatch`) | One gRPC node and the miner addresses: submissions, seats, balance, that node's stall, `signing_low`, `power_concentrated` | Seed, already |
+| `aether-minerwatch` (`cmd/minerwatch`) | One gRPC node and the miner addresses: submissions, seats, balance, that node's stall, `signing_low`, `power_concentrated`, `validator_new` | Seed, already |
 | `aether-chainwatch` (`cmd/chainwatch`) | One or more CometBFT RPCs: tip stall, a node behind or `catching_up`, RPC down, a validator that cannot be stopped | Seed, beside minerwatch |
 
 minerwatch's `power_concentrated` fires when a share is **over** a third. chainwatch's stop check is the CometBFT rule: a block commits only when the precommits hold **strictly more than 2/3**. A validator at exactly 1/3 is already unsafe to stop, because the others hold exactly 2/3.
