@@ -1,6 +1,7 @@
 name: Ops monitors
 
-# chainwatch and the cutover scripts. They do not touch consensus.
+# chainwatch, the cutover scripts and the query node scripts. They do not
+# touch consensus.
 on:
   push:
   pull_request:
@@ -27,3 +28,6 @@ jobs:
 
       - name: cutover script tests
         run: bash scripts/ops/lib_test.sh
+
+      - name: query node script tests
+        run: bash scripts/querynode/lib_test.sh

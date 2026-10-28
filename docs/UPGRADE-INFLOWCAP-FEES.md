@@ -78,7 +78,9 @@ the seed for Joshua with its sha256.
 ## 2. Swap, one node at a time (well before H)
 
 Order: **sync3, sync4, seed**, with peer-1 (step 3) any time in between.
-For each node:
+If the query node runs (`docs/QUERY-NODE.md`), swap it too, any time
+before H: it has no voting power, so it needs no signing check, only the
+same binary (its unit is `aether-query`). For each validator:
 
 **a. Check four validators signed the latest block:**
 
@@ -177,6 +179,7 @@ Once a node shows that, restart it (order doesn't matter):
 
 ```bash
 sudo systemctl restart aetherd       # sync3, sync4, seed
+sudo systemctl restart aether-query  # the query node, if it runs
 ```
 
 ```powershell

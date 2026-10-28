@@ -25,7 +25,11 @@
 # Hand it to whoever runs the benchmark as AETHER_BENCH_KEY, not in a chat.
 set -euo pipefail
 REPO=${REPO:-$(pwd)}
-GRPC=${GRPC:-localhost:9090}
+# Once scripts/querynode/point.sh has moved the services to the query node
+# (docs/QUERY-NODE.md), redeploys keep them there.
+QUERY_ENV=${QUERY_ENV:-/root/aether-query.env}
+[ -r "$QUERY_ENV" ] && . "$QUERY_ENV"
+GRPC=${GRPC:-${QUERY_GRPC:-localhost:9090}}
 CHAIN_ID=${CHAIN_ID:-aether-testnet-1}
 KEYDIR=${KEYDIR:-/root/aether-sandbox-key}
 USDC="--usdc-path transfer/channel-2 --usdc-base-denom erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d --usdc-issuer Injective"
