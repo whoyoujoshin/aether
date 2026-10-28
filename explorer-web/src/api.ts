@@ -231,6 +231,21 @@ export interface ValidatorSet {
   signingHeights: number[];
 }
 
+/** Fields of /api/miner used on the validator page. The rest of the
+ *  miner-status response is ignored. */
+export interface MinerStatus {
+  address: string;
+  selectionRule?: string;
+  seatWork?: string;          // window seat work (difficulty proved)
+  seatWorkThisEpoch?: string;
+  seatWorkTotal?: string;     // the total the 1% bar is measured against
+  workShare?: string;         // seatWork / seatWorkTotal, as a decimal string
+  rank?: number;
+  onTrack?: boolean;
+  votingPower: number;
+  powerShare?: string;
+}
+
 export interface GovernanceParams {
   minDeposit: number; // uaeth
   depositPeriod: number; // seconds
@@ -634,6 +649,7 @@ export const api = {
   stats: () => getJSON<Stats>("/api/stats"),
   validators: () => getJSON<ValidatorInfo[]>("/api/validators"),
   validatorSet: () => getJSON<ValidatorSet>("/api/validator-set"),
+  miner: (addr: string) => getJSON<MinerStatus>(`/api/miner?addr=${encodeURIComponent(addr)}`),
   governanceParams: () => getJSON<GovernanceParams>("/api/governance/params"),
   leaderboard: (epoch?: number) =>
     getJSON<Leaderboard>(`/api/leaderboard${epoch ? `?epoch=${epoch}` : ""}`),
