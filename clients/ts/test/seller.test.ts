@@ -6,9 +6,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { base64 } from "@scure/base";
 import { sha256 } from "@noble/hashes/sha2.js";
-import { Writer } from "../src/proto.js";
+import { hexToBytes } from "@noble/hashes/utils.js";
+import { Writer, readFields, first, text } from "../src/proto.js";
 import {
-  AetherClient, FileLedger, Key, Paywall, WITHDRAW_PATH, buildSend, memoPaymentHeader, prepaidPaymentHeader, withdrawPrepaid, fetchPaid,
+  AetherClient, FileLedger, Key, Paywall, PUBKEY_TYPE_URL, WITHDRAW_PATH, buildSend, memoPaymentHeader, prepaidPaymentHeader, signingMessage, withdrawPrepaid, fetchPaid,
   createReceiptDelegation,
   type Payment,
 } from "../src/index.js";
@@ -22,6 +23,9 @@ class FakeChain {
   broadcast: (tx: Uint8Array) => { code: number; codespace?: string; log?: string } = () => ({ code: 0 });
   seq = 4n;
   lookups = 0;
+  /** ML-DSA keys stored on accounts, as the chain holds them after a rotation. */
+  stored = new Map<string, Uint8Array>();
+  accountInfoError = false;
 
   fetch = (async (_url: unknown, init?: { body?: unknown }) => {
     const { method, params } = JSON.parse(String(init?.body)) as { method: string; params: Record<string, string> };
@@ -34,8 +38,17 @@ class FakeChain {
       return ok(t);
     }
     if (method === "abci_query") {
-      const info = new Writer().uint64(3, 9n).uint64(4, this.seq).finish();
-      return ok({ response: { code: 0, log: "", value: base64.encode(new Writer().message(1, info).finish()) } });
+      const info = new Writer();
+      if (params.path === "/cosmos.auth.v1beta1.Query/AccountInfo") {
+        if (this.accountInfoError) {
+          return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32603, message: "Internal error", data: "node down" } }));
+        }
+        const addr = text(first(readFields(hexToBytes(params.data)), 1)?.bytes);
+        const pub = this.stored.get(addr);
+        if (pub) info.message(2, new Writer().string(1, PUBKEY_TYPE_URL).bytes(2, new Writer().bytes(1, pub).finish()).finish());
+      }
+      const body = info.uint64(3, 9n).uint64(4, this.seq).finish();
+      return ok({ response: { code: 0, log: "", value: base64.encode(new Writer().message(1, body).finish()) } });
     }
     if (method === "broadcast_tx_sync") {
       const tx = base64.decode(params.tx);
@@ -191,6 +204,70 @@ test("aether-memo: a failed response lets the same payment be used again", async
     assert.equal((await fetch(s.url + "/forecast", { headers: h })).status, 503);
     await new Promise((r) => setTimeout(r, 20));
     assert.equal((await fetch(s.url + "/forecast", { headers: h })).status, 503, "not invoice_already_redeemed");
+  } finally {
+    s.close();
+  }
+});
+
+/** A prepaid header signed by key for account, which may be another account the key was rotated onto. */
+function signedFor(s: Setup, key: Key, account: string, requestId: string) {
+  const u = new URL(s.url);
+  const body = new Uint8Array();
+  const fields = {
+    network: CHAIN, payTo: s.seller.address, host: u.host, method: "POST", path: "/forecast", body,
+    maxPrice: 10_000n, timestamp: Math.floor(s.now.t / 1000), requestId, depositTx: "",
+  };
+  return base64.encode(new TextEncoder().encode(JSON.stringify({
+    x402Version: 1, scheme: "aether-prepaid", network: CHAIN,
+    payload: {
+      account, pubKey: base64.encode(key.publicKey), timestamp: fields.timestamp, requestId,
+      maxPrice: "10000", signature: base64.encode(key.sign(signingMessage(fields))),
+    },
+  })));
+}
+
+test("prepaid sign-in follows the account's stored key", async () => {
+  const s = await setup();
+  try {
+    const owner = Key.random();
+    const next = Key.random();
+    const post = (h: string) => fetch(s.url + "/forecast", { method: "POST", headers: { "X-PAYMENT": h } });
+    const dep = s.chain.pay(s.seller.address, 50_000n, "prepaid:" + owner.address);
+    let r = await post(signed(s, owner, { requestId: "r1", depositTx: dep }));
+    assert.equal(r.status, 200, "nothing stored: its own key");
+
+    s.chain.stored.set(owner.address, next.publicKey);
+    r = await post(signedFor(s, owner, owner.address, "r2"));
+    let body = (await r.json()) as { error: string; message: string };
+    assert.equal(body.error, "invalid_signature");
+    assert.match(body.message, /does not sign for account/);
+
+    r = await post(signedFor(s, next, owner.address, "r3"));
+    assert.equal(r.status, 200, "the new key signs for the account");
+    assert.equal(s.served.at(-1)!.payer, owner.address);
+
+    s.chain.accountInfoError = true;
+    r = await post(signedFor(s, next, owner.address, "r4"));
+    body = (await r.json()) as { error: string; message: string };
+    assert.equal(body.error, "payment_not_confirmed", "a node that can't answer refuses");
+    assert.match(body.message, /retry/);
+  } finally {
+    s.close();
+  }
+});
+
+test("a paywall refuses to sign receipts with a payee's retired key", async () => {
+  const s = await setup();
+  try {
+    const next = Key.random();
+    const stored = { accountPubKey: (a: string) => (a === s.seller.address ? next.publicKey : undefined) };
+    assert.throws(
+      () => new Paywall({ client: s.client, payTo: s.seller.address, price: "0.01 AETH", receipts: { key: s.seller }, accountKeys: stored }),
+      /receipts wouldn't verify/,
+    );
+    assert.doesNotThrow(
+      () => new Paywall({ client: s.client, payTo: s.seller.address, price: "0.01 AETH", receipts: { key: next }, accountKeys: stored }),
+    );
   } finally {
     s.close();
   }

@@ -37,7 +37,8 @@ from typing import Callable, Dict, Iterable, Optional, Union
 from .amount import AETH, DENOM, Assets, decimal_of, format_aeth, format_amount, parse_uaeth, receipt_amount
 from .client import AetherClient
 from .directory import MANIFEST_PATH
-from .keys import Key, address_of, is_address
+from .keys import PUBKEY_BYTES, Key, is_address
+from .rotation import signs_for
 from .ledger import FileLedger, LedgerError, _parse_time
 from .paywall import DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, pull_signing_message, signing_message
 from .receipt import RECEIPT_HEADER, encode_receipt, malformed, sign_receipt, verify_receipt
@@ -214,7 +215,8 @@ class Paywall:
                  pull_ledger: Union[None, str, FileLedger] = None, pull_credit: Optional[str] = None,
                  pull_collect_every: float = 60, usdc_channel: Optional[str] = None,
                  usdc_path: Optional[str] = None, usdc_base_denom: Optional[str] = None,
-                 usdc_issuer: Optional[str] = None, now: Callable[[], float] = time.time):
+                 usdc_issuer: Optional[str] = None, now: Callable[[], float] = time.time,
+                 account_keys=None):
         """price and min_deposit carry their unit ("0.01 AETH"). The price's asset is what everything
         is charged in: "0.05 USDC" with usdc_channel (Aether's end of its channel to Noble, e.g.
         channel-3) charges Noble's USDC over exactly that channel (or usdc_path and usdc_base_denom
@@ -232,7 +234,10 @@ class Paywall:
         funds: the first allowance granted to it creates its account).
         pull_ledger (default: the prepaid ledger) records what's owed;
         pull_credit ("1 AETH", default 100 requests) is the most a buyer may
-        owe before it's collected -- your loss if one revokes just before."""
+        owe before it's collected -- your loss if one revokes just before.
+        account_keys, if set, is asked which key is stored on an account
+        (account_pub_key); otherwise the client is. A lookup that fails
+        refuses the request. Sign-in and the receipt check both use it."""
         if not is_address(pay_to):
             raise ValueError(f'invalid pay_to address "{pay_to}"')
         self.client, self.pay_to = client, pay_to
@@ -277,14 +282,19 @@ class Paywall:
             self._wake = threading.Event()
             self._stop: Optional[threading.Event] = None
         self.receipt_key, self.receipt_delegation = receipt_key, receipt_delegation
+        self.account_keys = account_keys
         if receipt_key:
             probe = sign_receipt(receipt_key, {"network": self.network, "payTo": pay_to, "payer": "", "scheme": "", "payment": "",
                                                "amount": "", "method": "", "host": "", "path": "",
                                                "requestHash": hashlib.sha256(b"").hexdigest(), "status": 0, "at": int(self.now())},
                                  receipt_delegation)
-            bad = verify_receipt(probe)
+            bad = verify_receipt(probe, self._account_keys())
             if bad:
                 raise ValueError(f"receipts wouldn't verify: {bad}")
+
+    def _account_keys(self):
+        """Where the key stored on an account is read. The client, unless account_keys was passed."""
+        return self.account_keys if self.account_keys is not None else self.client
 
     def _receipt_for(self, req: SellerRequest, body: bytes, scheme: str, payer: str, payment: str):
         if not self.receipt_key:
@@ -499,10 +509,15 @@ class Paywall:
             pub = base64.b64decode(pay["pubKey"], validate=True)
         except ValueError:
             pub = b""
-        if len(pub) != 1312:
+        if len(pub) != PUBKEY_BYTES:
             return None, ("invalid_signature", "pubKey must be a base64 ML-DSA-44 public key")
-        if address_of(pub) != pay["account"]:
-            return None, ("invalid_signature", "pubKey does not belong to account")
+        try:
+            # The key stored on the account, or the key its address hashes from while none is stored.
+            stored = self._account_keys().account_pub_key(pay["account"])
+        except Exception:
+            return None, ("payment_not_confirmed", "can't read the account's key from the chain; retry")
+        if not signs_for(pay["account"], pub, stored):
+            return None, ("invalid_signature", "pubKey does not sign for account")
         try:
             sig = base64.b64decode(pay["signature"], validate=True)
         except ValueError:

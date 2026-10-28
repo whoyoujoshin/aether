@@ -13,6 +13,8 @@ import { bech32 } from "@scure/base";
 
 export const PREFIX = "aether";
 export const PUBKEY_TYPE_URL = "/aether.crypto.v1.PubKey";
+/** Raw ML-DSA-44 public key length (FIPS 204). */
+export const PUBKEY_BYTES = 1312;
 const PUBKEY_PROTO_NAME = "aether.crypto.v1.PubKey";
 
 const concat = (...parts: Uint8Array[]): Uint8Array => {

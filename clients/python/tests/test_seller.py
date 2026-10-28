@@ -13,9 +13,10 @@ import urllib.error
 import urllib.request
 from wsgiref.simple_server import WSGIRequestHandler, make_server
 
-from aether_client import (WITHDRAW_PATH, AetherClient, FileLedger, Key, Paywall, PaymentError, build_send,
+from aether_client import (PUBKEY_TYPE_URL, WITHDRAW_PATH, AetherClient, FileLedger, Key, Paywall, PaymentError, build_send,
                            create_receipt_delegation, delegation_signing_message, fetch_paid, memo_payment_header,
-                           prepaid_payment_header, receipt_signing_message, verify_receipt, withdraw_prepaid)
+                           prepaid_payment_header, receipt_signing_message, signing_message, verify_receipt, withdraw_prepaid)
+from aether_client.proto import Writer, first
 from aether_client.rpc import RpcError
 
 CHAIN = "aether-testnet-1"
@@ -26,6 +27,8 @@ class FakeChain:
 
     def __init__(self):
         self.txs, self.broadcasts, self.seq = {}, [], 4
+        self.stored = {}  # address -> pubkey stored on the account
+        self.account_info_error = False
         self.on_broadcast = lambda tx: {"code": 0}
 
     def call(self, method, params=None):
@@ -36,9 +39,16 @@ class FakeChain:
                 raise RpcError(f"tx: tx ({h}) not found", -32603)
             return self.txs[h]
         if method == "abci_query":
-            from aether_client.proto import Writer
-            info = Writer().uint64(3, 9).uint64(4, self.seq).finish()
-            return {"response": {"code": 0, "value": base64.b64encode(Writer().message(1, info).finish()).decode()}}
+            if params.get("path") == "/cosmos.auth.v1beta1.Query/AccountInfo" and self.account_info_error:
+                raise RpcError("abci_query: node down", -32603)
+            info = Writer()
+            if params.get("path") == "/cosmos.auth.v1beta1.Query/AccountInfo":
+                addr = first(bytes.fromhex(params.get("data") or ""), 1, b"")
+                pub = self.stored.get(addr.decode() if isinstance(addr, bytes) else "")
+                if pub:
+                    info.message(2, Writer().string(1, PUBKEY_TYPE_URL).bytes(2, Writer().bytes(1, pub).finish()).finish())
+            body = info.uint64(3, 9).uint64(4, self.seq).finish()
+            return {"response": {"code": 0, "value": base64.b64encode(Writer().message(1, body).finish()).decode()}}
         if method == "broadcast_tx_sync":
             tx = base64.b64decode(params["tx"])
             self.broadcasts.append(tx)
@@ -114,6 +124,17 @@ class Seller:
         return prepaid_payment_header(key, network=CHAIN, pay_to=self.seller.address, host=host or f"127.0.0.1:{self.httpd.server_port}",
                                       method="POST", path=path, body=body, max_price=max_price, timestamp=int(self.t),
                                       request_id=request_id, deposit_tx=deposit)
+
+    def signed_for(self, key, account, request_id, body=b""):
+        """A prepaid header signed by key for account, which may be another account the key was rotated onto."""
+        host = f"127.0.0.1:{self.httpd.server_port}"
+        fields = dict(network=CHAIN, pay_to=self.seller.address, host=host, method="POST", path="/forecast", body=body,
+                      max_price=10_000, timestamp=int(self.t), request_id=request_id, deposit_tx="")
+        payload = {"account": account, "pubKey": base64.b64encode(key.public_key).decode(), "timestamp": fields["timestamp"],
+                   "requestId": request_id, "maxPrice": "10000",
+                   "signature": base64.b64encode(key.sign(signing_message(**fields))).decode()}
+        return base64.b64encode(json.dumps({"x402Version": 1, "scheme": "aether-prepaid", "network": CHAIN, "payload": payload},
+                                           separators=(",", ":")).encode()).decode()
 
 
 class SellerTest(unittest.TestCase):
@@ -230,6 +251,48 @@ class SellerTest(unittest.TestCase):
         h = {"X-PAYMENT": memo_payment_header(CHAIN, inv, s.chain.pay(s.seller.address, 10_000, inv))}
         self.assertEqual(s.request("/forecast", h)[0], 503)
         self.assertEqual(s.request("/forecast", h)[0], 503)
+
+    def test_prepaid_sign_in_follows_the_stored_key(self):
+        s = self.s = Seller()
+        owner, nxt = Key.random(), Key.random()
+        dep = s.chain.pay(s.seller.address, 50_000, "prepaid:" + owner.address)
+        self.assertEqual(s.request("/forecast", {"X-PAYMENT": s.signed(owner, "r1", deposit=dep)}, "POST")[0], 200,
+                         "nothing stored: its own key")
+
+        s.chain.stored[owner.address] = nxt.public_key
+        status, _, body = s.request("/forecast", {"X-PAYMENT": s.signed_for(owner, owner.address, "r2")}, "POST")
+        refused = json.loads(body)
+        self.assertEqual(refused["error"], "invalid_signature")
+        self.assertIn("does not sign for account", refused["message"])
+
+        status, _, _ = s.request("/forecast", {"X-PAYMENT": s.signed_for(nxt, owner.address, "r3")}, "POST")
+        self.assertEqual(status, 200, "the new key signs for the account")
+        self.assertEqual(s.served[-1].payer, owner.address)
+
+        s.chain.account_info_error = True
+        status, _, body = s.request("/forecast", {"X-PAYMENT": s.signed_for(nxt, owner.address, "r4")}, "POST")
+        refused = json.loads(body)
+        self.assertEqual(refused["error"], "payment_not_confirmed", "a node that can't answer refuses")
+        self.assertIn("retry", refused["message"])
+
+    def test_receipts_follow_the_payees_stored_key(self):
+        chain = FakeChain()
+        client = chain.client()
+        payee, nxt = Key.random(), Key.random()
+
+        class Stored:
+            def account_pub_key(self, a):
+                return nxt.public_key if a == payee.address else None
+
+        with self.assertRaisesRegex(ValueError, "receipts wouldn't verify"):
+            Paywall(client, payee.address, "0.01 AETH", receipt_key=payee, account_keys=Stored())
+        Paywall(client, payee.address, "0.01 AETH", receipt_key=nxt, account_keys=Stored())
+
+        # The default lookup is the client. A stored new key lets that key sign receipts.
+        chain.stored[payee.address] = nxt.public_key
+        Paywall(client, payee.address, "0.01 AETH", receipt_key=nxt)
+        with self.assertRaisesRegex(ValueError, "receipts wouldn't verify"):
+            Paywall(client, payee.address, "0.01 AETH", receipt_key=payee)
 
     def test_prepaid(self):
         s = self.s = Seller()

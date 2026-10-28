@@ -1,8 +1,16 @@
-export { Key, addressOf, addressBytes, isAddress, PREFIX, PUBKEY_TYPE_URL } from "./keys.js";
+export { Key, addressOf, addressBytes, isAddress, PREFIX, PUBKEY_BYTES, PUBKEY_TYPE_URL } from "./keys.js";
 export { parseAmount, parseUaeth, formatAeth, DENOM, AETH, Assets, usdc, usdcAt, usdcFor, DEFAULT_USDC_BASE_DENOM, formatAmount, decimalOf, receiptAmount } from "./amount.js";
 export type { Asset, UsdcSetting } from "./amount.js";
 export { buildSend, buildTx, grantSendMsg, execSendMsg, memoOf, DEFAULT_GAS_LIMIT, MSG_SEND_TYPE_URL, MSG_GRANT_TYPE_URL, MSG_EXEC_TYPE_URL } from "./tx.js";
 export type { SendParams, SignedTx, TxParams, AnyMsg } from "./tx.js";
+export {
+  MSG_CANCEL_PENDING_ROTATION_TYPE_URL, MSG_GUARDIAN_CANCEL_TYPE_URL, MSG_GUARDIAN_SET_RECOVERY_TYPE_URL,
+  MSG_RECOVER_KEY_TYPE_URL, MSG_ROTATE_KEY_TYPE_URL, MSG_SET_RECOVERY_TYPE_URL, MSG_WATCHTOWER_CANCEL_TYPE_URL,
+  ROTATION_QUERY_PATH, decodeAccountPubKey, decodeRotation, guardianCancelSigningBytes, guardianSetRecoverySigningBytes,
+  msgCancelPendingRotation, msgGuardianCancel, msgGuardianSetRecovery, msgRecoverKey, msgRotateKey, msgSetRecovery,
+  msgWatchtowerCancel, recoverKeySigningBytes, rotateKeySigningBytes, rotationRequest, signsFor, watchtowerCancelSigningBytes,
+} from "./rotation.js";
+export type { AccountKeys, GuardianSig, Rotation } from "./rotation.js";
 export { Rpc, RpcError } from "./rpc.js";
 export { AetherClient, transfers, decodeSendGrant } from "./client.js";
 export type { TransactionInfo, IncomingPayment, SendResult, TxStatus, Transfer, SendGrant } from "./client.js";
