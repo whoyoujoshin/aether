@@ -145,20 +145,24 @@ pubkey is still rejected.
 `PostQuantumDecorator` is not replaced. It still rejects non-ML-DSA
 signers.
 
-## Same-block rule
+## Delay, not same-block ordering
 
-Transactions in a block are processed in order. A transaction that
-lands after the rotation sees the new pubkey and fails if it was
-signed by the old key. A transaction that lands before the rotation
-sees the old pubkey and succeeds.
+A same-block rule that rejects a rotation if the account already
+signed in the block lets a leaked-key holder block rotation forever:
+one transaction per block, every block, and the rotation never lands
+first. The rule is dropped.
 
-To close that gap, `MsgRotateKey` records the account in a transient
-store (cleared at the end of every block). At the start of the
-handler, if the account is already in the store, the rotation is
-rejected. The proposer must order the rotation before any other
-message from that account in the same block, or the rotation fails and
-can be resubmitted in a later block. Both keys never succeed in the
-same block.
+Instead, a current-key rotation and any change to the recovery set
+take effect after a delay. The message schedules the change; it does
+not apply it. Recovery guardians can cancel or override the scheduled
+change during the delay. A leaked key that races to rotate loses to a
+guardian cancellation.
+
+A recovery-threshold rotation applies immediately. The guardians are
+the recovery path; delaying them defeats the point.
+
+The delay is a chain parameter, height-gated with the rest of the
+change. The value is Joshua's decision; the plan does not pick it.
 
 ## Recovery
 
@@ -181,30 +185,60 @@ The fee for a current-key rotation is paid by the account. The fee for
 a recovery rotation is paid by the submitter, matching
 `MsgExecAuthenticated`.
 
+## Off-chain verifiers
+
+Anything that derives the payer from the pubkey instead of reading the
+account's on-chain pubkey will reject a rotated key.
+
+- `x402/exact.go` checks the payer as `hash(pubkey)`. After rotation
+  that hash is the new key's address, not the account. It must use the
+  account's on-chain pubkey.
+- The #3788 spec and `@x402/cosmos` must do the same. A facilitator or
+  client that re-derives the address from the signing key will refuse
+  a valid payment from a rotated account.
+
+These are part of the plan. A rotation that the chain accepts and the
+facilitator rejects is a broken payment path.
+
+## Client side
+
+`wallet`, `agentmcp`, and the keyring sign for an address derived from
+the key. After rotation the account address is not the key's address.
+The client must sign for the account address while using the key that
+does not derive it.
+
+This is a client change, not a chain change. It lands with or after
+step 1. A rotated account that the chain accepts and the wallet cannot
+sign for is unusable.
+
 ## Order of work
 
 Each step is separately testable.
 
 1. **AccountKeeper and MsgRotateKey.** Add an `AccountKeeper` to
-   `x/accountauth`. `MsgRotateKey` sets the account pubkey to the new
-   ML-DSA key. Sequence is not touched. After this step, the old key
-   fails and the new key works for transactions that omit the pubkey.
+   `x/accountauth`. `MsgRotateKey` schedules a pubkey change. Sequence
+   is not touched. A current-key rotation takes effect after the delay.
+   After this step, the old key fails and the new key works for
+   transactions that omit the pubkey, once the delay has passed.
 
 2. **RotatingSetPubKeyDecorator.** The replacement decorator, gated on
    `gates.On`. After this step, the new key works for transactions that
    include the pubkey.
 
-3. **Transient store.** The same-block check. After this step, a
-   rotation fails if the account already signed in the block.
+3. **Delay and cancellation.** The scheduled change, the delay
+   parameter, and the guardian cancel/override. A leaked key cannot
+   rotate faster than a guardian can cancel.
 
-4. **RecoveryThreshold.** The separate authenticator and the recovery
-   path on `MsgRotateKey`.
+4. **RecoveryThreshold.** The separate authenticator and the immediate
+   recovery path on `MsgRotateKey`.
 
-5. **Remove the t.Fatal.** `x/accountauth/rotation_test.go` contains
-   `TestRotation_OldKeyCannotSpendAndEscrowFollows`. It sets up an
-   account with an authenticator, then fails because `MsgRotateKey`
-   does not exist. The six assertions are written below the Fatal.
-   Remove the Fatal; the assertions run unchanged.
+5. **Off-chain verifiers and clients.** `x402/exact.go`, the #3788
+   spec, `@x402/cosmos`, and the wallet/agentmcp/keyring signing path.
+
+6. **Remove the t.Fatal.** `x/accountauth/rotation_test.go` contains
+   `TestRotation_OldKeyCannotSpendAndEscrowFollows`. It stays off main
+   until step 1 lands. Remove the Fatal once the message exists; the
+   assertions run unchanged.
 
 ## What this is not
 
@@ -222,10 +256,12 @@ Each step is separately testable.
 | File | What changes |
 |---|---|
 | `x/accountauth/msg_server.go` | `MsgRotateKey` handler |
-| `x/accountauth/keeper.go` | `AccountKeeper` field, transient store key |
+| `x/accountauth/keeper.go` | `AccountKeeper` field, scheduled-rotation store |
 | `proto/aether/accountauth/v1/accountauth.proto` | `MsgRotateKey`, `RecoveryThreshold` |
 | `app/app.go` | ante chain uses `RotatingSetPubKeyDecorator` |
 | `app/rotation_ante.go` | the replacement decorator |
 | `gates/gates.go` | no change; the decorator calls `gates.On` |
-| `x/accountauth/rotation_test.go` | remove `t.Fatal` when step 5 lands |
+| `x/accountauth/rotation_test.go` | stays off main until step 1; remove `t.Fatal` when step 6 lands |
 | `docs/PQ-AGENT-ROTATION.md` | the design note this plan implements |
+| `x402/exact.go` | payer check uses on-chain pubkey |
+| `wallet/`, `cmd/agentmcp/` | sign for an address that is not the key's |
