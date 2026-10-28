@@ -625,29 +625,33 @@ func New(
 	bApp.SetTxEncoder(txConfig.TxEncoder())
 	app.txConfig = txConfig
 
-	// Standard ante handler
-	stdAnteHandler, err := authante.NewAnteHandler(authante.HandlerOptions{
-		AccountKeeper:   app.AccountKeeper,
-		BankKeeper:      app.BankKeeper,
-		SignModeHandler: txConfig.SignModeHandler(),
-		FeegrantKeeper:  feegrantKeeper,
-		SigGasConsumer: func(meter storetypes.GasMeter, sig txsigning.SignatureV2, params authtypes.Params) error {
-			switch sig.PubKey.(type) {
-			case *mldsa.PubKey:
-				// Deliberate, modest cost reflecting real measured ML-DSA-44
-				// verification speed (microseconds, per design research) --
-				// not scaled up to match its larger byte size, since that
-				// cost is already charged separately via tx_size_cost_per_byte.
-				meter.ConsumeGas(2000, "ante verify: mldsa44")
-				return nil
-			default:
-				return authante.DefaultSigVerificationGasConsumer(meter, sig, params)
-			}
-		},
-	})
-	if err != nil {
-		panic(err)
+	// Ante chain built by hand so RotatingSetPubKeyDecorator replaces the
+	// stock SetPubKeyDecorator. The replacement is height-gated inside
+	// the decorator: below RotationActivationHeight it delegates to the
+	// stock check. See app/rotation_ante.go.
+	sigGasConsumer := func(meter storetypes.GasMeter, sig txsigning.SignatureV2, params authtypes.Params) error {
+		switch sig.PubKey.(type) {
+		case *mldsa.PubKey:
+			meter.ConsumeGas(2000, "ante verify: mldsa44")
+			return nil
+		default:
+			return authante.DefaultSigVerificationGasConsumer(meter, sig, params)
+		}
 	}
+	stdAnteHandler := sdk.ChainAnteDecorators(
+		authante.NewSetUpContextDecorator(),
+		authante.NewExtensionOptionsDecorator(nil),
+		authante.NewValidateBasicDecorator(),
+		authante.NewTxTimeoutHeightDecorator(),
+		authante.NewValidateMemoDecorator(app.AccountKeeper),
+		authante.NewConsumeGasForTxSizeDecorator(app.AccountKeeper),
+		authante.NewDeductFeeDecorator(app.AccountKeeper, app.BankKeeper, feegrantKeeper, nil),
+		NewRotatingSetPubKeyDecorator(app.AccountKeeper),
+		authante.NewValidateSigCountDecorator(app.AccountKeeper),
+		authante.NewSigGasConsumeDecorator(app.AccountKeeper, sigGasConsumer),
+		authante.NewSigVerificationDecorator(app.AccountKeeper, txConfig.SignModeHandler()),
+		authante.NewIncrementSequenceDecorator(app.AccountKeeper),
+	)
 
 	// Wrap with our PostQuantumDecorator (outermost)
 	// The decorator calls next (the standard handler) after its own logic.
@@ -789,6 +793,11 @@ func (app *App) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
 	em := sdk.NewEventManager()
 	if err := app.sweepFeesToTreasury(ctx.WithEventManager(em)); err != nil {
 		return res, err
+	}
+	// Apply due key rotations. Height-gated inside the decorator; the
+	// apply itself is unconditional once a rotation is scheduled.
+	if app.AccountAuthKeeper != (accountauth.Keeper{}) {
+		accountauth.ApplyDueRotations(ctx, app.AccountAuthKeeper, app.AccountKeeper)
 	}
 	res.Events = append(res.Events, em.ABCIEvents()...)
 	return res, nil

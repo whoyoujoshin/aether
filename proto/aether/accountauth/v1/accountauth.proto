@@ -43,3 +43,18 @@ message GuardianSignature {
   bytes pubkey = 1;
   bytes signature = 2;
 }
+
+// RecoveryThreshold is a separate, higher guardian set for key rotation.
+// Spending guardians cannot rotate. Registered by the current key.
+message RecoveryThreshold {
+  repeated bytes guardian_pubkeys = 1;
+  uint32 threshold = 2;
+}
+
+// PendingRotation is a scheduled pubkey change. Applied by the EndBlocker
+// at apply_height. Cancelled by the current key or by recovery guardians.
+message PendingRotation {
+  bytes new_pubkey = 1;
+  int64 apply_height = 2;
+  uint64 nonce = 3; // rotation counter or account sequence at schedule time
+}
