@@ -5,8 +5,9 @@ from typing import List, Optional, Tuple, Union
 
 from .amount import AETH, DENOM, Asset, Assets
 from .inflow_caps import INFLOW_CAPS_PATH, InflowCaps, decode_inflow_caps
-from .keys import Key, is_address
+from .keys import PUBKEY_BYTES, Key, is_address
 from .proto import Writer, first, read_fields
+from .rotation import ROTATION_QUERY_PATH, Rotation, decode_account_pubkey, decode_rotation, rotation_request, signs_for
 from .rpc import Rpc, RpcError
 from .tx import MSG_SEND_TYPE_URL, SEND_AUTHORIZATION_TYPE_URL, SignedTx, build_send, build_tx, memo_of
 
@@ -157,6 +158,30 @@ class AetherClient:
     def balances(self, address: str) -> List[Tuple[Asset, int]]:
         """The balance of every asset this client knows, AETH first."""
         return [(a, self.balance(address, a)) for a in self.assets.list()]
+
+    def account_pub_key(self, address: str) -> Optional[bytes]:
+        """The ML-DSA-44 key stored on the account: what signs for it after a rotation.
+        None if the account doesn't exist or has signed nothing yet. A node that
+        can't answer raises (fail closed)."""
+        try:
+            resp = self.rpc.abci_query("/cosmos.auth.v1beta1.Query/AccountInfo", Writer().string(1, address).finish())
+        except RpcError as e:
+            if "not found" in str(e).lower():
+                return None
+            raise
+        return decode_account_pubkey(resp)
+
+    def signs_for(self, account: str, pubkey: bytes) -> bool:
+        """Whether pubkey signs for account: the stored key, or the key the address
+        hashes from while none is stored. Raises if the lookup fails. A key that
+        isn't ML-DSA-44 does not sign, and isn't looked up."""
+        if len(pubkey) != PUBKEY_BYTES:
+            return False
+        return signs_for(account, pubkey, self.account_pub_key(account))
+
+    def rotation(self, account: str) -> Rotation:
+        """The account's rotation record: nonces, recovery set, pending changes, and the key stored on it."""
+        return decode_rotation(self.rpc.abci_query(ROTATION_QUERY_PATH, rotation_request(account)))
 
     def account_info(self, address: str):
         """(account_number, sequence), or None if the account doesn't exist yet."""

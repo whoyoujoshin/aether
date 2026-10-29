@@ -3,12 +3,16 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { base64 } from "@scure/base";
 import { receiptAmount } from "./amount.js";
 import { Key, addressOf } from "./keys.js";
+import { signsFor, type AccountKeys } from "./rotation.js";
 
 // Receipts: a seller's signed statement about one paid response -- who
 // paid what for which request, and what came back (status and a hash of
-// the body). Signed by the payee account's own key, or by a key the payee
-// delegated receipts to, so anyone can check one against the payee's
-// address alone. The same format as the Go paywall (package paywall).
+// the body). Signed by the key that signs for the payee, or by a key the
+// payee delegated receipts to. Without a stored-key lookup, verification
+// checks that the key hashes to the payee's address (an account that never
+// rotated). Pass account keys to apply the chain's rule: a rotated payee's
+// new key is accepted and its retired key is refused. The same format as
+// the Go paywall (package paywall).
 
 export const RECEIPT_HEADER = "X-PAYMENT-RECEIPT";
 const RECEIPT_DOMAIN = "aether-x402-receipt/v1\n";
@@ -95,24 +99,43 @@ function sigOK(pub: Uint8Array, msg: Uint8Array, sig: string): boolean {
   }
 }
 
+/** Whether pub signs for account. A lookup error is a refusal, never a pass. */
+function signsForPayee(account: string, pub: Uint8Array, keys?: AccountKeys): { ok: boolean; problem?: string } {
+  if (!keys) return { ok: addressOf(pub) === account };
+  try {
+    return { ok: signsFor(account, pub, keys.accountPubKey(account)) };
+  } catch (e) {
+    return { ok: false, problem: `reading the payee's key: ${(e as Error).message}` };
+  }
+}
+
 /**
  * Checks that the receipt was signed for its payee (directly or by
  * delegation); returns why not, or undefined if it was. Says nothing
  * about whether it matches a purchase: see checkReceipt.
+ *
+ * keys omitted checks only that a key hashes to the payee's address.
+ * With keys, the chain's rule applies: the key stored on the payee, or
+ * the key its address hashes from while none is stored.
  */
-export function verifyReceipt(r: Receipt): string | undefined {
+export function verifyReceipt(r: Receipt, keys?: AccountKeys): string | undefined {
   if (r?.x402Version !== 1) return "unsupported receipt version";
   const bad = malformed(r);
   if (bad) return bad;
   const pub = decodePub(r.signer);
   if (!pub) return "the signer isn't a base64 ML-DSA-44 public key";
-  const signer = addressOf(pub);
-  if (signer !== r.payTo) {
+  const direct = signsForPayee(r.payTo, pub, keys);
+  if (direct.problem) return direct.problem;
+  if (!direct.ok) {
+    const signer = addressOf(pub);
     const d = r.delegation;
     if (!d) return "signed by a key that isn't the payee's, with no delegation";
     if (d.payTo !== r.payTo || d.signer !== signer) return "the delegation is for another payee or key";
     const payee = decodePub(d.payToPubKey);
-    if (!payee || addressOf(payee) !== r.payTo) return "the delegation isn't signed by the payee's key";
+    if (!payee) return "the delegation isn't signed by the payee's key";
+    const byPayee = signsForPayee(r.payTo, payee, keys);
+    if (byPayee.problem) return byPayee.problem;
+    if (!byPayee.ok) return "the delegation isn't signed by the payee's key";
     if (!sigOK(payee, delegationSigningMessage(d.payTo, d.signer, d.expires), d.signature)) return "the delegation's signature is bad";
     if (r.at > d.expires) return "signed after its delegation expired";
   }
@@ -140,8 +163,8 @@ export interface ReceiptExpectation {
 }
 
 /** verifyReceipt, and that it describes exactly this purchase; returns the problem, or undefined. */
-export function checkReceipt(r: Receipt, want: ReceiptExpectation): string | undefined {
-  const bad = verifyReceipt(r);
+export function checkReceipt(r: Receipt, want: ReceiptExpectation, keys?: AccountKeys): string | undefined {
+  const bad = verifyReceipt(r, keys);
   if (bad) return bad;
   const checks: [string, string, string][] = [
     ["network", r.network, want.network], ["payTo", r.payTo, want.payTo], ["payer", r.payer, want.payer],

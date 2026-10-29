@@ -15,6 +15,7 @@ from . import bech32
 
 PREFIX = "aether"
 PUBKEY_TYPE_URL = "/aether.crypto.v1.PubKey"
+PUBKEY_BYTES = 1312  # raw ML-DSA-44 public key (FIPS 204)
 _PUBKEY_PROTO_NAME = b"aether.crypto.v1.PubKey"
 _WORDS = Mnemonic("english")
 

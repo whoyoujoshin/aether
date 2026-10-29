@@ -1,7 +1,8 @@
 import { Writer, readFields, first, text } from "./proto.js";
 import { Rpc, RpcError, TxEvent, TxResult } from "./rpc.js";
-import { Key, isAddress } from "./keys.js";
+import { Key, PUBKEY_BYTES, isAddress } from "./keys.js";
 import { buildSend, buildTx, memoOf, MSG_SEND_TYPE_URL, SEND_AUTHORIZATION_TYPE_URL, type AnyMsg, SignedTx } from "./tx.js";
+import { decodeAccountPubKey, decodeRotation, ROTATION_QUERY_PATH, rotationRequest, signsFor, type Rotation } from "./rotation.js";
 import { AETH, Assets, DENOM, type Asset, type UsdcSetting } from "./amount.js";
 import { decodeInflowCaps, INFLOW_CAPS_PATH, type InflowCaps } from "./inflowCaps.js";
 
@@ -145,6 +146,32 @@ export class AetherClient {
       if (e instanceof RpcError && /unknown query path/i.test(e.message)) return { active: false, caps: [] };
       throw e;
     }
+  }
+
+  /**
+   * The ML-DSA-44 key stored on the account: what signs for it after a
+   * rotation. Undefined if the account doesn't exist or has signed nothing
+   * yet. A node that can't answer throws (fail closed).
+   */
+  async accountPubKey(address: string): Promise<Uint8Array | undefined> {
+    try {
+      const resp = await this.rpc.abciQuery("/cosmos.auth.v1beta1.Query/AccountInfo", new Writer().string(1, address).finish());
+      return decodeAccountPubKey(resp);
+    } catch (e) {
+      if (e instanceof RpcError && /not found/i.test(e.message)) return undefined;
+      throw e;
+    }
+  }
+
+  /** Whether pubKey signs for account: the stored key, or the key the address hashes from while none is stored. Throws if the lookup fails. A key that isn't ML-DSA-44 does not sign, and isn't looked up. */
+  async signsFor(account: string, pubKey: Uint8Array): Promise<boolean> {
+    if (pubKey.length !== PUBKEY_BYTES) return false;
+    return signsFor(account, pubKey, await this.accountPubKey(account));
+  }
+
+  /** The account's rotation record: nonces, recovery set, pending changes, and the key stored on it. */
+  async rotation(account: string): Promise<Rotation> {
+    return decodeRotation(await this.rpc.abciQuery(ROTATION_QUERY_PATH, rotationRequest(account)));
   }
 
   /** Account number and next sequence; undefined if the account doesn't exist yet (never received funds). */

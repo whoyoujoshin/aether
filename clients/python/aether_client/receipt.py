@@ -1,9 +1,12 @@
 """Receipts: a seller's signed statement about one paid response.
 
 Who paid what for which request, and what came back (status and a hash of
-the body). Signed by the payee account's own key, or by a key the payee
-delegated receipts to, so anyone can check one against the payee's
-address alone. The same format as the Go paywall (package paywall).
+the body). Signed by the key that signs for the payee, or by a key the
+payee delegated receipts to. Without a stored-key lookup, verification
+checks that the key hashes to the payee's address (an account that never
+rotated). Pass keys to apply the chain's rule: a rotated payee's new key
+is accepted and its retired key is refused. The same format as the Go
+paywall (package paywall).
 """
 
 import base64
@@ -15,6 +18,7 @@ from typing import Optional
 
 from .amount import DENOM, receipt_amount
 from .keys import Key, address_of
+from .rotation import signs_for
 
 RECEIPT_HEADER = "X-PAYMENT-RECEIPT"
 _RECEIPT_DOMAIN = "aether-x402-receipt/v1\n"
@@ -88,9 +92,24 @@ def malformed(r: dict) -> Optional[str]:
     return None
 
 
-def verify_receipt(r: dict) -> Optional[str]:
+def _signs_for_payee(account: str, pub: bytes, keys) -> tuple:
+    """(ok, problem). keys is an object with account_pub_key(account), or None for the hash-only check.
+    A lookup error is a refusal, never a pass."""
+    if keys is None:
+        return address_of(pub) == account, None
+    try:
+        return signs_for(account, pub, keys.account_pub_key(account)), None
+    except Exception as e:
+        return False, f"reading the payee's key: {e}"
+
+
+def verify_receipt(r: dict, keys=None) -> Optional[str]:
     """Why the receipt wasn't signed for its payee (directly or by delegation), or None if it was.
-    Says nothing about whether it matches a purchase: see check_receipt."""
+    Says nothing about whether it matches a purchase: see check_receipt.
+
+    keys omitted checks only that a key hashes to the payee's address. With keys
+    (account_pub_key), the chain's rule applies: the key stored on the payee, or
+    the key its address hashes from while none is stored."""
     try:
         if r.get("x402Version") != 1:
             return "unsupported receipt version"
@@ -100,15 +119,23 @@ def verify_receipt(r: dict) -> Optional[str]:
         pub = _pub(r.get("signer"))
         if not pub:
             return "the signer isn't a base64 ML-DSA-44 public key"
-        signer = address_of(pub)
-        if signer != r["payTo"]:
+        direct, problem = _signs_for_payee(r["payTo"], pub, keys)
+        if problem:
+            return problem
+        if not direct:
+            signer = address_of(pub)
             d = r.get("delegation")
             if not d:
                 return "signed by a key that isn't the payee's, with no delegation"
             if d.get("payTo") != r["payTo"] or d.get("signer") != signer:
                 return "the delegation is for another payee or key"
             payee = _pub(d.get("payToPubKey"))
-            if not payee or address_of(payee) != r["payTo"]:
+            if not payee:
+                return "the delegation isn't signed by the payee's key"
+            by_payee, problem = _signs_for_payee(r["payTo"], payee, keys)
+            if problem:
+                return problem
+            if not by_payee:
                 return "the delegation isn't signed by the payee's key"
             if not _sig_ok(payee, delegation_signing_message(d["payTo"], d["signer"], d["expires"]), d.get("signature")):
                 return "the delegation's signature is bad"
@@ -122,9 +149,10 @@ def verify_receipt(r: dict) -> Optional[str]:
 
 
 def check_receipt(r: dict, *, network, pay_to, payer, scheme, payment, amount: int, method, host, path,
-                  request_body: bytes, status: int, response_body: Optional[bytes] = None, denom: str = DENOM) -> Optional[str]:
+                  request_body: bytes, status: int, response_body: Optional[bytes] = None, denom: str = DENOM,
+                  keys=None) -> Optional[str]:
     """verify_receipt, and that it describes exactly this purchase (amount in denom's base units): the problem, or None."""
-    bad = verify_receipt(r)
+    bad = verify_receipt(r, keys)
     if bad:
         return bad
     checks = [("network", r["network"], network), ("payTo", r["payTo"], pay_to), ("payer", r["payer"], payer),

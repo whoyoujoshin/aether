@@ -5,7 +5,8 @@ import { bytesToHex, randomBytes } from "@noble/hashes/utils.js";
 import { base64, base64urlnopad } from "@scure/base";
 import { AetherClient } from "./client.js";
 import { RpcError } from "./rpc.js";
-import { Key, addressOf, isAddress } from "./keys.js";
+import { Key, PUBKEY_BYTES, isAddress } from "./keys.js";
+import { signsFor, type AccountKeys } from "./rotation.js";
 import { buildSend, buildTx, execSendMsg } from "./tx.js";
 import { AETH, Assets, DENOM, decimalOf, formatAeth, formatAmount, parseUaeth, receiptAmount, type Asset } from "./amount.js";
 import { MANIFEST_PATH, type Manifest } from "./directory.js";
@@ -117,6 +118,14 @@ export interface PaywallConfig {
     /** Default 60. */
     collectEverySeconds?: number;
   };
+  /**
+   * The key stored on each account, for which key signs a prepaid or pull
+   * request and whether receipts would verify. Omit it and sign-in reads
+   * the key from client; the receipt check at construction stays the
+   * hash-only rule unless this is set, because that check is synchronous.
+   * A lookup that throws refuses the request.
+   */
+  accountKeys?: AccountKeys;
   /** Milliseconds; for tests. */
   now?: () => number;
 }
@@ -239,7 +248,9 @@ export class Paywall {
         network: this.network, payTo: cfg.payTo, payer: "", scheme: "", payment: "", amount: "", method: "", host: "", path: "",
         requestHash: sha256Hex(new Uint8Array()), status: 0, at: Math.floor(this.now() / 1000),
       }, cfg.receipts.delegation);
-      const bad = verifyReceipt(probe);
+      // accountKeys applies the stored-key rule. Without it, construction
+      // can't ask the node (this is synchronous), so it checks the hash.
+      const bad = verifyReceipt(probe, cfg.accountKeys);
       if (bad) throw new Error(`receipts wouldn't verify: ${bad}`);
     }
   }
@@ -442,7 +453,12 @@ export class Paywall {
 
   // --- aether-prepaid ---
 
-  private verify(req: SellerRequest, raw: unknown, body: Uint8Array, pull = false): Signed | { code: string; message: string } {
+  private async storedKey(account: string): Promise<Uint8Array | undefined> {
+    if (this.cfg.accountKeys) return this.cfg.accountKeys.accountPubKey(account);
+    return this.cfg.client.accountPubKey(account);
+  }
+
+  private async verify(req: SellerRequest, raw: unknown, body: Uint8Array, pull = false): Promise<Signed | { code: string; message: string }> {
     const pay = raw as PrepaidPayload;
     if (!pay || typeof pay !== "object" || typeof pay.account !== "string" || typeof pay.pubKey !== "string" || typeof pay.signature !== "string"
       || typeof pay.timestamp !== "number" || typeof pay.requestId !== "string" || typeof pay.maxPrice !== "string") {
@@ -455,8 +471,15 @@ export class Paywall {
     } catch {
       return { code: "invalid_signature", message: "pubKey must be a base64 ML-DSA-44 public key" };
     }
-    if (pub.length !== 1312) return { code: "invalid_signature", message: "pubKey must be a base64 ML-DSA-44 public key" };
-    if (addressOf(pub) !== pay.account) return { code: "invalid_signature", message: "pubKey does not belong to account" };
+    if (pub.length !== PUBKEY_BYTES) return { code: "invalid_signature", message: "pubKey must be a base64 ML-DSA-44 public key" };
+    try {
+      // The key stored on the account, or the key its address hashes from while none is stored.
+      if (!signsFor(pay.account, pub, await this.storedKey(pay.account))) {
+        return { code: "invalid_signature", message: "pubKey does not sign for account" };
+      }
+    } catch {
+      return { code: "payment_not_confirmed", message: "can't read the account's key from the chain; retry" };
+    }
     try {
       sig = base64.decode(pay.signature);
     } catch {
@@ -486,7 +509,7 @@ export class Paywall {
 
   private async servePrepaid(req: SellerRequest, raw: unknown, body: Uint8Array): Promise<Decision> {
     const ledger = this.ledger!;
-    const v = this.verify(req, raw, body);
+    const v = await this.verify(req, raw, body);
     if ("code" in v) return this.paymentRequired(req, v.code, v.message);
     const { pay, maxPrice } = v;
     const refuse = (code: string, msg: string, headers: Record<string, string> = {}) => this.paymentRequired(req, code, msg, "", pay.account, headers);
@@ -530,7 +553,7 @@ export class Paywall {
 
   private async servePull(req: SellerRequest, raw: unknown, body: Uint8Array): Promise<Decision> {
     const ledger = this.pullLedger!;
-    const v = this.verify(req, raw, body, true);
+    const v = await this.verify(req, raw, body, true);
     if ("code" in v) return this.paymentRequired(req, v.code, v.message);
     const { pay, maxPrice } = v;
     const buyer = pay.account;
@@ -700,7 +723,7 @@ export class Paywall {
     const pay = decodeHeader<{ scheme?: string; network?: string; payload?: unknown }>(req.header("x-payment") ?? "");
     if (!pay) return fail(400, "invalid_payment", "sign the withdrawal like a prepaid request: X-PAYMENT must be base64-encoded JSON");
     if (pay.scheme !== SCHEME_PREPAID || pay.network !== this.network) return fail(400, "unsupported_scheme", `withdrawals are signed with ${SCHEME_PREPAID} on network "${this.network}"`);
-    const v = this.verify(req, pay.payload, body);
+    const v = await this.verify(req, pay.payload, body);
     if ("code" in v) return fail(v.code === "invalid_signature" || v.code === "stale_request" ? 403 : 400, v.code, v.message);
     let amount: bigint | undefined;
     const text = new TextDecoder().decode(body).trim();
