@@ -86,6 +86,9 @@ function Shell() {
           <a href="https://discord.gg/fQmTTcevfq" target="_blank" rel="noopener noreferrer">
             Discord
           </a>
+          <a href="https://x.com/BuildAether" target="_blank" rel="noopener noreferrer">
+            X
+          </a>
           <a href="https://github.com/whoyoujoshin/aether" target="_blank" rel="noopener noreferrer">
             GitHub
           </a>
