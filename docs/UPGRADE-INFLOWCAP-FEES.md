@@ -59,8 +59,10 @@ together had 57.7%. Either:
 Both hold for 511,920: peer-1's miner has run at `--duty 0.6` since
 2026-10-28 03:55 UTC (488,451; peer-1 44.1% at 488,464 with 34.5% of
 epoch 339's work), so it should be under a third about three boundaries
-later (~492,479), and H is in Joshua's day. Check the powers again the
-evening before:
+later (~492,479), and H is in Joshua's day. At 502,941 (all four on
+`1080a98`) peer-1 held 31.1% with a 27.4% work share, and blocks were
+5.82 s, which puts H near 17:15 UTC (12:15 PM CDT). Check the powers
+again the evening before:
 
 ```bash
 curl -s localhost:26657/validators | jq -r '.result.validators[] | "\(.address) \(.voting_power)"'
@@ -191,6 +193,11 @@ curl -s "localhost:1317/cosmos/bank/v1beta1/supply/by_denom?denom=ibc/47BD209179
 A supply already over its cap isn't an error: nothing more of it comes
 in until it falls back under.
 
+On 511,920 the seed's REST port (1317) wasn't listening, so those two
+lines returned nothing; Gitty read `SupplyOf` over RPC `abci_query`
+instead (12 USDC and 0.396424 OSMO at 511,881). From H on, `aetherd q
+inflowcap caps` shows each listed voucher's supply.
+
 ## 5. At H: every node halts, restart each once
 
 Each node stops on its own at H:
@@ -226,8 +233,13 @@ aetherd q treasury balance -o json | jq .real_bank_balances
 ```
 
 - All four signing (step 2a).
-- `get_inflow_caps` on the public `/mcp` reports `active: true` (no
-  redeploy needed: the services read the module when it answers).
+- `get_inflow_caps` reports `active: true`. The seed's agentmcp and test
+  wallet are from `561fc6c` (10-20), older than the tool, so the public
+  `/mcp` doesn't have it until they're redeployed after H from the
+  `dist/prebuilt-1080a98` that built `aetherd`: its `agentmcp` over
+  `/root/agentmcp` (backup first) and `systemctl restart aether-agentmcp`,
+  and `PREBUILT=… sandbox.sh` for the test wallet; aetherd untouched.
+  Until then, `aetherd q inflowcap caps` is the check.
 - A small USDC transfer from Injective arrives; one over the room is
   refused `over_cap` and refunded on Injective after `outbound.exe`
   relays the error ack.
