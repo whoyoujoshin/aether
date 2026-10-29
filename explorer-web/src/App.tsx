@@ -82,6 +82,17 @@ function Shell() {
       <div className="footer">
         <img src="/aether-mark-reversed.svg" alt="" />
         Aether Explorer · read live from the chain
+        <nav className="footer-links" aria-label="Community">
+          <a href="https://discord.gg/fQmTTcevfq" target="_blank" rel="noopener noreferrer">
+            Discord
+          </a>
+          <a href="https://x.com/BuildAether" target="_blank" rel="noopener noreferrer">
+            X
+          </a>
+          <a href="https://github.com/whoyoujoshin/aether" target="_blank" rel="noopener noreferrer">
+            GitHub
+          </a>
+        </nav>
       </div>
     </div>
   );
