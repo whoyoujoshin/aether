@@ -233,12 +233,24 @@ input::placeholder {
   font-size: 12px;
   border-top: 1px solid var(--rule);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
 .footer img {
   width: 14px;
   height: 14px;
+}
+.footer-links {
+  margin-left: auto;
+  display: flex;
+  gap: 16px;
+}
+.footer-links a {
+  color: var(--muted-2);
+}
+.footer-links a:hover {
+  color: var(--text-2);
 }
 
 /* --- page headers --- */
