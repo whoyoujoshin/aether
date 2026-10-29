@@ -193,6 +193,11 @@ curl -s "localhost:1317/cosmos/bank/v1beta1/supply/by_denom?denom=ibc/47BD209179
 A supply already over its cap isn't an error: nothing more of it comes
 in until it falls back under.
 
+On 511,920 the seed's REST port (1317) wasn't listening, so those two
+lines returned nothing; Gitty read `SupplyOf` over RPC `abci_query`
+instead (12 USDC and 0.396424 OSMO at 511,881). From H on, `aetherd q
+inflowcap caps` shows each listed voucher's supply.
+
 ## 5. At H: every node halts, restart each once
 
 Each node stops on its own at H:
