@@ -43,9 +43,15 @@ import (
 
 // RotationActivationHeight switches rotation on: its messages are refused
 // before it, the ante decorator keeps the stock check, and nothing is
-// applied. A placeholder far past the testnet's tip until an upgrade
-// sets it; fresh chains have it from block 1.
-const RotationActivationHeight int64 = 40_000_000
+// applied. Fresh chains have it from block 1.
+//
+// On the testnet: 518,940, chosen on 2026-10-29 at tip 512,395, about
+// 03:30 UTC on 2026-10-30 (10:30 PM CDT on the 29th) at 5.59 s blocks
+// (docs/UPGRADE-ROTATION.md). It adds no store, so nothing halts at it:
+// an earlier binary agrees on every block until the first rotation
+// message after it, and splits there. Earlier binaries carried 40,000,000
+// as a placeholder.
+const RotationActivationHeight int64 = 518_940
 
 // RotationDelayBlocks is how long a current-key rotation or a
 // recovery-set change waits before it applies: about a day at 5.64 s

@@ -35,8 +35,10 @@ no binary is built: the query node runs the build the validators run.
 
 ## 2. Binary and settings to bring
 
-- **The validators' aetherd**, the `3ad12a6` build: copy sync4's running
-  binary and check it is sha256 `9a78e03a…97123`:
+- **The validators' aetherd**, whichever build they run when you set it up
+  (`1080a98` until the 518,940 swaps, then the rotation build;
+  `docs/UPGRADE-ROTATION.md`): copy sync4's running binary and check its
+  sha256 matches the one Gitty published for that build:
   ```bash
   # on sync4: the file name still carries an old commit, so go by the process
   sha256sum /proc/$(systemctl show -p MainPID --value aetherd)/exe
@@ -57,7 +59,7 @@ no binary is built: the query node runs the build the validators run.
 On the query node, from a checkout of `main`:
 
 ```bash
-AETHERD_BIN=/root/aetherd-3ad12a6 LISTEN_IP=<its private IP> ALLOW_FROM=<seed private IP> \
+AETHERD_BIN=/root/aetherd-<commit> LISTEN_IP=<its private IP> ALLOW_FROM=<seed private IP> \
 PEERS=<seed id>@<seed private IP>:26656,<sync3 id>@<sync3>:26656,<sync4 id>@<sync4>:26656 \
 MIN_GAS_PRICES=<the seed's value> RPC_CORS='<the seed's value, if any>' \
   bash scripts/querynode/setup.sh

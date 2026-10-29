@@ -1,10 +1,10 @@
 # Key rotation (x/accountauth)
 
-**Status (2026-10-28):** built and tested, not active on the testnet.
-It is a consensus change: `RotationActivationHeight` is a placeholder
-(40,000,000) until an upgrade sets it, and it is **not** part of the
-511,920 upgrade (inflow cap, fees, treasury coin spends). On fresh chains
-(`aether-1`, `aether-rc-*`) it is on from block 1. Grok's plan
+**Status (2026-10-29):** on the testnet from block **518,940**
+(`RotationActivationHeight`, about 03:30 UTC on 2026-10-30), its own
+upgrade after 511,920; runbook `docs/UPGRADE-ROTATION.md`. Earlier
+binaries carried a 40,000,000 placeholder. On fresh chains (`aether-1`,
+`aether-rc-*`) it is on from block 1. Grok's plan
 (`grok/pq-agent-rotation`, `docs/PQ-AGENT-ROTATION-PLAN.md` there) was
 the design reference. This build is new code.
 

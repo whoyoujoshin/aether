@@ -4,7 +4,7 @@
 # read instead of the seed's validator. Run as root on the new server,
 # never on a validator:
 #
-#   AETHERD_BIN=/root/aetherd-3ad12a6 LISTEN_IP=10.116.0.5 ALLOW_FROM=10.116.0.2 \
+#   AETHERD_BIN=/root/aetherd-<commit> LISTEN_IP=10.116.0.5 ALLOW_FROM=10.116.0.2 \
 #   PEERS=<id>@<seed>:26656,<id>@<sync3>:26656,<id>@<sync4>:26656 \
 #   MIN_GAS_PRICES=<the seed's minimum-gas-prices> \
 #     bash scripts/querynode/setup.sh
