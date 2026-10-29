@@ -131,7 +131,8 @@ stuck on a stolen key. So:
    set holds at most 3 watchtowers.
 4. A watchtower can't cancel a change that removes it (Gitty's devnet
    review; Joshua chose this over letting the owner replace guardians
-   past it).
+   past it). It is refused with `ErrWatchtowerOwnRemoval` (accountauth
+   code 21).
    - **The case it fixes:** the guardians are gone (their keys lost) and
      the watchtower has turned hostile. The owner schedules a change
      without it, which applies after the delay, and is then free to

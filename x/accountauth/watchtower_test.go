@@ -75,7 +75,7 @@ func TestWatchtower_CancelsTheCurrentKeysChanges(t *testing.T) {
 	// That isn't the watchtower's to cancel; the guardians' it is.
 	_, err = f.ms.SetRecovery(f.ctx, &MsgSetRecovery{Account: f.addr()})
 	require.NoError(t, err)
-	require.ErrorContains(t, f.watchtowerCancel(w), "removes this watchtower")
+	require.ErrorIs(t, f.watchtowerCancel(w), ErrWatchtowerOwnRemoval)
 	require.NotNil(t, f.state().PendingRecovery)
 	sb := GuardianCancelSigningBytes(rotChain, f.addr(), f.state().RecoveryNonce)
 	_, err = f.ms.GuardianCancel(f.ctx, &MsgGuardianCancel{Submitter: f.addr(), Account: f.addr(),
@@ -103,7 +103,7 @@ func TestWatchtower_CantBlockItsOwnRemoval(t *testing.T) {
 	require.NoError(t, f.watchtowerCancel(bad), "the key change is still its to cancel")
 	require.Nil(t, f.state().PendingRotation)
 	require.NotNil(t, f.state().PendingRecovery, "its own removal isn't")
-	require.ErrorContains(t, f.watchtowerCancel(bad), "removes this watchtower")
+	require.ErrorIs(t, f.watchtowerCancel(bad), ErrWatchtowerOwnRemoval)
 
 	f.at(res.ApplyHeight)
 	f.k.ApplyDueRotations(f.ctx)
@@ -127,7 +127,7 @@ func TestWatchtower_RemovalIsPerWatchtower(t *testing.T) {
 	dropW2 := &MsgSetRecovery{Account: f.addr(), GuardianPubkeys: pubs(g), Threshold: 1, WatchtowerPubkeys: [][]byte{w1.pub}}
 	_, err := f.ms.SetRecovery(f.ctx, dropW2)
 	require.NoError(t, err)
-	require.ErrorContains(t, f.watchtowerCancel(w2), "removes this watchtower")
+	require.ErrorIs(t, f.watchtowerCancel(w2), ErrWatchtowerOwnRemoval)
 	require.NoError(t, f.watchtowerCancel(w1))
 	require.Nil(t, f.state().PendingRecovery)
 }

@@ -556,7 +556,7 @@ func (k msgServer) WatchtowerCancel(goCtx context.Context, msg *MsgWatchtowerCan
 	}
 	if !cancelled {
 		if st.PendingRecovery != nil {
-			return nil, sdkerrors.Wrap(ErrNothingPending, "the pending recovery-set change removes this watchtower, so it can't cancel it")
+			return nil, sdkerrors.Wrap(ErrWatchtowerOwnRemoval, "the pending recovery-set change removes this watchtower; the guardians can cancel it")
 		}
 		return nil, sdkerrors.Wrap(ErrNothingPending, "no pending key or recovery-set change")
 	}
