@@ -131,7 +131,21 @@ the funder, so it proves the funder signs.
 
 ## 4. Remove the unencrypted copies
 
-Only after each service in step 3 has signed from the file keyring:
+Only after each service in step 3 has signed from the file keyring.
+
+First, a copy of the encrypted keyrings off the seed. `faucet-v3` and
+`faucet-v2` have no mnemonic file, so once their test copies are gone
+the seed's `keyring-file/` is their only copy, and `faucet-v2` holds the
+seed's seat. The copy is encrypted with the passphrase, so it can sit on
+a workstation:
+
+```bash
+tar -C /root -czf /root/keyrings-file-$(date +%Y%m%d).tgz .aether/keyring-file aether-sandbox-key/keyring-file
+```
+
+Copy it to Joshua's workstation, then delete it on the seed. Check it
+opens there: `wallet list --keyring-backend file --keyring-dir <dir>/.aether`
+lists both faucet keys after the passphrase. Then:
 
 ```bash
 P=/root/prebuilt-<commit>   # any aetherd can delete a key; this one is at hand
