@@ -39,8 +39,16 @@ type txSearcher interface {
 // all result pages. Unlike a "latest N" query it can't miss a payment
 // on a busy address; it stops with ErrTooMuchHistory (returning what
 // it has) once it has maxResults.
+//
+// Repeat calls for the same address ask the node only for what's new
+// since the last one (scancache.go).
 func (c *Client) GetIncomingPayments(address string, sinceHeight int64, maxResults int) ([]IncomingPayment, error) {
-	return incomingPayments(context.Background(), txtypes.NewServiceClient(c.conn), address, sinceHeight, maxResults)
+	s := txtypes.NewServiceClient(c.conn)
+	return incomingScans.scan(c.conn.Target()+"|incoming|"+address, sinceHeight, maxResults,
+		func(p IncomingPayment) int64 { return p.Height },
+		func(from int64, max int) ([]IncomingPayment, error) {
+			return incomingPayments(context.Background(), s, address, from, max)
+		})
 }
 
 func incomingPayments(ctx context.Context, s txSearcher, address string, sinceHeight int64, maxResults int) ([]IncomingPayment, error) {
