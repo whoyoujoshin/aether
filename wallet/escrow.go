@@ -191,9 +191,14 @@ type EscrowCreated struct {
 // sinceHeight whose terms contain substr, oldest first, reading all
 // result pages; ErrTooMuchHistory (with what it has) past maxResults.
 // substr goes into a query string, so it may hold only letters, digits
-// and ":-_".
+// and ":-_". Repeat calls ask the node only for what's new (scancache.go).
 func (c *Client) EscrowsCreatedWithTerms(ctx context.Context, substr string, sinceHeight int64, maxResults int) ([]EscrowCreated, error) {
-	return escrowsCreatedWithTerms(ctx, txtypes.NewServiceClient(c.conn), substr, sinceHeight, maxResults)
+	s := txtypes.NewServiceClient(c.conn)
+	return escrowScans.scan(c.conn.Target()+"|escrows|"+substr, sinceHeight, maxResults,
+		func(e EscrowCreated) int64 { return e.Height },
+		func(from int64, max int) ([]EscrowCreated, error) {
+			return escrowsCreatedWithTerms(ctx, s, substr, from, max)
+		})
 }
 
 func escrowsCreatedWithTerms(ctx context.Context, s txSearcher, substr string, sinceHeight int64, maxResults int) ([]EscrowCreated, error) {

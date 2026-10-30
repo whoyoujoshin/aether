@@ -2,6 +2,15 @@
 
 **For:** Gitty (Joshua approves the new server's cost first). **Linear:** AET-18.
 
+**Status (2026-10-29): on hold.** Joshua won't add a fourth droplet (three
+already cost about $120 a month). Instead the services stopped repeating
+their history searches: `wallet`'s scan cache (`wallet/scancache.go`)
+keeps each `GetIncomingPayments` and `EscrowsCreatedWithTerms` result and
+asks the node only for what's new, so after the first scan a refresh
+decodes a few transactions instead of the whole history. The seed also
+has 8 GB of RAM now, with aetherd's `GOMEMLIMIT` at 4500MiB. This
+runbook stays for when load outgrows that.
+
 **Why.** On 2026-10-22 the seed's aetherd wedged near its memory cap and,
 with peer-1 out, halted the chain (395,890). About 187 MB of its live heap
 was decoding transaction results for searches our own services make: the
