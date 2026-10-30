@@ -164,10 +164,11 @@ $P/wallet rotation <any address> --grpc localhost:9090 --chain-id aether-testnet
   redeploy them from `$P` (`install.sh`, `sandbox.sh`, and agentmcp
   over `/root/agentmcp`), so they apply the stored-key rule. aetherd stays
   untouched.
-- `v0.2.17-testnet` waits until the query node (AET-18) and the service
-  keys (AET-26) are done and rotation has been used on the testnet
-  (Joshua, 2026-10-29). Until then a node on the `v0.2.16-testnet` release
-  binary splits at the first rotation message after H.
+- `v0.2.17-testnet` waits until the service keys (AET-26) are done and a
+  rotation has applied on the testnet (Joshua, 2026-10-29; on 10-30 he
+  counted the scan cache, #189, as meeting the query-node condition,
+  AET-18). Until then a node on the `v0.2.16-testnet` release binary
+  splits at the first rotation message after H.
 
 ## If something goes wrong
 
