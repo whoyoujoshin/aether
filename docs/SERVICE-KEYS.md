@@ -131,35 +131,67 @@ the funder, so it proves the funder signs.
 
 ## 4. Remove the unencrypted copies
 
-Only after each service in step 3 has signed from the file keyring.
+Only after each service in step 3 has signed from the file keyring. Four
+parts, in order; each ends with a check, and the next waits for it.
 
-First, a copy of the encrypted keyrings off the seed. `faucet-v3` and
-`faucet-v2` have no mnemonic file, so once their test copies are gone
-the seed's `keyring-file/` is their only copy, and `faucet-v2` holds the
-seed's seat. The copy is encrypted with the passphrase, so it can sit on
-a workstation:
+`faucet-v3` and `faucet-v2` have no mnemonic file, so once their test
+copies are gone the seed's `keyring-file/` is their only copy, and
+`faucet-v2` holds the seed's seat. Part A makes a second copy first. It
+is encrypted with the passphrase, so it can sit on a workstation.
+
+**A. Back up the encrypted keyrings (Gitty, on the seed).**
 
 ```bash
-tar -C /root -czf /root/keyrings-file-$(date +%Y%m%d).tgz .aether/keyring-file aether-sandbox-key/keyring-file
+P=/root/prebuilt-<commit>; B=/root/keyrings-file-$(date +%Y%m%d).tgz
+umask 077
+tar -C /root -czf $B .aether/keyring-file aether-sandbox-key/keyring-file
+# Check the archive opens with the passphrases, from a copy in /run (memory):
+mkdir -p /run/kcheck && tar -C /run/kcheck -xzf $B
+systemd-creds decrypt --name=keyring /etc/credstore.encrypted/aether-home-keyring /run/aether-pass
+AETHER_KEYRING_PASSPHRASE_FILE=/run/aether-pass $P/wallet list --keyring-backend file --keyring-dir /run/kcheck/.aether
+systemd-creds decrypt --name=keyring /etc/credstore.encrypted/aether-sandbox-keyring /run/aether-pass
+AETHER_KEYRING_PASSPHRASE_FILE=/run/aether-pass $P/wallet list --keyring-backend file --keyring-dir /run/kcheck/aether-sandbox-key
+rm -rf /run/aether-pass /run/kcheck
+sha256sum $B
 ```
 
-Copy it to Joshua's workstation, then delete it on the seed. Check it
-opens there: `wallet list --keyring-backend file --keyring-dir <dir>/.aether`
-lists both faucet keys after the passphrase. Then:
+The first list shows `faucet-v3` and `faucet-v2`, the second
+`sandbox-funder`, at their known addresses. Send Joshua the archive (any
+way: it is encrypted) and its sha256.
+
+**B. Joshua keeps the archive and the mnemonics.**
+
+1. Save the archive in two places, e.g. a folder on his PC and a USB stick
+   or a password-manager attachment. `Get-FileHash <file>` in PowerShell
+   matches Gitty's sha256.
+2. In the DigitalOcean console on the seed, show each mnemonic, copy it
+   into its own password-manager entry, then clear the screen:
+   ```bash
+   cat /root/aether-sandbox-key/funder-mnemonic.txt
+   cat /root/aether-services-key/created.json     # the "mnemonic" field; needed again in step 5
+   cat /root/aether-decoy-key/decoy-mnemonic.txt  # optional: the benchmark decoy
+   clear
+   ```
+3. Tell Gitty: archive saved (hash matches), mnemonics saved.
+
+**C. Delete the test-keyring copies (Gitty, after Joshua's OK).**
 
 ```bash
-P=/root/prebuilt-<commit>   # any aetherd can delete a key; this one is at hand
 for k in faucet-v3 faucet-v2; do $P/aetherd keys delete $k --keyring-backend test --keyring-dir /root/.aether -y; done
 $P/aetherd keys delete sandbox-funder --keyring-backend test --keyring-dir /root/aether-sandbox-key -y
+shred -u /root/aether-sandbox-key/funder-mnemonic.txt
+shred -u /root/aether-decoy-key/decoy-mnemonic.txt   # only if Joshua saved it
+shred -u $B
 ```
 
-Then the mnemonic files. First Joshua confirms each is in his password
-manager: `/root/aether-sandbox-key/funder-mnemonic.txt`,
-`/root/aether-services-key/created.json`, and
-`/root/aether-decoy-key/decoy-mnemonic.txt` if he wants the decoy too.
-Then `shred -u` each. Other keys in `/root/.aether`'s test keyring (`ls
-/root/.aether/keyring-test`) are listed for Joshua to decide, not deleted
-by this runbook.
+`created.json` stays until step 5. Other keys in `/root/.aether`'s test
+keyring (`ls /root/.aether/keyring-test`) are listed for Joshua to
+decide, not deleted here.
+
+**D. Check (Gitty).** The services still sign from the file keyring: one
+faucet drip, one new test wallet (its grant is a funder transfer), and
+`journalctl -u aether-powminer -n 20` shows accepted submissions. Then
+remove the `.bak-filekeyring` backups.
 
 ## 5. The payee key leaves the server
 
