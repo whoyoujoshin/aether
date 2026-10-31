@@ -11,6 +11,7 @@ require (
 	cosmossdk.io/x/feegrant v0.1.1
 	cosmossdk.io/x/tx v0.13.7
 	cosmossdk.io/x/upgrade v0.1.4
+	github.com/99designs/keyring v1.2.1
 	github.com/cloudflare/circl v1.6.4
 	github.com/cometbft/cometbft v0.38.26
 	github.com/cosmos/cosmos-db v1.1.1
@@ -50,7 +51,6 @@ require (
 	cosmossdk.io/x/evidence v0.1.1 // indirect
 	filippo.io/edwards25519 v1.1.1 // indirect
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
-	github.com/99designs/keyring v1.2.1 // indirect
 	github.com/DataDog/datadog-go v3.2.0+incompatible // indirect
 	github.com/DataDog/zstd v1.5.5 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.33.0 // indirect

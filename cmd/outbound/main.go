@@ -63,7 +63,8 @@ func main() {
 	)
 	flag.Parse()
 	if *passFile != "" {
-		// KeyringInput reads the variable; setting it here keeps one code path.
+		// KeyringInput reads the variable; wallet.NewKeyring then opens the
+		// file keyring with it, never prompting on the console.
 		if err := os.Setenv(wallet.KeyringPassphraseFileEnv, *passFile); err != nil {
 			log.Fatalf("keyring: %v", err)
 		}
