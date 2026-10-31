@@ -22,7 +22,7 @@ COMMIT=$(git rev-parse --short HEAD)
 OUT=${1:-dist/prebuilt-$COMMIT}
 mkdir -p "$OUT"
 echo "== Building $(git log -1 --format='%h %s') into $OUT"
-for c in agentmcp agentservices paywall facilitator jobboard explorer aetherd chainwatch wallet faucet powminer; do
+for c in agentmcp agentservices paywall facilitator jobboard explorer aetherd chainwatch wallet faucet powminer outbound; do
   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o "$OUT/$c" "./cmd/$c"
   echo "   $c"
 done

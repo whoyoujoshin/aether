@@ -4,7 +4,7 @@
 #
 #   cd /root/aether-src && bash scripts/agentservices/announce.sh
 #
-# First run: creates the account (key in /root/aether-services-key, a
+# First run (CREATE_PAYEE=yes): creates the account (key in /root/aether-services-key, a
 # disposable testnet key: it only receives service payments), asks the
 # local faucet to fund it, prints its address, and stops if the funds
 # haven't arrived yet. Once install.sh and caddy.sh have run and the
@@ -32,6 +32,14 @@ AETHERD=${AETHERD:-$(command -v aetherd || true)}
 kr=(--keyring-backend test --keyring-dir "$KEYDIR")
 
 if ! "$AETHERD" keys show "$KEY" "${kr[@]}" >/dev/null 2>&1; then
+  # The testnet's payee key left the seed (docs/SERVICE-KEYS.md step 5):
+  # a new one here would be a second payee, and the quest and directory
+  # reputation count payments only to the current one.
+  if [ "${CREATE_PAYEE:-}" != yes ]; then
+    echo "no $KEY key in $KEYDIR. The testnet's payee key is on Joshua's PC: list services from there" >&2
+    echo "(paywall list, docs/SELL.md). CREATE_PAYEE=yes makes a new payee account (a fresh chain only)." >&2
+    exit 1
+  fi
   mkdir -p "$KEYDIR" && chmod 700 "$KEYDIR"
   "$AETHERD" keys add "$KEY" "${kr[@]}" --output json > "$KEYDIR/created.json" 2>&1
   chmod 600 "$KEYDIR/created.json"

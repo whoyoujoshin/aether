@@ -20,6 +20,15 @@ if ($procs.Count -gt 0) {
   Write-Log ("already running pid=" + (($procs | ForEach-Object { $_.ProcessId }) -join ","))
   exit 0
 }
+# Since AET-26 step 6 (docs/SERVICE-KEYS.md) the key is in an encrypted
+# file keyring, its passphrase in a file only SYSTEM and Administrators
+# can read; until that file exists, the test keyring as before.
+$passFile = "C:\aether-keys\injective-relayer-pass.txt"
+$backend = "test"
+if (Test-Path $passFile) {
+  $backend = "file"
+  $env:AETHER_KEYRING_PASSPHRASE_FILE = $passFile
+}
 # Keep the previous run's log, so a crash's last lines survive the restart.
 if (Test-Path $outLog) { Move-Item $outLog "$outLog.prev" -Force }
 $argList = @(
@@ -28,12 +37,12 @@ $argList = @(
   "-cparty-grpc", "testnet.sentry.chain.grpc.injective.network:443",
   "-cparty-chain-id", "injective-888", "-cparty-bech32-prefix", "inj",
   "-cparty-key", "relayer", "-cparty-home", "C:\aether-relayer\injective",
-  "-keyring-backend", "test",
+  "-keyring-backend", $backend,
   "-cparty-gas-prices", "160000000inj",
   "-client-id", "07-tendermint-510",
   "-refresh-after", "1h", "-listen", "127.0.0.1:8096"
 )
-Write-Log "starting: $exe"
+Write-Log "starting: $exe ($backend keyring)"
 $p = Start-Process -FilePath $exe -ArgumentList $argList -PassThru -Wait -WindowStyle Hidden -RedirectStandardError $outLog -RedirectStandardOutput "$outLog.stdout"
 Write-Log "exited code=$($p.ExitCode)"
 if ($null -eq $p.ExitCode) { exit 1 }
