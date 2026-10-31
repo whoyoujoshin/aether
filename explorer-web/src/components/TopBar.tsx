@@ -47,6 +47,7 @@ const links: [string, string][] = [
   ["/quest", "Quest"],
   ["/agents", "For agents"],
   ["/faucet", "Faucet"],
+  ["/mine", "Mine"],
 ];
 
 /** home: the overview's variant, with the search in the hero instead of the bar. */

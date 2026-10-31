@@ -11,6 +11,7 @@ import Block from "./pages/Block";
 import Services from "./pages/Services";
 import Agents from "./pages/Agents";
 import Faucet from "./pages/Faucet";
+import Mine from "./pages/Mine";
 import Quest from "./pages/Quest";
 import IBC from "./pages/IBC";
 import Accounts from "./pages/Accounts";
@@ -74,6 +75,7 @@ function Shell() {
         <Route path="/accounts/:address" element={<Accounts />} />
         <Route path="/agents" element={<Agents />} />
         <Route path="/faucet" element={<Faucet />} />
+        <Route path="/mine" element={<Mine />} />
         <Route path="/quest" element={<Quest />} />
         <Route path="/address/:address" element={<Address />} />
         <Route path="/tx/:hash" element={<Transaction />} />

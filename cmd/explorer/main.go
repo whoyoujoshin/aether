@@ -534,6 +534,7 @@ func main() {
 		mux.HandleFunc(rt.path, withCORS(rt.handler))
 	}
 	mux.HandleFunc("/api/openapi.json", withCORS(handleOpenAPI))
+	registerMineSubmit(mux)
 	if err := registerFaucetProxy(mux); err != nil {
 		log.Fatalf("--faucet-api: %v", err)
 	}

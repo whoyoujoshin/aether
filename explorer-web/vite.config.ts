@@ -8,6 +8,9 @@ import react from "@vitejs/plugin-react";
 // the proxy is dev-only.
 export default defineConfig({
   plugins: [react()],
+  // The Mine page imports the TypeScript client's source
+  // (../clients/ts/src); its packages come from this app's node_modules.
+  resolve: { dedupe: ["@noble/hashes", "@noble/post-quantum", "@scure/base", "@scure/bip39"] },
   server: {
     port: 5173,
     proxy: {
