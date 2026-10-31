@@ -317,6 +317,7 @@ func main() {
 	flag.StringVar(&grpcEndpoint, "grpc", "grpc.157-245-252-221.sslip.io:443", "node gRPC endpoint (defaults to the public testnet, over TLS)")
 	flag.StringVar(&rpcEndpoint, "rpc", "https://rpc.157-245-252-221.sslip.io", "node RPC endpoint (defaults to the public testnet, over TLS)")
 	flag.StringVar(&chainID, "chain-id", "aether-testnet-1", "chain ID")
+	flag.StringVar(&explorerURL, "explorer", "https://explorer.157-245-252-221.sslip.io", "explorer whose /api/mine/work the Mine tab mines on (one cached read for every miner); empty: read the work from --grpc")
 	flag.StringVar(&port, "port", "8090", "local HTTP port to listen on")
 	flag.StringVar(&legacyKeyringDir, "legacy-keyring-dir", "", "another test keyring (e.g. the CLI's ~/.aether) whose keys can be brought over one at a time; empty: none")
 	// Shows and sends that USDC. The desktop app can set it through the
@@ -363,6 +364,9 @@ func main() {
 	http.HandleFunc("/api/accountauth/guardian-threshold", withCORS(handleRegisterGuardianThreshold))
 	http.HandleFunc("/api/accountauth/revoke", withCORS(handleRevokeAuthenticator))
 	http.HandleFunc("/api/accountauth/exec", withCORS(handleExecAuthenticated))
+	http.HandleFunc("/api/mine/start", withCORS(handleMineStart))
+	http.HandleFunc("/api/mine/stop", withCORS(handleMineStop))
+	http.HandleFunc("/api/mine/status", withCORS(handleMineStatus))
 
 	addr := "localhost:" + port
 	log.Printf("Aether wallet API listening on %s (chain %s via gRPC %s)", addr, chainID, grpcEndpoint)

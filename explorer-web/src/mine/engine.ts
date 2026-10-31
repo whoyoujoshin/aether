@@ -6,7 +6,7 @@
 import { Key, addressBytes, buildTx, headerBytes, headerFor, msgSubmitPoW, nonceOffset, type MiningHeader, type Work } from "./chain";
 import type { FromWorker, ToWorker } from "./worker";
 
-export type SubmissionStatus = "sending" | "pending" | "accepted" | "refused";
+export type SubmissionStatus = "waiting" | "sending" | "pending" | "accepted" | "refused" | "dropped";
 
 export interface Submission {
   hash?: string;
@@ -95,7 +95,11 @@ export class Miner {
   private poll?: ReturnType<typeof setInterval>;
   private samples: { t: number; n: number }[] = [];
   private nextSeq?: bigint;
-  private submitting = false;
+  // The chain takes one native submission a block, so one is sent at a
+  // time; a find made meanwhile waits, and a newer one replaces it (a find
+  // stays good for half the recency window, so waiting loses nothing).
+  private queued?: { header: MiningHeader; sub: Submission };
+  private sending = false;
   private readonly miner: Uint8Array;
   readonly state: MinerState = { running: false, threads: 0, hashes: 0, rate: 0, finds: 0, submissions: [] };
 
@@ -185,7 +189,34 @@ export class Miner {
     // Fresh header right away: this one is spent, and the chain takes one a block.
     this.jobWork = undefined;
     void this.refresh(true);
-    void this.submit(found);
+    this.enqueue(found);
+  }
+
+  private enqueue(h: MiningHeader): void {
+    const sub: Submission = { height: Number(h.height), nonce: h.nonce.toString(), at: Date.now(), status: "waiting" };
+    if (this.queued) {
+      this.queued.sub.status = "dropped";
+      this.queued.sub.reason = "a newer find replaced it while another was on its way";
+    }
+    this.queued = { header: h, sub };
+    this.state.submissions.unshift(sub);
+    this.state.submissions.splice(20);
+    this.changed();
+    void this.pump();
+  }
+
+  private async pump(): Promise<void> {
+    if (this.sending) return;
+    this.sending = true;
+    try {
+      while (this.queued) {
+        const { header, sub } = this.queued;
+        this.queued = undefined;
+        if (await this.submit(header, sub)) await this.follow(sub);
+      }
+    } finally {
+      this.sending = false;
+    }
   }
 
   private count(n: number): void {
@@ -200,18 +231,10 @@ export class Miner {
     this.changed();
   }
 
-  private async submit(h: MiningHeader): Promise<void> {
-    const sub: Submission = { height: Number(h.height), nonce: h.nonce.toString(), at: Date.now(), status: "sending" };
-    this.state.submissions.unshift(sub);
-    this.state.submissions.splice(20);
+  /** Signs and sends a find; true once it's in the mempool. */
+  private async submit(h: MiningHeader, sub: Submission): Promise<boolean> {
+    sub.status = "sending";
     this.changed();
-    if (this.submitting) {
-      sub.status = "refused";
-      sub.reason = "another find was still being sent";
-      this.changed();
-      return;
-    }
-    this.submitting = true;
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
         const acct = await fetchAccount(this.key.address);
@@ -227,8 +250,7 @@ export class Miner {
           sub.hash = r.hash;
           sub.status = "pending";
           this.changed();
-          void this.follow(sub);
-          return;
+          return true;
         }
         if (/sequence/i.test(r.log ?? "") && attempt === 0) {
           this.nextSeq = undefined;
@@ -237,15 +259,14 @@ export class Miner {
         sub.status = "refused";
         sub.reason = refusalReason(r.log ?? `code ${r.code}`);
         this.changed();
-        return;
+        return false;
       }
     } catch (e) {
       sub.status = "refused";
       sub.reason = e instanceof Error ? e.message : String(e);
       this.changed();
-    } finally {
-      this.submitting = false;
     }
+    return false;
   }
 
   /** Waits for the block that carries a sent submission, about a minute at most. */

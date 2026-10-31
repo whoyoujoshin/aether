@@ -32,6 +32,10 @@ function statusTag(s: Submission) {
       return <span className="tag mine-no">REFUSED</span>;
     case "pending":
       return <span className="tag">IN MEMPOOL</span>;
+    case "waiting":
+      return <span className="tag">WAITING</span>;
+    case "dropped":
+      return <span className="tag">REPLACED</span>;
     default:
       return <span className="tag">SENDING</span>;
   }

@@ -71,6 +71,7 @@ Try paying with no install: the [hosted test wallet](docs/TEST-WALLET.md) (`http
 | Escrow between accounts (`x/escrow`: release, refund, arbiter, deadline) | Live since block 161,000 ([docs/ESCROW.md](docs/ESCROW.md)) |
 | Ligase: someone on another chain funds, releases and withdraws Aether escrows with IBC transfers carrying an instruction; such instructions can never move AETH | Live since block 161,000; proven on a two-chain devnet ([docs/LIGASE.md](docs/LIGASE.md)) |
 | Helicase: the block proposer relays IBC packets, acknowledgements and timeouts onto Aether, unsigned and proof-checked, so no relayer signs on Aether; `cmd/outbound` relays the other way with the other chain's own keys | Live since block 161,000; both directions proven unattended on a two-chain devnet ([docs/HELICASE.md](docs/HELICASE.md)) |
+| Mining | In a browser at the explorer's `/mine`, or the desktop app's Mine tab (native speed), or `cmd/powminer`. Real submissions, paid to your own account ([docs/MINE.md](docs/MINE.md)). |
 | DEX | Reference desk in [dex/](dex/). Local integer AMM for agents. Not a chain module. Nothing is broadcast. |
 | Independent professional security audit | Not yet performed |
 
