@@ -9,11 +9,14 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"cosmossdk.io/math"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -123,8 +126,8 @@ func newImportCmd() *cobra.Command {
 			}
 
 			fmt.Print("Enter your mnemonic: ")
-			var mnemonic string
-			if _, err := fmt.Scanln(&mnemonic); err != nil {
+			mnemonic, err := readMnemonic(os.Stdin)
+			if err != nil {
 				return err
 			}
 
@@ -138,6 +141,41 @@ func newImportCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// readMnemonic reads one line of words, hidden when in is a terminal.
+// It reads a byte at a time, so a file keyring's passphrase prompt that
+// follows on the same stdin still gets its own line.
+func readMnemonic(in *os.File) (string, error) {
+	var line string
+	if term.IsTerminal(int(in.Fd())) {
+		bz, err := term.ReadPassword(int(in.Fd()))
+		fmt.Println()
+		if err != nil {
+			return "", err
+		}
+		line = string(bz)
+	} else {
+		var buf []byte
+		b := make([]byte, 1)
+		for {
+			n, err := in.Read(b)
+			if n == 1 {
+				if b[0] == '\n' {
+					break
+				}
+				buf = append(buf, b[0])
+			}
+			if err == io.EOF && len(buf) > 0 {
+				break
+			}
+			if err != nil {
+				return "", err
+			}
+		}
+		line = string(buf)
+	}
+	return strings.Join(strings.Fields(line), " "), nil
 }
 
 func newListCmd() *cobra.Command {

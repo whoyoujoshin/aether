@@ -196,21 +196,59 @@ remove the `.bak-filekeyring` backups.
 ## 5. The payee key leaves the server
 
 The paywalls only need `--pay-to` (the address). The key signs only the
-1 uaeth directory listings.
+1 uaeth directory listings. It moves to Joshua's PC as an encrypted
+keyring with its own passphrase; nothing restarts.
 
-1. Joshua recovers it on his workstation into an encrypted keyring from the
-   mnemonic in `created.json` (`wallet import services --keyring-backend
-   file --keyring-dir <dir>`, which asks for the mnemonic and a new
-   passphrase), and checks the address is
-   `aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl`.
-2. On the seed: `$P/aetherd keys delete services --keyring-backend test
-   --keyring-dir /root/aether-services-key -y`, then `shred -u
-   /root/aether-services-key/created.json`. Keep the `address` file if
-   there is one, since scripts read it.
-3. Listing a service from then on is `paywall list --url <service url>
-   --key services --keyring-backend file --keyring-dir <dir>`, run from
-   the workstation (`docs/SELL.md`). `announce.sh` on the seed can no
-   longer list.
+**A. Joshua: a third passphrase**, `aether-services-payee`, in his password
+manager (20+ characters, letters, digits and dashes).
+
+**B. Joshua, in the DigitalOcean console on the seed** (after `bind 'set
+enable-bracketed-paste off'`). `copy-key` asks for the new passphrase
+twice, hidden: paste it each time.
+
+```bash
+P=/root/prebuilt-<commit>
+umask 077
+$P/wallet copy-key services --keyring-backend test --keyring-dir /root/aether-services-key --to-dir /root/payee-out
+tar -C /root -czf /root/payee-keyring.tgz payee-out
+sha256sum /root/payee-keyring.tgz
+```
+
+It prints `services aether1e6r6g8mat6aqax9l29wwmrfhp52hjzrpwevqqq9tcj0lm8egdhjs9q44xl
+copied to the file keyring`; any other address, stop.
+
+**C. Gitty sends Joshua `/root/payee-keyring.tgz`** (encrypted, like step
+4's archive). Joshua unpacks it to e.g. `C:\aether-keys\payee-out`, checks
+`Get-FileHash` against the sha256, and lists it with the release
+`wallet.exe` (v0.2.16-testnet or later), typing the passphrase:
+
+```powershell
+.\wallet.exe list --keyring-backend file --keyring-dir C:\aether-keys\payee-out
+```
+
+It shows `services` at `aether1e6r6g8…q44xl`. Save the archive in a second
+place too; the mnemonic from step 4 is the other way back.
+
+**D. Gitty removes it from the seed, after Joshua's OK:**
+
+```bash
+$P/aetherd keys delete services --keyring-backend test --keyring-dir /root/aether-services-key -y
+shred -u /root/aether-services-key/created.json /root/payee-keyring.tgz
+rm -rf /root/payee-out
+```
+
+Keep the `address` file if there is one, since scripts read it. Check
+one paywall still answers an unpaid request with its 402 naming the
+payee.
+
+From then on a service is listed from Joshua's PC: `paywall list --url
+<service url> --key services --keyring-backend file --keyring-dir
+C:\aether-keys\payee-out` (`docs/SELL.md`). `announce.sh` on the seed can
+no longer list.
+
+(Recovering from the mnemonic instead, `wallet import services
+--keyring-backend file --keyring-dir <dir>`, needs a `wallet` built after
+the fix to its mnemonic prompt: earlier builds read only the first word.)
 
 ## 6. Relayer keys (sync3, DardenPC)
 
