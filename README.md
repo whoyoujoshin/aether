@@ -72,6 +72,7 @@ Try paying with no install: the [hosted test wallet](docs/TEST-WALLET.md) (`http
 | Ligase: someone on another chain funds, releases and withdraws Aether escrows with IBC transfers carrying an instruction; such instructions can never move AETH | Live since block 161,000; proven on a two-chain devnet ([docs/LIGASE.md](docs/LIGASE.md)) |
 | Helicase: the block proposer relays IBC packets, acknowledgements and timeouts onto Aether, unsigned and proof-checked, so no relayer signs on Aether; `cmd/outbound` relays the other way with the other chain's own keys | Live since block 161,000; both directions proven unattended on a two-chain devnet ([docs/HELICASE.md](docs/HELICASE.md)) |
 | DEX | Reference desk in [dex/](dex/). Local integer AMM for agents. Not a chain module. Nothing is broadcast. |
+| Miner | Guided browser app in [miner-web/](miner-web/). CPU Scrypt and a testnet balance lookup. Practice finds stay on the computer. They are not chain rewards. |
 | Independent professional security audit | Not yet performed |
 
 See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt) and [Roadmap](../../wiki/Roadmap).

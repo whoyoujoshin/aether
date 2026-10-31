@@ -1,0 +1,15 @@
+node_modules/
+aether-src/
+artifacts/
+attachments/
+.grok/
+.tanstack/
+screenshots/
+dist/
+.output/
+.vercel/
+.nitro/
+*.log
+.env
+.env.*
+!.env.example
