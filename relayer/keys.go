@@ -2,6 +2,8 @@ package relayer
 
 import (
 	"context"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 
@@ -9,6 +11,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 
@@ -63,4 +67,54 @@ func (r accountInfoRetriever) GetAccountNumberSequence(clientCtx client.Context,
 		return 0, 0, err
 	}
 	return acc.GetAccountNumber(), acc.GetSequence(), nil
+}
+
+// CopyCounterpartyKey copies the named secp256k1 or eth_secp256k1 key from
+// one keyring into another, e.g. from a "test" keyring into an encrypted
+// "file" one, and checks the address is unchanged. The chains' own
+// `keys export` armors private keys with the legacy amino codec, which
+// the counterparty binaries may not know for eth_secp256k1, so the raw key
+// is imported directly.
+func CopyCounterpartyKey(name string, from, to keyring.Keyring) (sdk.AccAddress, error) {
+	rec, err := from.Key(name)
+	if err != nil {
+		return nil, err
+	}
+	local := rec.GetLocal()
+	if local == nil || local.PrivKey == nil {
+		return nil, fmt.Errorf("%s is not a local key (ledger, offline or multisig keys can't be copied)", name)
+	}
+	var algo hd.PubKeyType
+	priv := local.PrivKey.GetCachedValue()
+	switch priv.(type) {
+	case *secp256k1.PrivKey:
+		algo = hd.Secp256k1Type
+	case *ethsecp256k1.PrivKey:
+		algo = ethsecp256k1.Algo.Name()
+	default:
+		return nil, fmt.Errorf("%s is a %s key; only secp256k1 and eth_secp256k1 keys are copied", name, local.PrivKey.TypeUrl)
+	}
+	if _, err := to.Key(name); err == nil {
+		return nil, fmt.Errorf("the destination already has a key named %s", name)
+	}
+	if err := to.ImportPrivKeyHex(name, hex.EncodeToString(priv.(cryptotypes.PrivKey).Bytes()), string(algo)); err != nil {
+		return nil, err
+	}
+	want, err := rec.GetAddress()
+	if err != nil {
+		return nil, err
+	}
+	dst, err := to.Key(name)
+	if err != nil {
+		return nil, err
+	}
+	got, err := dst.GetAddress()
+	if err != nil {
+		return nil, err
+	}
+	if !got.Equals(want) {
+		_ = to.Delete(name)
+		return nil, errors.New("the copy has a different address; removed it")
+	}
+	return got, nil
 }

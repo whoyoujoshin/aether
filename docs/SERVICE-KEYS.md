@@ -252,22 +252,111 @@ the fix to its mnemonic prompt: earlier builds read only the first word.)
 
 ## 6. Relayer keys (sync3, DardenPC)
 
-`outbound` reads a file keyring's passphrase from
-`AETHER_KEYRING_PASSPHRASE_FILE` too (`--keyring-backend file`). These are
-secp256k1 / eth_secp256k1 keys, so the chains' own CLIs move them.
+Two keys sign relay transactions on the other chains: the Osmosis relayer
+key for `aether-outbound-osmosis` on sync3, and the Injective relayer key
+(`inj1c2rd…`) for `outbound.exe` on DardenPC. Both are in test keyrings.
+`outbound -copy-key-to <dir>` copies its `-cparty-key` into an encrypted
+file keyring in `<dir>` (next to the test one when `<dir>` is the
+`-cparty-home`), checks the address is unchanged, and exits. It handles
+secp256k1 and Injective's eth_secp256k1. `outbound` then runs with
+`-keyring-backend file` and reads the passphrase from
+`AETHER_KEYRING_PASSPHRASE_FILE`.
 
-- **sync3**: export the Osmosis relayer key and import it into a file
-  keyring with `osmosisd keys export` and `osmosisd keys import`, typing
-  the passphrases. Make a credential the same way, and put the same two
-  lines in a drop-in for `aether-outbound-osmosis`.
-- **DardenPC**: import the Injective relayer key (`inj1c2rd…`) into a file
-  keyring under `C:\aether-data` with `injectived keys import`. Put the
-  passphrase in a file only SYSTEM and Administrators can read
-  (`icacls <file> /inheritance:r /grant:r SYSTEM:R Administrators:R`).
-  Set `AETHER_KEYRING_PASSPHRASE_FILE` for the task that runs
-  `outbound.exe`, and add `--keyring-backend file`. Windows has no
-  credential store like systemd's, so this one protects copies of the
-  keyring but not of the passphrase file. Keep its balance small.
+**0. Before you start.**
+- Gitty builds from `main` on the workstation: `scripts/prebuild.sh` now
+  has `outbound` for sync3, plus `GOOS=windows GOARCH=amd64 CGO_ENABLED=0
+  go build -o outbound.exe ./cmd/outbound` for DardenPC. Note both sha256s.
+- Joshua makes two more passphrases in his password manager:
+  `aether-osmosis-relayer` and `aether-injective-relayer`.
+- Each relayer restart is just the relayer, not a validator. Packets
+  wait while it's down; Injective's client of Aether trusts about 65 h.
+
+**A. sync3 (Joshua types the passphrase, Gitty does the rest).**
+
+1. Joshua, in the DigitalOcean console on sync3 (`bind 'set
+   enable-bracketed-paste off'` first), one line at a time:
+   ```bash
+   install -d -m 700 /etc/credstore.encrypted
+   read -rsp 'OSMOSIS relayer passphrase: ' PASS && printf '%s' "$PASS" | systemd-creds encrypt --name=keyring - /etc/credstore.encrypted/aether-osmosis-relayer; unset PASS; echo
+   systemd-creds decrypt --name=keyring /etc/credstore.encrypted/aether-osmosis-relayer - | wc -c   # the passphrase's length
+   ```
+2. Gitty copies the key and checks the printed `osmo1…` address is the
+   relayer's:
+   ```bash
+   O=/root/aether-outbound-<commit>     # the new build, copied over; sha256 checked
+   umask 077
+   systemd-creds decrypt --name=keyring /etc/credstore.encrypted/aether-osmosis-relayer /run/aether-pass
+   AETHER_KEYRING_PASSPHRASE_FILE=/run/aether-pass $O -copy-key-to /root/.osmosisd-relayer \
+     -cparty-home /root/.osmosisd-relayer -cparty-key relayer -cparty-bech32-prefix osmo
+   rm -f /run/aether-pass
+   ```
+3. Switch the unit. Back up the unit (`.bak-filekeyring`), then add
+   `/etc/systemd/system/aether-outbound-osmosis.service.d/keyring.conf`:
+   ```ini
+   [Service]
+   LoadCredentialEncrypted=keyring:/etc/credstore.encrypted/aether-osmosis-relayer
+   Environment=AETHER_KEYRING_PASSPHRASE_FILE=%d/keyring
+   ```
+   In the unit's `ExecStart`, point at `$O` and change `--keyring-backend
+   test` to `file`. Then `systemctl daemon-reload && systemctl restart
+   aether-outbound-osmosis`. `journalctl -u aether-outbound-osmosis -n 5`
+   shows `relaying aether -> … over 07-tendermint-5287 as osmo1…`, and its
+   next client update (within `-refresh-after`) lands on Osmosis.
+   ibcwatch on sync3 shows `07-tendermint-5287` refreshed.
+
+**B. DardenPC (Joshua, elevated PowerShell).**
+
+1. Put the new `outbound.exe` in place, keeping the old one:
+   ```powershell
+   Get-FileHash $HOME\Downloads\outbound.exe        # Gitty's sha256
+   Copy-Item C:\aether-bin\outbound.exe C:\aether-bin\outbound.exe.pre-filekeyring
+   ```
+   (the copy over it comes in step 4, once the old one has stopped)
+2. The passphrase file, readable only by SYSTEM and Administrators:
+   ```powershell
+   New-Item -ItemType Directory -Force C:\aether-keys | Out-Null
+   $s = Read-Host -AsSecureString 'INJECTIVE relayer passphrase'
+   [System.Net.NetworkCredential]::new('', $s).Password | Set-Content -NoNewline -Encoding ascii C:\aether-keys\injective-relayer-pass.tmp
+   icacls C:\aether-keys\injective-relayer-pass.tmp /inheritance:r /grant:r SYSTEM:R Administrators:R
+   ```
+   It is `.tmp` until step 4: the task script switches to the file keyring
+   as soon as `injective-relayer-pass.txt` exists.
+3. Copy the key; the printed address must be `inj1c2rd0g6e9pxfulr3jpy2lvme6a37sqnfk35wlg`:
+   ```powershell
+   $env:AETHER_KEYRING_PASSPHRASE_FILE = 'C:\aether-keys\injective-relayer-pass.tmp'
+   & $HOME\Downloads\outbound.exe -copy-key-to C:\aether-relayer\injective -cparty-home C:\aether-relayer\injective -cparty-key relayer -cparty-bech32-prefix inj
+   Remove-Item Env:\AETHER_KEYRING_PASSPHRASE_FILE
+   ```
+4. Switch over. Copy `scripts/windows/outbound-injective-ensure.ps1` from
+   `main` over `C:\aether-data\outbound-injective-ensure.ps1` (back the old
+   one up as `.pre-filekeyring`). It uses the file keyring once the
+   passphrase file exists. Then:
+   ```powershell
+   Get-NetTCPConnection -LocalPort 8096 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess }
+   Copy-Item $HOME\Downloads\outbound.exe C:\aether-bin\outbound.exe -Force
+   Rename-Item C:\aether-keys\injective-relayer-pass.tmp injective-relayer-pass.txt
+   Start-ScheduledTask 'Aether Outbound Injective'
+   Get-Content C:\aether-data\outbound-injective-ensure.log -Tail 2      # "starting: … (file keyring)"
+   Get-Content C:\aether-data\outbound-injective.log -Tail 5             # "relaying aether -> injective-888 … as inj1c2rd…"
+   ```
+   Within the hour (`-refresh-after 1h`) ibcwatch shows `07-tendermint-510`
+   refreshed. To go back: rename the `.txt` to `.tmp`, stop it, start the
+   task; it runs on the test keyring again.
+
+**C. Back up and remove the test copies (after A and B have relayed).**
+Tar each `keyring-file` directory (`/root/.osmosisd-relayer/keyring-file`
+on sync3; `C:\aether-relayer\injective\keyring-file` on DardenPC) to
+Joshua's backups, as in step 4. Then, with Joshua's OK, delete the
+test-keyring copies with any SDK CLI that reads the key type, e.g. on
+sync3 `/root/osmosisd keys delete relayer --keyring-backend test --home
+/root/.osmosisd-relayer -y`, and on DardenPC
+`C:\aether-bin\counterpartyd.exe keys delete relayer --keyring-backend
+test --home C:\aether-relayer\injective -y`. `relayer.exe`, used for
+handshakes, then needs `-keyring-backend file` too.
+
+Windows has no credential store like systemd's: this protects copies of
+the keyring, not of the passphrase file next to it. Keep the Injective
+relayer's balance small.
 
 ## If something goes wrong
 

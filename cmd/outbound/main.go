@@ -20,11 +20,15 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/counterparty"
@@ -54,8 +58,13 @@ func main() {
 		expiryAt = flag.Duration("expiry-warning", 24*time.Hour, "report unhealthy when the client expires sooner than this")
 		listen   = flag.String("listen", "127.0.0.1:8095", "health endpoint address; empty disables it")
 		once     = flag.Bool("once", false, "run one cycle and exit")
+		copyTo   = flag.String("copy-key-to", "", "copy -cparty-key from -cparty-home's -keyring-backend keyring into an encrypted file keyring in this directory (its passphrase from "+wallet.KeyringPassphraseFileEnv+" or typed), check the address, and exit")
 	)
 	flag.Parse()
+	if *copyTo != "" {
+		copyKey(*cpartyBech32, *keyringBack, *cpartyHome, *cpartyKey, *copyTo)
+		return
+	}
 
 	aetherEnc := app.MakeEncodingConfig()
 	aether, err := relayer.NewReadOnlyChain("aether", *aetherRPC, "", aetherEnc.Codec, aetherEnc.TxConfig)
@@ -216,4 +225,35 @@ func serveHealth(addr string, st *status, interval, expiryWarning time.Duration)
 	})
 	log.Printf("health on http://%s/healthz", addr)
 	log.Fatal(http.ListenAndServe(addr, mux))
+}
+
+// copyKey moves the relayer's key into an encrypted keyring
+// (docs/SERVICE-KEYS.md step 6); outbound then runs with
+// -keyring-backend file and -cparty-home dir.
+func copyKey(bech32, backend, home, name, dir string) {
+	cdc := counterparty.MakeEncodingConfig(bech32).Codec
+	if dir == home && backend == keyring.BackendFile {
+		log.Fatal("the destination is the source")
+	}
+	in, err := wallet.KeyringInput(backend)
+	if err != nil {
+		log.Fatalf("keyring: %v", err)
+	}
+	from, err := relayer.OpenCounterpartyKeyring(backend, home, in, cdc)
+	if err != nil {
+		log.Fatalf("opening %s: %v", home, err)
+	}
+	tin, err := wallet.KeyringInput(keyring.BackendFile)
+	if err != nil {
+		log.Fatalf("keyring: %v", err)
+	}
+	to, err := relayer.OpenCounterpartyKeyring(keyring.BackendFile, dir, tin, cdc)
+	if err != nil {
+		log.Fatalf("opening %s: %v", dir, err)
+	}
+	addr, err := relayer.CopyCounterpartyKey(name, from, to)
+	if err != nil {
+		log.Fatalf("%s: %v", name, err)
+	}
+	fmt.Printf("%s %s copied to the file keyring in %s\n", name, sdk.MustBech32ifyAddressBytes(bech32, addr), dir)
 }
