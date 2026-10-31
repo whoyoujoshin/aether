@@ -18,6 +18,10 @@ allowance: a spend limit, an expiry, optionally only certain recipients,
 and optionally its transaction fees paid. It lists what each agent may
 still spend, and revokes with one click.
 
+The **Mine** tab mines the testnet with this computer's CPU for one of
+the wallet's accounts: `walletapi` hashes native scrypt, signs each find
+and sends it, and the block reward goes to that account (`docs/MINE.md`).
+
 ## Install on Windows
 
 Download `Aether-Pay-Setup-<version>.exe` from either:

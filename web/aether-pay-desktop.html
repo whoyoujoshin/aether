@@ -131,6 +131,7 @@
     .kv { display: flex; justify-content: space-between; gap: 10px; font: 12px/1 var(--mono); padding: 7px 0; }
     .kv span:first-child { color: var(--faint); letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
     .kv .red { color: var(--red); }
+    .kv .green { color: var(--green); }
 
     label.f { display: block; font: 600 10.5px/1 var(--mono); letter-spacing: .1em; color: var(--muted); margin: 16px 0 7px; text-transform: uppercase; }
     .field { width: 100%; padding: 12px 13px; background: var(--ink); border: 1px solid var(--border); border-radius: 10px; font: 13px/1.4 var(--mono); outline: none; }
@@ -267,6 +268,7 @@
       ["activity", "Activity", "≡"],
       ["agents", "Agents", "◇"],
       ["faucet", "Faucet", "◈"],
+      ["mine", "Mine", "⛏"],
       ["buy", "Buy AETH", "$"],
       ["swap", "Swap", "⇄"],
       ["settings", "Settings", "⚙"],
@@ -362,7 +364,7 @@
 
       const agents = (perms && perms.given) || [];
       const isAgent = view && view.kind === "agent";
-      const title = { home: "Home", send: "Send", receive: "Receive", activity: "Activity", agents: "Agents", faucet: "Faucet", buy: "Buy AETH", swap: "Swap", settings: "Settings" }[screen];
+      const title = { home: "Home", send: "Send", receive: "Receive", activity: "Activity", agents: "Agents", faucet: "Faucet", mine: "Mine", buy: "Buy AETH", swap: "Swap", settings: "Settings" }[screen];
       const go = (s) => { setScreen(s); setMenu(false); };
       const pay = (addr) => { setSendTo(addr); go("send"); };
 
@@ -500,6 +502,9 @@
             )}
             {screen === "faucet" && (
               <div className="content single"><Faucet address={address} onFunded={() => setTimeout(refresh, 5000)} /></div>
+            )}
+            {screen === "mine" && (
+              <div className="content single"><div className="col"><Mine owner={isAgent ? null : owner} onReward={() => setTimeout(refresh, 3000)} /></div></div>
             )}
             {screen === "settings" && (
               <div className="content single"><Settings update={update} /></div>
@@ -728,6 +733,95 @@
           </div>
           {msg && <div className="hint" style={{ marginTop: 12 }}>{msg}</div>}
         </div>
+      );
+    }
+
+    // Native scrypt on this computer, for one of this wallet's accounts:
+    // walletapi hashes, signs each find and sends it (cmd/walletapi/mine.go).
+    function Mine({ owner, onReward }) {
+      const [st, setSt] = useState(null);
+      const [threads, setThreads] = useState(0);
+      const [err, setErr] = useState("");
+      const [busy, setBusy] = useState(false);
+      const accepted = useRef(0);
+      useEffect(() => {
+        let live = true;
+        const poll = async () => {
+          try {
+            const s = await api("/api/mine/status");
+            if (!live) return;
+            setSt(s);
+            setThreads((t) => t || Math.max(1, Math.floor(s.maxThreads / 2)));
+            if (s.accepted > accepted.current) { accepted.current = s.accepted; onReward(); }
+          } catch (e) { if (live) setErr(e.message); }
+        };
+        poll();
+        const t = setInterval(poll, 1000);
+        return () => { live = false; clearInterval(t); };
+      }, []);
+      if (!owner) return <div className="card"><h2>Mine</h2><p className="note">Switch to one of your own accounts to mine: an agent's is read-only here.</p></div>;
+      const running = st && st.running;
+      const other = running && st.name !== owner.name;
+      async function start() {
+        setBusy(true); setErr("");
+        try { setSt(await api("/api/mine/start", { name: owner.name, threads })); } catch (e) { setErr(e.message); }
+        setBusy(false);
+      }
+      async function stop() {
+        setBusy(true);
+        try { setSt(await api("/api/mine/stop", {})); } catch (e) { setErr(e.message); }
+        setBusy(false);
+      }
+      const rate = st ? st.rate : 0;
+      const rateText = rate >= 1e6 ? (rate / 1e6).toFixed(2) + " MH/s" : rate >= 1e3 ? (rate / 1e3).toFixed(2) + " kH/s" : Math.round(rate) + " H/s";
+      const diff = st && st.difficulty ? Number(st.difficulty) : 0;
+      const perFind = rate && diff ? diff / rate : 0;
+      const perFindText = !perFind ? "—" : perFind < 90 ? "~" + Math.round(perFind) + "s" : perFind < 5400 ? "~" + Math.round(perFind / 60) + " min" : "~" + (perFind / 3600).toFixed(1) + " h";
+      return (
+        <>
+          <div className="card">
+            <h2>Mine</h2>
+            <p className="note">
+              This computer hashes native scrypt and the wallet signs each find for <b>{owner.name}</b> ({short(owner.address)}). If the
+              chain accepts it, the block reward goes to that account. The chain takes one find a block, so a find can lose to another
+              miner's. A new account needs testnet AETH from the Faucet before its first find.
+            </p>
+            {other && <div className="hint" style={{ marginBottom: 10 }}>Mining for {st.name} now. Stop it to mine for {owner.name}.</div>}
+            <div className="actions" style={{ alignItems: "center" }}>
+              <label className="faint" style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                Threads
+                <input type="range" min="1" max={st ? st.maxThreads : 1} value={threads || 1} disabled={running} onChange={(e) => setThreads(Number(e.target.value))} />
+                <span className="mono">{threads || 1} of {st ? st.maxThreads : "…"}</span>
+              </label>
+              {!running
+                ? <button className="btn primary" disabled={busy || !st} onClick={start}>Start mining</button>
+                : <button className="btn" disabled={busy} onClick={stop}>Stop</button>}
+            </div>
+            {(err || (st && st.error)) && <div className="warn" style={{ marginTop: 12 }}><span>⚠</span><div>{err || st.error}</div></div>}
+          </div>
+          <div className="card">
+            <h3 style={{ marginBottom: 10 }}>This session</h3>
+            <div className="kv"><span>Hash rate</span><span>{running ? rateText : "—"}</span></div>
+            <div className="kv"><span>Hashes</span><span>{st ? int(st.hashes) : "—"}</span></div>
+            <div className="kv"><span>Difficulty</span><span>{diff ? int(diff) : "—"}</span></div>
+            <div className="kv"><span>Time per find</span><span>{running ? perFindText : "—"}</span></div>
+            <div className="kv"><span>Finds</span><span>{st ? int(st.finds) + " · " + int(st.accepted) + " accepted" : "—"}</span></div>
+            <div className="kv"><span>Mining on block</span><span>{st && st.height ? int(st.height) : "—"}</span></div>
+          </div>
+          <div className="card">
+            <h3 style={{ marginBottom: 10 }}>Submissions</h3>
+            {!st || !st.submissions.length ? <div className="empty">No finds yet.</div> : st.submissions.map((x, i) => (
+              <div key={i} className="kv">
+                <span>
+                  <span className={x.status === "accepted" ? "green" : x.status === "refused" ? "red" : "faint"}>{x.status}</span>
+                  {" · block " + int(x.height)}
+                  {x.reason ? <span className="faint"> · {x.reason}</span> : null}
+                </span>
+                <span>{x.hash ? <a href={EXPLORER + "/tx/" + x.hash} target="_blank" rel="noreferrer" className="mono">{x.hash.slice(0, 10)}…</a> : ""}</span>
+              </div>
+            ))}
+          </div>
+        </>
       );
     }
 

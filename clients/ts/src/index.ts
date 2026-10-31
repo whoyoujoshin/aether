@@ -12,6 +12,10 @@ export {
 } from "./rotation.js";
 export type { AccountKeys, GuardianSig, Rotation } from "./rotation.js";
 export { Rpc, RpcError } from "./rpc.js";
+export {
+  MSG_SUBMIT_POW_TYPE_URL, MERKLE_ROOT, headerBytes, nonceOffset, setNonce, powHash, headerId, target, targetHex, meets, belowTarget, headerFor, msgSubmitPoW,
+} from "./pow.js";
+export type { MiningHeader, Work } from "./pow.js";
 export { AetherClient, transfers, decodeSendGrant } from "./client.js";
 export type { TransactionInfo, IncomingPayment, SendResult, TxStatus, Transfer, SendGrant } from "./client.js";
 export { fetchPaid, presentPayment, signingMessage, memoPaymentHeader, prepaidPaymentHeader, pullSigningMessage, pullPaymentHeader, PaymentError, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, DEPOSIT_MEMO_PREFIX, PULL_GRANT_SECONDS } from "./paywall.js";

@@ -13,7 +13,16 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    // The miner imports the TypeScript client's source (../clients/ts/src);
+    // its packages resolve from here.
+    "paths": {
+      "@noble/hashes/*": ["./node_modules/@noble/hashes/*"],
+      "@noble/post-quantum/*": ["./node_modules/@noble/post-quantum/*"],
+      "@scure/base": ["./node_modules/@scure/base"],
+      "@scure/bip39": ["./node_modules/@scure/bip39"],
+      "@scure/bip39/*": ["./node_modules/@scure/bip39/*"]
+    }
   },
   "include": ["src"]
 }

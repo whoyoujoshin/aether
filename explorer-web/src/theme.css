@@ -2208,3 +2208,88 @@ input::placeholder {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* --- Mine --- */
+.mine-body {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.mine-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.mine-stack .kpi-grid {
+  margin: 0;
+}
+.mine-setup {
+  max-width: 760px;
+}
+.mine-h2 {
+  font-size: 22px;
+  margin: 6px 0 8px;
+}
+.mine-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.mine-check {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+}
+.mine-phrase {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  line-height: 1.8;
+  word-spacing: 6px;
+  user-select: all;
+}
+.mine-input {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  resize: vertical;
+}
+.mine-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.mine-controls {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.mine-threads {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--muted);
+}
+.mine-go {
+  min-width: 140px;
+}
+.tag.mine-ok {
+  color: var(--green);
+  border: 1px solid currentColor;
+}
+.tag.mine-no {
+  color: var(--danger);
+  border: 1px solid currentColor;
+}
