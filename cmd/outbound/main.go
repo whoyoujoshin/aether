@@ -49,6 +49,7 @@ func main() {
 		cpartyGas     = flag.String("cparty-gas-prices", "", "gas prices on the other chain, e.g. 0.025uosmo; empty pays no fee (Noble waives it for relaying)")
 		gasAdjustment = flag.Float64("gas-adjustment", 1.5, "multiplier on simulated gas")
 		keyringBack   = flag.String("keyring-backend", "test", "keyring backend (test/file/os)")
+		passFile      = flag.String("keyring-passphrase-file", "", "file holding the file keyring's passphrase; same as "+wallet.KeyringPassphraseFileEnv+", which it overrides (use it where the environment can't be relied on, e.g. a Windows scheduled task)")
 
 		clientID = flag.String("client-id", "07-tendermint-0", "the other chain's client of Aether")
 		interval = flag.Duration("interval", 6*time.Second, "how often to look for work")
@@ -61,6 +62,13 @@ func main() {
 		copyTo   = flag.String("copy-key-to", "", "copy -cparty-key from -cparty-home's -keyring-backend keyring into an encrypted file keyring in this directory (its passphrase from "+wallet.KeyringPassphraseFileEnv+" or typed), check the address, and exit")
 	)
 	flag.Parse()
+	if *passFile != "" {
+		// KeyringInput reads the variable; wallet.NewKeyring then opens the
+		// file keyring with it, never prompting on the console.
+		if err := os.Setenv(wallet.KeyringPassphraseFileEnv, *passFile); err != nil {
+			log.Fatalf("keyring: %v", err)
+		}
+	}
 	if *copyTo != "" {
 		copyKey(*cpartyBech32, *keyringBack, *cpartyHome, *cpartyKey, *copyTo)
 		return
