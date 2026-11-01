@@ -27,6 +27,10 @@ lists the validator or miner under):
   country-only, with the middle of the US as its point.
 - The loader refuses an entry with an `ip`, `host` or `remote_ip` field,
   coordinates off the globe, or an address that isn't `aether1...`.
+- A miner or validator with no entry is shown as "location not shared",
+  and its voting power as "Not shared" in the region bar. That's the
+  normal case for anyone mining from a browser or a home PC: nothing
+  places them unless their operator adds an entry here.
 - Use the city of the data centre, not anything finer. Coordinates to two
   decimals (about 1 km) are plenty.
 - The addresses above are the four active validators' miner accounts as

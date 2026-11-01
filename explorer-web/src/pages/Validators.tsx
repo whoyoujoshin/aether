@@ -48,8 +48,12 @@ const shareColors = ["#c0503a", "#d8d1c5", "#9a9186", "#6b645b", "#3a342e"];
 
 const TABS = ["Signers", "PoW miners"] as const;
 
+// Locations are published only by operators who choose to; a miner or
+// validator that hasn't shared one is normal, not missing data.
+const NOT_SHARED = "Not shared";
+
 function place(l: NodeLocation | undefined): string {
-  if (!l) return "";
+  if (!l) return "location not shared";
   return l.city ? `${l.city}, ${l.country}` : l.country;
 }
 
@@ -109,14 +113,14 @@ export default function Validators() {
   for (const v of signing) {
     const l = where.get(v.account);
     if (l) countries.add(l.country);
-    const region = l?.region ?? "Unlisted";
+    const region = l?.region ?? NOT_SHARED;
     byRegion.set(region, (byRegion.get(region) ?? 0) + v.votingPower);
   }
   const regionTotal = signing.reduce((a, v) => a + v.votingPower, 0);
   const regions = [...byRegion.entries()]
-    .sort((a, b) => (a[0] === "Unlisted" ? 1 : b[0] === "Unlisted" ? -1 : b[1] - a[1]))
-    .map(([label, value], i) => ({ label, value, color: label === "Unlisted" ? "#3a342e" : shareColors[Math.min(i, shareColors.length - 2)] }));
-  const largest = regions.length ? Math.max(...regions.filter((r) => r.label !== "Unlisted").map((r) => r.value), 0) : 0;
+    .sort((a, b) => (a[0] === NOT_SHARED ? 1 : b[0] === NOT_SHARED ? -1 : b[1] - a[1]))
+    .map(([label, value], i) => ({ label, value, color: label === NOT_SHARED ? "#3a342e" : shareColors[Math.min(i, shareColors.length - 2)] }));
+  const largest = regions.length ? Math.max(...regions.filter((r) => r.label !== NOT_SHARED).map((r) => r.value), 0) : 0;
 
   const pins: GlobePin[] =
     tab === "Signers"
@@ -185,10 +189,10 @@ export default function Validators() {
               ) : where.size > 0 ? (
                 "Drag to spin · hover a row to locate"
               ) : (
-                "No locations published yet"
+                "No locations shared yet"
               )}
             </span>
-            <span>approx. · as operators publish</span>
+            <span>approx. · only where operators share it</span>
           </div>
         </div>
       </div>
@@ -238,7 +242,7 @@ export default function Validators() {
                         </div>
                         <div className="mono muted ellipsis" style={{ fontSize: 12, marginTop: 2 }} title={v.enteredAtUnix ? `in the set since ${utc(v.enteredAtUnix)}` : undefined}>
                           {v.consensusAddress ? truncate(v.consensusAddress, 8, 6) : "not in the signing set yet"}
-                          {where.has(v.account) && ` · ${place(where.get(v.account))}`}
+                          {` · ${place(where.get(v.account))}`}
                         </div>
                       </div>
                     </div>
@@ -313,7 +317,7 @@ export default function Validators() {
                       <span className="mono faint">{i + 1}</span>
                       <span style={{ fontSize: 13, minWidth: 0 }}>
                         <AddressLink address={e.address} />
-                        {where.has(e.address) && <span className="muted" style={{ fontSize: 12 }}> · {place(where.get(e.address))}</span>}
+                        <span className={where.has(e.address) ? "muted" : "faint"} style={{ fontSize: 12 }}> · {place(where.get(e.address))}</span>
                       </span>
                       <div className="mono" style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: 500 }}>
                         {int(e.work)}
@@ -344,7 +348,9 @@ export default function Validators() {
                 : leaderShare > 1 / 3
                   ? `One miner has more than a third of this epoch's work (${pct(leader!.work, totalWork)}).`
                   : "No single miner above 33% this epoch."}{" "}
-              Each epoch, the top {vs?.topKSize || "K"} miners by native work are selected as validators.
+              This counts native submissions. Seats follow seat work instead: the difficulty each accepted submission met,
+              native and merged, over the last 3 epochs. Miners with a registered validator key and at least 1% of
+              that work among such miners qualify; the top {vs?.topKSize || "K"} are seated, with voting power in proportion to it.
             </div>
           </div>
         </div>
