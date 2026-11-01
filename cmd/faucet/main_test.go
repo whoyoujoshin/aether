@@ -341,3 +341,58 @@ func TestSendCoinsTakesTheSequenceTheNodeExpects(t *testing.T) {
 	require.Equal(t, []uint64{1889}, tried)
 	require.Equal(t, uint64(1889), f.sequence)
 }
+
+// --opener funds an address once, while the chain has no account for it,
+// and refuses an address that already has one; a batch sends to the new
+// ones and lists the rest. If the chain can't be asked, nothing is sent.
+func TestOpenerFundsOnlyNewAccounts(t *testing.T) {
+	f, chain, clock := testServer(t, 20)
+	f.opener, f.amountUaeth = true, openerAmountUaeth
+
+	r := do(t, f, "POST", "/request", single(addr(1)), "203.0.113.9")
+	if r.status != 200 || r.body.Code != codeSent {
+		t.Fatalf("new address: %d %+v", r.status, r.body)
+	}
+	chain.mu.Lock()
+	chain.accounts[addr(1)] = true // the send opened it
+	chain.mu.Unlock()
+
+	// Past the cooldown it would be funded again by the plain faucet; the
+	// opener refuses it for good.
+	*clock = clock.Add(2 * time.Hour)
+	r = do(t, f, "POST", "/request", single(addr(1)), "198.51.100.1")
+	if r.status != 409 || r.body.Code != codeAccountExists || r.body.Skipped != nil {
+		t.Fatalf("existing address: %d %+v", r.status, r.body)
+	}
+
+	// A batch: the new address is sent to, the existing one is listed.
+	r = do(t, f, "POST", "/request/batch", batch(addr(1), addr(2)), "198.51.100.1")
+	if r.status != 200 || strings.Join(r.body.Sent, ",") != addr(2) {
+		t.Fatalf("batch: %d %+v", r.status, r.body)
+	}
+	if len(r.body.Skipped) != 1 || r.body.Skipped[0].Address != addr(1) || r.body.Skipped[0].Code != codeAccountExists {
+		t.Fatalf("skipped: %+v", r.body.Skipped)
+	}
+	chain.mu.Lock()
+	chain.accounts[addr(2)] = true
+	chain.mu.Unlock()
+	r = do(t, f, "POST", "/request/batch", batch(addr(1), addr(2)), "198.51.100.1")
+	if r.status != 409 || r.body.Code != codeAccountExists || len(r.body.Skipped) != 2 {
+		t.Fatalf("all existing: %d %+v", r.status, r.body)
+	}
+
+	// The chain can't be asked: nothing is sent.
+	f.accountExists = func(string) (bool, error) { return false, errors.New("node down") }
+	r = do(t, f, "POST", "/request", single(addr(3)), "198.51.100.1")
+	if r.status != 503 || r.body.Code != codeSendFailed {
+		t.Fatalf("node down: %d %+v", r.status, r.body)
+	}
+	if len(chain.sends) != 2 {
+		t.Fatalf("sends = %v", chain.sends)
+	}
+
+	r = do(t, f, "GET", "/", "", "198.51.100.1")
+	if r.raw["opener"] != true || r.raw["amount_uaeth"] != float64(1_000) {
+		t.Fatalf("info: %v", r.raw)
+	}
+}

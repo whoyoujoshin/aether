@@ -315,24 +315,47 @@ position, and the plan keeps it.
 In phase 2 a bug costs only AETH. That is the grace period the early chains
 had.
 
-## Open: opening a new miner's account
+## Opening a new miner's account (decided 2026-11-01: the opener)
 
 A new account exists on chain only once it receives funds, and a
 transaction can't be signed by an account that doesn't exist (the ante
 chain needs its number and sequence). On the testnet the faucet's first
-drip opens it. `aether-1` has no faucet, so a brand-new browser miner
-can't send its first find even with the fee exemption. Ways to open one,
-cheapest first:
+drip opens it; `aether-1` has no faucet. So a brand-new browser miner
+couldn't send its first find even though mining submissions need no fee
+(`app/mining_fee.go`).
 
-- **An opener:** a service sends 1 uaeth to a new miner's address behind
-  the faucet page's proof-of-work, so it costs the operator only the send's
-  fee. It needs a funded key on a server.
-- **Someone else's send:** any holder sends it a little AETH. Fine for
-  people who know someone; no help to a stranger.
-- **Submissions that open the account (consensus change):** a native
-  submission whose header names its reward address could be relayed and
-  signed by anyone, so the miner never signs until it has funds. It
-  changes `MsgSubmitPoW`, needs a review, and lands behind a height.
+**The opener** (Joshua's call): a courtesy of 0.001 AETH to each new
+miner, enough to open the account and pay for its first few ordinary
+transactions. It is the faucet run with `--opener` (`cmd/faucet`):
+
+- it funds an address **once, only while the chain has no account for
+  it**, and refuses one that has (`account_exists`), so it can't be
+  farmed by asking again;
+- its amount defaults to 1,000 uaeth (0.001 AETH) unless `--amount` says
+  otherwise;
+- it keeps the faucet's proof-of-work challenge and per-visitor limits,
+  and the Mine page's "Activate" step calls it exactly as it calls the
+  testnet faucet.
+
+**Funding it through the treasury** (Joshua's idea): after launch, Joshua
+and Gitty send part of what they mine to the treasury, and governance
+pays the opener's address from it with treasury-spend proposals. The
+treasury also fills by itself from block 1 (2% of every block reward and
+every fee), so it can keep the opener going once mining picks up. Every
+refill is a public proposal, so anyone can see what the opener holds and
+where it came from.
+
+- **Sizing:** 10 AETH opens about 10,000 accounts, plus the opener's own
+  fees (about 0.0001 AETH a send at the planned price). A refill every
+  few weeks, sized from the opener's `/stats`, keeps it from holding much.
+- **Timing:** each refill waits one voting period (7 days by default), so
+  ask before it runs low. The opener's balance is on its `/` page.
+- **Key:** the opener's key is a hot key on a server, kept in an encrypted
+  keyring (`docs/SERVICE-KEYS.md`), as the testnet faucet's is.
+
+The other ways considered: someone else's send (no help to a stranger),
+or submissions anyone can relay so the miner never signs until it has
+funds (a consensus change to `MsgSubmitPoW`, kept as a later option).
 
 ## Decisions for Joshua
 
@@ -342,6 +365,6 @@ cheapest first:
 | Supply | fair launch (as now) or an allocation | fair launch | **fair launch** |
 | First USDC path | Injective (Noble is being wound down by Circle) | Injective, as on the testnet | **Injective** |
 | Inflow cap | an amount | low at launch, raised by governance | **5,000 USDC**, chain-wide, raised by governance |
-| Fees | a minimum price, USDC accepted, where fees go | accept USDC; fees to the treasury | **accept USDC; fees to the treasury** (built: `app/fees.go`). Minimum price: recommended about 0.0005 per gas in uaeth and in USDC's base unit (a send near 0.0001 of either), still to set. A lone native mining submission with valid proof-of-work needs no fee (built: `app/mining_fee.go`, 2026-11-01), so a miner can send a find with an empty balance; its account must still exist on chain (see "Open: opening a new miner's account") |
+| Fees | a minimum price, USDC accepted, where fees go | accept USDC; fees to the treasury | **accept USDC; fees to the treasury** (built: `app/fees.go`). Minimum price: recommended about 0.0005 per gas in uaeth and in USDC's base unit (a send near 0.0001 of either), still to set. A lone native mining submission with valid proof-of-work needs no fee (built: `app/mining_fee.go`, 2026-11-01), so a miner can send a find with an empty balance; its account must still exist on chain, which the opener provides (see "Opening a new miner's account") |
 | Operators | who, and how many | seven or more before phase 2 | to define: a draft is in §3 |
 | Legal | — | one consultation before phase 2 | Joshua is researching it |

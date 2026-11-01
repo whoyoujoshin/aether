@@ -75,7 +75,15 @@ const (
 	codeInvalidPow      = "invalid_pow"      // the /challenge solution doesn't check out; fetch a new one
 	codeInvalidAgent    = "invalid_agent"    // agent headers present but unknown key, bad signature or clock skew
 	codeIBCUnavailable  = "ibc_unavailable"  // strand "ibc": no IBC drips until the Osmosis channel is open
+	codeAccountExists   = "account_exists"   // --opener: this address already has an account, so it needs no opening
 )
+
+// openerAmountUaeth is what --opener sends when --amount isn't given:
+// 0.001 AETH, a courtesy that opens a new miner's account on a chain with
+// no faucet (docs/MAINNET.md). Mining submissions need no fee
+// (app/mining_fee.go), so this covers the miner's first few ordinary
+// transactions.
+const openerAmountUaeth = 1_000
 
 // Gas for a transaction paying n addresses: one send keeps the 400,000
 // it always had. Measured on a devnet, one send used 233k and nine
@@ -97,6 +105,7 @@ type faucetServer struct {
 	fromAddr    string
 	chainID     string
 	amountUaeth int64
+	opener      bool // fund only addresses the chain has no account for, once
 	gasPrice    sdk.DecCoin
 
 	accountNumber uint64
@@ -285,6 +294,37 @@ func (f *faucetServer) handleBatch(w http.ResponseWriter, r *http.Request) {
 
 func (f *faucetServer) dispense(w http.ResponseWriter, o origin, addresses []string, batch bool) {
 	caller := o.caller
+
+	// The opener funds an address once, while it has no account: after
+	// the send it has one, so it is never funded again.
+	var opened []skippedAddress
+	if f.opener {
+		var fresh []string
+		for _, a := range addresses {
+			exists, err := f.accountExists(a)
+			if err != nil {
+				log.Printf("opener couldn't check whether %s has an account: %v", a, err)
+				f.reply(w, caller, http.StatusServiceUnavailable, responseBody{Code: codeSendFailed, Message: "couldn't check the chain for this address; nothing was sent, please try again"})
+				return
+			}
+			if exists {
+				opened = append(opened, skippedAddress{Address: a, Code: codeAccountExists})
+				continue
+			}
+			fresh = append(fresh, a)
+		}
+		if len(fresh) == 0 {
+			msg := "this address already has an account: the opener only funds new ones"
+			if batch {
+				msg = "every address already has an account: the opener only funds new ones; see skipped"
+			} else {
+				opened = nil
+			}
+			f.reply(w, caller, http.StatusConflict, responseBody{Code: codeAccountExists, Message: msg, Skipped: opened})
+			return
+		}
+		addresses = fresh
+	}
 	res, waiting, q, ok := f.limits.reserve(caller, addresses)
 	var skipped []skippedAddress
 	var soonest time.Duration
@@ -298,6 +338,8 @@ func (f *faucetServer) dispense(w http.ResponseWriter, o origin, addresses []str
 	}
 	if !batch {
 		skipped = nil // the single-address answer says it all
+	} else {
+		skipped = append(opened, skipped...)
 	}
 
 	if !ok {
@@ -446,6 +488,7 @@ func (f *faucetServer) handleInfo(w http.ResponseWriter, r *http.Request) {
 		"chain_id":              f.chainID,
 		"denom":                 "uaeth",
 		"amount_uaeth":          f.amountUaeth,
+		"opener":                f.opener,
 		"address_cooldown_secs": ceilSeconds(f.limits.cooldown),
 		"caller_limit":          f.limits.callerLimit,
 		"caller_window_secs":    ceilSeconds(f.limits.callerWindow),
@@ -554,7 +597,8 @@ func expectedSequence(r wallet.BroadcastResult) (uint64, bool) {
 func main() {
 	fromKey := flag.String("from", "faucet", "keyring name of the funded faucet account")
 	chainID := flag.String("chain-id", "aether-testnet-1", "chain ID to broadcast against")
-	amount := flag.Int64("amount", 1_000_000, "amount to dispense per request, in uaeth")
+	amount := flag.Int64("amount", 1_000_000, "amount to dispense per request, in uaeth (with --opener, 1,000 unless given)")
+	opener := flag.Bool("opener", false, "account opener: fund each address once, only while the chain has no account for it (for a chain with no faucet; docs/MAINNET.md)")
 	keyringBackend := flag.String("keyring-backend", "test", "keyring backend the faucet account is stored in")
 	keyringDir := flag.String("keyring-dir", "", "keyring storage directory (defaults to the aetherd default home)")
 	grpcEndpoint := flag.String("grpc", "localhost:9090", "node gRPC endpoint")
@@ -572,6 +616,13 @@ func main() {
 	agentLimit := flag.Int("agent-limit", 100, "addresses one registered agent key may fund per --caller-window-minutes")
 	powBits := flag.Int("pow-bits", 18, "leading zero bits a browser's /challenge solution needs (18: about a second in a browser)")
 	flag.Parse()
+	if *opener {
+		amountSet := false
+		flag.Visit(func(fl *flag.Flag) { amountSet = amountSet || fl.Name == "amount" })
+		if !amountSet {
+			*amount = openerAmountUaeth
+		}
+	}
 
 	gasPrice, err := sdk.ParseDecCoin(*gasPriceStr)
 	if err != nil || gasPrice.Denom != "uaeth" {
@@ -647,6 +698,7 @@ func main() {
 		fromAddr:            account.Address,
 		chainID:             *chainID,
 		amountUaeth:         *amount,
+		opener:              *opener,
 		gasPrice:            gasPrice,
 		accountNumber:       accountNumber,
 		sequence:            sequence,
@@ -670,6 +722,9 @@ func main() {
 		return coins.AmountOf("uaeth").Int64(), nil
 	})
 
+	if *opener {
+		log.Printf("opener mode: each address is funded once, only while the chain has no account for it")
+	}
 	log.Printf("Aether faucet listening on :%s (dispensing %d uaeth per address, %d-minute cooldown, %d addresses per caller per %d minutes, batches of up to %d, from %s on chain %q, starting sequence %d)",
 		*port, *amount, *cooldownMinutes, *callerLimit, *callerWindowMinutes, *batchMax, account.Address, *chainID, sequence)
 	log.Fatal(http.ListenAndServe(":"+*port, server.routes()))
