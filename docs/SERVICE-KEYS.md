@@ -323,10 +323,19 @@ secp256k1 and Injective's eth_secp256k1. `outbound` then runs with
    as soon as `injective-relayer-pass.txt` exists.
 3. Copy the key; the printed address must be `inj1c2rd0g6e9pxfulr3jpy2lvme6a37sqnfk35wlg`:
    ```powershell
-   $env:AETHER_KEYRING_PASSPHRASE_FILE = 'C:\aether-keys\injective-relayer-pass.tmp'
-   & $HOME\Downloads\outbound.exe -copy-key-to C:\aether-relayer\injective -cparty-home C:\aether-relayer\injective -cparty-key relayer -cparty-bech32-prefix inj
-   Remove-Item Env:\AETHER_KEYRING_PASSPHRASE_FILE
+   '' | & $HOME\Downloads\outbound.exe -copy-key-to C:\aether-relayer\injective -cparty-home C:\aether-relayer\injective -cparty-key relayer -cparty-bech32-prefix inj -keyring-passphrase-file C:\aether-keys\injective-relayer-pass.tmp
    ```
+   The `'' |` matters in an interactive PowerShell: its console counts as a
+   terminal, and the SDK would otherwise prompt there instead of using the
+   file.
+
+   **On Windows, pass `-keyring-passphrase-file` rather than relying on
+   `AETHER_KEYRING_PASSPHRASE_FILE`.** Under the scheduled task, PowerShell
+   5.1's `Start-Process` gave the child neither the variable nor a usable
+   stdin (`os.Stdin` was nil), so the keyring failed with `invalid argument`
+   x3 and `too many failed passphrase attempts`. The flag sets the variable
+   inside outbound itself; `scripts/windows/outbound-injective-ensure.ps1`
+   passes it with the file backend. Linux/systemd keeps using the variable.
 4. Switch over. Copy `scripts/windows/outbound-injective-ensure.ps1` from
    `main` over `C:\aether-data\outbound-injective-ensure.ps1` (back the old
    one up as `.pre-filekeyring`). It uses the file keyring once the

@@ -53,7 +53,7 @@ func NewWallet(appName, backend, rootDir string, cdc codec.Codec) (*Wallet, erro
 	if err != nil {
 		return nil, err
 	}
-	kr, err := keyring.New(appName, backend, rootDir, in, cdc, func(options *keyring.Options) {
+	kr, err := NewKeyring(appName, backend, rootDir, in, cdc, func(options *keyring.Options) {
 		options.SupportedAlgos = append(options.SupportedAlgos, mldsa.Algo)
 	})
 	if err != nil {

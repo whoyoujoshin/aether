@@ -17,6 +17,7 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 
 	"github.com/whoyoujoshin/aether/crypto/ethsecp256k1"
+	"github.com/whoyoujoshin/aether/wallet"
 )
 
 // OpenCounterpartyKeyring opens the keyring holding the key that signs on
@@ -27,7 +28,7 @@ import (
 // backend reads its passphrase from in.
 func OpenCounterpartyKeyring(backend, dir string, in io.Reader, cdc codec.Codec) (keyring.Keyring, error) {
 	ethsecp256k1.RegisterInterfaces(cdc.InterfaceRegistry())
-	return keyring.New("counterpartyd", backend, dir, in, cdc, func(o *keyring.Options) {
+	return wallet.NewKeyring("counterpartyd", backend, dir, in, cdc, func(o *keyring.Options) {
 		o.SupportedAlgos = keyring.SigningAlgoList{hd.Secp256k1, ethsecp256k1.Algo}
 	})
 }

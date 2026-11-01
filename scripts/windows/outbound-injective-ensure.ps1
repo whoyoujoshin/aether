@@ -42,8 +42,12 @@ $argList = @(
   "-client-id", "07-tendermint-510",
   "-refresh-after", "1h", "-listen", "127.0.0.1:8096"
 )
-Write-Log "starting: $exe ($backend keyring)"
-$p = Start-Process -FilePath $exe -ArgumentList $argList -PassThru -Wait -WindowStyle Hidden -RedirectStandardError $outLog -RedirectStandardOutput "$outLog.stdout"
+# Start-Process here doesn't reliably pass the environment (or a redirected
+# stdin) to the child, so give the passphrase file as a flag.
+$spArgs = @{ FilePath = $exe; ArgumentList = $argList; PassThru = $true; Wait = $true; WindowStyle = "Hidden"; RedirectStandardError = $outLog; RedirectStandardOutput = "$outLog.stdout" }
+if ($backend -eq "file") { $spArgs.ArgumentList = $argList + @("-keyring-passphrase-file", $passFile) }
+Write-Log ("starting: $exe ($backend keyring) env set: " + [bool]$env:AETHER_KEYRING_PASSPHRASE_FILE)
+$p = Start-Process @spArgs
 Write-Log "exited code=$($p.ExitCode)"
 if ($null -eq $p.ExitCode) { exit 1 }
 exit $p.ExitCode
