@@ -363,7 +363,13 @@ timeout (the CLI's default is 1,000 Osmosis blocks, ~12 minutes at
 Osmosis's 0.7 s blocks) counts from that view. On 4 October, before this
 setting existed, the view was refreshed only at a third of the 80 h
 trusting period. It was a day behind, so a default transfer timed out
-before it was sent (Helicase refunded it). `cmd/outbound`'s
+before it was sent (Helicase refunded it). On 1 November Gitty did the
+same on purpose over `channel-3`: 1 AETH (tx `3FCB6079…C8448E` at
+549,050) with a timeout one Osmosis block past Aether's view, so already
+expired when sent. Helicase relayed the `MsgTimeout` (`EE25D6F7…C38556`)
+in the next block, 549,051, which returned exactly 1,000,000 uaeth and
+cleared packet 9's commitment; the sender was out only the 8,413 uaeth
+fee, and the `channel-3` escrow went back to 101,005,000 uaeth. `cmd/outbound`'s
 `--refresh-after 1h` does the same for Osmosis's view of Aether, where
 1,000 Aether blocks is about 1.5 hours.
 

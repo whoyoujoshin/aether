@@ -279,6 +279,7 @@
 
     function App() {
       const [accounts, setAccounts] = useState(null); // this wallet's own keys
+      const [accountsErr, setAccountsErr] = useState(""); // couldn't read them: never "no accounts"
       const [adding, setAdding] = useState(false);
       const [view, setView] = useState(null); // {kind:"own", name, address} | {kind:"agent", address, perm}
       const [screen, setScreen] = useState("home");
@@ -302,12 +303,14 @@
       const loadAccounts = useCallback(async () => {
         try {
           const list = (await api("/api/accounts")).map((a) => ({ name: a.Name || a.name, address: a.Address || a.address }));
+          setAccountsErr("");
           setAccounts(list);
           return list;
         } catch (e) {
-          setErr(e.message);
-          setAccounts([]);
-          return [];
+          // Not the setup screen: a failed read isn't an empty wallet, and
+          // offering to create one then would only confuse.
+          setAccountsErr(e.message);
+          return accounts || [];
         }
       }, []);
       useEffect(() => { loadAccounts(); }, []);
@@ -352,6 +355,16 @@
 
       const refresh = () => { loadBalance(); loadActivity(); loadChain(); };
 
+      if (accountsErr && (accounts === null || !accounts.length)) {
+        return (
+          <div className="setup"><div className="card">
+            <h2>Can't read this wallet's accounts</h2>
+            <div className="warn"><span>⚠</span><div>{accountsErr}</div></div>
+            <p className="note">Nothing was changed: your accounts stay in this computer's keys folder. If another Aether Pay window is open, use that one and close this one. Otherwise restart Aether Pay.</p>
+            <div className="actions"><button className="btn primary" onClick={() => loadAccounts()}>Try again</button></div>
+          </div></div>
+        );
+      }
       if (accounts === null) return <div className="setup faint mono">Opening wallet…</div>;
       if (!accounts.length || adding) {
         return <Setup canCancel={accounts.length > 0} onCancel={() => setAdding(false)} onDone={async (acc) => {
