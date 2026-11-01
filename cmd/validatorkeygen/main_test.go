@@ -134,3 +134,17 @@ func TestConflictingFlags(t *testing.T) {
 		require.Error(t, run(args, &bytes.Buffer{}), args)
 	}
 }
+
+// On a fresh chain the printed command names that chain, the fee its
+// nodes ask and the miner key's keyring; the testnet defaults stay.
+func TestPrintedCommandTakesChainFeesAndKeyring(t *testing.T) {
+	home, nodePub := nodeHome(t)
+	var out bytes.Buffer
+	require.NoError(t, run([]string{"--miner", miner, "--home", home, "--chain-id", "aether-rc-1", "--fees", "200uaeth", "--keyring-backend", "file"}, &out))
+	require.Equal(t, nodePub, registered(t, out.String()))
+	require.Contains(t, out.String(), "--chain-id aether-rc-1 --keyring-backend file --fees 200uaeth -y")
+
+	out.Reset()
+	require.NoError(t, run([]string{"--miner", miner, "--home", home}, &out))
+	require.Contains(t, out.String(), "--chain-id aether-testnet-1 --keyring-backend test --fees 0aeth -y")
+}

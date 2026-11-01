@@ -76,6 +76,9 @@ func run(args []string, out io.Writer) error {
 	keyFile := fs.String("key-file", "", "priv_validator_key.json to read instead of <home>/config/priv_validator_key.json")
 	newKey := fs.Bool("new-key", false, "generate a fresh consensus key instead of using the node's; it must be installed on the node before registering")
 	existingPrivKeyB64 := fs.String("existing-priv-key-b64", "", "base64-encoded ed25519 private key (64 bytes) to use instead of a key file -- e.g. priv_validator_key.json's priv_key.value")
+	chainID := fs.String("chain-id", "aether-testnet-1", "chain ID for the printed command")
+	fees := fs.String("fees", "0aeth", "fee for the printed command; a node with a minimum gas price needs at least its price x the gas")
+	keyringBackend := fs.String("keyring-backend", "test", "keyring backend of the miner's key, for the printed command")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -144,8 +147,8 @@ func run(args []string, out io.Writer) error {
 	}
 	fmt.Fprintln(out, "\nRegister with:")
 	fmt.Fprintf(out,
-		"aetherd tx pow register-validator-pubkey %s %s --from %s --chain-id aether-testnet-1 --keyring-backend test --fees 0aeth -y%s\n",
-		hex.EncodeToString(pub), hex.EncodeToString(signature), *minerAddr, homeFlag,
+		"aetherd tx pow register-validator-pubkey %s %s --from %s --chain-id %s --keyring-backend %s --fees %s -y%s\n",
+		hex.EncodeToString(pub), hex.EncodeToString(signature), *minerAddr, *chainID, *keyringBackend, *fees, homeFlag,
 	)
 	return nil
 }
