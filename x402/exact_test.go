@@ -185,6 +185,24 @@ func TestVerifyRefusesWhatDoesntPayExactly(t *testing.T) {
 	tx := sign(good)
 	require.Equal(t, ReasonAcceptedMismatch, f.Verify(ctx, payloadFor(cheap, tx), req).InvalidReason)
 
+	// Splits aren't implemented: a non-empty or malformed splits array is
+	// refused, on the server's requirements or the client's accepted copy;
+	// an empty one is the same as none.
+	split := []any{map[string]any{"payTo": other, "amount": "100"}}
+	for _, v := range []any{split, "garbage", map[string]any{}} {
+		withSplits := req
+		withSplits.Extra = map[string]any{"splits": v}
+		require.Equal(t, ReasonRequirements, f.Verify(ctx, payloadFor(withSplits, tx), withSplits).InvalidReason, "%v", v)
+		p := payloadFor(req, tx)
+		p.Accepted.Extra = map[string]any{"splits": v}
+		require.Equal(t, ReasonRequirements, f.Verify(ctx, p, req).InvalidReason, "accepted %v", v)
+	}
+	for _, v := range []any{nil, []any{}} {
+		noSplits := req
+		noSplits.Extra = map[string]any{"splits": v, "symbol": "AETH"}
+		require.True(t, f.Verify(ctx, payloadFor(noSplits, tx), noSplits).IsValid, "%v", v)
+	}
+
 	// Wrong version, scheme, network.
 	p := payloadFor(req, tx)
 	p.X402Version = 1

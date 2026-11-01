@@ -34,6 +34,9 @@ arrived over IBC (`ibc/<hash>`), such as USDC from Noble.
 - `payTo`: a bech32 account address on the chain.
 - `extra` (optional): `symbol` and `decimals` for display. A facilitator's
   `/supported` kind may state `feeDenom` and `feePayer: "payer"`.
+- `extra.splits`: not implemented by this binding. A facilitator MUST reject
+  requirements carrying a non-empty `splits` array, and does not advertise
+  splits in `/supported`.
 
 ```json
 {
@@ -97,6 +100,7 @@ The facilitator refuses the payment, with the reason in brackets, unless all of 
 2. `paymentPayload.accepted` has the same `amount`, `asset` and `payTo` as
    the server's `paymentRequirements`
    (`invalid_exact_cosmos_payload_accepted_mismatch`).
+   Neither carries a non-empty `extra.splits` (`invalid_payment_requirements`).
 3. `payload.transaction` decodes as a `TxRaw` the chain's own decoder
    accepts, no larger than a set limit (16 KiB is enough for a single
    send) (`invalid_payload`, `invalid_exact_cosmos_payload_transaction`).

@@ -226,6 +226,12 @@ func (f *Facilitator) check(ctx context.Context, p PaymentPayload, req PaymentRe
 	if _, err := sdk.AccAddressFromBech32(req.PayTo); err != nil {
 		return c, ReasonRequirements
 	}
+	// This binding doesn't implement the exact scheme's optional
+	// extra.splits extension, so it refuses requirements carrying it rather
+	// than settling the whole amount to payTo (the scheme's MUST).
+	if hasSplits(req.Extra) || hasSplits(p.Accepted.Extra) {
+		return c, ReasonRequirements
+	}
 	// The client must have paid what this resource asks, not what an
 	// earlier or different 402 offered.
 	if p.Accepted.Amount != req.Amount || p.Accepted.Asset != req.Asset || p.Accepted.PayTo != req.PayTo {
@@ -361,4 +367,15 @@ var (
 func encoding() app.EncodingConfig {
 	encOnce.Do(func() { encCfg = app.MakeEncodingConfig() })
 	return encCfg
+}
+
+// hasSplits reports whether extra asks for the splits extension: a
+// non-empty splits array, or a splits value that isn't an array at all.
+func hasSplits(extra map[string]any) bool {
+	v, ok := extra["splits"]
+	if !ok || v == nil {
+		return false
+	}
+	arr, ok := v.([]any)
+	return !ok || len(arr) > 0
 }
