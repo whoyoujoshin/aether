@@ -1,6 +1,6 @@
 # IBC inflow cap for mainnet
 
-**Status:** built, not active on the testnet. The code is `x/inflowcap`
+**Status:** live on the testnet since block 511,920 (2026-10-29). The code is `x/inflowcap`
 (module, keeper, `MsgUpdateParams`, queries and the middleware) and
 `app/inflowcap.go` (wiring and activation). For Cosmos SDK v0.50 with
 ibc-go v8.8. It is on from block 1 on fresh chains; on the testnet its
@@ -226,6 +226,26 @@ that block once restarted.
 
   Two runs, both clean; no panics or rejected proposals.
 
+- **Testnet, done:**
+  - **Activation (2026-10-29, 511,920):** every node halted at the
+    height and restarted once on `1080a98`; `caps` listed `channel-2` USDC
+    at 100 and `channel-3` OSMO at 1,000, nothing in flight. 1 USDC from
+    Injective then arrived (supply 13, room 87).
+  - **Over the cap (2026-10-29, Gitty):** 88 USDC from Injective (room
+    87) was refused at 519,432 with `over_cap`, nothing minted; the error
+    ack refunded it on Injective.
+  - **A send in flight timed out (2026-11-01, Gitty):** 10,000 uosmo in
+    from Osmosis (`F8190EB0…1BA42B1F` on osmo-test-5, received on Aether
+    by Helicase as `74E3AC9C…72215A09` at 549,276): supply 396,424 to
+    406,424, room 999,593,576, in flight 0. Sent back over `channel-3`
+    with an already-expired timeout (`E9EF5879…DFDEEDD6` at 549,283):
+    supply 396,424, in flight 10,000, room unchanged. Helicase's
+    `MsgTimeout` (`65938164…3183D42F` at 549,284) re-minted exactly
+    10,000: supply 406,424, in flight 0, packet 10's commitment cleared.
+    The only cost was the 9,253 uaeth fee. The same day 1 AETH timed out
+    over `channel-3` the same way (`docs/OSMOSIS-TESTNET.md`); native AETH
+    never enters `in_flight`.
+
   The first attempt found a Helicase bug, not a cap one: with 1 s blocks
   the proposer put the same relay transaction in two blocks, the second
   copy's empty result replaced the first's in CometBFT's index, and
@@ -350,8 +370,6 @@ command refused `channel-0` named as `injective-1` (its client follows
 
 ## Still to do
 
-- The testnet height, with `testnetInflowEntries` checked against what
-  is on Aether then.
 - Decide `aether-1`'s governance voting period (USDC opens one period
   after the path does).
 
