@@ -159,7 +159,8 @@ in escrow for Aether. Keep that small while the chain is young:
   - **Spread out.** No two operators in the same data center, and no more
     than a third of the power on one cloud provider.
   - **Mines its own seat.** Holds at least 1% of the window's work from its
-    own hash or a pool it runs (merged-mined work counts).
+    own hash or a pool it runs (native work only on `aether-1` for now:
+    merged work earns its reward but no seat, `FreshMergedSeatWorkHeight`).
   - **Runs it properly.** A server, not a home PC; a sentry node in front;
     the consensus key in a remote signer with double-sign protection; the
     5-second `timeout_commit`; alerts that reach a person.
@@ -169,6 +170,14 @@ in escrow for Aether. Keep that small while the chain is young:
     above a third of the power, before phase 2. The seat rule has no
     per-validator cap on purpose, so this is a launch condition to watch,
     not a rule the chain enforces.
+- **The operator kit: built** (`docs/OPERATOR.md`, 2026-11-01). The guide
+  from nothing to a seat; `cmd/rcgenesis`, which builds the genesis from
+  each operator's name, consensus key and miner address (miner accounts at
+  zero balance, every operator at equal power); and
+  `scripts/rc/build-aetherd.sh`, a reproducible build whose sha256 every
+  operator compares. Rehearsed with two operators on an `aether-rc-ops`
+  devnet: the first operator mined from an empty account, registered its
+  key from its first reward and took its genesis seat over.
 - **No validator on a home PC.** peer-1 was voted out twice because of a VPN
   on DardenPC. Validators run on servers with sentry nodes in front.
 - **Consensus keys in a remote signer** (tmkms, or horcrux for a threshold

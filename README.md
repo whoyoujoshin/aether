@@ -79,7 +79,7 @@ See [Known Issues and Technical Debt](../../wiki/Known-Issues-and-Technical-Debt
 
 ## Why staking-free, and why post-quantum?
 
-Aether has no `x/staking` module. The active validator set is the Top-K miners by **epoch native work**. AuxPoW can earn rewards and retarget difficulty but does **not** count toward Top-K standing.
+Aether has no `x/staking` module. The active validator set comes from mining: since block 396,000 a validator's power is in proportion to the work its miner proved over the last three epochs, native and merged alike on the testnet (native only on `aether-1` for now), with a 1% bar, the top 21 seated, and power moving at most 10% of the total per epoch ([docs/SEAT-RULE.md](docs/SEAT-RULE.md)). Running one: [docs/OPERATOR.md](docs/OPERATOR.md).
 
 Every account transaction must use ML-DSA-44 from genesis (no classical fallback), enforced by `PostQuantumDecorator`. CometBFT consensus keys remain ed25519; the planned post-quantum checkpoints that narrow that gap are in [docs/PQ-CHECKPOINTS.md](docs/PQ-CHECKPOINTS.md) (design). Details: [docs/WHITEPAPER.md](docs/WHITEPAPER.md) and the wiki decision records. How this compares with QRL and Nervos CKB: [docs/COMPARISON.md](docs/COMPARISON.md).
 
@@ -390,7 +390,7 @@ go run ./cmd/validatorkeygen --miner <your-bech32-address> --home <the node's ho
 
 It registers the node's own consensus key, read from `<home>/config/priv_validator_key.json`: the key the node signs blocks with. Register any other key and the miner becomes a validator nothing signs for. `--new-key` generates a fresh key instead and prints the `priv_validator_key.json` to install on the node first.
 
-Mine and submit successfully within an epoch to accumulate native work. At the epoch boundary (1440 blocks), Top-K (21) by native work become the active set. Downtime (>50% missed signatures in a 60-block window) causes temporary removal; equivocation causes permanent ban and escrow burn.
+Mine and submit successfully to accumulate seat work. At each epoch boundary (1,440 blocks), power is recomputed from the last three epochs' work: an address needs 1% of it to qualify, the top 21 are seated, and power moves at most 10% of the total per epoch ([docs/SEAT-RULE.md](docs/SEAT-RULE.md); operators: [docs/OPERATOR.md](docs/OPERATOR.md)). Downtime (missing more than half of a 1,440-block liveness window, since 460,800) causes removal until the next boundary, capped at 10% of the power between boundaries; equivocation causes permanent ban and escrow burn.
 
 **One consensus key, one miner account.** Never register the same node's key under two miner accounts: if both are picked, or one leaves the set as the other joins, the validator updates name that key twice and CometBFT halts the chain. From `ConsensusKeyGuardActivationHeight` (`x/pow/types.go`) the chain refuses it: to move a key to a new miner account, first register a different key on the old one. Rotating an active validator's key also takes it out of the set until an epoch picks it with the new key.
 
