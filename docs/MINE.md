@@ -10,7 +10,7 @@ Two ways to mine `aether-testnet-1` without a node or a command line:
 
 Both mine native submissions (`MsgSubmitPoW`), signed by the miner's own
 ML-DSA-44 key. An accepted one pays the block reward to that account
-(85%; the treasury cut is 15%) and counts as seat work. A miner becomes a
+(85%; of the other 15%, 13 points go to the active validators and 2 to the treasury) and counts as seat work. A miner becomes a
 validator only with enough of the work and its own node with a registered
 consensus key (`docs/SEAT-RULE.md`). Testnet AETH has no market value.
 
