@@ -79,7 +79,7 @@ back to the node over `--grpc`. It ships with the next desktop release.
     in 10 s;
   - **desktop page against a real `walletapi`:** 6.68 kH/s, finds accepted.
 
-**On `aether-testnet-1` (2026-11-01):** after Gitty's deploy of `8f597e4`, Joshua mined on the live page from an older computer. It ran at 847 H/s, the page put a find at about 5 minutes, and its finds were accepted and paid. At the testnet's hash rate then (a few kH/s in all), one such computer did a sizable share of the mining.
+**On `aether-testnet-1` (2026-11-01):** after Gitty's deploy of `8f597e4`, Joshua mined on the live page from an older computer. It ran at 847 H/s on 2 of its 4 threads (about 420 H/s a thread), the page put a find at about 5 minutes, and its finds were accepted and paid: past 10 AETH within its first session. At the testnet's hash rate then (a few kH/s in all), one such computer did a sizable share of the mining.
 
 ## Deploying
 
