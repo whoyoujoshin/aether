@@ -3,7 +3,6 @@ package pow
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 
 	sdkerrors "cosmossdk.io/errors"
 	"cosmossdk.io/math"
@@ -178,50 +177,14 @@ func (k msgServer) SubmitPoW(goCtx context.Context, msg *MsgSubmitPoW) (*MsgSubm
 // logic to the pre-AuxPoW handler, unchanged, just factored into its
 // own function.
 func (k msgServer) submitNativePoW(ctx sdk.Context, minerAddr sdk.AccAddress, native *NativeSubmission) (*MsgSubmitPoWResponse, error) {
-	header := MiningHeader{
-		Height:       native.Height,
-		Timestamp:    native.Timestamp,
-		PrevHash:     native.PrevHash,
-		MerkleRoot:   native.MerkleRoot,
-		Nonce:        native.Nonce,
-		Difficulty:   native.Difficulty,
-		MinerAddress: minerAddr,
+	checked, err := k.Keeper.CheckNativeSubmission(ctx, minerAddr, native)
+	if err != nil {
+		return nil, err
 	}
-
-	claimedHeight := int64(header.Height)
-	storedHash, ok := k.Keeper.GetRecentHash(ctx, claimedHeight)
-	if !ok {
-		return nil, sdkerrors.Wrapf(types.ErrUnknownAncestor, "no known block at height %d", claimedHeight)
-	}
-	if !bytes.Equal(storedHash, header.PrevHash) {
-		return nil, sdkerrors.Wrapf(types.ErrUnknownAncestor, "prevHash does not match the real block hash at height %d", claimedHeight)
-	}
-
-	recencyWindow := k.Keeper.GetRecencyWindowK(ctx)
-	if ctx.BlockHeight()-claimedHeight > recencyWindow {
-		return nil, sdkerrors.Wrapf(types.ErrStaleAncestor, "claimed height %d is more than %d blocks behind current height %d", claimedHeight, recencyWindow, ctx.BlockHeight())
-	}
-
-	historicalDifficulty, ok := k.Keeper.GetRecentDifficulty(ctx, claimedHeight)
-	if !ok {
-		return nil, sdkerrors.Wrapf(types.ErrUnknownAncestor, "no recorded difficulty at height %d", claimedHeight)
-	}
-	if native.Difficulty < historicalDifficulty.Uint64() {
-		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "submitted difficulty %d below required difficulty %d at height %d", native.Difficulty, historicalDifficulty.Uint64(), claimedHeight)
-	}
-
-	if !k.Keeper.VerifyMiningHeader(ctx, header) {
-		return nil, sdkerrors.Wrapf(types.ErrInvalidPoW, "proof of work verification failed for miner %s at height %d", minerAddr.String(), native.Height)
-	}
-
-	headerHash := sha256.Sum256(headerToBytes(header))
-	if k.Keeper.IsWorkAccepted(ctx, headerHash[:]) {
-		return nil, sdkerrors.Wrapf(types.ErrDuplicateWork, "this exact mining header has already been accepted")
-	}
+	historicalDifficulty, headerHash := checked.Difficulty, checked.HeaderHash
 
 	// From MergedMiningActivationHeight a native submission gives up the
 	// merged share of the reward while merged mining is active.
-	var err error
 	if gates.On(ctx, MergedMiningActivationHeight) {
 		err = k.Keeper.DistributeReward(ctx, minerAddr, k.Keeper.NativeReward(ctx))
 	} else {
@@ -290,8 +253,11 @@ func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPo
 		k.Keeper.SetAuxDifficulty(ctx, k.Keeper.AdjustAuxDifficulty(ctx))
 		k.Keeper.SetAuxLastBlockTime(ctx, ctx.BlockTime().Unix())
 		// From SeatRuleActivationHeight merged work counts toward seats,
-		// credited to the address it pays (seats.go).
-		k.Keeper.creditSeatWork(ctx, rewardAddr, math.NewIntFromUint64(currentDifficulty))
+		// credited to the address it pays (seats.go); on a fresh chain only
+		// from FreshMergedSeatWorkHeight.
+		if mergedSeatWorkCounts(ctx) {
+			k.Keeper.creditSeatWork(ctx, rewardAddr, math.NewIntFromUint64(currentDifficulty))
+		}
 	} else {
 		if err := k.Keeper.DistributeBlockReward(ctx, rewardAddr); err != nil {
 			return nil, sdkerrors.Wrapf(err, "failed to distribute block reward")

@@ -632,6 +632,9 @@ func New(
 		BankKeeper:      app.BankKeeper,
 		SignModeHandler: txConfig.SignModeHandler(),
 		FeegrantKeeper:  feegrantKeeper,
+		// The minimum gas price, except for a lone native mining
+		// submission with valid proof-of-work (app/mining_fee.go).
+		TxFeeChecker: miningFeeChecker(app.PowKeeper),
 		SigGasConsumer: func(meter storetypes.GasMeter, sig txsigning.SignatureV2, params authtypes.Params) error {
 			switch sig.PubKey.(type) {
 			case *mldsa.PubKey:

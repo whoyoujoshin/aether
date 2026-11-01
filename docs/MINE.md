@@ -44,7 +44,11 @@ on the last `X-Forwarded-For` entry, the one Caddy added.
    use that browser can spend what the account holds: testnet amounts only.
 2. **Activate.** A new account exists on chain only once it receives
    funds, and it must exist to sign. One faucet drip (the Faucet page's
-   proof-of-work flow) opens it.
+   proof-of-work flow) opens it. A mining submission itself needs no fee
+   even where nodes ask a minimum gas price (`app/mining_fee.go`). On
+   `aether-1`, with no faucet, the opener (`faucet --opener`, 0.001 AETH
+   once per new account, funded through the treasury) takes its place
+   (`docs/MAINNET.md`).
 3. **Mine.** Pick the threads (half the cores by default) and start. The
    page reads the work every 5 s and gives the threads a fresh header when
    the block it mines on is half the recency window old or the difficulty

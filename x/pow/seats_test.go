@@ -65,6 +65,44 @@ func TestSeatRule_AuxPoWCreditsTheRewardAddress(t *testing.T) {
 	require.Zero(t, c.k.GetMiningWork(c.ctx, epoch, c.pool), "AuxPoW still adds nothing to the submission count")
 }
 
+// On a fresh chain (aether-1, aether-rc-*) merged work earns its reward
+// but no seat work until FreshMergedSeatWorkHeight, while a native
+// submission credits seat work from block 1. The testnet case is the test
+// above.
+func TestSeatRule_FreshChainMergedWorkSeatsNobody(t *testing.T) {
+	const height = 2_000
+	for _, chainID := range []string{"aether-1", "aether-rc-dev"} {
+		c := newAuxPowCase(t)
+		c.templateHeight = height - 1
+		c.ctx = c.ctx.WithChainID(chainID)
+		c.ctx = setupRecentBlock(c.k, c.ctx, c.templateHeight, c.blockHash, auxTestDifficulty).WithBlockHeight(height)
+		c.k.SetAuxDifficulty(c.ctx, math.NewInt(auxTestDifficulty))
+
+		// Merged mining's rules (and its proof byte order) apply from block 1
+		// on a fresh chain; the helper's own choice follows testnet heights.
+		aux := pow.AuxPoWTemplateHash(chainID, c.templateHeight, c.blockHash, c.pool)
+		p := pow.BuildValidAuxPowForTest(t, aux, auxTestDifficulty, pow.MergedMiningActivationHeight)
+		p.TemplateHeight, p.RewardAddress = c.templateHeight, c.pool.String()
+		require.NoError(t, c.submit(p), chainID)
+		require.Len(t, c.bank.MintCalls, 1, "%s: merged mining is still paid", chainID)
+		require.True(t, seatWork(c.k, c.ctx, c.k.CurrentEpoch(c.ctx), c.pool).IsZero(), "%s: but seats nobody", chainID)
+
+		// A native find in the same chain's next block does count.
+		srv := pow.NewMsgServerImpl(c.k)
+		hash := []byte("block-hash-native-on-a-fresh-chain")
+		ctx := setupRecentBlock(c.k, c.ctx, height, hash, 2).WithBlockHeight(height + 1).WithBlockTime(time.Unix(1_900_000_000, 0))
+		miner, addr := validMinerAddr(t)
+		var err error
+		for nonce := uint64(0); nonce < 200; nonce++ {
+			if _, err = srv.SubmitPoW(ctx, newNativeSubmitMsg(addr, height, ctx.BlockTime().Unix(), hash, []byte("merkle"), nonce, 2)); err == nil {
+				break
+			}
+		}
+		require.NoError(t, err, chainID)
+		require.Equal(t, math.NewInt(2), seatWork(c.k, ctx, c.k.CurrentEpoch(ctx), miner), "%s: native work seats", chainID)
+	}
+}
+
 // The first epoch under the rule: powers follow the window's work, the
 // validators seated under the old rule count as holding
 // ValidatorVotingPower, the one that stopped mining fades rather than

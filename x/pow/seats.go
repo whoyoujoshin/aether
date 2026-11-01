@@ -96,6 +96,29 @@ func (k Keeper) AddSeatWork(ctx sdk.Context, epoch int64, addr sdk.AccAddress, a
 // creditSeatWork is the submission handlers' hook: from
 // SeatRuleActivationHeight it adds difficulty to addr's seat work for the
 // current epoch.
+// FreshMergedSeatWorkHeight is the height from which merged (AuxPoW) work
+// counts toward seats on a fresh chain (aether-1, aether-rc-*). It is
+// never, for now: a Litecoin-class ASIC rented for merged mining does
+// about a million times the native rate of a small network, so with
+// merged work counting and no honest pool seated, one renter who registers
+// a validator would outweigh every native miner. Merged mining still earns
+// its share of the block reward; it just doesn't seat anyone. An upgrade
+// sets this height once independent pools commit to run validators
+// (docs/MAINNET.md, the seat rule's option d).
+//
+// The testnet is unchanged: there merged work has counted since
+// SeatRuleActivationHeight.
+const FreshMergedSeatWorkHeight int64 = 1<<63 - 1
+
+// mergedSeatWorkCounts reports whether merged work credits seat work in
+// ctx's block.
+func mergedSeatWorkCounts(ctx sdk.Context) bool {
+	if gates.Fresh(ctx.ChainID()) {
+		return ctx.BlockHeight() >= FreshMergedSeatWorkHeight
+	}
+	return true // creditSeatWork applies SeatRuleActivationHeight
+}
+
 func (k Keeper) creditSeatWork(ctx sdk.Context, addr sdk.AccAddress, difficulty math.Int) {
 	if !gates.On(ctx, SeatRuleActivationHeight) {
 		return
