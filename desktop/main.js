@@ -29,6 +29,23 @@ const API_TOKEN = crypto.randomBytes(32).toString("hex");
 let backendProcess = null;
 let mainWindow = null;
 
+// One copy at a time. walletapi listens on a fixed port, so a second
+// copy's walletapi can't start, and its window would ask the first
+// copy's walletapi with a token it doesn't know: every request refused,
+// which looked like a wallet with no accounts. Opening the app again
+// brings the open window to the front instead.
+const firstInstance = app.requestSingleInstanceLock();
+if (!firstInstance) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
+
 function backendBinaryPath() {
   const osKey = { win32: "win", darwin: "mac", linux: "linux" }[process.platform];
   const archKey = { x64: "x64", arm64: "arm64" }[process.arch];
@@ -101,17 +118,22 @@ function waitForBackend(timeoutMs = 10000, intervalMs = 200) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve) => {
     const attempt = () => {
-      const req = http.get(HEALTH_URL, { headers: { "X-Wallet-Token": API_TOKEN } }, (res) => {
-        res.resume();
-        resolve(true);
-      });
-      req.on("error", () => {
+      const retry = () => {
         if (Date.now() >= deadline) {
           resolve(false);
           return;
         }
         setTimeout(attempt, intervalMs);
+      };
+      // Only our own walletapi answers 200 with this launch's token;
+      // anything else on the port (another program, an old walletapi)
+      // refuses it, so keep waiting rather than open against it.
+      const req = http.get(HEALTH_URL, { headers: { "X-Wallet-Token": API_TOKEN } }, (res) => {
+        res.resume();
+        if (res.statusCode === 200) resolve(true);
+        else retry();
       });
+      req.on("error", retry);
     };
     attempt();
   });
@@ -223,7 +245,7 @@ async function createWindow() {
   });
 }
 
-app.whenReady().then(async () => {
+if (firstInstance) app.whenReady().then(async () => {
   setupUpdates();
   startBackend();
   await createWindow();
