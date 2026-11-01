@@ -353,6 +353,23 @@ where it came from.
 - **Key:** the opener's key is a hot key on a server, kept in an encrypted
   keyring (`docs/SERVICE-KEYS.md`), as the testnet faucet's is.
 
+**Rehearsed (2026-11-01)** on an `aether-rc-onboard` devnet run as
+`aether-1` will be: one validator whose node asks 0.0005uaeth per gas,
+only the opener and the validator's miner funded in genesis, `faucet
+--opener` (no `--amount`) behind the explorer, and the Mine page in
+Chromium.
+
+- A brand-new browser account (no account on chain, balance 0) pressed
+  Activate; the opener sent it exactly 1,000 uaeth, paying its own fee
+  (200 uaeth at the node's price), and the account existed 6 s later.
+- It started mining, and its first find was accepted 19 s after
+  activation: a lone `MsgSubmitPoW` with a fee of 0, code 0, 287,331 gas.
+  The account then held 4,251,000 uaeth (the 1,000 plus the reward;
+  nothing taken for a fee).
+- Asking the opener again for the same address: `account_exists`.
+- An ordinary send with no fee on the same node: refused,
+  `insufficient fees; required: 200uaeth`.
+
 The other ways considered: someone else's send (no help to a stranger),
 or submissions anyone can relay so the miner never signs until it has
 funds (a consensus change to `MsgSubmitPoW`, kept as a later option).
