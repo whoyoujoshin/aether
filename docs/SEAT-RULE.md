@@ -27,7 +27,10 @@ From the activation height, at each epoch boundary:
      miner's seat work for the epoch. A native submission adds the native
      difficulty recorded at the height it builds on.
    - An AuxPoW submission adds the AuxPoW difficulty, credited to the reward
-     address it commits to, not the account that relayed it.
+     address it commits to, not the account that relayed it. **Not on a
+     fresh chain (aether-1, aether-rc-\*):** there merged work earns its
+     reward but no seat work until `FreshMergedSeatWorkHeight`, which is
+     "never" until an upgrade sets it (see "Merged work on mainnet" below).
    - Both tracks measure difficulty in expected scrypt hashes (a hash must be
      below 2^256/difficulty on each), so they add up directly.
 2. **The window is three epochs.** Seat work is summed over this epoch and
@@ -160,6 +163,26 @@ control:
 The window and the reserve alone don't raise the bar, because an attacker
 can take several validators offline at once (under 1/3 in all, so blocks
 continue). The cap does.
+
+## Merged work on mainnet
+
+On `aether-testnet-1` merged work has counted toward seats since 396,000,
+and still does. On a fresh chain it doesn't, for now (`x/pow/seats.go`,
+`FreshMergedSeatWorkHeight`; decided 2026-11-01):
+
+- **Why:** native mining is out of reach for scrypt ASICs (Aether's
+  header is longer than the 80 bytes Litecoin hardware hashes), but merged
+  mining isn't. One rented Litecoin-class ASIC does about a million times a
+  small network's native rate, so with merged work counting and no honest
+  pool seated, whoever registers a validator behind one outweighs every
+  native miner.
+- **What still happens:** merged mining is accepted and paid its share of
+  the block reward. It just doesn't seat anyone.
+- **Turning it on:** an upgrade sets `FreshMergedSeatWorkHeight` once at
+  least two independent Litecoin or Dogecoin pools commit to running
+  validators. Until then the A4/A5 hardening (eligible work only) already
+  keeps unregistered merged work out of the bar.
+- **Test:** `TestSeatRule_FreshChainMergedWorkSeatsNobody`.
 
 ## Left out on purpose
 

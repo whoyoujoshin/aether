@@ -315,14 +315,33 @@ position, and the plan keeps it.
 In phase 2 a bug costs only AETH. That is the grace period the early chains
 had.
 
+## Open: opening a new miner's account
+
+A new account exists on chain only once it receives funds, and a
+transaction can't be signed by an account that doesn't exist (the ante
+chain needs its number and sequence). On the testnet the faucet's first
+drip opens it. `aether-1` has no faucet, so a brand-new browser miner
+can't send its first find even with the fee exemption. Ways to open one,
+cheapest first:
+
+- **An opener:** a service sends 1 uaeth to a new miner's address behind
+  the faucet page's proof-of-work, so it costs the operator only the send's
+  fee. It needs a funded key on a server.
+- **Someone else's send:** any holder sends it a little AETH. Fine for
+  people who know someone; no help to a stranger.
+- **Submissions that open the account (consensus change):** a native
+  submission whose header names its reward address could be relayed and
+  signed by anyone, so the miner never signs until it has funds. It
+  changes `MsgSubmitPoW`, needs a review, and lands behind a height.
+
 ## Decisions for Joshua
 
 | Decision | Options | Recommendation | Decided (2026-10-22) |
 |---|---|---|---|
-| Seat rule | a + b + c, or a + b + c + d | The testnet rule from 396,000 is a + b + c + d (merged work counts). Decide d for mainnet with the simulation of SEAT-RULE.md's known weaknesses, after asking the large Litecoin and Dogecoin pools whether they would run validators | open |
+| Seat rule | a + b + c, or a + b + c + d | The testnet rule from 396,000 is a + b + c + d (merged work counts). Decide d for mainnet with the simulation of SEAT-RULE.md's known weaknesses, after asking the large Litecoin and Dogecoin pools whether they would run validators | **a + b + c at launch** (2026-11-01): merged work earns its reward but seats nobody on a fresh chain until an upgrade turns d on, once two or more independent pools commit to running validators. Built: `FreshMergedSeatWorkHeight` (SEAT-RULE.md, "Merged work on mainnet") |
 | Supply | fair launch (as now) or an allocation | fair launch | **fair launch** |
 | First USDC path | Injective (Noble is being wound down by Circle) | Injective, as on the testnet | **Injective** |
 | Inflow cap | an amount | low at launch, raised by governance | **5,000 USDC**, chain-wide, raised by governance |
-| Fees | a minimum price, USDC accepted, where fees go | accept USDC; fees to the treasury | **accept USDC; fees to the treasury** (built: `app/fees.go`; the minimum price is still open) |
+| Fees | a minimum price, USDC accepted, where fees go | accept USDC; fees to the treasury | **accept USDC; fees to the treasury** (built: `app/fees.go`). Minimum price: recommended about 0.0005 per gas in uaeth and in USDC's base unit (a send near 0.0001 of either), still to set. A lone native mining submission with valid proof-of-work needs no fee (built: `app/mining_fee.go`, 2026-11-01), so a miner can send a find with an empty balance; its account must still exist on chain (see "Open: opening a new miner's account") |
 | Operators | who, and how many | seven or more before phase 2 | to define: a draft is in §3 |
 | Legal | — | one consultation before phase 2 | Joshua is researching it |
