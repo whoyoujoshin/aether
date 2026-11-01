@@ -290,8 +290,11 @@ func (k msgServer) submitAuxPoW(ctx sdk.Context, minerAddr sdk.AccAddress, auxPo
 		k.Keeper.SetAuxDifficulty(ctx, k.Keeper.AdjustAuxDifficulty(ctx))
 		k.Keeper.SetAuxLastBlockTime(ctx, ctx.BlockTime().Unix())
 		// From SeatRuleActivationHeight merged work counts toward seats,
-		// credited to the address it pays (seats.go).
-		k.Keeper.creditSeatWork(ctx, rewardAddr, math.NewIntFromUint64(currentDifficulty))
+		// credited to the address it pays (seats.go); on a fresh chain only
+		// from FreshMergedSeatWorkHeight.
+		if mergedSeatWorkCounts(ctx) {
+			k.Keeper.creditSeatWork(ctx, rewardAddr, math.NewIntFromUint64(currentDifficulty))
+		}
 	} else {
 		if err := k.Keeper.DistributeBlockReward(ctx, rewardAddr); err != nil {
 			return nil, sdkerrors.Wrapf(err, "failed to distribute block reward")
