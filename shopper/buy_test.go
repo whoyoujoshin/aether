@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -234,11 +236,54 @@ func TestBuyLockBlocksASecondSigner(t *testing.T) {
 	require.Equal(t, 0, *env.settles)
 }
 
-func mustJSON(t *testing.T, v any) string {
-	t.Helper()
-	b, err := json.Marshal(v)
+func TestUnlistedBuyNeedsTheApproverNotTheSpendingKey(t *testing.T) {
+	env := newBuyEnv(t, false)
+	approver, _, err := env.buyer.Wallet.CreateAccount("approver")
 	require.NoError(t, err)
-	return string(b)
+	env.buyer.Policy.Approver = approver.Address
+	env.buyer.ExplorerURL = "https://explorer.example"
+	saved, err := LoadQuote(env.dir, env.quoteID)
+	require.NoError(t, err)
+	saved.Offer.Unlisted = true
+	require.NoError(t, SaveQuote(env.dir, "aether-testnet-1", saved.Offer, saved.Decision))
+
+	res, err := env.buyer.Buy(context.Background(), BuyInput{QuoteID: env.quoteID, IdempotencyKey: "hello-1", Confirm: true})
+	require.NoError(t, err)
+	require.Equal(t, CodeNeedsApproval, res.Decision.Code)
+	require.Equal(t, 0, *env.settles)
+	require.Contains(t, res.Decision.Message, "/shop/approve/")
+
+	err = SignApproval(env.dir, approvalIDFrom(res.Decision.Message), "approve", approver.Address, env.buyer.Wallet, "buyer")
+	require.Error(t, err)
+
+	err = SignApproval(env.dir, approvalIDFrom(res.Decision.Message), "approve", approver.Address, env.buyer.Wallet, "approver")
+	require.NoError(t, err)
+	paid, err := env.buyer.Buy(context.Background(), BuyInput{QuoteID: env.quoteID, IdempotencyKey: "hello-1", Confirm: true})
+	require.NoError(t, err)
+	require.True(t, paid.Decision.Spent)
+	require.Equal(t, 1, *env.settles)
+}
+
+func TestOverCapWritesNoApproval(t *testing.T) {
+	env := newBuyEnv(t, false)
+	env.buyer.Policy.MaxPerPayment = sdkmath.NewInt(0)
+	_, err := env.buyer.Buy(context.Background(), BuyInput{QuoteID: env.quoteID, IdempotencyKey: "hello-1", Confirm: true})
+	require.NoError(t, err)
+	_, statErr := os.Stat(env.dir + "/approvals")
+	require.True(t, os.IsNotExist(statErr))
+}
+
+func approvalIDFrom(msg string) string {
+	const mark = "Approval "
+	i := strings.Index(msg, mark)
+	if i < 0 {
+		return ""
+	}
+	rest := msg[i+len(mark):]
+	if j := strings.IndexAny(rest, " ."); j >= 0 {
+		return rest[:j]
+	}
+	return rest
 }
 
 func osReadReceipt(dir, hash string) (string, error) {

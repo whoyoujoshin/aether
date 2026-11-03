@@ -57,6 +57,8 @@ type Buyer struct {
 	Facilitator Facilitator
 	Chain       Chain
 	HTTP        *http.Client
+	// ExplorerURL, when set, is the prefix of the human approval link.
+	ExplorerURL string
 	// ResourceWait is the pause between retries of a paid request that
 	// came back as a server error. Tests set it to zero.
 	ResourceWait time.Duration
@@ -144,8 +146,21 @@ func (b Buyer) Buy(ctx context.Context, in BuyInput) (BuyResult, error) {
 	if prev == nil || prev.TxB64 == "" {
 		decision := b.Policy.Judge(offer)
 		switch decision.Code {
-		case CodeOverCap, CodeDailyCap, CodeRefused, CodeNotBuyable, CodeNeedsApproval, CodeUSDCNeedsApproval:
+		case CodeOverCap, CodeDailyCap, CodeRefused, CodeNotBuyable:
 			return BuyResult{Decision: decision}, nil
+		case CodeNeedsApproval, CodeUSDCNeedsApproval:
+			ok, rejected := b.approvalAllows(offer)
+			if rejected {
+				return BuyResult{}, fail(CodeRefused, NextStop, "This buy was rejected. Nothing was spent.")
+			}
+			if !ok {
+				req := b.requestApproval(in.IdempotencyKey, offer, decision.Code)
+				decision.Message = decision.Message + " Approval " + req.ID + "."
+				if req.Link != "" {
+					decision.Message += " " + req.Link
+				}
+				return BuyResult{Decision: decision}, nil
+			}
 		case CodeNeedsConfirm:
 			if !in.Confirm {
 				return BuyResult{Decision: decision}, nil
