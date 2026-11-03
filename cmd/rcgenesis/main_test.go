@@ -67,6 +67,11 @@ func TestBuild_GenesisForTheOperators(t *testing.T) {
 		require.Equal(t, []string{"alice", "bob", "carol"}[i], v.Name, "validators in name order")
 	}
 
+	// The block limits decided for aether-1.
+	require.Equal(t, int64(4*1024*1024), g.Consensus.Params.Block.MaxBytes)
+	require.Equal(t, int64(200_000_000), g.Consensus.Params.Block.MaxGas)
+	require.LessOrEqual(t, g.Consensus.Params.Evidence.MaxBytes, g.Consensus.Params.Block.MaxBytes, "evidence must fit in a block")
+
 	// The escrow lock outlasts the evidence window, which stays 48 hours.
 	require.Equal(t, int64(freshEvidenceAgeBlocks), g.Consensus.Params.Evidence.MaxAgeNumBlocks)
 	require.Equal(t, 48*time.Hour, g.Consensus.Params.Evidence.MaxAgeDuration)
