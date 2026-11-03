@@ -62,7 +62,7 @@ const simulatedGasMargin = 1.3
 
 func addTxFlags(c *cobra.Command) {
 	c.Flags().StringVar(&rotationGas, "gas", "auto", `gas limit, or "auto" to simulate the transaction first (times 1.3)`)
-	c.Flags().StringVar(&rotationFees, "fees", "0uaeth", "fees to pay, e.g. 2000uaeth (the node's minimum gas price decides what it accepts)")
+	c.Flags().StringVar(&rotationFees, "fees", "", "fees to pay, e.g. 2000uaeth; empty: --gas-price (the node's minimum by default) times the gas limit")
 }
 
 // sendMsg signs msg with keyName for account and broadcasts it.
@@ -91,6 +91,11 @@ func sendMsg(w *wallet.Wallet, client *wallet.Client, keyName, account string, m
 	default:
 		if params.GasLimit, err = strconv.ParseUint(rotationGas, 10, 64); err != nil {
 			return fmt.Errorf(`--gas %q: a number, or "auto"`, rotationGas)
+		}
+	}
+	if rotationFees == "" {
+		if params.Fees, err = txFees(client, params.GasLimit, nil); err != nil {
+			return err
 		}
 	}
 	signed, err := w.BuildAndSignMsgTx(keyName, msg, params)

@@ -254,12 +254,21 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	feeDenom := wallet.BaseDenom
+	if len(amount) == 1 {
+		feeDenom = amount[0].Denom
+	}
+	fees, err := client.Fee(r.Context(), wallet.AutoFees, 400_000, feeDenom)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
 	signed, err := wal.BuildAndSignSendTx(req.From, fromAccount.Address, req.To, amount, wallet.TxParams{
 		ChainID:       chainID,
 		AccountNumber: accountNumber,
 		Sequence:      sequence,
 		GasLimit:      400_000,
-		Fees:          sdk.NewCoins(sdk.NewCoin("uaeth", math.NewInt(0))),
+		Fees:          fees,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to build/sign transaction: %w", err))

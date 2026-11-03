@@ -104,7 +104,8 @@ type Result struct {
 	InTokens  int64    `json:"inputTokens"`
 	OutTokens int64    `json:"outputTokens"`
 	Seconds   float64  `json:"seconds"`
-	Spent     int64    `json:"spentUaeth"` // what left the task's wallet
+	Spent     int64    `json:"spentUaeth"`          // what left the task's wallet, less fees
+	Fees      int64    `json:"feesUaeth,omitempty"` // what its transactions paid for gas
 	Wallet    string   `json:"wallet,omitempty"`
 	Calls     []Call   `json:"calls"`
 }

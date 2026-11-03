@@ -18,8 +18,11 @@ func score(ctx context.Context, w *walletClient, t Task, given *testWallet, rec 
 	spent := int64(0)
 	if given != nil {
 		if s, err := w.state(ctx, given.Token); err == nil {
-			spent = given.Balance - s.uaeth()
-			res.Spent = spent
+			// What left the wallet, less the fees its own transactions
+			// paid for gas: the checks below are about what it bought.
+			fees := feesPaid(ctx, w, rec, given)
+			spent = given.Balance - s.uaeth() - fees
+			res.Spent, res.Fees = spent, fees
 		} else {
 			note("couldn't read the wallet's balance: %v", err)
 		}
@@ -342,6 +345,45 @@ func confirmedPurchase(ctx context.Context, w *walletClient, rec *recorder, give
 type transfer struct {
 	Hash, To, Memo, Denom string
 	Amount                int64
+}
+
+// feesPaid is what the task's wallet paid for gas, in uaeth, on the
+// transactions the agent's tool calls returned (a failed transaction pays
+// its fee too).
+func feesPaid(ctx context.Context, w *walletClient, rec *recorder, given *testWallet) int64 {
+	hashes := append([]string(nil), rec.sent...)
+	for _, b := range rec.bought {
+		hashes = append(hashes, b.TxHash)
+	}
+	seen := map[string]bool{}
+	total := int64(0)
+	for _, h := range hashes {
+		if h == "" || seen[h] {
+			continue
+		}
+		seen[h] = true
+		var tx struct {
+			Status string `json:"status"`
+			From   string `json:"from"`
+			Fee    *struct {
+				Base  string `json:"base"`
+				Denom string `json:"denom"`
+			} `json:"fee"`
+		}
+		if err := w.callJSON(ctx, "get_transaction_status", map[string]any{"hash": h}, &tx); err != nil {
+			continue
+		}
+		if (tx.Status != "confirmed" && tx.Status != "failed") || tx.Fee == nil || tx.Fee.Denom != "uaeth" {
+			continue
+		}
+		if given != nil && tx.From != "" && tx.From != given.Address {
+			continue
+		}
+		var f int64
+		fmt.Sscan(tx.Fee.Base, &f)
+		total += f
+	}
+	return total
 }
 
 // outgoing is every confirmed transfer out of the task's wallet among the

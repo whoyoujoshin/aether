@@ -1,6 +1,7 @@
 package paywall
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -296,6 +297,9 @@ type ChainPayout struct {
 	// Denom is what it pays out (and a ChainCollector collects): the
 	// paywall's asset. Default uaeth.
 	Denom string
+	// Fees is how it pays for gas; the zero value pays the node's
+	// minimum (wallet.AutoFees) when Chain can ask it (wallet.Client).
+	Fees wallet.FeeSetting
 
 	mu   sync.Mutex
 	next uint64 // lowest sequence not yet signed by this process
@@ -308,11 +312,31 @@ const (
 )
 
 func (c *ChainPayout) Sign(to string, amount math.Int, memo string) ([]byte, uint64, error) {
-	return c.sign(func(accNum, seq, gas uint64) (wallet.SignedTx, error) {
+	return c.sign(func(accNum, seq, gas uint64, fees sdk.Coins) (wallet.SignedTx, error) {
 		return c.Wallet.BuildAndSignSendTx(c.KeyName, c.Address, to, sdk.NewCoins(sdk.NewCoin(c.denom(), amount)), wallet.TxParams{
-			ChainID: c.ChainID, AccountNumber: accNum, Sequence: seq, GasLimit: gas, Memo: memo,
+			ChainID: c.ChainID, AccountNumber: accNum, Sequence: seq, GasLimit: gas, Memo: memo, Fees: fees,
 		})
 	})
+}
+
+// feeChain is a PayoutChain that can work out a fee (wallet.Client).
+type feeChain interface {
+	Fee(ctx context.Context, s wallet.FeeSetting, gas uint64, denom string) (sdk.Coins, error)
+}
+
+// fee is what a payout asking gas pays: the node's minimum by default.
+func (c *ChainPayout) fee(gas uint64) (sdk.Coins, error) {
+	fc, ok := c.Chain.(feeChain)
+	if !ok {
+		return sdk.NewCoins(), nil
+	}
+	s := c.Fees
+	if s.GasPrice == "" {
+		s = wallet.AutoFees
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return fc.Fee(ctx, s, gas, wallet.BaseDenom)
 }
 
 func (c *ChainPayout) denom() string {
@@ -323,7 +347,7 @@ func (c *ChainPayout) denom() string {
 }
 
 // sign signs the transaction build makes at the account's next sequence.
-func (c *ChainPayout) sign(build func(accNum, seq, gas uint64) (wallet.SignedTx, error)) ([]byte, uint64, error) {
+func (c *ChainPayout) sign(build func(accNum, seq, gas uint64, fees sdk.Coins) (wallet.SignedTx, error)) ([]byte, uint64, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	accNum, seq, err := c.Chain.GetAccountInfo(c.Address)
@@ -337,7 +361,11 @@ func (c *ChainPayout) sign(build func(accNum, seq, gas uint64) (wallet.SignedTx,
 	if gas == 0 {
 		gas = 400_000
 	}
-	signed, err := build(accNum, seq, gas)
+	fees, err := c.fee(gas)
+	if err != nil {
+		return nil, 0, err
+	}
+	signed, err := build(accNum, seq, gas, fees)
 	if err != nil {
 		return nil, 0, err
 	}

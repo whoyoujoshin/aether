@@ -91,6 +91,9 @@ export class ExactAetherScheme {
 
     const info = await this.client.accountInfo(this.key.address);
     if (!info) throw new Error(`account ${this.key.address} doesn't exist on chain yet: fund it first`);
+    const gasLimit = this.opts.gasLimit ?? DEFAULT_GAS_LIMIT;
+    // The exact scheme's fee is in uaeth (the facilitator's feeDenom).
+    const fee = await this.client.fee(gasLimit, "uaeth");
     const signed = buildSend(this.key, {
       chainId: this.client.chainId,
       accountNumber: info.accountNumber,
@@ -98,7 +101,8 @@ export class ExactAetherScheme {
       to: req.payTo,
       amountUaeth: amount,
       denom: req.asset,
-      gasLimit: this.opts.gasLimit ?? DEFAULT_GAS_LIMIT,
+      gasLimit,
+      fee,
     });
     const payload: ExactAetherPayload = { transaction: base64.encode(signed.txBytes) };
     return { x402Version, payload: { ...payload } };

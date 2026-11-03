@@ -7,7 +7,7 @@ import { AetherClient } from "./client.js";
 import { RpcError } from "./rpc.js";
 import { Key, PUBKEY_BYTES, isAddress } from "./keys.js";
 import { signsFor, type AccountKeys } from "./rotation.js";
-import { buildSend, buildTx, execSendMsg } from "./tx.js";
+import { buildSend, buildTx, execSendMsg, DEFAULT_GAS_LIMIT } from "./tx.js";
 import { AETH, Assets, DENOM, decimalOf, formatAeth, formatAmount, parseUaeth, receiptAmount, type Asset } from "./amount.js";
 import { MANIFEST_PATH, type Manifest } from "./directory.js";
 import { DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, pullSigningMessage, signingMessage, type PaymentRequired, type PaymentRequirements } from "./paywall.js";
@@ -1021,7 +1021,8 @@ export class KeyPayout {
     const info = await this.client.accountInfo(this.key.address);
     if (!info) throw new Error(`payout account ${this.key.address} doesn't exist on chain yet: fund it`);
     const sequence = info.sequence < this.next ? this.next : info.sequence; // an earlier payout may still be in the mempool
-    const s = buildSend(this.key, { chainId: this.client.chainId, accountNumber: info.accountNumber, sequence, to, amountUaeth, denom: this.denom, memo });
+    const fee = await this.client.fee(DEFAULT_GAS_LIMIT, this.denom);
+    const s = buildSend(this.key, { chainId: this.client.chainId, accountNumber: info.accountNumber, sequence, to, amountUaeth, denom: this.denom, memo, fee });
     this.next = sequence + 1n;
     return { txBytes: s.txBytes, sequence, hash: s.hash };
   }
@@ -1031,7 +1032,8 @@ export class KeyPayout {
     const info = await this.client.accountInfo(this.key.address);
     if (!info) throw new Error(`collector account ${this.key.address} doesn't exist on chain yet: the first allowance granted to it creates it`);
     const sequence = info.sequence < this.next ? this.next : info.sequence;
-    const s = buildTx(this.key, [execSendMsg(this.key.address, from, to, amountUaeth, this.denom)], { chainId: this.client.chainId, accountNumber: info.accountNumber, sequence, memo });
+    const fee = await this.client.fee(DEFAULT_GAS_LIMIT);
+    const s = buildTx(this.key, [execSendMsg(this.key.address, from, to, amountUaeth, this.denom)], { chainId: this.client.chainId, accountNumber: info.accountNumber, sequence, memo, fee });
     this.next = sequence + 1n;
     return { txBytes: s.txBytes, sequence, hash: s.hash };
   }
