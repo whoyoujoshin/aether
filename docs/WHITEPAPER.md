@@ -130,7 +130,7 @@ Operators should treat small Top-K deployments as research / early-network confi
 | Stage | Amount |
 |-------|--------|
 | Genesis block reward | 5_000_000 uaeth (5 aeth) |
-| Decay | Factor **0.66** per year for **8** years (height-based yearly steps) |
+| Decay | Factor **0.66** per year for **8** years (yearly steps: by block time since genesis on `aether-1`, by height on the testnet) |
 | Tail emission | 200_000 uaeth (0.20 aeth) permanent |
 
 Rewards are deterministic from height (no wall-clock dependency). A **15%** cut is taken from mining rewards: portion escrowed for validators / directed to treasury per module logic in `x/pow` and `x/treasury`.

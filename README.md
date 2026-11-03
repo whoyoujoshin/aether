@@ -54,7 +54,7 @@ Try paying with no install: the [hosted test wallet](docs/TEST-WALLET.md) (`http
 
 | Area | Status |
 |------|--------|
-| Core PoW (Scrypt), difficulty retarget, height-based reward decay and tail emission | Built, tested, live-verified |
+| Core PoW (Scrypt), difficulty retarget, reward decay and tail emission (yearly steps by block time on fresh chains, by height on the testnet) | Built, tested, live-verified |
 | Epoch Top-K validator selection (no staking module) | Built, tested, live-verified |
 | Validator bonding, equivocation slashing, escrow release | Built, tested, live-verified |
 | Downtime / liveness detection (distinct from equivocation) | Built, tested, live-verified |
@@ -450,7 +450,7 @@ Litecoin/Dogecoin-family AuxPoW (chain ID **17776**) may satisfy PoW and earn th
 ## Block reward schedule
 
 - Genesis: **5_000_000 uaeth**
-- Decay factor **0.66** for **8** years (height-based yearly steps)
+- Decay factor **0.66** for **8** years (yearly steps: by block time since genesis on `aether-1`, by height on the testnet)
 - Tail: **200_000 uaeth**
 - **15%** cut (validators escrowed / treasury)
 

@@ -63,6 +63,22 @@ type Operator struct {
 // boundary with power in proportion to seat work.
 const genesisPower = pow.ValidatorVotingPower
 
+// The escrow lock and the evidence window, in blocks. The testnet's
+// defaults assumed a block a minute (BondCooldown's 4,320 blocks were to
+// be 3 days; at ~5.7 s blocks they are about 7 hours), which let a
+// validator that double-signed take its escrow out before evidence
+// against it, valid for 48 hours, had to arrive. A fresh chain locks the
+// escrow for 43,200 blocks (3 days at 6 s blocks, 60 hours even at the
+// 5 s floor timeout_commit allows) and lets evidence age out after
+// 28,800 blocks (48 hours at 6 s); CometBFT drops evidence only once it
+// is older than both that and max_age_duration (48 hours), so the window
+// stays 48 hours and the lock outlasts it.
+const (
+	freshBondCooldown       = 43_200
+	freshEvidenceAgeBlocks  = 28_800
+	freshEvidenceAgeSeconds = 48 * 60 * 60
+)
+
 func main() {
 	base := flag.String("base", "", "genesis.json written by `aetherd init --chain-id <chain-id>` (required)")
 	opsPath := flag.String("operators", "", "operators JSON file: [{\"name\",\"consensus_pubkey\",\"miner\"}, ...] (required)")
@@ -136,6 +152,10 @@ func build(base []byte, ops []Operator, chainID, genesisTime string) ([]byte, er
 		}
 	}
 	auth, bank := appState["auth"].(map[string]any), appState["bank"].(map[string]any)
+	powParams, ok := appState["pow"].(map[string]any)["params"].(map[string]any)
+	if !ok {
+		return nil, errors.New("base genesis has no pow params: give the file `aetherd init` wrote")
+	}
 	if n := lenOf(auth["accounts"]); n > 0 {
 		return nil, fmt.Errorf("base genesis already lists %d accounts: start from a fresh `aetherd init`", n)
 	}
@@ -211,6 +231,14 @@ func build(base []byte, ops []Operator, chainID, genesisTime string) ([]byte, er
 		g["consensus"] = consensus
 	}
 	consensus["validators"] = validators
+	params, _ := consensus["params"].(map[string]any)
+	evidence, _ := params["evidence"].(map[string]any)
+	if evidence == nil {
+		return nil, errors.New("base genesis has no consensus evidence params: give the file `aetherd init` wrote")
+	}
+	evidence["max_age_num_blocks"] = fmt.Sprint(freshEvidenceAgeBlocks)
+	evidence["max_age_duration"] = fmt.Sprint(int64(freshEvidenceAgeSeconds) * int64(time.Second))
+	powParams["bond_cooldown"] = json.Number(fmt.Sprint(freshBondCooldown))
 	auth["accounts"] = accounts
 	bank["balances"] = []any{}
 	bank["supply"] = []any{}

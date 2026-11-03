@@ -225,22 +225,37 @@ in escrow for Aether. Keep that small while the chain is young:
   - The native and AuxPoW difficulty bounds: `MaxDifficulty` is 10⁸ expected
     hashes, under a second for one GPU.
   - The block-time target.
-  - **The reward schedule runs about ten times too fast (found
-    2026-11-02, a blocker).** `ComputeScheduledBlockReward` counts years in
-    block heights, `SecondsPerYear / TargetBlockTime` = 525,960 blocks,
-    which assumes a block every 60 s. Blocks come every 5.7 s, so each
-    "year" of the schedule lasts about 35 days: the eight steps from 5
-    AETH to the 0.20 AETH tail take about nine months instead of eight
-    years. (`TargetBlockTime` is really the target time between accepted
-    submissions, which ASERT holds at one a minute; the schedule borrowed
-    it as a block time.) On the testnet the schedule's second step falls at
-    height 525,960, around 2026-10-30 (3.3 AETH a find instead of 5),
-    unless its genesis stored a fixed reward; a recent find's reward will
-    show which. Fix before genesis, behind the fresh-chain
-    gate: count years in accepted submissions (525,960 a year at one a
-    minute), which follows the cadence ASERT actually targets, or in
-    block time since genesis. `BondCooldown` (4,320 blocks, "3 days", about
-    7 hours) has the same assumption.
+  - **The reward schedule ran about ten times too fast: fixed for fresh
+    chains (found 2026-11-02, built 2026-11-03; Joshua chose time).**
+    `ComputeScheduledBlockReward` counted years in block heights,
+    `SecondsPerYear / TargetBlockTime` = 525,960 blocks, which assumes a
+    block every 60 s. Blocks come every 5.7 s, so each "year" lasted about
+    35 days and the eight steps from 5 AETH to the 0.20 AETH tail about
+    nine months. (`TargetBlockTime` is really the target time between
+    accepted submissions, which ASERT holds at one a minute; the schedule
+    borrowed it as a block time.) On `aether-1` and `aether-rc-*` a year is
+    now 365.25 days of block time after the genesis time
+    (`x/pow/reward_schedule.go`): InitGenesis records the genesis time
+    (or the genesis file's `reward_schedule_start`, so an exported chain
+    keeps its start), and the export writes it. Block time is consensus
+    data, the power-weighted median of the last commit's vote times, so
+    every node agrees and moving it takes a third of the power. The
+    testnet keeps the height count: its second step falls at height
+    525,960, around 2026-10-30 (3.3 AETH a find instead of 5), unless its
+    genesis stored a fixed reward. Tests: `app/reward_schedule_test.go`
+    (on both fresh chain IDs, 600,000 blocks and a day after genesis is
+    still 5 AETH; a year after, 3.3; eight, the tail; the testnet's chain
+    ID unchanged) and `x/pow/reward_schedule_test.go` (a start from the
+    genesis file is kept and exported); both fail with the change undone.
+  - **The escrow lock outlasts the evidence window: set by `rcgenesis`.**
+    `BondCooldown`'s 4,320 blocks were meant as 3 days (48 hours of
+    evidence plus a day) but are about 7 hours at 5.7 s, so a validator
+    that double-signed could take its escrow out before the evidence
+    arrived. `cmd/rcgenesis` writes `bond_cooldown` 43,200 (3 days at 6 s,
+    60 hours even at 5 s) and evidence `max_age_num_blocks` 28,800 with
+    `max_age_duration` 48 h; CometBFT drops evidence only once it is past
+    both, so the window stays 48 hours. The testnet's values are
+    unchanged.
 - **Supply.** `docs/genesis.template.json` gives no one a balance: every AETH
   is mined. The reward is 5 AETH a submission in year 1, kept at 66% each year
   for 8 years, then 0.20 AETH for good. Of each reward, 15% is a cut: 13/15 of
