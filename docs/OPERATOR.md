@@ -116,9 +116,9 @@ In `config/config.toml`:
 
 In `app.toml`, or with the flag:
 
-- `minimum-gas-prices` is the price the launch announces (still to be
-  decided; the rehearsals used `0.0005uaeth`), plus the USDC voucher once
-  a USDC path opens. Every validator asks the same price. A lone mining
+- `minimum-gas-prices = "0.0001uaeth"` (decided 2026-11-03), plus
+  `0.0005` per gas in the USDC voucher once a USDC path opens
+  (`"0.0001uaeth,0.0005ibc/<USDC voucher>"`). Every validator asks the same price. A lone mining
   submission passes at any price.
 - **Mempool, for tipping.** aetherd ranks waiting transactions by how far
   their fee per gas is over your minimum price, and a mining find goes
