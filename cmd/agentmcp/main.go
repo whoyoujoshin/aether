@@ -64,6 +64,7 @@ import (
 
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"net/url"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -72,6 +73,7 @@ import (
 
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
+	"github.com/whoyoujoshin/aether/shopper"
 	"github.com/whoyoujoshin/aether/wallet"
 )
 
@@ -468,6 +470,10 @@ func main() {
 	flag.StringVar(&osmosisSwapContract, "osmosis-swap-contract", "", `contracts/aether-swap on Osmosis that swap_aeth sends AETH to (default on aether-testnet-1: the testnet one; "off" turns swap_aeth off)`)
 	flag.Uint64Var(&osmosisPool, "osmosis-pool", 0, "the AETH/OSMO pool quote_swap reads (default: 1370, the testnet pool)")
 	flag.BoolVar(&directoryAllowPrivate, "directory-allow-private", false, "let find_services/announce_service fetch manifests from private/loopback addresses (local devnets only)")
+	flag.StringVar(&shopStateDir, "shop-state-dir", "", "directory for shop quotes, receipts and approvals (default: the shopper default)")
+	flag.StringVar(&shopLink, "shop-link", "", "local approval page, such as http://127.0.0.1:8470; never a public explorer")
+	flag.BoolVar(&shopAuto, "shop-auto", false, "let shop_buy pay an in-policy AETH purchase without a confirm")
+	shopBudget := flag.String("shop-agent-budget", "", "tighter daily caps, comma-separated name=amount, such as research=0.02 AETH; none can exceed the account cap")
 	flag.StringVar(&feeGranter, "fee-granter", "", "pay transaction fees from this account's x/feegrant allowance to the agent")
 	flag.StringVar(&sandboxListen, "sandbox-http", "", "listen address for the hosted test wallet, a separate public Streamable HTTP server at /mcp that gives callers small custodial testnet wallets (test/dev chains only). It never opens the agent account; it needs --sandbox-secret-file and --sandbox-funder")
 	flag.StringVar(&sandboxFunderName, "sandbox-funder", "", "keyring account (in --keyring-dir) that funds each new test wallet")
@@ -487,6 +493,28 @@ func main() {
 	flag.StringVar(&jobBoardURL, "job-board", "", `job board host's /jobs URL, which stores job specs and deliveries (default on aether-testnet-1: the public one; "off" turns the job tools' texts off)`)
 	flag.StringVar(&mandateFile, "mandate-file", "", "an owner's spending mandate (agentmcp mandate) to send with every paid request (docs/MANDATES.md)")
 	flag.Parse()
+	if *shopBudget != "" {
+		assets, err := wallet.NewAssetsFor(wallet.TestnetUSDC)
+		if err != nil {
+			log.Fatal(err)
+		}
+		var parts []string
+		for _, p := range strings.Split(*shopBudget, ",") {
+			if s := strings.TrimSpace(p); s != "" {
+				parts = append(parts, s)
+			}
+		}
+		shopBudgets, err = shopper.ParseAgentCaps(parts, assets)
+		if err != nil {
+			log.Fatalf("--shop-agent-budget: %v", err)
+		}
+	}
+	if shopLink != "" {
+		u, err := url.Parse(shopLink)
+		if err != nil || u.Host == "" || !shopper.Loopback(u.Host) {
+			log.Fatal("--shop-link must be a localhost URL, such as http://127.0.0.1:8470")
+		}
+	}
 	if mandateFile != "" {
 		if err := loadMandate(mandateFile); err != nil {
 			log.Fatalf("--mandate-file: %v", err)
@@ -813,6 +841,8 @@ func newServer() *mcp.Server {
 		Name:        "close_job",
 		Description: "Withdraw your open job: it takes no more offers and can't be hired for. Costs 1 uaeth. A hired job is settled through its escrow instead.",
 	}), coded(toolCloseJob))
+
+	addShopTools(server)
 
 	mcp.AddTool(server, annotate(&mcp.Tool{
 		Name:        "get_transaction_history",
