@@ -478,40 +478,48 @@ Gas limit 400,000. The fee is uaeth at the node's minimum gas price
 for that gas (`wallet.Client.Fee` with the same `--gas-price` and
 `--tip` as the other tools; `auto` and tip 1 by default), whatever
 coin the price is paid in. A node that does not serve the Config
-query is taken to ask nothing, so the fee is empty. The Shop page
-reads that fee from `GET /api/shop/price` (`feeAmount`, `feeDenom`)
+query is taken to ask nothing, so the fee is empty. `shopper buy
+--dry-run` prints that fee (or that the node asks none) and does not
+sign. The Shop page reads that fee from `GET /api/shop/price` (`feeAmount`, `feeDenom`)
 and puts it on the same transaction. A retry sends the stored bytes
 and does not sign a higher fee.
 
 ## Paying
 
-Settlement goes through the public facilitator, then the same signed
-bytes are shown to the resource so it will serve the response.
+The service's paywall is the broadcaster. Aether's paywalls settle
+`PAYMENT-SIGNATURE` themselves and serve a response only for a payment
+they broadcast (`docs/X402.md`). Settling through the public
+facilitator first puts the transaction in a block. The paywall's
+check then sees a used sequence and answers 402, and the body never
+comes. The shopper therefore shows the signed payment to the resource
+and does not call `POST /settle` first. `buy_service` does the same.
 
 1. Re-fetch the 402. Require it to match the quote id.
 2. Re-check cap, allowlist, splits, and payee. Then sign one
    `MsgSend`, once, and store the bytes under the idempotency key.
 3. `POST /verify` with that payload and the 402's requirements. A
-   valid result does not broadcast. An invalid result stops. The
-   chain is asked whether that hash is already in a block; if it is
-   not, nothing was spent.
-4. `POST /settle` with the same body. This is the broadcast. The
-   shopper waits for the facilitator's answer.
+   valid result does not broadcast. An invalid result stops when the
+   hash is not in a block. If the facilitator is down, nothing is
+   sent to the service.
+4. Repeat the request with `PAYMENT-SIGNATURE` set to that payload.
+   The paywall settles it and, on success, returns the body and
+   `PAYMENT-RESPONSE`. If it answers 402 with `payment_not_confirmed`,
+   wait and repeat with the same header. A 5xx is retried the same way.
 5. Look the hash up on the node (`GetTransactionByHash` /
    `aetherd q tx`). The lookup, not the HTTP body alone, decides
    whether the payment landed.
-6. Repeat the original request with `PAYMENT-SIGNATURE` set to the
-   same payload. The resource's paywall will try to settle those
-   same bytes again. That second broadcast is the same transaction.
-   If the paywall answers 402 with `payment_not_confirmed`, wait and
-   repeat step 6 with the same header. If it answers
-   `invoice_already_redeemed` / the exact scheme's already-used
-   error, the payment was spent and the response was already given:
-   return the stored receipt, do not sign again.
 
-The facilitator is the broadcaster the shopper calls. The paywall's
-follow-up attempt carries the same bytes, which the chain executes
-once.
+A 2xx whose transaction is in a block at code 0 is the only result
+reported as paid. If the transaction is in a block at code 0 and the
+resource is still 402, the command says the payment landed and the
+service didn't deliver, prints the tx hash, and exits non-zero.
+Running the same command again sends the same `PAYMENT-SIGNATURE`
+and does not sign another transaction. That re-fetch gets the body
+only when this paywall broadcast the payment (a 5xx after it
+settled, or `payment_not_confirmed` before the block). A payment the
+public facilitator broadcast, which this paywall did not, stays 402:
+the paywall will not serve it, and a new purchase is a new
+idempotency key.
 
 `accepted` in the payload is a copy of the 402 entry that was quoted,
 including `extra`. The facilitator rejects a payload whose accepted
@@ -813,7 +821,7 @@ that would settle), 2 bad flags, 3 a person has to act (stdout says
 `confirm_required` when the quote is in policy and `--confirm` was
 left off, or `approval_required` with the approval id and the
 explorer link when it is out of policy), 4
-`facilitator_unavailable` or `settlement_unknown`, 5 refused
+`facilitator_unavailable`, `settlement_unknown`, or `paid_not_delivered`, 5 refused
 (`quote_stale`, over either cap, splits, payee mismatch, job not
 buyable yet). `--json` prints the same structured error as the MCP
 tools. A script can branch on the exit code without parsing logs.
@@ -900,8 +908,9 @@ broadcast.
 | `INSUFFICIENT_FUNDS` | `get_coins` | The account cannot cover the price |
 | `IDEMPOTENCY_CONFLICT` | `new_idempotency_key` | This key was used for a different quote |
 | `SETTLEMENT_UNKNOWN` | `poll_status` | May have been broadcast. Same key only |
-| `ALREADY_PAID` | `read_receipt` | This key already settled |
-| `DRY_RUN` | `submit_without_dry_run` | The dry-run would have continued. Nothing signed |
+| `ALREADY_PAID` | `read_receipt` | This key already settled and the service answered |
+| `PAID_NOT_DELIVERED` | `refetch_same_proof` | The transaction landed and the service did not return the body. Same key, same proof, no new payment |
+| `DRY_RUN` | `submit_without_dry_run` | The dry-run would have continued. Nothing signed. The message includes the fee |
 
 `message` is the same plain sentence the explorer page shows.
 
@@ -1061,8 +1070,10 @@ These were open in the first draft. They are settled:
    buyable until the escrow phase.
 4. A small `shopper/synonyms.txt` ships with the library. It expands
    the caller's words. Listings cannot add synonyms.
-5. If the facilitator is down, the buy fails closed. The paywall is
-   not a fallback broadcaster.
+5. If the facilitator is down, the buy fails closed before the
+   payment is sent. The shopper does not broadcast. The service's
+   paywall settles the `PAYMENT-SIGNATURE` it is shown; settling
+   through the public facilitator first makes that paywall answer 402.
 6. The trusted raters are the payer and the approver. `--trust` adds
    more only when the owner edits the config.
 7. The MCP tools live in local agentmcp.

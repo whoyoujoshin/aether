@@ -51,6 +51,35 @@ func (m *memChain) land(hash string, code uint32) {
 	m.code[hash] = code
 }
 
+func (m *memChain) has(hash string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.code[hash]
+	return ok
+}
+
+func hashFromPayment(header string) string {
+	var pay x402.PaymentPayload
+	if paywall.DecodeHeader(header, &pay) != nil {
+		return ""
+	}
+	var ep x402.ExactPayload
+	if json.Unmarshal(pay.Payload, &ep) != nil {
+		return ""
+	}
+	raw, err := base64.StdEncoding.DecodeString(ep.Transaction)
+	if err != nil || len(raw) == 0 {
+		return ""
+	}
+	return x402.TxHash(raw)
+}
+
+func writeExact402(w http.ResponseWriter, reason string) {
+	h, _ := paywall.EncodeHeader(x402.PaymentRequired{X402Version: x402.Version, Error: reason})
+	w.Header().Set(paywall.HeaderPaymentRequired, h)
+	w.WriteHeader(http.StatusPaymentRequired)
+}
+
 func testWallet(t *testing.T) (*wallet.Wallet, string) {
 	t.Helper()
 	reg := codectypes.NewInterfaceRegistry()
@@ -74,6 +103,16 @@ type buyEnv struct {
 
 func newBuyEnv(t *testing.T, failOnce bool) buyEnv {
 	t.Helper()
+	return newBuyEnvOpt(t, failOnce, false)
+}
+
+// newBuyEnvOpt builds a paywall-shaped resource. It serves a paid body
+// only when it is the one that records the transaction. A transaction
+// already on the chain (the public facilitator settled it first) gets
+// 402, which is what cmd/paywall does. alwaysRefuse records the
+// transaction and still answers 402.
+func newBuyEnvOpt(t *testing.T, failOnce, alwaysRefuse bool) buyEnv {
+	t.Helper()
 	w, payer := testWallet(t)
 	payee := bech("sellertest")
 	var settles, paid int
@@ -90,10 +129,26 @@ func newBuyEnv(t *testing.T, failOnce bool) buyEnv {
 			return
 		}
 		paid++
+		hash := hashFromPayment(r.Header.Get(paywall.HeaderPaymentSignature))
+		if alwaysRefuse {
+			chain.land(hash, 0)
+			writeExact402(w, x402.ReasonSequence)
+			return
+		}
+		if chain.has(hash) && !(failOnce && paid > 1) {
+			writeExact402(w, x402.ReasonSequence)
+			return
+		}
 		if failOnce && paid == 1 {
+			chain.land(hash, 0)
 			w.WriteHeader(http.StatusBadGateway)
 			return
 		}
+		chain.land(hash, 0)
+		resp, _ := paywall.EncodeHeader(x402.SettleResponse{
+			Success: true, Payer: payer, Transaction: hash, Network: x402.Network("aether-testnet-1"), Amount: "1",
+		})
+		w.Header().Set(paywall.HeaderPaymentResponseV2, resp)
 		_, _ = w.Write([]byte(`{"hello":"ok"}`))
 	}))
 	t.Cleanup(srv.Close)
@@ -170,6 +225,56 @@ func TestBuyPaysTheNodeFee(t *testing.T) {
 	require.Equal(t, "40uaeth", auth.Fee.Amount.String())
 }
 
+func TestDryRunReportsTheFeeAndDoesNotSign(t *testing.T) {
+	env := newBuyEnv(t, false)
+	env.chain.fee = sdk.NewCoins(sdk.NewCoin("uaeth", sdkmath.NewInt(40)))
+	res, err := env.buyer.Buy(context.Background(), BuyInput{QuoteID: env.quoteID, IdempotencyKey: "hello-fee", Confirm: true, DryRun: true})
+	require.NoError(t, err)
+	require.Equal(t, CodeDryRun, res.Decision.Code)
+	require.Contains(t, res.Decision.Message, "Fee: 40uaeth.")
+	require.False(t, res.Decision.Spent)
+	require.Equal(t, 0, *env.settles)
+	require.Equal(t, 0, *env.paidHits)
+	got, err := loadAttempt(env.dir, "hello-fee")
+	require.NoError(t, err)
+	require.Nil(t, got)
+
+	env.chain.fee = nil
+	none, err := env.buyer.Buy(context.Background(), BuyInput{QuoteID: env.quoteID, IdempotencyKey: "hello-fee", Confirm: true, DryRun: true})
+	require.NoError(t, err)
+	require.Contains(t, none.Decision.Message, "Fee: none.")
+	require.Contains(t, none.Decision.Message, "no minimum gas price")
+}
+
+func TestBuy402AfterSettlementDoesNotClaimTheBody(t *testing.T) {
+	env := newBuyEnvOpt(t, false, true)
+	in := BuyInput{QuoteID: env.quoteID, IdempotencyKey: "hello-1", Confirm: true}
+	res, err := env.buyer.Buy(context.Background(), in)
+	require.NoError(t, err)
+	require.Equal(t, CodePaidNotDelivered, res.Decision.Code)
+	require.Equal(t, NextRefetch, res.Decision.NextAction)
+	require.True(t, res.Decision.Spent)
+	require.NotNil(t, res.Receipt)
+	require.Equal(t, http.StatusPaymentRequired, res.Receipt.HTTPStatus)
+	require.Contains(t, res.Decision.Message, "didn't deliver")
+	require.Contains(t, res.Decision.Message, res.Receipt.TxHash)
+	require.NotContains(t, res.Decision.Message, "Paid 0.000001 AETH")
+	require.Empty(t, res.Body)
+	require.Equal(t, 0, *env.settles)
+	require.Equal(t, 1, *env.paidHits)
+
+	again, err := env.buyer.Buy(context.Background(), in)
+	require.NoError(t, err)
+	require.Equal(t, CodePaidNotDelivered, again.Decision.Code)
+	require.Equal(t, res.Receipt.TxHash, again.Receipt.TxHash)
+	require.Equal(t, 0, *env.settles, "a re-fetch sends the same proof and does not pay again")
+	require.Equal(t, 2, *env.paidHits)
+	second, err := loadAttempt(env.dir, "hello-1")
+	require.NoError(t, err)
+	first := res.Receipt.TxHash
+	require.Equal(t, first, second.TxHash)
+}
+
 func TestBuyWithoutConfirmDoesNotSign(t *testing.T) {
 	env := newBuyEnv(t, false)
 	res, err := env.buyer.Buy(context.Background(), BuyInput{QuoteID: env.quoteID, IdempotencyKey: "hello-1"})
@@ -192,7 +297,8 @@ func TestBuyPaysOnceAndRetryDoesNotSignAgain(t *testing.T) {
 	require.NotNil(t, res.Receipt)
 	require.NotEmpty(t, res.Receipt.TxHash)
 	require.Equal(t, res.Receipt.TxHash, res.Receipt.Facilitator.Transaction)
-	require.Equal(t, 1, *env.settles)
+	require.Equal(t, http.StatusOK, res.Receipt.HTTPStatus)
+	require.Equal(t, 0, *env.settles, "the paywall settles the payment; the public facilitator must not broadcast first")
 	raw, err := osReadReceipt(env.dir, res.Receipt.TxHash)
 	require.NoError(t, err)
 	require.NotContains(t, raw, "tx_b64")
@@ -202,7 +308,7 @@ func TestBuyPaysOnceAndRetryDoesNotSignAgain(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, CodeAlreadyPaid, again.Decision.Code)
 	require.Equal(t, res.Receipt.TxHash, again.Receipt.TxHash)
-	require.Equal(t, 1, *env.settles, "a retry must not settle a second transaction")
+	require.Equal(t, 0, *env.settles, "a retry must not settle a second transaction")
 	require.Equal(t, 1, *env.paidHits)
 }
 
@@ -211,7 +317,7 @@ func TestBuyRetriesTheServiceAfterA502WithoutASecondPayment(t *testing.T) {
 	res, err := env.buyer.Buy(context.Background(), BuyInput{QuoteID: env.quoteID, IdempotencyKey: "hello-1", Confirm: true})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, res.Receipt.HTTPStatus)
-	require.Equal(t, 1, *env.settles)
+	require.Equal(t, 0, *env.settles)
 	require.Equal(t, 2, *env.paidHits)
 	require.Contains(t, res.Body, "hello")
 }
@@ -284,7 +390,8 @@ func TestUnlistedBuyNeedsTheApproverNotTheSpendingKey(t *testing.T) {
 	paid, err := env.buyer.Buy(context.Background(), BuyInput{QuoteID: env.quoteID, IdempotencyKey: "hello-1", Confirm: true})
 	require.NoError(t, err)
 	require.True(t, paid.Decision.Spent)
-	require.Equal(t, 1, *env.settles)
+	require.Equal(t, 0, *env.settles)
+	require.Equal(t, http.StatusOK, paid.Receipt.HTTPStatus)
 }
 
 func TestOverCapWritesNoApproval(t *testing.T) {
