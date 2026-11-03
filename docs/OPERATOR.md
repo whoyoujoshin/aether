@@ -120,6 +120,15 @@ In `app.toml`, or with the flag:
   decided; the rehearsals used `0.0005uaeth`), plus the USDC voucher once
   a USDC path opens. Every validator asks the same price. A lone mining
   submission passes at any price.
+- **Mempool, for tipping.** aetherd ranks waiting transactions by how far
+  their fee per gas is over your minimum price, and a mining find goes
+  first (`app/tipping.go`), so a sender who tips gets into a busy block
+  ahead of transactions paying only the minimum. That works only while
+  CometBFT's own mempool has room: when it is full it refuses everything,
+  tip or not. In `config.toml` give it several blocks' worth: `[mempool]
+  size = 20000` (about 80 MB of transactions; the default is 5,000), and
+  in `app.toml` `[mempool] max-txs = 20000` to match (left at -1, aetherd
+  holds 5,000).
 - `iavl-cache-size` can come down from 781,250 if memory is tight; the
   testnet seed runs 200,000.
 
