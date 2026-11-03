@@ -32,6 +32,12 @@ func main() {
 		os.Exit(quoteCmd(os.Args[2:]))
 	case "buy":
 		os.Exit(buyCmd(os.Args[2:]))
+	case "approve":
+		os.Exit(approveCmd(os.Args[2:], false))
+	case "reject":
+		os.Exit(approveCmd(os.Args[2:], true))
+	case "serve":
+		os.Exit(serveCmd(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 	default:

@@ -13,6 +13,7 @@ import Agents from "./pages/Agents";
 import Faucet from "./pages/Faucet";
 import Mine from "./pages/Mine";
 import Quest from "./pages/Quest";
+import Shop from "./pages/Shop";
 import IBC from "./pages/IBC";
 import Accounts from "./pages/Accounts";
 import HelixOverview from "./pages/HelixOverview";
@@ -70,6 +71,7 @@ function Shell() {
         <Route path="/validators" element={<Validators />} />
         <Route path="/governance" element={<Governance />} />
         <Route path="/services" element={<Services />} />
+        <Route path="/shop" element={<Shop />} />
         <Route path="/ibc" element={<IBC />} />
         <Route path="/accounts" element={<Accounts />} />
         <Route path="/accounts/:address" element={<Accounts />} />

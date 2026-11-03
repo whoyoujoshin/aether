@@ -98,3 +98,13 @@ func otherInFlight(dir, payer, exceptKey string) (string, error) {
 	}
 	return "", nil
 }
+
+// AttemptStatus is the local state of one idempotency key: its state
+// word and tx hash. A missing key returns empty strings and a nil error.
+func AttemptStatus(dir, key string) (state, hash string, err error) {
+	a, err := loadAttempt(dir, key)
+	if err != nil || a == nil {
+		return "", "", err
+	}
+	return a.State, a.TxHash, nil
+}

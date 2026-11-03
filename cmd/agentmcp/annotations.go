@@ -68,6 +68,14 @@ var toolLabels = map[string]toolLabel{
 	"offer_from_test_wallet":   {title: "Offer on job from test wallet", effect: additive},
 	"deliver_from_test_wallet": {title: "Deliver job from test wallet", effect: additive},
 
+	"shop_search":          {title: "Search paid services", effect: readOnly},
+	"shop_quote":           {title: "Quote a paid service", effect: readOnly},
+	"shop_status":          {title: "Shop payment status", effect: readOnly},
+	"shop_receipts":        {title: "Shop receipts", effect: readOnly},
+	"shop_budget":          {title: "Shop spending limit", effect: readOnly},
+	"shop_approve_request": {title: "Ask a person to approve a buy", effect: additive, idempotent: true},
+	"shop_buy":             {title: "Buy a quoted service", effect: destructive, idempotent: true},
+
 	"send_aeth":      {title: "Send AETH", effect: destructive, idempotent: true},
 	"fetch_paid":     {title: "Fetch paid API", effect: destructive, idempotent: true},
 	"create_escrow":  {title: "Create escrow", effect: destructive},
