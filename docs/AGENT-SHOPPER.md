@@ -993,11 +993,20 @@ the quote looks right.
 4. `shopper buy --quote <id>` without `--confirm`, while `--auto` is
    off, exits 3 and does not change the account sequence.
 5. Quote `hello` (0.000001 AETH, the practice service). Confirm the
-   payee is the services payee and the amount is `1` uaeth. `shopper
-   buy --quote <id> --confirm --idempotency-key hello-1` settles. The receipt's
-   hash is a successful `MsgSend` of 1 uaeth on the public RPC. The
-   facilitator's `transaction` field equals that hash. The HTTP body
-   is the hello payload.
+   payee is the services payee and the amount is `1` uaeth. From a
+   throwaway file keyring that is not a validator key and not the
+   service payee:
+
+   ```
+   shopper buy --quote <id> --confirm --idempotency-key hello-1 \
+     --from buyer --keyring-backend file --keyring-dir <dir> \
+     --keyring-passphrase-file <passfile>
+   ```
+
+   The receipt's hash is a successful `MsgSend` of 1 uaeth on the
+   public RPC. The facilitator's `transaction` field equals that hash.
+   The HTTP body is the hello payload. Nothing in the shopper's log
+   or stdout contains the passphrase or the signed transaction.
 6. The same command again, same key, does not create a second hash.
    `status` shows one payment.
 7. With `--max-per-payment` temporarily `1uaeth`, a pulse quote

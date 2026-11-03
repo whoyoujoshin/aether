@@ -30,6 +30,8 @@ func main() {
 	switch os.Args[1] {
 	case "quote":
 		os.Exit(quoteCmd(os.Args[2:]))
+	case "buy":
+		os.Exit(buyCmd(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -40,11 +42,14 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `shopper compares paid services and, in later commands, pays one.
+	fmt.Fprintf(os.Stderr, `shopper compares paid services and pays one inside your limit.
 
   shopper quote --query "block" --max-price "0.1 AETH"
+  shopper buy --quote <id> --idempotency-key <key> --confirm \
+    --from <key> --keyring-backend file --keyring-dir <dir>
 
-Quote does not spend. A buy is a later command and asks you to confirm.
+A buy does not sign unless you pass --confirm (or you turned --auto on).
+The same idempotency key never pays twice.
 `)
 }
 
