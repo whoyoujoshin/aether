@@ -1,0 +1,13 @@
+# Phrases the caller may type, and the words to try instead.
+# A line is: phrase, a tab, then the replacement words.
+# Listings cannot add lines. This file only expands the caller's query.
+block-data feed	block
+block-data	block
+block data	block
+chain pulse	block
+data feed	block
+feed	block
+leaderboard	miner
+practice	hello
+balance	address
+signature	verify

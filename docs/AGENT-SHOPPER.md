@@ -600,13 +600,12 @@ proof-of-work) and it already draws a transaction at `/tx/<hash>`.
 The Services page lists paid APIs and does not buy them. `/shop` is
 that list plus a search box and a Buy button.
 
-The explorer process stays a reader and a mailbox. It does not hold
-a spending key, a cap, or an approval decision it could forge.
-Signing happens in the browser, with the key the Mine page already
-proved can live in `localStorage`. The cap the page enforces is the
-one stored next to that key. An agent cannot raise it. The agent's
-own cap lives in the agentmcp config and is a separate number; the
-approval screen shows it read-only.
+The explorer process stays a reader. It does not hold a spending key,
+a cap, or an approval. Signing happens in the browser, with the key
+the Mine page already proved can live in `localStorage`. The cap the
+page enforces is the one stored next to that key. An agent cannot
+raise it. The agent's own cap and approval requests live on the
+computer running agentmcp, not on this server.
 
 ### What the person sees
 
@@ -741,32 +740,22 @@ again (the same fail-closed rule as a missing ledger).
 ### Approval link
 
 An agent that needs a person calls `shop_approve_request` and gets
-back `https://<explorer>/shop/approve/<id>`. The id is 128 random
-bits. The agent has already posted a short summary to the explorer:
-title, price in AETH or USDC, seller name, and which limit it sits
-inside. No key, no signed transaction, no passphrase. The explorer
-keeps that summary, and later the person's signed yes or no, for 24
-hours, capped at a few kilobytes and a few thousand pending rows, in
-a directory on the explorer host. It is not chain state. The first
-POST for an id wins; a second POST is refused. Creates are
-rate-limited. Guessing an id is not practical.
+back a link on the computer running the shopper, such as
+`http://127.0.0.1:8470/approve/<id>`. The id is 128 random bits. The
+summary stays in the shopper's state directory. The public explorer
+does not store it. `shopper serve` on that computer shows the request
+in plain words and, when started with the approver key, the Approve
+button signs it there. A phone away from that computer cannot approve
+through the seed. A relay for that, if one is ever wanted, would be a
+separate optional service, not a validator.
 
-The person opens the link on a phone or a laptop. They can read the
-request either way. Approve works only in a browser that already has
-the wallet, because the browser key signs the decision. A phone
-without the wallet sees the request and the line "To say yes, open
-this in the browser where you created your wallet." The explorer
-cannot mark a request approved by itself. The agent polls
-`shop_status`, fetches the signature with a poll token it received
-at create time (the link the person sees does not include that
-token), checks the signature against the approver key, and only then
-pays, still inside the caps. A signature over a different quote or a
-higher amount is ignored.
+The person opens that link on the same computer. `shop_status` on the
+agent reads the local decision. A signature over a different quote or
+a higher amount is ignored, and a price over the cap is never asked.
 
-A webhook is optional and local. `--approval-webhook` on agentmcp is
-a URL the owner set. When the agent has verified a decision, it
-POSTs the status JSON there. The public page does not know that URL.
-Polling works with no webhook.
+A webhook is optional and local. `--notify-webhook` on agentmcp is a
+URL the owner set. The public explorer does not receive approval
+decisions. Polling `shop_status` works with no webhook.
 
 ## Interface
 
@@ -993,11 +982,20 @@ the quote looks right.
 4. `shopper buy --quote <id>` without `--confirm`, while `--auto` is
    off, exits 3 and does not change the account sequence.
 5. Quote `hello` (0.000001 AETH, the practice service). Confirm the
-   payee is the services payee and the amount is `1` uaeth. `shopper
-   buy --quote <id> --confirm --idempotency-key hello-1` settles. The receipt's
-   hash is a successful `MsgSend` of 1 uaeth on the public RPC. The
-   facilitator's `transaction` field equals that hash. The HTTP body
-   is the hello payload.
+   payee is the services payee and the amount is `1` uaeth. From a
+   throwaway file keyring that is not a validator key and not the
+   service payee:
+
+   ```
+   shopper buy --quote <id> --confirm --idempotency-key hello-1 \
+     --from buyer --keyring-backend file --keyring-dir <dir> \
+     --keyring-passphrase-file <passfile>
+   ```
+
+   The receipt's hash is a successful `MsgSend` of 1 uaeth on the
+   public RPC. The facilitator's `transaction` field equals that hash.
+   The HTTP body is the hello payload. Nothing in the shopper's log
+   or stdout contains the passphrase or the signed transaction.
 6. The same command again, same key, does not create a second hash.
    `status` shows one payment.
 7. With `--max-per-payment` temporarily `1uaeth`, a pulse quote
@@ -1032,7 +1030,7 @@ if the later ones wait.
 | 0 | This document | — | No |
 | 1 | `package shopper` discovery, filters, ranking, quote id, `shopper/synonyms.txt`; `shopper quote`; read-only `GET /api/shop/search` on the explorer; httptest coverage | 900–1,200 Go | No |
 | 2 | Sign, `/verify`, `/settle`, chain lookup, receipt files, idempotency, hard caps, `--keyring-backend file`, Windows `O_EXCL` lock, `shopper buy --confirm` and `--dry-run` | 900–1,300 Go | Yes, AETH, in policy, after confirm |
-| 3 | Approvals, USDC always needs a person, the explorer approval mailbox, `shopper approve` / `reject` | 500–800 Go | The same, plus approved exceptions under the caps |
+| 3 | Approvals, USDC always needs a person, local approval files, `shopper approve` / `reject` | 500–800 Go | The same, plus approved exceptions under the caps |
 | 4 | Explorer page `/shop`: search, ranked list, cap line, browser wallet, faucet, Buy / Approve, receipt linked to `/tx/<hash>`, empty and error copy, mobile, Advanced toggle | 1,200–1,800 TS, plus about 200 Go to serve the page's read routes | Yes, from the browser wallet, same rules |
 | 5 | Local agentmcp tools `shop_search`, `shop_quote`, `shop_buy`, `shop_approve_request`, `shop_status`, `shop_receipts`, `shop_budget`; per-agent budgets; structured errors; webhook; `/llms.txt` Shop section; OpenAPI for the public shop routes | 800–1,200 Go | The same, from an agent that already has the key |
 | 6 | Jobs become buyable: escrow through the existing helpers, still after approval, never `--auto`, still under the caps | 500–700 Go | Escrow, approval only |
@@ -1073,15 +1071,7 @@ These were open in the first draft. They are settled:
 
 ## Open questions
 
-1. **Mailbox on the seed.** The approval summaries would sit on the
-   explorer host, which is a validator. They are small, expire after
-   24 hours, and cannot move money without a signature the agent
-   checks. Is that fine on the seed, or should the mailbox wait for
-   a machine that is not a validator?
+The earlier ten are settled in Decisions, including these two that came up while building:
 
-2. **Who probes the live price.** `GET /api/shop/search` on the
-   explorer would fetch up to 20 live payment responses so the page
-   shows the price a buy would actually pay. The explorer already
-   fetches manifests from announced URLs. Should those probes stay
-   on the seed, or should the public search show the manifest price
-   and leave the live check to the browser and the CLI at buy time?
+1. **Approval storage.** Summaries stay on the computer running the shopper or agentmcp, or in the browser for the Shop page. They are not stored on the seed. A shared relay, if one is ever needed so a phone can approve a remote agent, would be a separate optional service, not a validator.
+2. **Live prices.** Search uses the directory and its short cache. A quote fetches the live price only for the shortlisted offers. A buy always re-checks that one price before signing. Search does not contact every paywall.
