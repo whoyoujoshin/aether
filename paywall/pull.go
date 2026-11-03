@@ -440,10 +440,9 @@ func (c *ChainCollector) SignCollect(from string, amount math.Int, memo string) 
 	if err != nil {
 		return nil, 0, err
 	}
-	return c.sign(func(accNum, seq, gas uint64) (wallet.SignedTx, error) {
+	return c.sign(func(accNum, seq, gas uint64, fees sdk.Coins) (wallet.SignedTx, error) {
 		return c.Wallet.BuildAndSignMsgTx(c.KeyName, msg, wallet.TxParams{
-			ChainID: c.ChainID, AccountNumber: accNum, Sequence: seq, GasLimit: gas, Memo: memo,
-			Fees: sdk.NewCoins(sdk.NewCoin(wallet.BaseDenom, math.ZeroInt())),
+			ChainID: c.ChainID, AccountNumber: accNum, Sequence: seq, GasLimit: gas, Memo: memo, Fees: fees,
 		})
 	})
 }

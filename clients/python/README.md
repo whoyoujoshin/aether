@@ -27,6 +27,14 @@ rate_service(client, key, "https://api.example.com", 5)  # only raters who paid 
 back = withdraw_prepaid(client, key, "https://api.example.com", withdrawal_id="w1")  # unspent prepaid balance
 ```
 
+## Fees
+
+Every Aether node asks a minimum price per gas (on aether-1, 0.0001uaeth, or 0.0005 per gas in
+USDC). `AetherClient` asks its node for that price and pays it on every send, seller payout and
+x402 payment: `AetherClient(rpc, gas_price="auto")` is the default. Give a price
+(`gas_price="0.0001uaeth"`) to skip the lookup, and `tip=2` to pay twice the minimum, which goes
+ahead of transactions paying the minimum when blocks are full.
+
 ## Standard x402
 
 `aether_client.x402.ExactAetherScheme` pays the standard x402 v2 `exact` scheme with the

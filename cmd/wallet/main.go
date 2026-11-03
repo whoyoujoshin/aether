@@ -8,13 +8,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
-	"cosmossdk.io/math"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
@@ -66,6 +67,8 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&keyringBackend, "keyring-backend", "test", "keyring backend (test|file|os)")
 	rootCmd.PersistentFlags().StringVar(&grpcEndpoint, "grpc", "localhost:9090", "node gRPC endpoint")
 	rootCmd.PersistentFlags().StringVar(&chainID, "chain-id", "aether-testnet-1", "chain ID")
+	rootCmd.PersistentFlags().StringVar(&feeSetting.GasPrice, "gas-price", "auto", `price per gas to pay: "auto" pays the node's minimum (minimum-gas-prices), or a price such as 0.0001uaeth`)
+	rootCmd.PersistentFlags().Float64Var(&feeSetting.Tip, "tip", 1, "multiple of the price to pay, at least 1: 2 pays twice the minimum, ahead of those paying the minimum when blocks are full")
 
 	rootCmd.AddCommand(
 		newCreateCmd(),
@@ -277,12 +280,16 @@ func newSendCmd() *cobra.Command {
 				return fmt.Errorf("failed to fetch sender account info (does the account exist on-chain yet?): %w", err)
 			}
 
+			fees, err := txFees(client, gasLimit, amount)
+			if err != nil {
+				return err
+			}
 			signed, err := w.BuildAndSignSendTx(fromName, fromAccount.Address, toAddr, amount, wallet.TxParams{
 				ChainID:       chainID,
 				AccountNumber: accountNumber,
 				Sequence:      sequence,
 				GasLimit:      gasLimit,
-				Fees:          sdk.NewCoins(sdk.NewCoin("uaeth", math.NewInt(0))),
+				Fees:          fees,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to build/sign transaction: %w", err)
@@ -368,4 +375,19 @@ func newCopyKeyCmd() *cobra.Command {
 	cmd.Flags().StringVar(&toDir, "to-dir", "", "the destination keyring directory")
 	cmd.Flags().StringVar(&toBackend, "to-backend", "file", "the destination keyring backend")
 	return cmd
+}
+
+// feeSetting is --gas-price and --tip.
+var feeSetting = wallet.AutoFees
+
+// txFees is the fee a transaction asking gas pays: the node's minimum by
+// default, in the denom sent when the node prices it.
+func txFees(client *wallet.Client, gas uint64, sent sdk.Coins) (sdk.Coins, error) {
+	denom := wallet.BaseDenom
+	if len(sent) == 1 {
+		denom = sent[0].Denom
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return client.Fee(ctx, feeSetting, gas, denom)
 }

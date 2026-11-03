@@ -585,10 +585,14 @@ func sendMsgFrom(c chain, w *wallet.Wallet, name, from string, msg sdk.Msg, memo
 	if known > seq {
 		seq = known
 	}
+	fees, err := c.fee(sandboxGas, msgDenom(msg))
+	if err != nil {
+		return "", 0, err
+	}
 	broadcast := func(seq uint64) (wallet.BroadcastResult, error) {
 		signed, err := w.BuildAndSignMsgTx(name, msg, wallet.TxParams{
 			ChainID: chainID, AccountNumber: number, Sequence: seq, GasLimit: sandboxGas,
-			Fees: sdk.NewCoins(sdk.NewCoin(baseDenom, math.NewInt(0))), Memo: memo,
+			Fees: fees, Memo: memo,
 		})
 		if err != nil {
 			return wallet.BroadcastResult{}, err
@@ -875,9 +879,15 @@ func toolBuyService(ctx context.Context, call *mcp.CallToolRequest, in buyServic
 		seq = pend // its last send isn't in a block yet
 	}
 	msg := banktypes.NewMsgSend(sdk.MustAccAddressFromBech32(address), sdk.MustAccAddressFromBech32(req.PayTo), sdk.NewCoins(sdk.NewCoin(asset.Denom, price)))
+	// An x402 exact payment's fee is in uaeth (the facilitator's
+	// feeDenom), whatever the price is paid in.
+	fees, err := c.fee(sandboxGas, baseDenom)
+	if err != nil {
+		return nil, buyServiceOutput{}, err
+	}
 	signed, err := w.BuildAndSignMsgTx("w", msg, wallet.TxParams{
 		ChainID: chainID, AccountNumber: number, Sequence: seq, GasLimit: sandboxGas,
-		Fees: sdk.NewCoins(sdk.NewCoin(baseDenom, math.NewInt(0))),
+		Fees: fees,
 	})
 	if err != nil {
 		return nil, buyServiceOutput{}, err
@@ -1109,4 +1119,14 @@ func servePublicSandbox(addr string) error {
 	}
 	log.Printf("test wallet MCP at %s (funder %s, %suaeth and %s per wallet, %d a day, %d per caller)", listenURL(addr, "/mcp"), s.funderAddr, s.grant, usdc, s.perDay, s.perIP)
 	return srv.ListenAndServe()
+}
+
+// msgDenom is the denom a send moves, so its fee can be paid in it (a
+// test wallet holding only USDC pays in USDC); anything else pays in
+// uaeth.
+func msgDenom(msg sdk.Msg) string {
+	if send, ok := msg.(*banktypes.MsgSend); ok && len(send.Amount) == 1 {
+		return send.Amount[0].Denom
+	}
+	return baseDenom
 }

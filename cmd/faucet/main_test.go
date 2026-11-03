@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"cosmossdk.io/math"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/whoyoujoshin/aether/wallet"
@@ -316,7 +314,7 @@ func TestConcurrentRequestsForOneAddressSendOnce(t *testing.T) {
 // fail until a restart (seen on the seed: "expected 1888, got 82").
 func TestSendCoinsTakesTheSequenceTheNodeExpects(t *testing.T) {
 	var tried []uint64
-	f := &faucetServer{sequence: 82, amountUaeth: 1, gasPrice: sdk.NewDecCoinFromDec("uaeth", math.LegacyMustNewDecFromStr("0.0001"))}
+	f := &faucetServer{sequence: 82, amountUaeth: 1, fees: wallet.FeeSetting{GasPrice: "0.0001uaeth", Tip: 1}}
 	f.broadcast = func(seq uint64) (wallet.BroadcastResult, error) {
 		tried = append(tried, seq)
 		if seq != 1888 {

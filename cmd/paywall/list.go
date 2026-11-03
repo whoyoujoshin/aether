@@ -33,7 +33,8 @@ func listService(args []string) {
 	keyringBackend := fs.String("keyring-backend", "test", "keyring backend holding --key")
 	grpcEndpoint := fs.String("grpc", "grpc.157-245-252-221.sslip.io:443", "node gRPC endpoint (the public testnet node by default)")
 	chainID := fs.String("chain-id", "aether-testnet-1", "chain ID")
-	fees := fs.String("fees", "0uaeth", "transaction fee (fees are zero on the testnet)")
+	fees := fs.String("fees", "", "transaction fee; empty: --gas-price (the node's minimum by default) times the gas limit")
+	feeSetting := wallet.FeeFlags(fs)
 	delist := fs.Bool("delist", false, "withdraw the listing instead")
 	allowPrivate := fs.Bool("allow-private", false, "devnets only: read the manifest from a local or private address")
 	wait := fs.Duration("wait", 3*time.Minute, "how long to wait for the transaction to land in a block (0: don't wait)")
@@ -45,9 +46,8 @@ func listService(args []string) {
 	if err != nil {
 		log.Fatalf("invalid --url: %v", err)
 	}
-	feeCoins, err := sdk.ParseCoinsNormalized(*fees)
-	if err != nil {
-		log.Fatalf("invalid --fees: %v", err)
+	if err := feeSetting.Validate(); err != nil {
+		log.Fatal(err)
 	}
 	w := openKeyring(*keyringDir, *keyringBackend, "--key")
 	acc, err := w.GetAccount(*key)
@@ -79,6 +79,18 @@ func listService(args []string) {
 	number, sequence, err := c.GetAccountInfo(acc.Address)
 	if err != nil {
 		log.Fatalf("%s isn't on chain yet (%v): it needs %d uaeth for the listing; ask the faucet for some", acc.Address, err, directory.AnnounceAmount)
+	}
+	feeCoins, err := sdk.ParseCoinsNormalized(*fees)
+	if err != nil {
+		log.Fatalf("invalid --fees: %v", err)
+	}
+	if *fees == "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		feeCoins, err = c.Fee(ctx, *feeSetting, listGas, wallet.BaseDenom)
+		cancel()
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	signed, err := w.BuildAndSignSendTx(*key, acc.Address, directory.Address(),
 		sdk.NewCoins(sdk.NewCoin(wallet.BaseDenom, math.NewInt(directory.AnnounceAmount))),

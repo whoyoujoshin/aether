@@ -26,6 +26,14 @@ await rateService(client, key, "https://api.example.com", 5); // only raters who
 const back = await withdrawPrepaid(client, key, "https://api.example.com", { withdrawalId: "w1" }); // unspent prepaid balance
 ```
 
+## Fees
+
+Every Aether node asks a minimum price per gas (on aether-1, 0.0001uaeth, or 0.0005 per gas in
+USDC). `AetherClient` asks its node for that price and pays it on every send, seller payout and
+x402 payment: `new AetherClient({ rpc, gasPrice: "auto" })` is the default. Give a price
+(`gasPrice: "0.0001uaeth"`) to skip the lookup, and `tip: 2` to pay twice the minimum, which goes
+ahead of transactions paying the minimum when blocks are full.
+
 ## AI agents
 
 `AetherToolkit` turns a client and key into seven tools for a model: balance,

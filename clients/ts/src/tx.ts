@@ -25,6 +25,8 @@ export interface SendParams {
   denom?: string;
   memo?: string;
   gasLimit?: bigint | number;
+  /** The fee; none by default (a node with a minimum gas price refuses that: see AetherClient.fee). */
+  fee?: { denom: string; amount: bigint };
 }
 
 export interface SignedTx {
@@ -49,6 +51,8 @@ export interface TxParams {
   sequence: bigint | number;
   memo?: string;
   gasLimit?: bigint | number;
+  /** The fee; none by default (a node with a minimum gas price refuses that: see AetherClient.fee). */
+  fee?: { denom: string; amount: bigint };
 }
 
 /** An encoded message and its type URL, as a transaction body carries it (a protobuf Any). */
@@ -69,7 +73,9 @@ export function buildTx(key: Key, msgs: AnyMsg[], p: TxParams, opts: { determini
   const pubKey = any(PUBKEY_TYPE_URL, new Writer().bytes(1, key.publicKey).finish());
   const modeInfo = new Writer().message(1, new Writer().uint64(1, SIGN_MODE_DIRECT).finish()).finish();
   const signerInfo = new Writer().message(1, pubKey).message(2, modeInfo).uint64(3, BigInt(p.sequence)).finish();
-  const fee = new Writer().uint64(2, BigInt(p.gasLimit ?? DEFAULT_GAS_LIMIT)).finish(); // zero fee: no amount
+  const feeW = new Writer();
+  if (p.fee && p.fee.amount > 0n) feeW.message(1, coin(p.fee.denom, p.fee.amount));
+  const fee = feeW.uint64(2, BigInt(p.gasLimit ?? DEFAULT_GAS_LIMIT)).finish(); // no amount: a zero fee
   const authInfoBytes = new Writer().message(1, signerInfo).message(2, fee).finish();
   const signDoc = new Writer()
     .bytes(1, bodyBytes)

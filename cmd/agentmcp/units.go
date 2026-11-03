@@ -16,6 +16,14 @@ import (
 
 const baseDenom = wallet.BaseDenom
 
+// agentTxGas is the gas limit the agent's transactions ask for; the fee
+// pays the price on all of it (a node checks the fee against the limit).
+const agentTxGas = 400_000
+
+// feeSetting is how the agent pays for gas (--gas-price, --tip): the
+// node's minimum by default.
+var feeSetting = wallet.AutoFees
+
 // assets is what this server accepts: AETH, plus USDC once --usdc-channel
 // or --usdc-path names its route.
 var assets, _ = wallet.NewAssets("")

@@ -17,6 +17,8 @@ export {
 } from "./pow.js";
 export type { MiningHeader, Work } from "./pow.js";
 export { AetherClient, transfers, decodeSendGrant } from "./client.js";
+export { feeFor, parseGasPrices } from "./fees.js";
+export type { Fee, GasPrice } from "./fees.js";
 export type { TransactionInfo, IncomingPayment, SendResult, TxStatus, Transfer, SendGrant } from "./client.js";
 export { fetchPaid, presentPayment, signingMessage, memoPaymentHeader, prepaidPaymentHeader, pullSigningMessage, pullPaymentHeader, PaymentError, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, DEPOSIT_MEMO_PREFIX, PULL_GRANT_SECONDS } from "./paywall.js";
 export type { FetchPaidOptions, FetchPaidResult, PaymentRequired, PaymentRequirements, RequestFields } from "./paywall.js";

@@ -366,6 +366,31 @@ in escrow for Aether. Keep that small while the chain is young:
       Skip's x/feemarket), which raises prices just when they should stay
       flat; and paying tips to the block's proposer (Ethereum, Solana),
       which changes where fees go, a consensus change.
+  - **Every tool pays it (built 2026-11-03).** aetherd serves
+    `cosmos.base.node.v1beta1` Config (the node's `minimum-gas-prices`), and
+    every tool that sends asks its node for the price and pays it on its
+    gas limit, rounded up (`wallet.FeeSetting`, `--gas-price auto` by
+    default, `--tip` to pay a multiple): agentmcp (payments, escrows, pull
+    grants, the test wallet), the paywall (listings, prepaid payouts, pull
+    collections), the `wallet` CLI (sends, rotations), the faucet, auxpowd
+    and the desktop wallet; the TypeScript and Python clients
+    (`AetherClient` `gasPrice`/`tip`, `gas_price`/`tip`) for sends, sellers
+    and x402 buyers. An x402 exact payment's fee is in uaeth, the
+    facilitator's `feeDenom`. A node that doesn't serve the query (the
+    testnet's, until they run this build) is taken to ask nothing, which is
+    what they ask. Native mining submissions stay fee-free. The fee rule is
+    shared (`clients/testdata/fees.json`, checked in Go, TS and Python).
+    One bug only a fee shows, fixed with it: a transaction's first `transfer`
+    event is its fee to the fee collector, so `wallet`'s transaction summary
+    (and `get_transaction_status`, receipts, the benchmark's scorer) took
+    the fee for the payment. The summary now skips the fee collector and
+    reports `fee` apart. Checked on an `aether-rc-devfees` devnet at
+    0.0001uaeth: a zero-fee send was refused (`required: 40uaeth`), the
+    default send paid 40 uaeth and `--tip 3` paid 120, directory listings
+    paid the minimum, and the payments benchmark ran its whole stack on it
+    (`bench/devnet.sh`): the reference agent 13 of 13 and the careless one
+    5.5 of 13, the same as at zero fees, with 720 and 1,000 uaeth paid in
+    fees. The scorer now leaves fees out of what an agent spent.
   - **Block limits (genesis, to decide with the price).** 22 MB every 5.7 s
     is about 3.7 MB/s to every peer, more than a home link and more than
     the network needs: the testnet has never come near it. Proposed:

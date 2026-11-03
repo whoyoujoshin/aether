@@ -4,12 +4,13 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Union
 
 from .amount import AETH, DENOM, Asset, Assets
+from .fees import fee_for, parse_gas_prices
 from .inflow_caps import INFLOW_CAPS_PATH, InflowCaps, decode_inflow_caps
 from .keys import PUBKEY_BYTES, Key, is_address
 from .proto import Writer, first, read_fields
 from .rotation import ROTATION_QUERY_PATH, Rotation, decode_account_pubkey, decode_rotation, rotation_request, signs_for
 from .rpc import Rpc, RpcError
-from .tx import MSG_SEND_TYPE_URL, SEND_AUTHORIZATION_TYPE_URL, SignedTx, build_send, build_tx, memo_of
+from .tx import DEFAULT_GAS_LIMIT, MSG_SEND_TYPE_URL, SEND_AUTHORIZATION_TYPE_URL, SignedTx, build_send, build_tx, memo_of
 
 
 @dataclass
@@ -124,12 +125,18 @@ def decode_send_grant(resp: bytes, denom: str = DENOM) -> Optional[SendGrant]:
 class AetherClient:
     def __init__(self, rpc: str, chain_id: str = "aether-testnet-1", usdc_channel: Optional[str] = None,
                  usdc_path: Optional[str] = None, usdc_base_denom: Optional[str] = None,
-                 usdc_issuer: Optional[str] = None):
+                 usdc_issuer: Optional[str] = None, gas_price: str = "auto", tip: float = 1):
         """usdc_channel: Aether's end of its direct channel to Noble (e.g. "channel-3"); or usdc_path and
         usdc_base_denom for USDC that arrives another way (see usdc_for). With one, amounts may be in
         USDC ("5 USDC"); without, USDC is an unknown unit, never guessed at."""
         self.rpc = Rpc(rpc)
         self.chain_id = chain_id
+        # gas_price: "auto" pays the node's own minimum, or a price such as "0.0001uaeth"; tip
+        # multiplies it (at least 1): 2 pays twice the minimum, ahead of those paying the minimum
+        # when blocks are full.
+        self.gas_price = gas_price
+        self.tip = tip
+        self._gas_prices = None  # (time, prices)
         self.assets = Assets(usdc_channel, usdc_path, usdc_base_denom, usdc_issuer)
         # Sequences used but maybe not reported by the chain yet (a second
         # send within one block would otherwise reuse one).
@@ -194,6 +201,29 @@ class AetherClient:
         info = first(resp, 1, b"")
         return first(info, 3, 0), first(info, 4, 0)
 
+    def minimum_gas_prices(self):
+        """The node's minimum gas prices (cosmos.base.node.v1beta1 Config), kept for a minute. A node
+        that can't say (an older aetherd, which doesn't serve the query) is taken to ask nothing, and
+        asked again next time: if it does ask a price, it refuses the transaction with "insufficient
+        fees", which says so."""
+        if self._gas_prices and time.time() - self._gas_prices[0] < 60:
+            return self._gas_prices[1]
+        try:
+            resp = self.rpc.abci_query("/cosmos.base.node.v1beta1.Service/Config", b"")
+            raw = first(resp, 1, b"")
+            prices = parse_gas_prices(raw.decode() if isinstance(raw, (bytes, bytearray)) else str(raw or ""))
+        except Exception:
+            return []
+        self._gas_prices = (time.time(), prices)
+        return prices
+
+    def fee(self, gas: int, denom: str = DENOM):
+        """The fee (amount, denom) a transaction asking gas pays under this client's gas_price and
+        tip, preferably in denom; None for no fee."""
+        setting = (self.gas_price or "auto").strip()
+        prices = self.minimum_gas_prices() if setting == "auto" else parse_gas_prices(setting)
+        return fee_for(prices, denom, gas, self.tip)
+
     def send(self, key: Key, to: str, amount: str, memo: str = "", gas_limit: Optional[int] = None) -> SendResult:
         """Signs and broadcasts a payment; `amount` carries its unit ("1.5 AETH", or "5 USDC" when the
         client has a USDC set), and it sends that asset.
@@ -209,8 +239,9 @@ class AetherClient:
             raise ValueError(f"account {key.address} doesn't exist on chain yet: fund it first")
         account_number, chain_seq = info
         sequence = max(chain_seq, self._next_seq.get(key.address, 0))
+        gas = gas_limit or DEFAULT_GAS_LIMIT
         signed = build_send(key, chain_id=self.chain_id, account_number=account_number, sequence=sequence, to=to,
-                            amount_uaeth=base, denom=asset.denom, memo=memo, **({"gas_limit": gas_limit} if gas_limit else {}))
+                            amount_uaeth=base, denom=asset.denom, memo=memo, gas_limit=gas, fee=self.fee(gas, asset.denom))
         r = self.rebroadcast(signed)
         if r.status != "failed":
             self._next_seq[key.address] = sequence + 1
@@ -235,8 +266,9 @@ class AetherClient:
             raise ValueError(f"account {key.address} doesn't exist on chain yet: fund it first")
         account_number, chain_seq = info
         sequence = max(chain_seq, self._next_seq.get(key.address, 0))
+        gas = gas_limit or DEFAULT_GAS_LIMIT
         signed = build_tx(key, msgs, chain_id=self.chain_id, account_number=account_number, sequence=sequence, memo=memo,
-                          **({"gas_limit": gas_limit} if gas_limit else {}))
+                          gas_limit=gas, fee=self.fee(gas))
         r = self.rebroadcast(signed)
         if r.status != "failed":
             self._next_seq[key.address] = sequence + 1

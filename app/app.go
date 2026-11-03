@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	nodeservice "github.com/cosmos/cosmos-sdk/client/grpc/node"
 	"io"
 	"os"
 	"path/filepath"
@@ -819,5 +820,12 @@ func (app *App) RegisterTxService(clientCtx client.Context) {
 func (app *App) RegisterTendermintService(clientCtx client.Context) {
 	cmtservice.RegisterTendermintService(clientCtx, app.BaseApp.GRPCQueryRouter(), app.interfaceRegistry, app.Query)
 }
-func (app *App) RegisterNodeService(clientCtx client.Context, cfg config.Config) {}
-func (app *App) GetModuleManager() *module.Manager                               { return app.sm }
+
+// RegisterNodeService serves cosmos.base.node.v1beta1 (the node's
+// config, its minimum gas price among it) over gRPC, so wallets and
+// services pay that price without being told it (wallet.FeeSetting).
+// Query-only: no state or AppHash effect.
+func (app *App) RegisterNodeService(clientCtx client.Context, cfg config.Config) {
+	nodeservice.RegisterNodeService(clientCtx, app.GRPCQueryRouter(), cfg)
+}
+func (app *App) GetModuleManager() *module.Manager { return app.sm }

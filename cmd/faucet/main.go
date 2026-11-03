@@ -31,6 +31,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -40,6 +41,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -105,8 +107,8 @@ type faucetServer struct {
 	fromAddr    string
 	chainID     string
 	amountUaeth int64
-	opener      bool // fund only addresses the chain has no account for, once
-	gasPrice    sdk.DecCoin
+	opener      bool              // fund only addresses the chain has no account for, once
+	fees        wallet.FeeSetting // --gas-price and --tip: the node's minimum by default
 
 	accountNumber uint64
 	sequence      uint64 // tracked in-memory; incremented locally after each successful broadcast, never re-queried from the chain per-request -- avoids the exact stale-sequence race a real, independent stress test found: re-querying the chain for sequence on every send fails whenever two sends happen within the same ~60s block window, since sequence only updates once a tx is actually included in a block, not merely broadcast.
@@ -528,6 +530,28 @@ func (f *faucetServer) confirmTxOnChain(txHash string) (*wallet.TransactionDetai
 	}
 }
 
+// fee is what a drip asking gas pays: the node's minimum unless
+// --gas-price names a price, times --tip, in uaeth.
+func (f *faucetServer) fee(gas uint64) (sdk.Coins, error) {
+	if p := strings.TrimSpace(f.fees.GasPrice); p != "" && p != "auto" {
+		prices, err := sdk.ParseDecCoins(p)
+		if err != nil {
+			return nil, err
+		}
+		tip := f.fees.Tip
+		if tip == 0 {
+			tip = 1
+		}
+		return wallet.FeeFor(prices, wallet.BaseDenom, gas, tip)
+	}
+	if f.client == nil {
+		return sdk.NewCoins(), nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return f.client.Fee(ctx, f.fees, gas, wallet.BaseDenom)
+}
+
 // sendCoins pays every address the drip amount in one transaction,
 // which the chain applies all-or-nothing.
 func (f *faucetServer) sendCoins(addresses []string) (string, error) {
@@ -537,7 +561,10 @@ func (f *faucetServer) sendCoins(addresses []string) (string, error) {
 		msgs[i] = &banktypes.MsgSend{FromAddress: f.fromAddr, ToAddress: a, Amount: amount}
 	}
 	gas := uint64(gasBase + gasPerSend*len(addresses))
-	fee := f.gasPrice.Amount.MulInt64(int64(gas)).Ceil().TruncateInt()
+	fee, err := f.fee(gas)
+	if err != nil {
+		return "", err
+	}
 
 	broadcast := f.broadcast
 	if broadcast == nil {
@@ -547,7 +574,7 @@ func (f *faucetServer) sendCoins(addresses []string) (string, error) {
 				AccountNumber: f.accountNumber,
 				Sequence:      seq,
 				GasLimit:      gas,
-				Fees:          sdk.NewCoins(sdk.NewCoin("uaeth", fee)),
+				Fees:          fee,
 			})
 			if err != nil {
 				return wallet.BroadcastResult{}, fmt.Errorf("failed to build/sign tx: %w", err)
@@ -607,7 +634,7 @@ func main() {
 	callerWindowMinutes := flag.Int("caller-window-minutes", 60, "length of the per-caller window")
 	batchMax := flag.Int("batch-max", 10, "most addresses one /request/batch may fund")
 	trustedProxies := flag.String("trusted-proxies", "127.0.0.1,::1", "comma-separated addresses of reverse proxies whose X-Forwarded-For names the real caller")
-	gasPriceStr := flag.String("gas-price", "0uaeth", "gas price to pay, e.g. 0.0001uaeth for a node with --minimum-gas-prices")
+	fees := wallet.FeeFlags(flag.CommandLine)
 	port := flag.String("port", "8080", "HTTP port to listen on")
 	confirmTimeoutSeconds := flag.Int("confirm-timeout-seconds", 90, "how long to wait for a broadcast tx to actually land on-chain before giving up (comfortably more than one block interval)")
 	confirmPollSeconds := flag.Int("confirm-poll-seconds", 3, "how often to poll for on-chain confirmation while waiting")
@@ -624,9 +651,8 @@ func main() {
 		}
 	}
 
-	gasPrice, err := sdk.ParseDecCoin(*gasPriceStr)
-	if err != nil || gasPrice.Denom != "uaeth" {
-		log.Fatalf("--gas-price %q: want e.g. 0.0001uaeth (%v)", *gasPriceStr, err)
+	if err := fees.Validate(); err != nil {
+		log.Fatal(err)
 	}
 	if *batchMax < 1 {
 		*batchMax = 1
@@ -699,7 +725,7 @@ func main() {
 		chainID:             *chainID,
 		amountUaeth:         *amount,
 		opener:              *opener,
-		gasPrice:            gasPrice,
+		fees:                *fees,
 		accountNumber:       accountNumber,
 		sequence:            sequence,
 		confirmTimeout:      time.Duration(*confirmTimeoutSeconds) * time.Second,
