@@ -391,14 +391,17 @@ in escrow for Aether. Keep that small while the chain is young:
     (`bench/devnet.sh`): the reference agent 13 of 13 and the careless one
     5.5 of 13, the same as at zero fees, with 720 and 1,000 uaeth paid in
     fees. The scorer now leaves fees out of what an agent spent.
-  - **Block limits (genesis, to decide with the price).** 22 MB every 5.7 s
-    is about 3.7 MB/s to every peer, more than a home link and more than
-    the network needs: the testnet has never come near it. Proposed:
-    `max_bytes` 4,194,304 (about 1,000 sends a block, 175 a second) and
+  - **Block limits: decided 2026-11-03 (Joshua), written by `rcgenesis`.**
+    22 MB every 5.7 s is about 3.7 MB/s to every peer, more than a home
+    link and more than the network needs: the testnet has never come near
+    it. `max_bytes` 4,194,304 (about 1,000 sends a block, 175 a second) and
     `max_gas` 200,000,000 (Helicase's relays may use up to half). Filling
-    those blocks at 0.0005uaeth costs about 50 AETH an hour, a sixth of
-    the year-1 issuance, while each block stays small enough for an
-    ordinary server.
+    those blocks at the 0.0001uaeth minimum costs about 10 AETH an hour,
+    and anyone who tips goes ahead of it, while each block stays small
+    enough for an ordinary server. A chain booted from an `rcgenesis` file
+    reports them (`consensus_params`: `max_bytes` 4194304, `max_gas`
+    200000000). Governance can change them later with an x/consensus
+    param change.
   - **Governance spends the treasury's USDC** (AET-27): a treasury-spend
     proposal's amount may be one coin of any denom the treasury holds,
     paid from its bank balance; uaeth still goes through the ledger. On

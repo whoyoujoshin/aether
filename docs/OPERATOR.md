@@ -240,6 +240,7 @@ power is back (`docs/UPGRADE-INFLOWCAP-FEES.md` is a worked example).
    gives the same file, and prints its sha256. It also locks escrow for
    43,200 blocks (3 days) and keeps evidence 48 hours, so a validator
    that double-signs can't take its escrow out before the evidence lands.
+   Blocks are capped at 4 MB and 200,000,000 gas.
 
 3. Share `genesis.json` and its hash; every operator checks it.
 

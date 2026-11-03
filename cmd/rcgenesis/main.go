@@ -73,6 +73,17 @@ const genesisPower = pow.ValidatorVotingPower
 // 28,800 blocks (48 hours at 6 s); CometBFT drops evidence only once it
 // is older than both that and max_age_duration (48 hours), so the window
 // stays 48 hours and the lock outlasts it.
+// Block limits (decided 2026-11-03, docs/MAINNET.md §4): 4 MB a block,
+// about 1,000 sends of ~4 KB, 175 a second at 5.7 s blocks, small enough
+// for an ordinary server's link (the template's 22 MB every 5.7 s is
+// 3.7 MB/s to every peer); and 200,000,000 gas, room for those sends
+// (~157,000 to 214,000 gas each) with Helicase's relays allowed half.
+// The template leaves gas unlimited (-1).
+const (
+	freshBlockMaxBytes = 4 * 1024 * 1024
+	freshBlockMaxGas   = 200_000_000
+)
+
 const (
 	freshBondCooldown       = 43_200
 	freshEvidenceAgeBlocks  = 28_800
@@ -233,9 +244,12 @@ func build(base []byte, ops []Operator, chainID, genesisTime string) ([]byte, er
 	consensus["validators"] = validators
 	params, _ := consensus["params"].(map[string]any)
 	evidence, _ := params["evidence"].(map[string]any)
-	if evidence == nil {
-		return nil, errors.New("base genesis has no consensus evidence params: give the file `aetherd init` wrote")
+	block, _ := params["block"].(map[string]any)
+	if evidence == nil || block == nil {
+		return nil, errors.New("base genesis has no consensus block or evidence params: give the file `aetherd init` wrote")
 	}
+	block["max_bytes"] = fmt.Sprint(freshBlockMaxBytes)
+	block["max_gas"] = fmt.Sprint(freshBlockMaxGas)
 	evidence["max_age_num_blocks"] = fmt.Sprint(freshEvidenceAgeBlocks)
 	evidence["max_age_duration"] = fmt.Sprint(int64(freshEvidenceAgeSeconds) * int64(time.Second))
 	powParams["bond_cooldown"] = json.Number(fmt.Sprint(freshBondCooldown))
