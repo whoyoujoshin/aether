@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	cmttypes "github.com/cometbft/cometbft/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
 	"github.com/stretchr/testify/require"
@@ -23,6 +25,7 @@ func baseGenesis(t *testing.T) []byte {
 	stateBz, err := json.Marshal(state)
 	require.NoError(t, err)
 	g := genutiltypes.NewAppGenesisWithVersion("aether-rc-test", stateBz)
+	g.Consensus = genutiltypes.NewConsensusGenesis(cmttypes.DefaultConsensusParams().ToProto(), nil)
 	bz, err := json.Marshal(g)
 	require.NoError(t, err)
 	return bz
@@ -64,8 +67,20 @@ func TestBuild_GenesisForTheOperators(t *testing.T) {
 		require.Equal(t, []string{"alice", "bob", "carol"}[i], v.Name, "validators in name order")
 	}
 
+	// The escrow lock outlasts the evidence window, which stays 48 hours.
+	require.Equal(t, int64(freshEvidenceAgeBlocks), g.Consensus.Params.Evidence.MaxAgeNumBlocks)
+	require.Equal(t, 48*time.Hour, g.Consensus.Params.Evidence.MaxAgeDuration)
+	require.Greater(t, int64(freshBondCooldown)*5, int64(48*60*60), "even at 5 s blocks the lock is longer than 48 h")
+
 	var state map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(g.AppState, &state))
+	var powState struct {
+		Params struct {
+			BondCooldown int64 `json:"bond_cooldown"`
+		} `json:"params"`
+	}
+	require.NoError(t, json.Unmarshal(state["pow"], &powState))
+	require.Equal(t, int64(freshBondCooldown), powState.Params.BondCooldown)
 	var auth struct {
 		Accounts []struct {
 			Address       string `json:"address"`

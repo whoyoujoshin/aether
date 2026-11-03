@@ -296,9 +296,17 @@ type TransactionDetail struct {
 	Amount    string
 	Timestamp string
 	Transfers []Transfer
-	AuxPow    *AuxPowInfo
-	Memo      string // set by the sender; untrusted
+	// Fee is what the transaction paid for gas (its transfer to the fee
+	// collector, which From/To/Amount leave out), e.g. "40uaeth"; empty
+	// for none.
+	Fee    string
+	AuxPow *AuxPowInfo
+	Memo   string // set by the sender; untrusted
 }
+
+// FeeCollector is the account fees are paid to (x/auth's fee_collector;
+// app/fees.go moves its balance to the treasury every block).
+var FeeCollector = sdk.MustBech32ifyAddressBytes("aether", authtypes.NewModuleAddress(authtypes.FeeCollectorName))
 
 // ErrTransactionNotFound means the node has no record of the hash:
 // not yet in a block (or dropped from the mempool), as opposed to a
@@ -373,16 +381,7 @@ func (c *Client) GetTransactionByHash(hash string) (*TransactionDetail, error) {
 		}
 	}
 
-	// From/To/Amount stay as a simple summary (the first real transfer
-	// found), matching this struct's original, narrower shape -- but
-	// Transfers holds the complete, honest picture for anything with
-	// more than one real transfer, like a MsgSubmitPoW's miner and
-	// treasury cuts.
-	if len(detail.Transfers) > 0 {
-		detail.From = detail.Transfers[0].From
-		detail.To = detail.Transfers[0].To
-		detail.Amount = detail.Transfers[0].Amount
-	}
+	summarizeTransfers(detail)
 
 	if resp.Tx != nil && resp.Tx.Body != nil {
 		detail.Memo = resp.Tx.Body.Memo
@@ -472,4 +471,27 @@ func (c *Client) GetRecentTransactions(limit uint64) ([]RecentTransaction, error
 	}
 
 	return txs, nil
+}
+
+// summarizeTransfers sets d's From, To, Amount and Fee from its Transfers.
+func summarizeTransfers(d *TransactionDetail) {
+	// From/To/Amount stay as a simple summary (the first real transfer
+	// found), matching this struct's original, narrower shape -- but
+	// Transfers holds the complete, honest picture for anything with
+	// more than one real transfer, like a MsgSubmitPoW's miner and
+	// treasury cuts. The fee's transfer to the fee collector comes
+	// first in the events and is not the payment: it is Fee instead.
+	summarized := false
+	for _, t := range d.Transfers {
+		if t.To == FeeCollector {
+			if d.Fee == "" {
+				d.Fee = t.Amount
+			}
+			continue
+		}
+		if !summarized {
+			d.From, d.To, d.Amount = t.From, t.To, t.Amount
+			summarized = true
+		}
+	}
 }

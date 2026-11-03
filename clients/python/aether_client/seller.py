@@ -43,7 +43,7 @@ from .ledger import FileLedger, LedgerError, _parse_time
 from .paywall import DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, pull_signing_message, signing_message
 from .receipt import RECEIPT_HEADER, encode_receipt, malformed, sign_receipt, verify_receipt
 from .rpc import RpcError
-from .tx import build_send, build_tx, exec_send_msg
+from .tx import DEFAULT_GAS_LIMIT, build_send, build_tx, exec_send_msg
 
 WITHDRAW_PATH = "/.well-known/x402/withdraw"
 
@@ -161,7 +161,8 @@ class KeyPayout:
             account_number, seq = info
             seq = max(seq, self._next)  # an earlier payout may still be in the mempool
             s = build_send(self.key, chain_id=self.client.chain_id, account_number=account_number, sequence=seq, to=to,
-                           amount_uaeth=amount_uaeth, memo=memo, denom=self.denom)
+                           amount_uaeth=amount_uaeth, memo=memo, denom=self.denom,
+                           fee=self.client.fee(DEFAULT_GAS_LIMIT, self.denom))
             self._next = seq + 1
             return s.tx_bytes, seq, s.hash
 
@@ -174,7 +175,7 @@ class KeyPayout:
             account_number, seq = info
             seq = max(seq, self._next)
             s = build_tx(self.key, [exec_send_msg(self.key.address, frm, to, amount_uaeth, self.denom)], chain_id=self.client.chain_id,
-                         account_number=account_number, sequence=seq, memo=memo)
+                         account_number=account_number, sequence=seq, memo=memo, fee=self.client.fee(DEFAULT_GAS_LIMIT))
             self._next = seq + 1
             return s.tx_bytes, seq, s.hash
 

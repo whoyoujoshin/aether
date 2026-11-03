@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -228,9 +229,14 @@ func withAccount(w http.ResponseWriter, from string, build func(wallet.Account, 
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to fetch account info: %w", err))
 		return
 	}
+	fees, err := client.Fee(context.Background(), wallet.AutoFees, 400_000, wallet.BaseDenom)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
 	signed, err := wal.BuildAndSignMsgsTx(from, msgs, wallet.TxParams{
 		ChainID: chainID, AccountNumber: accountNumber, Sequence: sequence, GasLimit: 400_000,
-		Fees: sdk.NewCoins(sdk.NewInt64Coin("uaeth", 0)),
+		Fees: fees,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to build/sign transaction: %w", err))

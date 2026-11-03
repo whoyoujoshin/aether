@@ -71,7 +71,8 @@ func run(args []string) error {
 	home := fs.String("home", defaultHome(), "aetherd home whose keyring holds --from")
 	keyringBackend := fs.String("keyring-backend", "test", "keyring backend")
 	from := fs.String("from", "", "keyring name of the bridge's ML-DSA key, which signs submissions (required)")
-	feesStr := fs.String("fees", "0uaeth", "fee per submission, paid by --from")
+	feesStr := fs.String("fees", "", "fee per submission, paid by --from; empty: --gas-price (the node's minimum by default) times --gas")
+	feeSetting := wallet.FeeFlags(fs)
 	gas := fs.Uint64("gas", 400_000, "gas limit per submission")
 	rewardStr := fs.String("reward-address", "", "aether1... address getauxblock (no arguments) pays; createauxblock names its own")
 	rpcUser := fs.String("rpc-user", "", "JSON-RPC username (required)")
@@ -94,6 +95,9 @@ func run(args []string) error {
 		return errors.New("--from is required")
 	case *rpcUser == "" || password == "":
 		return errors.New("--rpc-user and a password (--rpc-password-file or --rpc-password) are required")
+	}
+	if err := feeSetting.Validate(); err != nil {
+		return err
 	}
 	fees, err := sdk.ParseCoinsNormalized(*feesStr)
 	if err != nil {
@@ -127,6 +131,9 @@ func run(args []string) error {
 	}
 	defer conn.Close()
 	c, err := newNodeChain(*node, conn, w, client, *from, acct.Address, fees, *gas)
+	if err == nil && *feesStr == "" {
+		c.feeSetting = feeSetting
+	}
 	if err != nil {
 		return err
 	}

@@ -19,7 +19,9 @@ import (
 )
 
 const (
-	buyGasLimit      = 400_000
+	// BuyGasLimit is the gas a shop payment asks for. The fee is the
+	// node's minimum price times this.
+	BuyGasLimit      = 400_000
 	maxKeyLen        = 128
 	maxResourceTries = 3
 )
@@ -28,6 +30,10 @@ const (
 type Chain interface {
 	Account(ctx context.Context, address string) (number, sequence uint64, err error)
 	Tx(ctx context.Context, hash string) (found bool, code uint32, height int64, err error)
+	// Fee is what a transaction asking gas pays, preferably in denom.
+	// Callers use the node's minimum gas price, the same setting as the
+	// other tools (wallet.FeeSetting). The exact scheme pays it in uaeth.
+	Fee(ctx context.Context, gas uint64, denom string) (sdk.Coins, error)
 }
 
 // BuyInput is one attempt to pay a saved quote.
@@ -313,9 +319,15 @@ func (b Buyer) signature(ctx context.Context, key, payer string, offer Offer, pr
 		return nil, "", fail(CodeRefused, NextPickAnother, "The service's account is not a valid address. Nothing was spent.")
 	}
 	msg := banktypes.NewMsgSend(from, to, sdk.NewCoins(sdk.NewCoin(offer.Asset, amount)))
+	// The exact scheme's fee is uaeth, whatever coin the price is in,
+	// and it has to cover the node's minimum gas price.
+	fees, err := b.Chain.Fee(ctx, BuyGasLimit, wallet.BaseDenom)
+	if err != nil {
+		return nil, "", fail(CodeFacilitatorDown, NextRetryLater, "The node's gas price could not be read. Nothing was signed.")
+	}
 	signed, err := b.Wallet.BuildAndSignMsgTx(b.KeyName, msg, wallet.TxParams{
-		ChainID: b.ChainID, AccountNumber: number, Sequence: seq, GasLimit: buyGasLimit,
-		Fees: sdk.NewCoins(sdk.NewCoin("uaeth", sdkmath.NewInt(0))),
+		ChainID: b.ChainID, AccountNumber: number, Sequence: seq, GasLimit: BuyGasLimit,
+		Fees: fees,
 	})
 	if err != nil {
 		return nil, "", fail(CodeRefused, NextStop, "The payment could not be signed. Nothing was spent.")

@@ -1,10 +1,11 @@
 import { Writer, readFields, first, text } from "./proto.js";
 import { Rpc, RpcError, TxEvent, TxResult } from "./rpc.js";
 import { Key, PUBKEY_BYTES, isAddress } from "./keys.js";
-import { buildSend, buildTx, memoOf, MSG_SEND_TYPE_URL, SEND_AUTHORIZATION_TYPE_URL, type AnyMsg, SignedTx } from "./tx.js";
+import { buildSend, buildTx, memoOf, DEFAULT_GAS_LIMIT, MSG_SEND_TYPE_URL, SEND_AUTHORIZATION_TYPE_URL, type AnyMsg, SignedTx } from "./tx.js";
 import { decodeAccountPubKey, decodeRotation, ROTATION_QUERY_PATH, rotationRequest, signsFor, type Rotation } from "./rotation.js";
 import { AETH, Assets, DENOM, type Asset, type UsdcSetting } from "./amount.js";
 import { decodeInflowCaps, INFLOW_CAPS_PATH, type InflowCaps } from "./inflowCaps.js";
+import { feeFor, parseGasPrices, type Fee, type GasPrice } from "./fees.js";
 
 export type TxStatus = "pending" | "confirmed" | "failed";
 
@@ -108,9 +109,41 @@ export class AetherClient {
    * another way (see UsdcSetting). With one, amounts may be in USDC
    * ("5 USDC"); without, USDC is an unknown unit, never guessed at.
    */
-  constructor(readonly opts: { rpc: string; chainId?: string; fetch?: typeof fetch } & UsdcSetting) {
+  private gasPriceCache?: { at: number; prices: GasPrice[] };
+
+  /**
+   * gasPrice is what to pay per gas: "auto" (the default) pays the node's own
+   * minimum, or a price such as "0.0001uaeth". tip multiplies it (at least 1):
+   * 2 pays twice the minimum, ahead of those paying the minimum when blocks are full.
+   */
+  constructor(readonly opts: { rpc: string; chainId?: string; fetch?: typeof fetch; gasPrice?: string; tip?: number } & UsdcSetting) {
     this.rpc = new Rpc(opts.rpc, opts.fetch);
     this.assets = new Assets({ usdcChannel: opts.usdcChannel, usdcPath: opts.usdcPath, usdcBaseDenom: opts.usdcBaseDenom, usdcIssuer: opts.usdcIssuer });
+  }
+
+  /**
+   * The node's minimum gas prices (cosmos.base.node.v1beta1 Config), kept for
+   * a minute. A node that can't say (an older aetherd, which doesn't serve the
+   * query) is taken to ask nothing, and asked again next time: if it does ask
+   * a price, it refuses the transaction with "insufficient fees", which says so.
+   */
+  async minimumGasPrices(): Promise<GasPrice[]> {
+    if (this.gasPriceCache && Date.now() - this.gasPriceCache.at < 60_000) return this.gasPriceCache.prices;
+    try {
+      const resp = await this.rpc.abciQuery("/cosmos.base.node.v1beta1.Service/Config", new Uint8Array());
+      const prices = parseGasPrices(text(first(readFields(resp), 1)?.bytes));
+      this.gasPriceCache = { at: Date.now(), prices };
+      return prices;
+    } catch {
+      return [];
+    }
+  }
+
+  /** The fee a transaction asking gas pays under this client's gasPrice and tip, preferably in denom. */
+  async fee(gas: bigint | number, denom: string = DENOM): Promise<Fee | undefined> {
+    const setting = (this.opts.gasPrice ?? "auto").trim();
+    const prices = setting === "" || setting === "auto" ? await this.minimumGasPrices() : parseGasPrices(setting);
+    return feeFor(prices, denom, gas, this.opts.tip ?? 1);
   }
 
   get chainId(): string {
@@ -202,7 +235,9 @@ export class AetherClient {
     if (!info) throw new Error(`account ${key.address} doesn't exist on chain yet: fund it first`);
     const known = this.nextSeq.get(key.address) ?? 0n;
     const sequence = info.sequence > known ? info.sequence : known;
-    const signed = buildSend(key, { chainId: this.chainId, accountNumber: info.accountNumber, sequence, to, amountUaeth: base, denom: asset.denom, memo: opts.memo, gasLimit: opts.gasLimit });
+    const gasLimit = opts.gasLimit ?? DEFAULT_GAS_LIMIT;
+    const fee = await this.fee(gasLimit, asset.denom);
+    const signed = buildSend(key, { chainId: this.chainId, accountNumber: info.accountNumber, sequence, to, amountUaeth: base, denom: asset.denom, memo: opts.memo, gasLimit, fee });
     const r = await this.rebroadcast(signed);
     if (r.status !== "failed") this.nextSeq.set(key.address, sequence + 1n);
     return r;
@@ -231,7 +266,9 @@ export class AetherClient {
     if (!info) throw new Error(`account ${key.address} doesn't exist on chain yet: fund it first`);
     const known = this.nextSeq.get(key.address) ?? 0n;
     const sequence = info.sequence > known ? info.sequence : known;
-    const signed = buildTx(key, msgs, { chainId: this.chainId, accountNumber: info.accountNumber, sequence, memo: opts.memo, gasLimit: opts.gasLimit });
+    const gasLimit = opts.gasLimit ?? DEFAULT_GAS_LIMIT;
+    const fee = await this.fee(gasLimit);
+    const signed = buildTx(key, msgs, { chainId: this.chainId, accountNumber: info.accountNumber, sequence, memo: opts.memo, gasLimit, fee });
     const r = await this.rebroadcast(signed);
     if (r.status !== "failed") this.nextSeq.set(key.address, sequence + 1n);
     return r;

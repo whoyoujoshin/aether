@@ -116,10 +116,19 @@ In `config/config.toml`:
 
 In `app.toml`, or with the flag:
 
-- `minimum-gas-prices` is the price the launch announces (still to be
-  decided; the rehearsals used `0.0005uaeth`), plus the USDC voucher once
-  a USDC path opens. Every validator asks the same price. A lone mining
+- `minimum-gas-prices = "0.0001uaeth"` (decided 2026-11-03), plus
+  `0.0005` per gas in the USDC voucher once a USDC path opens
+  (`"0.0001uaeth,0.0005ibc/<USDC voucher>"`). Every validator asks the same price. A lone mining
   submission passes at any price.
+- **Mempool, for tipping.** aetherd ranks waiting transactions by how far
+  their fee per gas is over your minimum price, and a mining find goes
+  first (`app/tipping.go`), so a sender who tips gets into a busy block
+  ahead of transactions paying only the minimum. That works only while
+  CometBFT's own mempool has room: when it is full it refuses everything,
+  tip or not. In `config.toml` give it several blocks' worth: `[mempool]
+  size = 20000` (about 80 MB of transactions; the default is 5,000), and
+  in `app.toml` `[mempool] max-txs = 20000` to match (left at -1, aetherd
+  holds 5,000).
 - `iavl-cache-size` can come down from 781,250 if memory is tight; the
   testnet seed runs 200,000.
 
@@ -228,7 +237,9 @@ power is back (`docs/UPGRADE-INFLOWCAP-FEES.md` is a worked example).
    It refuses a chain ID that isn't fresh (`aether-1` or `aether-rc-*`), a
    key or miner listed twice, and a base file that gives anyone a balance.
    It writes validators and accounts in a fixed order, so the same input
-   gives the same file, and prints its sha256.
+   gives the same file, and prints its sha256. It also locks escrow for
+   43,200 blocks (3 days) and keeps evidence 48 hours, so a validator
+   that double-signs can't take its escrow out before the evidence lands.
 
 3. Share `genesis.json` and its hash; every operator checks it.
 

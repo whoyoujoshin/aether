@@ -134,7 +134,8 @@ with terms `job:<id>`. That is not an x402 payment.
 under a directory listing, requires `exact` on this chain, refuses a
 price above `maxAmount`, refuses a `payTo` that is not the listing's
 announcer (`PAYEE_MISMATCH`), signs one `MsgSend` (gas limit 400,000,
-zero fee), and sends it as a `PAYMENT-SIGNATURE` header. The paywall
+fee at the node's minimum gas price, in uaeth), and sends it as a
+`PAYMENT-SIGNATURE` header. The paywall
 settles. The shopper follows that payment shape and adds the
 facilitator settlement, the cap, the allowlist, and the receipt.
 `agentmcp`'s approval gate (`--approval-threshold`, a decision signed
@@ -473,11 +474,14 @@ directory is `~/.aether-shopper` on Unix and
 where the filesystem has Unix modes; on Windows the directory stays
 inside the user profile.
 
-Gas limit 400,000 and a fee of `0uaeth`, matching `buy_service`. If
-the node charges a minimum gas price, `/verify` returns
-`invalid_exact_cosmos_payload_fee` before broadcast. The shopper
-records that and does not invent a higher fee: a higher fee would be
-a second signature.
+Gas limit 400,000. The fee is uaeth at the node's minimum gas price
+for that gas (`wallet.Client.Fee` with the same `--gas-price` and
+`--tip` as the other tools; `auto` and tip 1 by default), whatever
+coin the price is paid in. A node that does not serve the Config
+query is taken to ask nothing, so the fee is empty. The Shop page
+reads that fee from `GET /api/shop/price` (`feeAmount`, `feeDenom`)
+and puts it on the same transaction. A retry sends the stored bytes
+and does not sign a higher fee.
 
 ## Paying
 

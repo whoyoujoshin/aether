@@ -32,7 +32,10 @@ type nodeChain struct {
 	from   string // keyring name of the bridge's signing key
 	signer string // its address
 	fees   sdk.Coins
-	gas    uint64
+	// feeSetting, when set, works the fee out per submission instead
+	// (the node's minimum by default, so a price change needs no restart).
+	feeSetting *wallet.FeeSetting
+	gas        uint64
 
 	mu      sync.Mutex
 	chainID string
@@ -105,7 +108,7 @@ func (n *nodeChain) State(ctx context.Context) (chainState, error) {
 }
 
 // Submit signs a MsgSubmitPoW with the bridge's key. The key pays only the
-// fee (--fees, zero by default): from MergedMiningActivationHeight the
+// fee (--fees, or the node's minimum by default): from MergedMiningActivationHeight the
 // reward goes to the address the proof commits to. It keeps its own
 // sequence so a submission doesn't wait on the last one being included,
 // and refetches it once if the node disagrees.
@@ -121,12 +124,19 @@ func (n *nodeChain) Submit(ctx context.Context, d *pow.AuxPowData) (string, erro
 			}
 			n.accNum, n.seq, n.haveSeq = acc, seq, true
 		}
+		fees := n.fees
+		if n.feeSetting != nil {
+			var err error
+			if fees, err = n.client.Fee(ctx, *n.feeSetting, n.gas, wallet.BaseDenom); err != nil {
+				return "", err
+			}
+		}
 		signed, err := n.wallet.BuildAndSignMsgTx(n.from, msg, wallet.TxParams{
 			ChainID:       n.chainID,
 			AccountNumber: n.accNum,
 			Sequence:      n.seq,
 			GasLimit:      n.gas,
-			Fees:          n.fees,
+			Fees:          fees,
 		})
 		if err != nil {
 			return "", err

@@ -1,0 +1,15 @@
+{
+  "about": "What a transaction asking gas pays at a node's minimum gas prices, times a tip: in the preferred denom if priced, else uaeth, else the first priced denom; rounded up. Checked by the Go wallet (wallet/fees_test.go), the TypeScript client (test/fees.test.ts) and the Python client (tests/test_fees.py).",
+  "vectors": [
+    {"name": "the aether-1 minimum on a 400,000-gas send", "prices": "0.0001uaeth", "denom": "uaeth", "gas": 400000, "tip": 1, "fee": "40uaeth"},
+    {"name": "a tip of 2 pays twice", "prices": "0.0001uaeth", "denom": "uaeth", "gas": 400000, "tip": 2, "fee": "80uaeth"},
+    {"name": "a tip of 1.5", "prices": "0.0001uaeth", "denom": "uaeth", "gas": 400000, "tip": 1.5, "fee": "60uaeth"},
+    {"name": "rounded up", "prices": "0.0001uaeth", "denom": "uaeth", "gas": 163632, "tip": 1, "fee": "17uaeth"},
+    {"name": "a fraction of a base unit is one", "prices": "0.00012345uaeth", "denom": "uaeth", "gas": 1, "tip": 1, "fee": "1uaeth"},
+    {"name": "as the node prints it, paying in USDC", "prices": "0.000100000000000000uaeth,0.000500000000000000ibc/064D82A6", "denom": "ibc/064D82A6", "gas": 400000, "tip": 1, "fee": "200ibc/064D82A6"},
+    {"name": "a denom the node doesn't price pays in uaeth", "prices": "0.000100000000000000uaeth,0.000500000000000000ibc/064D82A6", "denom": "uother", "gas": 400000, "tip": 1, "fee": "40uaeth"},
+    {"name": "no uaeth price: the first priced denom", "prices": "0.0005ibc/064D82A6", "denom": "uaeth", "gas": 400000, "tip": 1, "fee": "200ibc/064D82A6"},
+    {"name": "no price: no fee", "prices": "", "denom": "uaeth", "gas": 400000, "tip": 1, "fee": ""},
+    {"name": "a zero price: no fee", "prices": "0.000000000000000000uaeth", "denom": "uaeth", "gas": 400000, "tip": 1, "fee": ""}
+  ]
+}

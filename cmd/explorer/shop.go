@@ -42,6 +42,8 @@ type shopPriceResponse struct {
 	Asset        string                    `json:"asset,omitempty"`
 	PayTo        string                    `json:"payTo,omitempty"`
 	Requirements *x402.PaymentRequirements `json:"requirements,omitempty"`
+	FeeAmount    string                    `json:"feeAmount,omitempty"`
+	FeeDenom     string                    `json:"feeDenom,omitempty"`
 	Code         string                    `json:"code"`
 	Message      string                    `json:"message"`
 }
@@ -123,11 +125,31 @@ func handleShopPrice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	o := res.Selected
+	feeAmount, feeDenom, err := shopFee(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, shopPriceResponse{
 		URL: raw, Price: o.PriceDisplay, Amount: o.Amount, Asset: o.Asset, PayTo: o.PayTo,
-		Requirements: o.Requirements,
-		Code:         res.Decision.Code, Message: res.Decision.Message,
+		Requirements: o.Requirements, FeeAmount: feeAmount, FeeDenom: feeDenom,
+		Code: res.Decision.Code, Message: res.Decision.Message,
 	})
+}
+
+// shopFee is the uaeth fee a shop purchase pays at the node's minimum
+// gas price. Empty when the node asks nothing.
+func shopFee(ctx context.Context) (amount, denom string, err error) {
+	client, err := wallet.NewClient(grpcEndpoint)
+	if err != nil {
+		return "", "", err
+	}
+	defer client.Close()
+	fees, err := client.Fee(ctx, wallet.AutoFees, shopper.BuyGasLimit, wallet.BaseDenom)
+	if err != nil || len(fees) == 0 {
+		return "", "", err
+	}
+	return fees[0].Amount.String(), fees[0].Denom, nil
 }
 
 func shopCovers(listed, raw string) bool {

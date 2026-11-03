@@ -1215,18 +1215,12 @@ func (k Keeper) CheckValidatorLiveness(ctx sdk.Context) {
 // for a given height, per the locked decay schedule constants in
 // types.go: 5.00 AETH decaying ~34%/year (multiplicative,
 // discrete yearly steps, not smooth per-block decay) for 8 years, then
-// a permanent 0.20 AETH tail. Deterministic, height-based (never
-// wall-clock-time-based, matching the same principle difficulty
-// retargeting already follows) -- every node computes an identical
-// result for the same height.
+// a permanent 0.20 AETH tail. Deterministic: on a fresh chain a year is
+// SecondsPerYear of consensus block time since genesis, elsewhere
+// SecondsPerYear / TargetBlockTime blocks (reward_schedule.go) -- every
+// node computes an identical result for the same block.
 func (k Keeper) ComputeScheduledBlockReward(ctx sdk.Context, height int64) math.Int {
-	targetBlockTime := k.GetTargetBlockTime(ctx)
-	if targetBlockTime <= 0 {
-		targetBlockTime = 60 // sane fallback; should not occur in practice
-	}
-	blocksPerYear := SecondsPerYear / targetBlockTime
-
-	yearsElapsed := height / blocksPerYear
+	yearsElapsed := k.rewardYearsElapsed(ctx, height)
 	if yearsElapsed >= BlockRewardDecayYears {
 		return math.NewInt(TailBlockReward)
 	}

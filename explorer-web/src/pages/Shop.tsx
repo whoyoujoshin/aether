@@ -162,6 +162,7 @@ export default function Shop() {
         amountUaeth: BigInt(price.amount),
         denom: price.asset,
         gasLimit: 400_000n,
+        fee: price.feeAmount && price.feeAmount !== "0" ? { denom: price.feeDenom || "uaeth", amount: BigInt(price.feeAmount) } : undefined,
       });
       const payload = {
         x402Version: 2,

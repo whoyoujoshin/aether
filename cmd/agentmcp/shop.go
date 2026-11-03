@@ -6,7 +6,7 @@ import (
 	"time"
 
 	sdkmath "cosmossdk.io/math"
-
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/whoyoujoshin/aether/directory"
@@ -314,6 +314,10 @@ func approvalURLFrom(msg string) string {
 }
 
 type agentChain struct{ c *wallet.Client }
+
+func (a agentChain) Fee(ctx context.Context, gas uint64, denom string) (sdk.Coins, error) {
+	return a.c.Fee(ctx, feeSetting, gas, denom)
+}
 
 func (a agentChain) Account(_ context.Context, address string) (uint64, uint64, error) {
 	return a.c.GetAccountInfo(address)

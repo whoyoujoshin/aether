@@ -77,6 +77,7 @@ func main() {
 	payTo := flag.String("pay-to", "", "address payments go to (required)")
 	price := flag.String("price", "", `price per request with its unit, which also picks the asset everything is charged in: e.g. "0.01 AETH", or "0.05 USDC" with --usdc-channel or --usdc-path (required)`)
 	usdc := wallet.USDCFlags(flag.CommandLine, wallet.USDCSetting{})
+	payFees := wallet.FeeFlags(flag.CommandLine) // what prepaid payouts and pull collections pay for gas
 	grpcEndpoint := flag.String("grpc", "localhost:9090", "node gRPC endpoint used to verify payments")
 	chainID := flag.String("chain-id", "aether-testnet-1", "chain ID payments must be on")
 	description := flag.String("description", "", "what a payment buys, shown to payers and in the service directory")
@@ -107,6 +108,9 @@ func main() {
 		return
 	}
 	flag.Parse()
+	if err := payFees.Validate(); err != nil {
+		log.Fatal(err)
+	}
 
 	if *upstream == "" || *payTo == "" || *price == "" {
 		log.Fatal("--upstream, --pay-to and --price are required")
@@ -171,7 +175,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("--payout-key %q: %v", *payoutKey, err)
 		}
-		cfg.Prepaid.Payout = &paywall.ChainPayout{Wallet: w, KeyName: *payoutKey, Address: acc.Address, Chain: client, ChainID: *chainID, Denom: asset.Denom}
+		cfg.Prepaid.Payout = &paywall.ChainPayout{Wallet: w, KeyName: *payoutKey, Address: acc.Address, Chain: client, ChainID: *chainID, Denom: asset.Denom, Fees: *payFees}
 		log.Printf("paywall: withdrawals of unspent prepaid balances are paid from %s (%s)", *payoutKey, acc.Address)
 	}
 	if *pullKey != "" {
@@ -189,7 +193,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("--pull-key %q: %v", *pullKey, err)
 		}
-		collector := &paywall.ChainCollector{ChainPayout: paywall.ChainPayout{Wallet: w, KeyName: *pullKey, Address: acc.Address, Chain: client, ChainID: *chainID, Denom: asset.Denom}, PayTo: *payTo}
+		collector := &paywall.ChainCollector{ChainPayout: paywall.ChainPayout{Wallet: w, KeyName: *pullKey, Address: acc.Address, Chain: client, ChainID: *chainID, Denom: asset.Denom, Fees: *payFees}, PayTo: *payTo}
 		cfg.Pull = &paywall.PullConfig{Ledger: ledger, Collector: collector, Grantee: acc.Address, CollectEvery: *pullEvery, Grants: client.GetSendGrant}
 		if *pullCredit != "" {
 			cfg.Pull.Credit = parseSame("--pull-credit", *pullCredit)

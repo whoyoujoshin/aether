@@ -244,10 +244,15 @@ func ensurePullGrantTx(ctx context.Context, w *wallet.Wallet, agent string, req 
 		stateMu.Unlock()
 		return out, false, newError(codePaymentUnsupported, err.Error())
 	}
+	fees, err := c.fee(agentTxGas, asset.Denom)
+	if err != nil {
+		stateMu.Unlock()
+		return out, false, err
+	}
 	seq := st.nextSequence(agent, chainSeq)
 	signed, err := w.BuildAndSignMsgTx(accountName, msg, wallet.TxParams{
-		ChainID: chainID, AccountNumber: accNum, Sequence: seq, GasLimit: 400_000,
-		Fees: sdk.NewCoins(sdk.NewCoin(baseDenom, math.ZeroInt())),
+		ChainID: chainID, AccountNumber: accNum, Sequence: seq, GasLimit: agentTxGas,
+		Fees: fees,
 	})
 	if err != nil {
 		stateMu.Unlock()

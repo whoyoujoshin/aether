@@ -225,6 +225,37 @@ in escrow for Aether. Keep that small while the chain is young:
   - The native and AuxPoW difficulty bounds: `MaxDifficulty` is 10⁸ expected
     hashes, under a second for one GPU.
   - The block-time target.
+  - **The reward schedule ran about ten times too fast: fixed for fresh
+    chains (found 2026-11-02, built 2026-11-03; Joshua chose time).**
+    `ComputeScheduledBlockReward` counted years in block heights,
+    `SecondsPerYear / TargetBlockTime` = 525,960 blocks, which assumes a
+    block every 60 s. Blocks come every 5.7 s, so each "year" lasted about
+    35 days and the eight steps from 5 AETH to the 0.20 AETH tail about
+    nine months. (`TargetBlockTime` is really the target time between
+    accepted submissions, which ASERT holds at one a minute; the schedule
+    borrowed it as a block time.) On `aether-1` and `aether-rc-*` a year is
+    now 365.25 days of block time after the genesis time
+    (`x/pow/reward_schedule.go`): InitGenesis records the genesis time
+    (or the genesis file's `reward_schedule_start`, so an exported chain
+    keeps its start), and the export writes it. Block time is consensus
+    data, the power-weighted median of the last commit's vote times, so
+    every node agrees and moving it takes a third of the power. The
+    testnet keeps the height count: its second step falls at height
+    525,960, around 2026-10-30 (3.3 AETH a find instead of 5), unless its
+    genesis stored a fixed reward. Tests: `app/reward_schedule_test.go`
+    (on both fresh chain IDs, 600,000 blocks and a day after genesis is
+    still 5 AETH; a year after, 3.3; eight, the tail; the testnet's chain
+    ID unchanged) and `x/pow/reward_schedule_test.go` (a start from the
+    genesis file is kept and exported); both fail with the change undone.
+  - **The escrow lock outlasts the evidence window: set by `rcgenesis`.**
+    `BondCooldown`'s 4,320 blocks were meant as 3 days (48 hours of
+    evidence plus a day) but are about 7 hours at 5.7 s, so a validator
+    that double-signed could take its escrow out before the evidence
+    arrived. `cmd/rcgenesis` writes `bond_cooldown` 43,200 (3 days at 6 s,
+    60 hours even at 5 s) and evidence `max_age_num_blocks` 28,800 with
+    `max_age_duration` 48 h; CometBFT drops evidence only once it is past
+    both, so the window stays 48 hours. The testnet's values are
+    unchanged.
 - **Supply.** `docs/genesis.template.json` gives no one a balance: every AETH
   is mined. The reward is 5 AETH a submission in year 1, kept at 66% each year
   for 8 years, then 0.20 AETH for good. Of each reward, 15% is a cut: 13/15 of
@@ -256,8 +287,118 @@ in escrow for Aether. Keep that small while the chain is young:
     that the first swept block moves. It adds no store, but it changes
     every block, so validators need a binary carrying the height first. It
     is on the review's list.
-  - **Still open:** the price itself, which is node configuration and can
-    change without a release.
+  - **The price itself: decided 2026-11-03 (Joshua): 0.0001uaeth, plus
+    0.0005 per gas in the USDC voucher once a USDC path opens, with
+    tipping** (node configuration, so it can change without a release:
+    `minimum-gas-prices = "0.0001uaeth,0.0005ibc/<USDC voucher>"`).
+    It was 0.0005 before tipping; with tipping the minimum no longer has
+    to keep spam out on its own, so it can be as low as gas is meant to
+    be (Joshua, 2026-11-03: as minimal as possible, for agents, bots and
+    people). Measured on an
+    `aether-rc-gas` devnet (2026-11-02), gas used and size of each
+    transaction:
+
+    | Transaction | Gas used | Bytes |
+    |---|---|---|
+    | Send, account's first (stores its key) | 199,209–214,404 | 3,973–3,979 |
+    | Send to a new account | 169,027 | 3,981 |
+    | Send to an existing account (a directory listing is one) | 156,934 | 4,178 with a 200-byte memo |
+    | Multi-send to 10 | 390,314 | 4,759 |
+    | Escrow create / release | 178,481 / 149,936 | 4,016 / 3,901 |
+    | Treasury-spend proposal / vote | 193,373 / 137,716 | 3,993 / 3,898 |
+    | Register a consensus key | 163,632 | |
+    | Mining submission (no fee at any price) | 287,331 | |
+
+    A fee is checked against the gas **limit**, not the gas used, and the
+    CLI, faucet, listings and agentmcp all ask 400,000. At 0.0005uaeth:
+    - a send costs 200 uaeth (0.0002 AETH) at the default limit, or about
+      85 with `--gas auto`; one find's 4.25 AETH pays for about 21,000;
+    - registering a consensus key costs 200 uaeth, as on the rehearsal;
+    - in USDC at 0.0025, a send at the default limit costs 1,000 base units
+      ($0.001).
+
+    At the proposed 0.0001uaeth, a fifth of all that: a send costs 40 uaeth
+    (0.00004 AETH) at the default limit or about 17 with `--gas auto`, one
+    find pays for about 106,000, and in USDC at 0.0005 a send costs 200
+    base units ($0.0002). Filling every 4 MB block at the minimum would
+    cost about 10 AETH an hour; anyone who tips goes ahead of it.
+
+    **Spam.** Every transaction is about 4 KB (an ML-DSA-44 signature is
+    2,420 bytes and a public key 1,312), and the genesis template leaves
+    `max_gas` unlimited (`-1`) with `max_bytes` at 22,020,096, so a block
+    holds about 5,600 sends. Filling every block at 0.0005uaeth costs
+    about 0.44 AETH a block, about 280 AETH an hour at 5.7 s blocks: close
+    to the whole year-1 native issuance (one 5 AETH reward a minute, 300
+    an hour). At 0.0001 it would be 56 AETH an hour, a fifth of it; at
+    0.001, 560. In USDC at 0.0025 it is about $2.20 a block. The mempool
+    is first come, first served (no fee priority), so a spammer who fills
+    blocks delays everyone rather than being outbid. **Tipping changes
+    that (built 2026-11-03, below).**
+  - **Tipping: built (`app/tipping.go`, 2026-11-03).** Paying more than
+    the minimum price is a tip, like Solana's priority fee or Ethereum's
+    tip: when blocks are full, the higher fee per gas goes first; when
+    they aren't, the minimum is enough. Fees, tips included, go to the
+    treasury. aetherd runs the SDK's priority mempool on every node, and a
+    transaction's priority is its fee per gas as a multiple of the node's
+    minimum for that denom (the SDK's own priority is an integer price,
+    0 for anything under 1 uaeth a gas, so it couldn't see a tip). A lone
+    native mining find with valid proof-of-work goes first, so spam can't
+    hold it past its 60-block recency window. It is the proposer's choice,
+    not a block rule, so mixed binaries agree. To tip, pay more: `--fees
+    80uaeth` on a 400,000-gas transaction is twice a 0.0001 minimum.
+    - **Tests:** `app/tipping_test.go` (sends paying the minimum arrive
+      first, then a send paying 10x, then a fee-free find; a proposal with
+      room for two takes the find and the tip, and with room for all puts
+      them first; the block accepts all seven). It fails with the SDK's
+      mempool, with the SDK's integer priority, and with the find at the
+      bottom. `app/tipping_internal_test.go` covers the priority in AETH
+      and USDC and the mempool size.
+    - **Devnet (`aether-rc-tip`, real aetherd, 0.0001uaeth, 64 KB blocks
+      of 15 sends):** 60 sends paying the minimum went in first, then one
+      paying 10x. The tipped send was the first transaction of the next
+      block (646); the 60 took four blocks (646 to 650).
+    - **Limit:** CometBFT's own mempool refuses everything while it is
+      full, tip or not (0.38 can't evict by fee). Operators give it several
+      blocks' worth (`docs/OPERATOR.md`: `size = 20000`). A spammer who
+      keeps even that full pays for every transaction that lands, at the
+      minimum, the same as filling blocks.
+    - **Not built:** a fee that rises with congestion (Ethereum's base fee,
+      Skip's x/feemarket), which raises prices just when they should stay
+      flat; and paying tips to the block's proposer (Ethereum, Solana),
+      which changes where fees go, a consensus change.
+  - **Every tool pays it (built 2026-11-03).** aetherd serves
+    `cosmos.base.node.v1beta1` Config (the node's `minimum-gas-prices`), and
+    every tool that sends asks its node for the price and pays it on its
+    gas limit, rounded up (`wallet.FeeSetting`, `--gas-price auto` by
+    default, `--tip` to pay a multiple): agentmcp (payments, escrows, pull
+    grants, the test wallet), the paywall (listings, prepaid payouts, pull
+    collections), the `wallet` CLI (sends, rotations), the faucet, auxpowd
+    and the desktop wallet; the TypeScript and Python clients
+    (`AetherClient` `gasPrice`/`tip`, `gas_price`/`tip`) for sends, sellers
+    and x402 buyers. An x402 exact payment's fee is in uaeth, the
+    facilitator's `feeDenom`. A node that doesn't serve the query (the
+    testnet's, until they run this build) is taken to ask nothing, which is
+    what they ask. Native mining submissions stay fee-free. The fee rule is
+    shared (`clients/testdata/fees.json`, checked in Go, TS and Python).
+    One bug only a fee shows, fixed with it: a transaction's first `transfer`
+    event is its fee to the fee collector, so `wallet`'s transaction summary
+    (and `get_transaction_status`, receipts, the benchmark's scorer) took
+    the fee for the payment. The summary now skips the fee collector and
+    reports `fee` apart. Checked on an `aether-rc-devfees` devnet at
+    0.0001uaeth: a zero-fee send was refused (`required: 40uaeth`), the
+    default send paid 40 uaeth and `--tip 3` paid 120, directory listings
+    paid the minimum, and the payments benchmark ran its whole stack on it
+    (`bench/devnet.sh`): the reference agent 13 of 13 and the careless one
+    5.5 of 13, the same as at zero fees, with 720 and 1,000 uaeth paid in
+    fees. The scorer now leaves fees out of what an agent spent.
+  - **Block limits (genesis, to decide with the price).** 22 MB every 5.7 s
+    is about 3.7 MB/s to every peer, more than a home link and more than
+    the network needs: the testnet has never come near it. Proposed:
+    `max_bytes` 4,194,304 (about 1,000 sends a block, 175 a second) and
+    `max_gas` 200,000,000 (Helicase's relays may use up to half). Filling
+    those blocks at 0.0005uaeth costs about 50 AETH an hour, a sixth of
+    the year-1 issuance, while each block stays small enough for an
+    ordinary server.
   - **Governance spends the treasury's USDC** (AET-27): a treasury-spend
     proposal's amount may be one coin of any denom the treasury holds,
     paid from its bank balance; uaeth still goes through the ledger. On
@@ -391,6 +532,6 @@ funds (a consensus change to `MsgSubmitPoW`, kept as a later option).
 | Supply | fair launch (as now) or an allocation | fair launch | **fair launch** |
 | First USDC path | Injective (Noble is being wound down by Circle) | Injective, as on the testnet | **Injective** |
 | Inflow cap | an amount | low at launch, raised by governance | **5,000 USDC**, chain-wide, raised by governance |
-| Fees | a minimum price, USDC accepted, where fees go | accept USDC; fees to the treasury | **accept USDC; fees to the treasury** (built: `app/fees.go`). Minimum price: recommended about 0.0005 per gas in uaeth and in USDC's base unit (a send near 0.0001 of either), still to set. A lone native mining submission with valid proof-of-work needs no fee (built: `app/mining_fee.go`, 2026-11-01), so a miner can send a find with an empty balance; its account must still exist on chain, which the opener provides (see "Opening a new miner's account") |
+| Fees | a minimum price, USDC accepted, where fees go | accept USDC; fees to the treasury | **accept USDC; fees to the treasury** (built: `app/fees.go`). Minimum price **decided 2026-11-03: 0.0001uaeth and 0.0005 per gas in the USDC voucher** (a send at the 400,000 default limit: 0.00004 AETH or $0.0002), with tipping above it (built: `app/tipping.go`, #207). A lone native mining submission with valid proof-of-work needs no fee (built: `app/mining_fee.go`, 2026-11-01), so a miner can send a find with an empty balance; its account must still exist on chain, which the opener provides (see "Opening a new miner's account") |
 | Operators | who, and how many | seven or more before phase 2 | to define: a draft is in §3 |
 | Legal | — | one consultation before phase 2 | Joshua is researching it |

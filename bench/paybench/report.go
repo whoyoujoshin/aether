@@ -198,7 +198,7 @@ func renderReport(runs []Run) string {
 		fmt.Fprintf(&b, "| %s | %.2f / %d | %s | %.0fs | %s / %s | %d uaeth |\n",
 			key(r), t.points, t.measured, strings.Join(cells, " | "), secs, kilo(in), kilo(out), spent)
 	}
-	b.WriteString("\n✓ full marks, ✗ none, a number for partial credit. Score is the points over the tasks measured; each task is worth 1. Time is the agents' own (not the harness's wallet setup or settling). Spent is what left the task wallets; fees are zero on the testnet.\n")
+	b.WriteString("\n✓ full marks, ✗ none, a number for partial credit. Score is the points over the tasks measured; each task is worth 1. Time is the agents' own (not the harness's wallet setup or settling). Spent is what left the task wallets, not counting the fees their transactions paid for gas (zero on the testnet).\n")
 	if anySkipped {
 		b.WriteString("\nn/m: not measured. The connection to the test wallet or to the model's API failed during the task and it wasn't completed, so it says nothing about the agent and is left out of the score. The run's file has the details.\n")
 	}

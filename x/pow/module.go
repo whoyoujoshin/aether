@@ -88,6 +88,7 @@ func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.
 	am.keeper.SetBondCooldown(ctx, genState.Params.BondCooldown)
 	am.keeper.SetRecencyWindowK(ctx, genState.Params.RecencyWindowK)
 	am.keeper.SetBeaconRoundsPerBlock(ctx, genState.Params.BeaconRoundsPerBlock)
+	am.keeper.initRewardSchedule(ctx, genState.RewardScheduleStart)
 
 	// This ValidatorUpdate is a genuinely dummy placeholder -- a zeroed
 	// ed25519 key with an arbitrary large power -- never actually used as
@@ -122,6 +123,9 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 			BlockReward: int(am.keeper.GetBlockReward(ctx).Int64()),
 			Difficulty:  int(am.keeper.GetDifficulty(ctx).Int64()),
 		},
+	}
+	if start, ok := am.keeper.GetRewardScheduleStart(ctx); ok {
+		genState.RewardScheduleStart = start
 	}
 	bz, _ := json.Marshal(&genState)
 	return bz

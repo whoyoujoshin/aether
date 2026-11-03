@@ -14,6 +14,8 @@ import (
 	sdkmath "cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	"github.com/stretchr/testify/require"
 
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
@@ -26,9 +28,12 @@ import (
 type memChain struct {
 	mu   sync.Mutex
 	code map[string]uint32
+	fee  sdk.Coins
 }
 
 func (m *memChain) Account(context.Context, string) (uint64, uint64, error) { return 1, 0, nil }
+
+func (m *memChain) Fee(context.Context, uint64, string) (sdk.Coins, error) { return m.fee, nil }
 
 func (m *memChain) Tx(_ context.Context, hash string) (bool, uint32, int64, error) {
 	m.mu.Lock()
@@ -145,6 +150,24 @@ func mustSettleHeader(payer string) string {
 		panic(err)
 	}
 	return h
+}
+
+func TestBuyPaysTheNodeFee(t *testing.T) {
+	env := newBuyEnv(t, false)
+	env.chain.fee = sdk.NewCoins(sdk.NewCoin("uaeth", sdkmath.NewInt(40)))
+	res, err := env.buyer.Buy(context.Background(), BuyInput{QuoteID: env.quoteID, IdempotencyKey: "hello-fee", Confirm: true})
+	require.NoError(t, err)
+	require.True(t, res.Decision.Spent)
+	got, err := loadAttempt(env.dir, "hello-fee")
+	require.NoError(t, err)
+	raw, err := base64.StdEncoding.DecodeString(got.TxB64)
+	require.NoError(t, err)
+	var tx txtypes.TxRaw
+	require.NoError(t, tx.Unmarshal(raw))
+	var auth txtypes.AuthInfo
+	require.NoError(t, auth.Unmarshal(tx.AuthInfoBytes))
+	require.NotNil(t, auth.Fee)
+	require.Equal(t, "40uaeth", auth.Fee.Amount.String())
 }
 
 func TestBuyWithoutConfirmDoesNotSign(t *testing.T) {

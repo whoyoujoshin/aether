@@ -3,7 +3,7 @@ chain's Go wallet (see clients/testdata/vectors.json)."""
 
 import hashlib
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from .amount import DENOM
 from .keys import PUBKEY_TYPE_URL, Key, address_bytes
@@ -33,13 +33,15 @@ def _any(type_url: str, value: bytes) -> bytes:
 
 
 def build_send(key: Key, *, chain_id: str, account_number: int, sequence: int, to: str, amount_uaeth: int,
-               memo: str = "", gas_limit: int = DEFAULT_GAS_LIMIT, deterministic: bool = False, denom: str = DENOM) -> SignedTx:
-    """Signs a send of amount_uaeth base units of denom (uaeth unless denom says otherwise)."""
+               memo: str = "", gas_limit: int = DEFAULT_GAS_LIMIT, deterministic: bool = False, denom: str = DENOM,
+               fee: Optional[Tuple[int, str]] = None) -> SignedTx:
+    """Signs a send of amount_uaeth base units of denom (uaeth unless denom says otherwise). fee is
+    (amount, denom), none by default: a node with a minimum gas price refuses that (AetherClient.fee)."""
     address_bytes(to)  # validates the recipient
     if amount_uaeth <= 0:
         raise ValueError("amount must be positive")
     return build_tx(key, [_msg_send(key.address, to, amount_uaeth, denom)], chain_id=chain_id, account_number=account_number,
-                    sequence=sequence, memo=memo, gas_limit=gas_limit, deterministic=deterministic)
+                    sequence=sequence, memo=memo, gas_limit=gas_limit, deterministic=deterministic, fee=fee)
 
 
 def _msg_send(frm: str, to: str, amount: int, denom: str = DENOM) -> Tuple[str, bytes]:
@@ -47,7 +49,8 @@ def _msg_send(frm: str, to: str, amount: int, denom: str = DENOM) -> Tuple[str, 
 
 
 def build_tx(key: Key, msgs: List[Tuple[str, bytes]], *, chain_id: str, account_number: int, sequence: int,
-             memo: str = "", gas_limit: int = DEFAULT_GAS_LIMIT, deterministic: bool = False) -> SignedTx:
+             memo: str = "", gas_limit: int = DEFAULT_GAS_LIMIT, deterministic: bool = False,
+             fee: Optional[Tuple[int, str]] = None) -> SignedTx:
     """Signs a transaction carrying msgs, (type URL, encoded message) pairs, which the chain executes all-or-nothing."""
     w = Writer()
     for type_url, value in msgs:
@@ -56,8 +59,11 @@ def build_tx(key: Key, msgs: List[Tuple[str, bytes]], *, chain_id: str, account_
     pub = _any(PUBKEY_TYPE_URL, Writer().bytes(1, key.public_key).finish())
     mode = Writer().message(1, Writer().uint64(1, _SIGN_MODE_DIRECT).finish()).finish()
     signer = Writer().message(1, pub).message(2, mode).uint64(3, sequence).finish()
-    fee = Writer().uint64(2, gas_limit).finish()  # zero fee: no amount
-    auth = Writer().message(1, signer).message(2, fee).finish()
+    fw = Writer()
+    if fee and fee[0] > 0:
+        fw.message(1, _coin(fee[0], fee[1]))
+    fee_bytes = fw.uint64(2, gas_limit).finish()  # no amount: a zero fee
+    auth = Writer().message(1, signer).message(2, fee_bytes).finish()
     doc = Writer().bytes(1, body).bytes(2, auth).string(3, chain_id).uint64(4, account_number).finish()
     sig = key.sign(doc, deterministic=deterministic)
     tx = Writer().bytes(1, body).bytes(2, auth).bytes(3, sig).finish()

@@ -11,6 +11,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	"github.com/whoyoujoshin/aether/shopper"
@@ -34,7 +35,12 @@ func buyCmd(args []string) int {
 	keyringDir := fs.String("keyring-dir", "", "keyring directory")
 	passFile := fs.String("keyring-passphrase-file", "", "file holding the file keyring passphrase; also read from "+wallet.KeyringPassphraseFileEnv)
 	timeout := fs.Duration("timeout", 150*time.Second, "how long to wait for settlement")
+	fees := wallet.FeeFlags(fs)
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if err := fees.Validate(); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
 		return 2
 	}
 	if *quoteID == "" || *key == "" || *keyName == "" || *keyringDir == "" {
@@ -75,7 +81,7 @@ func buyCmd(args []string) int {
 	res, err := (shopper.Buyer{
 		ChainID: *chainID, StateDir: *stateDir, Policy: pol, Wallet: w, KeyName: *keyName,
 		Facilitator: shopper.Facilitator{BaseURL: *facilitator, Client: httpClient},
-		Chain:       grpcChain{node}, HTTP: httpClient,
+		Chain:       grpcChain{c: node, fees: *fees}, HTTP: httpClient,
 	}).Buy(ctx, shopper.BuyInput{QuoteID: *quoteID, IdempotencyKey: *key, Confirm: *confirm, DryRun: *dry})
 	if res.Decision.Message != "" {
 		fmt.Println(res.Decision.Message)
@@ -118,11 +124,18 @@ func openShopperWallet(backend, dir string) (*wallet.Wallet, error) {
 	return wallet.NewWallet("aetherd", backend, dir, codec.NewProtoCodec(registry))
 }
 
-// grpcChain reads account numbers and transaction results. It does not broadcast.
-type grpcChain struct{ c *wallet.Client }
+// grpcChain reads account numbers, the fee, and transaction results. It does not broadcast.
+type grpcChain struct {
+	c    *wallet.Client
+	fees wallet.FeeSetting
+}
 
 func (g grpcChain) Account(_ context.Context, address string) (uint64, uint64, error) {
 	return g.c.GetAccountInfo(address)
+}
+
+func (g grpcChain) Fee(ctx context.Context, gas uint64, denom string) (sdk.Coins, error) {
+	return g.c.Fee(ctx, g.fees, gas, denom)
 }
 
 func (g grpcChain) Tx(_ context.Context, hash string) (bool, uint32, int64, error) {

@@ -100,6 +100,8 @@ class ExactAetherScheme:
         if info is None:
             raise ValueError(f"account {self.key.address} doesn't exist on chain yet: fund it first")
         account_number, sequence = info
+        # The exact scheme's fee is in uaeth (the facilitator's feeDenom).
         signed = build_send(self.key, chain_id=self.client.chain_id, account_number=account_number, sequence=sequence,
-                            to=pay_to, amount_uaeth=amount, denom=asset, gas_limit=self.gas_limit)
+                            to=pay_to, amount_uaeth=amount, denom=asset, gas_limit=self.gas_limit,
+                            fee=self.client.fee(self.gas_limit, "uaeth"))
         return {"transaction": base64.b64encode(signed.tx_bytes).decode()}

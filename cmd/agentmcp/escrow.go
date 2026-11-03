@@ -342,10 +342,14 @@ func signAndRecord(st *agentState, c chain, w *wallet.Wallet, agent, key string,
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch agent account info for %s: %w", agent, err)
 	}
+	fees, err := c.fee(agentTxGas, baseDenom)
+	if err != nil {
+		return nil, err
+	}
 	seq := st.nextSequence(agent, chainSeq)
 	params := wallet.TxParams{
-		ChainID: chainID, AccountNumber: accountNumber, Sequence: seq, GasLimit: 400_000,
-		Fees: sdk.NewCoins(sdk.NewCoin(baseDenom, math.ZeroInt())),
+		ChainID: chainID, AccountNumber: accountNumber, Sequence: seq, GasLimit: agentTxGas,
+		Fees: fees,
 	}
 	if feeGranter != "" {
 		params.FeeGranter = sdk.MustAccAddressFromBech32(feeGranter)

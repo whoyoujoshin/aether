@@ -1,8 +1,6 @@
 package app
 
 import (
-	"math"
-
 	errorsmod "cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -47,7 +45,7 @@ func miningFeeChecker(k pow.Keeper) func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins,
 				if _, err := k.CheckNativeSubmission(ctx, miner, native); err != nil {
 					return nil, 0, err
 				}
-				return feeCoins, 0, nil
+				return feeCoins, MiningPriority, nil
 			}
 			minGasPrices := ctx.MinGasPrices()
 			if !minGasPrices.IsZero() {
@@ -62,7 +60,7 @@ func miningFeeChecker(k pow.Keeper) func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins,
 				}
 			}
 		}
-		return feeCoins, txPriority(feeCoins, int64(gas)), nil
+		return feeCoins, txPriority(ctx.MinGasPrices(), feeCoins, int64(gas)), nil
 	}
 }
 
@@ -83,21 +81,4 @@ func loneNativeSubmission(tx sdk.Tx) (sdk.AccAddress, *pow.NativeSubmission) {
 		return nil, nil
 	}
 	return miner, m.GetNative()
-}
-
-// txPriority is the SDK's getTxPriority: the smallest gas price among the
-// fee's coins.
-func txPriority(fee sdk.Coins, gas int64) int64 {
-	var priority int64
-	for _, c := range fee {
-		p := int64(math.MaxInt64)
-		gasPrice := c.Amount.QuoRaw(gas)
-		if gasPrice.IsInt64() {
-			p = gasPrice.Int64()
-		}
-		if priority == 0 || p < priority {
-			priority = p
-		}
-	}
-	return priority
 }

@@ -50,10 +50,18 @@ type fakeChain struct {
 	grant    *wallet.SendGrant
 	grantErr error
 	balances map[string]sdk.Coins
+	fees     sdk.Coins
+	feeErr   error
 }
 
 func newFakeChain() *fakeChain {
 	return &fakeChain{mempool: map[string]bool{}, blocks: map[string]*wallet.TransactionDetail{}, signed: map[string][]byte{}, height: 100}
+}
+
+func (f *fakeChain) fee(uint64, string) (sdk.Coins, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.fees, f.feeErr
 }
 
 func (f *fakeChain) accountInfo(string) (uint64, uint64, error) {

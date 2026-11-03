@@ -487,12 +487,17 @@ func main() {
 	flag.StringVar(&sandboxBenchListings, "sandbox-bench-listings", "", "file of extra services, one \"<name> <url>\" per line, that callers with the bench key see and pay when they name them in X-Aether-Bench-Listings: the payments benchmark's decoys, never listed on chain; empty: off")
 	httpListen := flag.String("http", "", `listen address for a public read-only Streamable HTTP server at /mcp (for example 127.0.0.1:8090). Empty (default): stdio, with the full wallet. Public mode never opens the keyring`)
 	usdc := wallet.USDCFlags(flag.CommandLine, wallet.USDCSetting{})
+	fees := wallet.FeeFlags(flag.CommandLine)
 	usdcPerTx := flag.String("usdc-per-tx-limit", "", `most USDC one payment may spend, with unit (e.g. "5 USDC"); USDC spending stays off until this and --usdc-daily-limit are set`)
 	usdcDaily := flag.String("usdc-daily-limit", "", `most USDC spendable in any rolling 24h, with unit (e.g. "20 USDC")`)
 	usdcThreshold := flag.String("usdc-approval-threshold", "", `USDC payments above this (e.g. "10 USDC") wait for the owner's approval; requires --approver`)
 	flag.StringVar(&jobBoardURL, "job-board", "", `job board host's /jobs URL, which stores job specs and deliveries (default on aether-testnet-1: the public one; "off" turns the job tools' texts off)`)
 	flag.StringVar(&mandateFile, "mandate-file", "", "an owner's spending mandate (agentmcp mandate) to send with every paid request (docs/MANDATES.md)")
 	flag.Parse()
+	if err := fees.Validate(); err != nil {
+		log.Fatal(err)
+	}
+	feeSetting = *fees
 	if *shopBudget != "" {
 		assets, err := wallet.NewAssetsFor(wallet.TestnetUSDC)
 		if err != nil {
