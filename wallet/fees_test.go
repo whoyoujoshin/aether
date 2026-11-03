@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"testing"
 
@@ -60,4 +61,14 @@ func TestSummarizeTransfers_FeeIsNotThePayment(t *testing.T) {
 	require.Equal(t, "1uaeth", d.Amount)
 	require.Empty(t, d.Fee)
 	require.Contains(t, FeeCollector, "aether1")
+}
+
+// A gas limit past MaxInt64 (a --gas typo) is priced exactly, never
+// wrapped negative.
+func TestFeeFor_HugeGasDoesNotWrap(t *testing.T) {
+	prices, err := sdk.ParseDecCoins("0.0001uaeth")
+	require.NoError(t, err)
+	got, err := FeeFor(prices, BaseDenom, math.MaxUint64, 1)
+	require.NoError(t, err)
+	require.Equal(t, "1844674407370956uaeth", got.String()) // ceil(18446744073709551615 x 0.0001)
 }

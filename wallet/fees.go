@@ -90,7 +90,7 @@ func FeeFor(prices sdk.DecCoins, denom string, gas uint64, tip float64) (sdk.Coi
 	if err != nil {
 		return nil, fmt.Errorf("tip %v: %w", tip, err)
 	}
-	amount := price.Amount.MulInt64(int64(gas)).Mul(tipDec).Ceil().TruncateInt()
+	amount := price.Amount.MulInt(sdkmath.NewIntFromUint64(gas)).Mul(tipDec).Ceil().TruncateInt()
 	return sdk.NewCoins(sdk.NewCoin(price.Denom, amount)), nil
 }
 
