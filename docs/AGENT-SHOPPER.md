@@ -17,9 +17,12 @@ builds with Go 1.26.10 inside this module. Coins on
 gate are still real safety features, and the code should treat them
 that way.
 
-The shopper is a library (`shopper`), a CLI (`cmd/shopper`), and, in
-a later phase, MCP tools on the local key-holding `agentmcp`. The
-public read-only `/mcp` and the hosted test wallet stay as they are.
+The shopper is a library (`shopper`), a CLI (`cmd/shopper`), a page
+on the existing explorer for a person, and MCP tools on the local
+key-holding `agentmcp`. The public read-only `/mcp` and the hosted
+test wallet stay as they are. A person who has never used a chain
+gets one search box and a Buy button. An agent gets the same offers
+as machine-readable tools, and still cannot spend outside the cap.
 
 ## What it buys, and what it leaves alone
 
@@ -27,8 +30,8 @@ Two markets, two rails:
 
 | Rail | Where it is found | How it is paid | Who may buy it unattended |
 |---|---|---|---|
-| `api` | On-chain service directory, confirmed by a live HTTP 402 | x402 v2 `exact`, one `MsgSend`, settled by `cmd/facilitator` | Only when the price is within the cap and the payee is on the allowlist |
-| `job` | Job board (`GET /jobs`) | Escrow (`hire_for_job` / `release_escrow`), which the facilitator does not settle | Never. A hire always stops for approval |
+| `api` | On-chain service directory, confirmed by a live HTTP 402 | x402 v2 `exact`, one `MsgSend`, settled by `cmd/facilitator` | Only after the owner turns `--auto` on, and only when the price is within both caps, the asset is AETH, and the payee is allowlisted. Until then every buy waits for a person. USDC always waits for a person |
+| `job` | Job board (`GET /jobs`) | Escrow, later (`hire_for_job` / `release_escrow`). The facilitator does not settle escrow | Shown in every quote. Not buyable until the escrow phase |
 
 The facilitator speaks one scheme on one network and advertises no
 extensions (`GET /supported` returns `extensions: []`). Since the
@@ -203,14 +206,20 @@ Word match is the same rule as `find_services`: every word of
 (APIs). For jobs the words must occur in the title, description,
 tags, or offer note, subject to the host prefilter above. It is
 not a language model. Listing text is not sent anywhere to be
-interpreted. A request phrased as "block-data feed" does not match
-today's pulse service, whose description says "height, block time,
-difficulty, block reward". A query of `block` matches pulse. It does
-not match miners: that listing's name and description say "miner" and
-"leaderboard", and neither word is "block". Callers pass the words
-they want found. Adding a synonym table or a model is an open
-question, and a model is a poor default: the text it would read is
-attacker-controlled.
+interpreted, and it is not the source of synonyms. Seller text stays
+attacker-controlled data.
+
+A small file shipped in the repo, `shopper/synonyms.txt`, expands the
+caller's words before that match. Each line is a phrase, a tab, and
+the words to try instead (`block-data	block`, `chain pulse	block`,
+`leaderboard	miner`). A phrase in the query is tried both as written
+and replaced by its target. The listing matches if any of those
+word-sets fits. With the shipped file, "block-data feed" matches
+pulse, because both phrases collapse to `block`, and pulse's
+description says "block time" and "block reward". It still does not
+match miners. The owner can add lines; a listing cannot. The first
+file also covers the other public services in the same style
+(`practice	hello`, `balance	address`, `signature	verify`).
 
 A caller may also pass `--url`. The URL is still resolved against the
 directory. A listed URL is an allowlisted payee. An unlisted URL is
@@ -284,8 +293,10 @@ Ranking among selectable API offers, in order:
    purchases`, weight 10, same shape as `trustScore`. No history
    scores 0, not a penalty.
 2. **Trusted ratings only.** Average of ratings whose rater is the
-   payer, the approver, or an address passed to `--trust`, weight 2.
-   Ratings from anyone else are displayed and do not sort.
+   payer or the approver, weight 2. That is the whole default set.
+   `--trust` adds further addresses when the owner edits the config.
+   Ratings from anyone else are available on the advanced toggle and
+   in the agent payload, labeled untrusted, and do not sort.
 3. **Lower live price** in the request's asset.
 4. **Listing height**, older first, then the URL, so the order is
    stable.
@@ -317,38 +328,43 @@ Standing limits, per asset (no conversion):
 
 | Flag | Meaning | Suggested testnet default |
 |---|---|---|
-| `--max-per-payment` | Most one payment may be and still be signed unattended | `0.01 AETH` |
-| `--daily-cap` | Most settled or possibly-settled spend in a rolling 24h | `0.1 AETH` |
-| `--hard-max` | Most one payment may be even after a person approves it | equal to `--max-per-payment` |
-| `--allow-asset` | Assets that may be paid unattended | `uaeth` only |
-| `--allow-payee` | If set, the only payees that may be paid unattended, and each must also be a current directory announcer | empty: every current verified listing |
-| `--allow-url` | If set, the only URL prefixes that may be paid unattended | empty: any URL under an allowed payee's listing |
-| `--auto` | Pay a selectable, under-cap, allowlisted offer in the same invocation | off |
+| `--max-per-payment` | Most one payment may be. A higher price is refused. A person cannot approve past it | `0.01 AETH` |
+| `--daily-cap` | Most settled or possibly-settled spend in a rolling 24h. A payment past it is refused | `0.1 AETH` |
+| `--allow-asset` | Assets that may be paid after a confirm. USDC is never unattended | `uaeth` only |
+| `--allow-payee` | If set, the only payees that may be paid, and each must also be a current directory announcer | empty: every current verified listing |
+| `--allow-url` | If set, the only URL prefixes that may be paid | empty: any URL under an allowed payee's listing |
+| `--auto` | After the owner sets this, an in-policy AETH payment can complete without a fresh confirm | off |
 
 `--max-price` on a single request can only narrow `--max-per-payment`.
-It cannot widen it.
+It cannot widen it. Both caps are hard. Raising either one is an edit
+to the config file on the machine that holds the key. An approval, a
+confirm, and the explorer page cannot raise them.
 
-**Unattended pay** (`--auto`, and every check below true): the offer
-is selectable, its live price is at most `--max-per-payment`, the
-price plus the rolling spend is at most `--daily-cap`, the asset is
-allowed, the payee is allowlisted, and the URL is allowlisted. The
-shopper then signs.
+**Pay on confirm** (the default, `--auto` off): the offer is
+selectable, its live price is at most `--max-per-payment`, the price
+plus the rolling spend is at most `--daily-cap`, the asset is AETH,
+the payee is allowlisted, and the URL is allowlisted. The shopper
+signs only after `shopper buy --quote <id> --confirm`, or after the
+person presses Buy on the explorer page. Nothing in policy is signed
+on the first request.
+
+**Pay unattended** only when the owner has set `--auto`, and every
+check in the previous paragraph is true. USDC never takes this path.
 
 **Stop for a person,** with nothing signed, when any of these is true:
 
-- the price is above `--max-per-payment` or would exceed `--daily-cap`
-- the asset, payee, or URL is outside the allowlist
-- the URL is unlisted
-- the rail is `job`
-- `--auto` is off (the default): the quote is printed and a later
-  `shopper buy --quote <quote-id> --confirm` is the person's approval for an
-  in-policy purchase
+- `--auto` is off, and the payment is otherwise in policy (a confirm)
+- the asset is USDC (always, even with `--auto`, even under the cap)
+- the payee or URL is outside the allowlist, or the URL is unlisted
+- the rail is `job` (shown, and not buyable until the escrow phase,
+  so this stop has no Approve button yet)
 
-**Refuse, not approvable,** when the price is above `--hard-max`, the
-402 moved away from the quote id, the offer is not selectable
+**Hard refuse,** with no approval request, when the price is above
+`--max-per-payment`, the payment would exceed `--daily-cap`, the 402
+moved away from the quote id, or the offer is not selectable
 (`price_mismatch`, splits, payee mismatch, wrong network, missing
-`exact`), or the idempotency key was already used for a different
-quote. A refusal does not create an approval request.
+`exact`). A reused idempotency key for a different quote is also a
+refuse. A refusal does not create an approval request.
 
 Spend already counted against `--daily-cap`:
 
@@ -366,8 +382,10 @@ recorded).
 
 ### How a person approves
 
-Two paths. Both bind the approval to the quote id, the amount, the
-asset, and the payee. An approval for a different amount is ignored.
+Three paths. All of them bind the approval to the quote id, the
+amount, the asset, and the payee. An approval for a different amount
+is ignored. The explorer link is the third path and is described
+under Human page. It checks the same signature.
 
 **Interactive CLI.** `shopper quote` writes
 `<state>/quotes/<id>.json` and prints the selected row. `shopper buy
@@ -389,14 +407,16 @@ valid decision. Decisions live in their own files, mode 0600, TTL 24
 hours. `shopper reject <id>` signs a rejection; a rejected id is not
 retried with the same idempotency key.
 
-A signed approval authorizes that one payment, up to `--hard-max`. It
-does not raise the standing caps. The next over-cap payment stops
-again.
+A signed approval authorizes that one payment when it is still within
+both caps. It does not raise them. The next payment outside an
+allowlist stops again. A payment over either cap never becomes an
+approval.
 
-Job-board hires, when a later phase can submit them, use this same
-gate and never `--auto`. The amount approved is the escrow amount,
-which stays locked until release or expiry. The quote says that in
-the line the person approves.
+Job-board rows are visible and carry no buy button until the escrow
+phase. When that phase lands, a hire uses this same gate, never
+`--auto`, and the amount the person approves is the escrow amount,
+which stays locked until release or expiry. The caps still apply, and
+a hire over `--max-per-payment` is a hard refuse.
 
 ## Keys
 
@@ -440,6 +460,18 @@ account until the in-flight hash is known to be in a block or known
 to have been rejected before broadcast. That matches the test
 wallet's `pendingNext` and the facilitator's rule that a sequence
 gap fails simulation.
+
+The state directory is locked with a file created `O_EXCL` (exclusive
+create). That works on Linux, macOS, and Windows. A second process
+finds the lock held and does not sign. The lock is removed on exit;
+a lock left by a dead process is stolen only when its recorded pid
+is gone. On Windows the passphrase is `--keyring-passphrase-file`,
+because a scheduled task does not pass `AETHER_KEYRING_PASSPHRASE_FILE`
+(the same reason `outbound` has that flag). The default state
+directory is `~/.aether-shopper` on Unix and
+`%USERPROFILE%\.aether-shopper` on Windows. Mode 0700/0600 is applied
+where the filesystem has Unix modes; on Windows the directory stays
+inside the user profile.
 
 Gas limit 400,000 and a fee of `0uaeth`, matching `buy_service`. If
 the node charges a minimum gas price, `/verify` returns
@@ -549,7 +581,7 @@ says.
 | Lookup finds the hash, code ≠ 0 | Included and failed | Do not sign again under this key. Receipt state `failed` |
 | `/settle` returns `invalid_transaction_state`, or the HTTP call dies after `/settle` was sent | May have been broadcast | State `settlement_unknown`. Counts against the daily cap. Resume only polls the chain and, once the tx is in a block, retries the resource with the same signature |
 | `/verify` or `/settle` refuses before broadcast (`invalid_payload`, `insufficient_funds`, `invalid_exact_cosmos_payload_fee`, sequence, signature, splits, accepted mismatch) and the lookup misses | Not paid | State `rejected`. This key is finished. A new attempt is a new idempotency key, after the caller has seen the reason |
-| Facilitator HTTP 503 or `/healthz` failing, and no `/settle` was sent | Not paid | State `facilitator_unavailable`. Same key may retry `/verify` and `/settle` later. No second signature |
+| Facilitator HTTP 503, `/healthz` failing, or the facilitator unreachable, and no `/settle` was sent | Not paid | Fail closed. State `facilitator_unavailable`. The paywall is not used as a fallback broadcaster. Same key may retry `/verify` and `/settle` later. No second signature |
 | Resource HTTP 5xx, or a body that says to retry, after a code-0 payment | Paid, response failed | Up to 3 retries of the HTTP request with the same signature, spaced 10s apart. Then return the receipt with the last status. The paywall releases an exact payment for reuse when it itself returned 5xx (`paywall/exact.go`) |
 | Resource says the payment was already redeemed | Paid, and already served | Return the stored receipt |
 | 402 on resume whose `amount`/`payTo`/`asset` differ from the stored quote | The service changed its price | Do not sign. `quote_stale` |
@@ -558,6 +590,183 @@ says.
 The rule in one line: a retry sends the stored signature or sends
 nothing. It never builds a second transaction because a response
 failed, a facilitator timed out, or a body asked it to.
+
+## Human page
+
+A new person meets the shopper as a page on the explorer, not as a
+CLI. The explorer is already the site they open. It already creates
+a browser account on `/mine` (ML-DSA key, recovery phrase, faucet
+proof-of-work) and it already draws a transaction at `/tx/<hash>`.
+The Services page lists paid APIs and does not buy them. `/shop` is
+that list plus a search box and a Buy button.
+
+The explorer process stays a reader and a mailbox. It does not hold
+a spending key, a cap, or an approval decision it could forge.
+Signing happens in the browser, with the key the Mine page already
+proved can live in `localStorage`. The cap the page enforces is the
+one stored next to that key. An agent cannot raise it. The agent's
+own cap lives in the agentmcp config and is a separate number; the
+approval screen shows it read-only.
+
+### What the person sees
+
+Default copy uses plain words. The words x402, facilitator, exact
+scheme, paywall, denom, and uaeth do not appear unless the person
+opens Advanced. Prices are written as AETH (`0.0005 AETH`). A USDC
+price is written as `0.001 USDC` and the button says Approve, not
+Buy, because USDC always needs a person.
+
+Nav: a "Shop" link in the explorer top bar, after Services. Routes:
+
+| Route | What it is |
+|---|---|
+| `/shop` | Search, results, the cap line, Buy |
+| `/shop/receipt/:hash` | One receipt, with the payment linked to `/tx/:hash` |
+| `/shop/approve/:id` | The page a person opens from an agent's link |
+
+The page is one column. At the explorer's existing 520px breakpoint
+the search box, each offer, and the Buy button are full width. The
+cap line sits under the title and wraps. Nothing scrolls sideways.
+The top bar is the one the explorer already collapses.
+
+```
+Desktop and phone (one column)
+
++--------------------------------------------------+
+| AETHER Explorer          Shop  Services  Mine    |
++--------------------------------------------------+
+| Shop                                             |
+| Today's spending   0.0005 of 0.10 AETH           |
+| Limit per buy      0.01 AETH                     |
+|                                                  |
+|  What do you need?                               |
+|  [ block data                            ] [Find]|
+|                                                  |
+|  Chain pulse                          0.0005 AETH|
+|  Height, block time, difficulty        [ Buy ]   |
+|                                                  |
+|  Miner leaderboard                    0.0005 AETH|
+|  Who mined this epoch                  [ Buy ]   |
+|                                                  |
+|  Name a cat                  Custom job, not yet |
+|  A person offered 0.002 AETH                     |
+|                                                  |
+|  [ Advanced ]                                    |
++--------------------------------------------------+
+
+Buy confirm (same page, the card replaces the list)
+
++--------------------------------------------------+
+| Buy Chain pulse for 0.0005 AETH?                 |
+| Paid to the service's account.                   |
+| This stays inside today's limit.                 |
+|                                                  |
+| [ Buy ]                      [ Cancel ]          |
+| Advanced: address, quote id                      |
++--------------------------------------------------+
+
+Receipt
+
++--------------------------------------------------+
+| Paid 0.0005 AETH for Chain pulse                 |
+| Payment  ABCD…1234          [ View on explorer ] |
+| That link is /tx/ABCD…1234                       |
+| [ Advanced: settlement details ]                 |
++--------------------------------------------------+
+
+Approve (opened from a link an agent sent)
+
++--------------------------------------------------+
+| Allow this buy?                                  |
+| Chain pulse for 0.0005 AETH                      |
+| Asked by the agent on your computer.             |
+| Still inside the limit (0.02 AETH left today).   |
+|                                                  |
+| [ Approve ]                  [ No ]              |
++--------------------------------------------------+
+```
+
+Empty and error copy, in the same place as the list:
+
+| State | Words on the page |
+|---|---|
+| Nothing typed yet | The box, and one line: "Try block, miner, or hello." No offers yet |
+| No match | "Nothing matched that. Try fewer words." |
+| No wallet yet | "Create a wallet in this browser." Then the recovery-phrase step from `/mine` |
+| No coins | "This wallet has no test coins yet." Button: "Get test coins" |
+| Over the per-buy limit | "That costs more than your 0.01 AETH limit. Nothing was spent." No Approve |
+| Over today's limit | "You've reached today's limit. Nothing was spent." |
+| USDC | "This one is priced in test USDC. Approve it to continue." |
+| Price changed | "The price changed. Look again before buying." |
+| Payments paused | "Payments are paused. Nothing was spent. Try again in a minute." This is the facilitator being down. Fail closed |
+| Not enough coins | "Not enough test coins for this buy." |
+| Custom job | The row is visible. The button is absent. The line reads "Custom job, not ready to buy yet." |
+| Already paid (same try) | "You already paid for this. Here is the receipt." |
+
+Advanced, behind one toggle on each screen, shows the payee address,
+the quote id, the asset code, and (on a receipt) the settlement
+fields a developer would call the facilitator response. The default
+view does not.
+
+### Wallet
+
+The naive path is the browser wallet, a sibling of the Mine page's
+keystore, under its own storage key `aether-shop-key-v1`. Mining
+rewards and shop spending stay in different accounts. The setup is
+the Mine page's: generate a key, show the 24 words, require a saved
+copy, then store the key in this browser. Anyone who can use the
+browser can spend the test coins in it. The page says that in the
+same words `/mine` already uses.
+
+"Get test coins" runs the faucet the Faucet and Mine pages already
+use (the proof-of-work challenge, then `POST` to the public faucet).
+The person does not copy an address anywhere.
+
+Two other ways in, both off the default path:
+
+- "Use my miner account" loads the existing Mine keystore. One
+  confirm: "Buys will spend the account you mine with."
+- Advanced: paste a recovery phrase, or "this computer's shopper" for
+  a person sitting at the machine that runs agentmcp. The hosted test
+  wallet (a token, an MCP session) is not offered here. It is an
+  agent tool.
+
+The browser signs the payment and calls the public facilitator, then
+the service, using the same steps as the CLI. The signed bytes and
+the phrase are not sent to the explorer. The page's cap and today's
+spend are the receipts in `localStorage`. A deleted browser profile
+forgets them; unattended buy stays off until the person sets the cap
+again (the same fail-closed rule as a missing ledger).
+
+### Approval link
+
+An agent that needs a person calls `shop_approve_request` and gets
+back `https://<explorer>/shop/approve/<id>`. The id is 128 random
+bits. The agent has already posted a short summary to the explorer:
+title, price in AETH or USDC, seller name, and which limit it sits
+inside. No key, no signed transaction, no passphrase. The explorer
+keeps that summary, and later the person's signed yes or no, for 24
+hours, capped at a few kilobytes and a few thousand pending rows, in
+a directory on the explorer host. It is not chain state. The first
+POST for an id wins; a second POST is refused. Creates are
+rate-limited. Guessing an id is not practical.
+
+The person opens the link on a phone or a laptop. They can read the
+request either way. Approve works only in a browser that already has
+the wallet, because the browser key signs the decision. A phone
+without the wallet sees the request and the line "To say yes, open
+this in the browser where you created your wallet." The explorer
+cannot mark a request approved by itself. The agent polls
+`shop_status`, fetches the signature with a poll token it received
+at create time (the link the person sees does not include that
+token), checks the signature against the approver key, and only then
+pays, still inside the caps. A signature over a different quote or a
+higher amount is ignored.
+
+A webhook is optional and local. `--approval-webhook` on agentmcp is
+a URL the owner set. When the agent has verified a decision, it
+POSTs the status JSON there. The public page does not know that URL.
+Polling works with no webhook.
 
 ## Interface
 
@@ -583,11 +792,12 @@ Commands:
 
 ```
 shopper quote --query "block" --max-price "0.1 AETH" [--url URL] [--method GET] [--body-file f]
-shopper buy --quote <quote-id> --idempotency-key <key> [--confirm]
+shopper buy --quote <quote-id> --idempotency-key <key> [--confirm] [--dry-run]
 shopper approve <approval-id> --approver-key <name> --keyring-backend file --keyring-dir <dir>
 shopper reject <approval-id> ...
 shopper status <idempotency-key>
 shopper receipt <txhash>
+shopper budget
 ```
 
 `quote` needs no key. It prints two lists (APIs, then jobs), the
@@ -604,41 +814,110 @@ is allowed for the CLI and is not an MCP argument. An out-of-policy
 quote ignores both `--auto` and `--confirm` and exits as
 `approval_required`.
 
-`buy` needs the spending key. Exit codes: 0 settled, 2 bad flags, 3
-a person has to act (stdout says `confirm_required` when the quote
-is in policy and `--confirm` was left off, or `approval_required`
-with the approval id when it is out of policy), 4
+`buy` needs the spending key. `--dry-run` signs nothing and prints
+the decision it would have made. Exit codes: 0 settled (or a dry-run
+that would settle), 2 bad flags, 3 a person has to act (stdout says
+`confirm_required` when the quote is in policy and `--confirm` was
+left off, or `approval_required` with the approval id and the
+explorer link when it is out of policy), 4
 `facilitator_unavailable` or `settlement_unknown`, 5 refused
-(`quote_stale`, over `--hard-max`, splits, payee mismatch). A human
-script can branch on these without parsing logs.
+(`quote_stale`, over either cap, splits, payee mismatch, job not
+buyable yet). `--json` prints the same structured error as the MCP
+tools. A script can branch on the exit code without parsing logs.
 
 `status` and `receipt` need no key. `status` reports the state and
 the hash, and refreshes `settlement_unknown` from the chain.
 
-### MCP
+### Agents
 
-Phase 4 adds three tools to the local `agentmcp` only (the process
-that already holds `--keyring-backend` and the spend limits). They
-are not added to the public `/mcp`, the A2A card, or the hosted test
-wallet.
+An agent can discover the shopper and drive it without a person
+sitting beside it. Spending still follows the cap and the confirm
+rule: with `--auto` off, the agent gets as far as a quote, a dry-run,
+and a link the person taps. It does not get a tool argument that
+turns `--auto` on, raises a cap, or adds a payee.
 
-| Tool | Effect | Arguments |
+**Where it is written down.** The explorer's `/llms.txt` gains a
+short "Shop" section: what the page is, `GET /api/shop/search`, the
+OpenAPI path, and the local MCP tool names. The existing
+`/api/openapi.json` (OpenAPI 3.1) gains the public read routes. Those
+routes do not pay.
+
+| Public route | Auth | Returns |
 |---|---|---|
-| `shop_quote` | read-only | `query`, `maxPrice`, optional `url`, `method` |
-| `shop_buy` | pays when the owner's config allows | `quoteId`, `idempotencyKey` |
-| `shop_status` | read-only | `idempotencyKey` |
+| `GET /api/shop/search?q=` | none | Ranked offers. Prices in AETH and in base units. Jobs included, `buyable: false` until the escrow phase |
+| `GET /api/shop/offers/{quoteId}` | none | One offer, if the quote is still in the short public cache |
+| `POST /api/shop/approvals` | none; rate-limited, one body per id | Stores a summary. Returns the public URL and a poll token |
+| `GET /api/shop/approvals/{id}` | none | The plain summary and the status word. No signature |
+| `GET /api/shop/approvals/{id}/decision` | poll token | The signed yes or no, for the agent to verify |
+| `POST /api/shop/approvals/{id}/decision` | none (the body is a signature) | The browser's signed decision |
 
-`shop_buy` has no `auto`, `maxAmount` override, or `payTo`. The cap
-and allowlist are the server's flags. Under policy with `--auto` set
-in that config, `shop_buy` pays. Otherwise it returns
-`approval_required` and the owner runs `shopper approve` (or
-`shopper buy --quote <id> --confirm` when the quote is in policy and `--auto` is
-just off). The response body is marked untrusted, the same warning
-`buy_service` and `fetch_paid` already carry. Descriptions, titles,
-and offer notes in `shop_quote` carry that warning too.
+**MCP tools**, on local `agentmcp` only. Not on the public `/mcp`,
+the A2A card, or the hosted test wallet. Each tool's input and
+output is a JSON schema in the MCP tool definition, the same way
+`find_services` and `buy_service` already publish schemas. Names:
 
-`shop_buy` is idempotent on `idempotencyKey`: a repeated call resumes
-the stored signature.
+| Tool | Reads or spends | Arguments |
+|---|---|---|
+| `shop_search` | read | `query`, optional `maxPrice` |
+| `shop_quote` | read | `query` or `offerId`, optional `url`, `method`. Returns a `quoteId` |
+| `shop_buy` | spends only when the rules say so | `quoteId`, `idempotencyKey`, `dryRun` (default false) |
+| `shop_approve_request` | no spend | `quoteId`, `idempotencyKey`. Returns `approvalUrl`, `approvalId`, `expires` |
+| `shop_status` | read | `idempotencyKey` or `approvalId`. The poll |
+| `shop_receipts` | read | optional `limit` |
+| `shop_budget` | read | none. Returns this identity's caps, spent today, left today, and whether `--auto` is on |
+
+`shop_buy` has no `auto`, no cap override, and no `payTo`. `dryRun:
+true` returns the decision and signs nothing. A repeated
+`idempotencyKey` resumes the stored signature. Descriptions in the
+results carry the same untrusted-data warning as `find_services`.
+
+**Budgets per agent.** The account has one `--max-per-payment` and
+one `--daily-cap`. A config block can give a named caller a tighter
+daily cap, still inside the account cap:
+
+```
+[[agent_budget]]
+name = "research"
+daily_cap = "0.02 AETH"
+```
+
+The name is matched to the MCP client's name. An unknown client uses
+the account cap. No tool argument selects a looser budget. USDC
+spends count against an USDC daily figure the owner set the same way,
+and still require a person every time. `shop_budget` reports the
+identity that matched.
+
+**Errors.** Failures are a JSON object, on MCP and on `shopper
+--json`, with a stable `code` and a `next_action` the caller can
+branch on. `spent` is false unless a signature has already been
+broadcast.
+
+| `code` | `next_action` | Meaning |
+|---|---|---|
+| `NEEDS_CONFIRM` | `confirm_or_open_url` | In policy, `--auto` is off. `approvalUrl` is set |
+| `NEEDS_APPROVAL` | `open_approval_url` | Out of policy (unlisted payee, and USDC). Under the caps |
+| `USDC_NEEDS_APPROVAL` | `open_approval_url` | USDC, even with `--auto` |
+| `OVER_CAP` | `pick_cheaper_or_edit_config` | Over `--max-per-payment`. No approval exists |
+| `DAILY_CAP` | `wait_or_edit_config` | Would exceed today's cap |
+| `NOT_BUYABLE` | `pick_another` | A job, until the escrow phase |
+| `NOTHING_FOUND` | `broaden_query` | No selectable offer |
+| `QUOTE_STALE` | `shop_quote_again` | The live price moved |
+| `PAYEE_MISMATCH` | `pick_another` | The 402 names a different account than the listing |
+| `FACILITATOR_DOWN` | `retry_later` | Fail closed. Nothing signed |
+| `INSUFFICIENT_FUNDS` | `get_coins` | The account cannot cover the price |
+| `IDEMPOTENCY_CONFLICT` | `new_idempotency_key` | This key was used for a different quote |
+| `SETTLEMENT_UNKNOWN` | `poll_status` | May have been broadcast. Same key only |
+| `ALREADY_PAID` | `read_receipt` | This key already settled |
+| `DRY_RUN` | `submit_without_dry_run` | The dry-run would have continued. Nothing signed |
+
+`message` is the same plain sentence the explorer page shows.
+
+**Polling and webhooks.** `shop_status` is the default. The agent
+calls it until the status is `approved`, `rejected`, `expired`,
+`settled`, or `refused`. After the agent has verified a decision,
+`--approval-webhook` (owner config, not a tool argument) receives
+one POST of that status JSON. A webhook the agent invents at call
+time is ignored.
 
 ### Library
 
@@ -661,10 +940,15 @@ job board.
 - Filters: splits (non-empty array, and a non-array `splits`), payee
   mismatch, 402 above the manifest, 402 above `--max-price`, missing
   `exact`, wrong network, free path, empty query.
-- Caps: under cap proceeds only when `--auto` and the payee are
-  allowed; over cap yields `approval_required` and the signer is not
-  called; over `--hard-max` yields refused and writes no approval
-  file; daily cap counts `settlement_unknown`.
+- Synonyms: "block-data feed" matches pulse via `shopper/synonyms.txt`
+  and does not match miners. A line in a listing cannot add a synonym.
+- Caps: with `--auto` off, an in-policy buy returns `NEEDS_CONFIRM`
+  and the signer is not called; with `--auto` on, that buy signs.
+  Over `--max-per-payment` or the daily cap returns `OVER_CAP` or
+  `DAILY_CAP` and writes no approval file. USDC returns
+  `USDC_NEEDS_APPROVAL` even with `--auto`. Daily cap counts
+  `settlement_unknown`. A named agent budget cannot exceed the
+  account cap.
 - Approval: a decision signed by the spending key does not pass; a
   decision for a different quote id does not pass; expiry does not
   pass.
@@ -704,8 +988,8 @@ the quote looks right.
    offers, if any match, appear under the job heading. A second
    quote with `--query miner` lists miners.
 3. `shopper quote --query "block-data feed" --max-price "0.1 AETH"`
-   selects nothing. That is the current matcher, and the test records
-   it so a later synonym change is deliberate.
+   selects pulse, through the shipped synonym file, and does not
+   select miners.
 4. `shopper buy --quote <id>` without `--confirm`, while `--auto` is
    off, exits 3 and does not change the account sequence.
 5. Quote `hello` (0.000001 AETH, the practice service). Confirm the
@@ -716,98 +1000,88 @@ the quote looks right.
    is the hello payload.
 6. The same command again, same key, does not create a second hash.
    `status` shows one payment.
-7. A quote whose only selectable price is above `--max-per-payment`
-   (temporarily set `--max-per-payment` to `1uaeth` and query `pulse`)
-   returns `approval_required`. The sequence is unchanged until
-   `shopper approve` and a resume. With `--hard-max` still `1uaeth`,
-   that approve is a refuse. Restore the defaults afterward.
+7. With `--max-per-payment` temporarily `1uaeth`, a pulse quote
+   (0.0005 AETH) returns `OVER_CAP`. No approval file is written and
+   the sequence is unchanged. Restore the default afterward. A
+   hello-usdc quote under the default caps returns
+   `USDC_NEEDS_APPROVAL` even if `--auto` is on.
 8. An unlisted URL (any `https` host that 402s, or a local httptest
-   recorded in the notes) is `approval_required` even under the cap,
-   and is not signed.
+   recorded in the notes) is `NEEDS_APPROVAL` even under the cap,
+   and is not signed. The returned link opens `/shop/approve/<id>`
+   and shows the plain-language request.
 9. A local httptest 402 with `extra.splits` set to `[{}]` is refused
    with no signature. This check stays off the public services,
    because they do not send splits.
 
 Stop there. Do not buy inference, do not post a job, and do not send
 a second hello payment to "see if retry works" — the unit tests cover
-the retry. One uaeth on hello is the live spend.
+the retry. One uaeth on hello is the live spend. On Windows, phase 2
+also runs `shopper quote` and `shopper buy --dry-run` on the
+maintainer's PC. That run does not spend.
 
 ## Phased implementation
 
-Sizes are rough lines of Go including tests, in this module, no new
-`go.mod`, no proto, no consensus change, no edit under
-`scripts/agentservices/` or the other deploy scripts. Each phase is
-its own PR and is useful if the later ones wait.
+Sizes are rough lines including tests. Go stays in this module (Go
+1.26.10, no new `go.mod`, no proto, no consensus change). The page is
+TypeScript in `explorer-web`. No edit under `scripts/agentservices/`
+or the other deploy scripts. Each phase is its own PR and is useful
+if the later ones wait.
 
 | Phase | What lands | Size | Pays? |
 |---|---|---|---|
 | 0 | This document | — | No |
-| 1 | `package shopper` discovery, filters, ranking, quote id; `shopper quote`; httptest coverage of the filters | 600–900 | No |
-| 2 | Sign, `/verify`, `/settle`, chain lookup, receipt files, idempotency, cap and allowlist as refuses (no approver yet), `--keyring-backend file`, `shopper buy` for in-policy quotes with `--confirm` | 900–1,300 | Yes, API rail, in policy only |
-| 3 | Out-of-policy approvals, `--hard-max`, `shopper approve` / `reject`, daily-cap accounting of `settlement_unknown` | 400–600 | The same, plus approved exceptions |
-| 4 | `shop_quote`, `shop_buy`, `shop_status` on local agentmcp, wired to the package. No public server changes | 250–400 | The same, from an agent that already has the key |
-| 5 | Job rail: quote details already exist; this phase can draft a hire and, after approval, lock escrow through the existing escrow helpers, with a job receipt | 500–700 | Escrow, approval only |
+| 1 | `package shopper` discovery, filters, ranking, quote id, `shopper/synonyms.txt`; `shopper quote`; read-only `GET /api/shop/search` on the explorer; httptest coverage | 900–1,200 Go | No |
+| 2 | Sign, `/verify`, `/settle`, chain lookup, receipt files, idempotency, hard caps, `--keyring-backend file`, Windows `O_EXCL` lock, `shopper buy --confirm` and `--dry-run` | 900–1,300 Go | Yes, AETH, in policy, after confirm |
+| 3 | Approvals, USDC always needs a person, the explorer approval mailbox, `shopper approve` / `reject` | 500–800 Go | The same, plus approved exceptions under the caps |
+| 4 | Explorer page `/shop`: search, ranked list, cap line, browser wallet, faucet, Buy / Approve, receipt linked to `/tx/<hash>`, empty and error copy, mobile, Advanced toggle | 1,200–1,800 TS, plus about 200 Go to serve the page's read routes | Yes, from the browser wallet, same rules |
+| 5 | Local agentmcp tools `shop_search`, `shop_quote`, `shop_buy`, `shop_approve_request`, `shop_status`, `shop_receipts`, `shop_budget`; per-agent budgets; structured errors; webhook; `/llms.txt` Shop section; OpenAPI for the public shop routes | 800–1,200 Go | The same, from an agent that already has the key |
+| 6 | Jobs become buyable: escrow through the existing helpers, still after approval, never `--auto`, still under the caps | 500–700 Go | Escrow, approval only |
 
-Phase 2 is the first one that can run the live hello checklist.
-Phase 1 can still be tried against the live directory and the live
-board, read-only. Mandates (`--mandate-file`, send `X-AETHER-MANDATE`
-when the manifest says `required`) fit in phase 2 if the file is
-already the one `agentmcp mandate` writes; otherwise they wait, and
-`required` services stay unselectable.
+The search page can be clicked through as soon as phase 1 is up; the
+Buy button waits for phase 4, which needs phases 2 and 3. Phase 2 is
+the first one that can run the live hello checklist. Mandates
+(`--mandate-file`, send `X-AETHER-MANDATE` when the manifest says
+`required`) fit in phase 2 if the file is already the one `agentmcp
+mandate` writes; otherwise they wait, and `required` services stay
+unselectable. Seller-signed paywall receipts stay out of scope: the
+shopper stores one if a service sends it, and nobody turns
+`--receipts` on for the public paywalls as part of this work.
+
+## Decisions
+
+These were open in the first draft. They are settled:
+
+1. `--auto` is off. Every buy needs a confirm until the owner turns
+   `--auto` on in the config.
+2. `--max-per-payment` and `--daily-cap` are hard. A person cannot
+   approve a larger amount. Raising them is a config edit.
+3. Job-board offers are shown from the first quote. They are not
+   buyable until the escrow phase.
+4. A small `shopper/synonyms.txt` ships with the library. It expands
+   the caller's words. Listings cannot add synonyms.
+5. If the facilitator is down, the buy fails closed. The paywall is
+   not a fallback broadcaster.
+6. The trusted raters are the payer and the approver. `--trust` adds
+   more only when the owner edits the config.
+7. The MCP tools live in local agentmcp.
+8. Testnet USDC always needs a person, even under the cap, even with
+   `--auto`.
+9. Seller-signed receipts on the public paywalls are later, and out
+   of scope for this work.
+10. Linux, macOS, and Windows. The lock is an exclusive create, and
+    Windows takes `--keyring-passphrase-file`.
 
 ## Open questions
 
-1. **Default of `--auto`.** This design leaves it off, so the first
-   releases only pay after `shopper buy --quote <id> --confirm`, and an agent pays
-   unattended only when the owner set `--auto` in the config. The
-   cap rule also allows a reading where in-policy buys proceed
-   without that second step. Which default do you want?
+1. **Mailbox on the seed.** The approval summaries would sit on the
+   explorer host, which is a validator. They are small, expire after
+   24 hours, and cannot move money without a signature the agent
+   checks. Is that fine on the seed, or should the mailbox wait for
+   a machine that is not a validator?
 
-2. **`--hard-max`.** Defaulting it to `--max-per-payment` means a
-   person can approve an unlisted payee or a job, but not a larger
-   amount, until they edit the config. Should one approval be able
-   to exceed the per-payment cap up to the daily cap instead?
-
-3. **Jobs in the first payable release.** Phase 5 is escrow, always
-   approved, and easy to drop if the shopper should only ever speak
-   x402. Should the quote keep showing jobs until then, or should
-   `--job-board` default to empty so the first CLI is APIs only?
-
-4. **Matcher.** Literal words will miss "block-data feed" against
-   pulse. A small operator-edited synonym file would fix the
-   examples we care about. A model in the loop would read seller
-   text. Is a synonym file worth a phase, or is the query the
-   caller's job?
-
-5. **Facilitator outage.** In-policy buys fail closed when the public
-   facilitator is down, even though the seed paywalls settle in
-   process and would still serve. Is fail-closed right, or should a
-   down facilitator fall back to letting the paywall settle, still
-   with one signature and a chain lookup?
-
-6. **Trusted raters.** Default is the payer and `--approver`, plus
-   `--trust`. Should the shopper ship with an empty trusted set so
-   unknown ratings cannot influence a fresh install even by being
-   displayed prominently? Display does not affect the sort either
-   way.
-
-7. **Where the MCP tools live.** Local `agentmcp` keeps one key and
-   one policy. A separate `shopper --mcp` process would isolate the
-   shopper's state from `fetch_paid`. Do you want it inside agentmcp
-   or beside it?
-
-8. **USDC unattended.** The default allowlist is `uaeth` only, so
-   hello-usdc (0.001 USDC) is quoted and then `approval_required`.
-   Should the testnet default allow USDC up to a small per-payment
-   cap as well, given the inflow cap already bounds the voucher?
-
-9. **Seller receipts.** They are optional on today's paywalls, and
-   the shopper's own receipt does not depend on them. Is turning
-   `--receipts` on for the six public paywalls in scope for a later
-   ops change, or out of scope for this work entirely?
-
-10. **State directory on Windows.** peer-1's host is Windows, and a
-    file lock plus a 0600 mode is the whole double-pay guard. If the
-    shopper is only required to run on the workstation that already
-    runs `paybench`, Unix locking is enough. Should the first
-    implementation target Linux and macOS only?
+2. **Who probes the live price.** `GET /api/shop/search` on the
+   explorer would fetch up to 20 live payment responses so the page
+   shows the price a buy would actually pay. The explorer already
+   fetches manifests from announced URLs. Should those probes stay
+   on the seed, or should the public search show the manifest price
+   and leave the live check to the browser and the CLI at buy time?
