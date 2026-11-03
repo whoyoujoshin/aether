@@ -16,4 +16,6 @@ jobs:
       - name: Test the shopper
         env:
           GOTOOLCHAIN: go1.26.10
-        run: go test ./shopper/ ./cmd/shopper/
+        run: |
+          go test ./shopper/ ./cmd/shopper/ ./cmd/explorer/ -count=1 -timeout 20m
+          go test ./cmd/agentmcp/ -count=1 -timeout 20m -run 'TestToolAnnotations'

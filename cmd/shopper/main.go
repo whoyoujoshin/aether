@@ -36,6 +36,8 @@ func main() {
 		os.Exit(approveCmd(os.Args[2:], false))
 	case "reject":
 		os.Exit(approveCmd(os.Args[2:], true))
+	case "serve":
+		os.Exit(serveCmd(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 	default:

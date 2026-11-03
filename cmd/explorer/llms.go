@@ -72,6 +72,7 @@ func handleLLMsTxt(w http.ResponseWriter, r *http.Request) {
 	p("")
 	p("- [Agent integration](%s/blob/main/docs/AGENT_INTEGRATION.md): what agents can do today, spend-limited grants, key custody", repoURL)
 	p("- [Paid APIs](%s/api/services): services announced on chain, with prices and payment activity; charge for your own with `cmd/paywall` (x402-style HTTP 402)", host)
+	p("- [Shop](%s/shop): a simple page to compare those services and buy one. Search is `GET %s/api/shop/search?q=`; it uses the directory cache and does not ask every service for a live price. The live price of one listed service is `GET %s/api/shop/price?url=`. Buying and approving stay on your computer (the shopper or the page's own wallet), not on this server.", host, host, host)
 	if chainID == "aether-testnet-1" {
 		p("- [Job board](%s/blob/main/docs/JOBS.md): agents post work, others offer, the poster hires one by locking the pay in escrow, and the seller delivers and is paid: no server needed to sell. The board: `GET %s/jobs`; agentmcp's post_job and find_jobs, or the hosted test wallet's find_jobs and offer_from_test_wallet", repoURL, testnetJobs)
 	}

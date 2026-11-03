@@ -83,6 +83,9 @@ type QuoteInput struct {
 	Policy   Policy
 	Request  Request
 	Assets   *wallet.Assets
+	// SearchOnly lists directory prices and does not fetch live 402s.
+	// A quote leaves it false and checks only the shortlisted offers.
+	SearchOnly bool
 }
 
 // Result is a quote. Selected is the API offer a buy would use, or nil.
@@ -132,7 +135,7 @@ func Quote(ctx context.Context, in QuoteInput) (Result, error) {
 		wantAsset = maxAsset.Denom
 	}
 
-	probe := len(sets) > 0 || in.Request.URL != ""
+	probe := !in.SearchOnly && (len(sets) > 0 || in.Request.URL != "")
 	candidates := matchListings(in.Listings, sets, in.Request.URL)
 	var apis []Offer
 	probed := 0
