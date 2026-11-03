@@ -11,6 +11,7 @@ import (
 	"github.com/whoyoujoshin/aether/directory"
 	"github.com/whoyoujoshin/aether/shopper"
 	"github.com/whoyoujoshin/aether/wallet"
+	"github.com/whoyoujoshin/aether/x402"
 )
 
 // Shop search reads the on-chain directory cache. It does not fetch a
@@ -35,13 +36,14 @@ type shopSearchResponse struct {
 }
 
 type shopPriceResponse struct {
-	URL     string `json:"url"`
-	Price   string `json:"price,omitempty"`
-	Amount  string `json:"amount,omitempty"`
-	Asset   string `json:"asset,omitempty"`
-	PayTo   string `json:"payTo,omitempty"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	URL          string                    `json:"url"`
+	Price        string                    `json:"price,omitempty"`
+	Amount       string                    `json:"amount,omitempty"`
+	Asset        string                    `json:"asset,omitempty"`
+	PayTo        string                    `json:"payTo,omitempty"`
+	Requirements *x402.PaymentRequirements `json:"requirements,omitempty"`
+	Code         string                    `json:"code"`
+	Message      string                    `json:"message"`
 }
 
 func handleShopSearch(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +125,8 @@ func handleShopPrice(w http.ResponseWriter, r *http.Request) {
 	o := res.Selected
 	writeJSON(w, http.StatusOK, shopPriceResponse{
 		URL: raw, Price: o.PriceDisplay, Amount: o.Amount, Asset: o.Asset, PayTo: o.PayTo,
-		Code: res.Decision.Code, Message: res.Decision.Message,
+		Requirements: o.Requirements,
+		Code:         res.Decision.Code, Message: res.Decision.Message,
 	})
 }
 
