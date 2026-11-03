@@ -198,6 +198,9 @@ func createApp(
 	homePath := cast.ToString(appOpts.Get(flags.FlagHome))
 	invCheckPeriod := cast.ToUint(appOpts.Get(server.FlagInvCheckPeriod))
 	baseAppOptions := server.DefaultBaseappOptions(appOpts)
+	// The priority mempool, so a fee over the minimum price is a tip
+	// (app/tipping.go). It replaces DefaultBaseappOptions' mempool.
+	baseAppOptions = append(baseAppOptions, app.TippingMempoolOption(appOpts))
 
 	a := app.New(
 		logger,

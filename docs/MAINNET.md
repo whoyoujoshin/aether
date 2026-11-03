@@ -287,9 +287,13 @@ in escrow for Aether. Keep that small while the chain is young:
     that the first swept block moves. It adds no store, but it changes
     every block, so validators need a binary carrying the height first. It
     is on the review's list.
-  - **The price itself: proposed 0.0005uaeth, plus 0.0025 per gas in the
-    USDC voucher once a USDC path opens** (for Joshua to decide; it is node
-    configuration and can change without a release). Measured on an
+  - **The price itself: proposed 0.0001uaeth, plus 0.0005 per gas in the
+    USDC voucher once a USDC path opens, with tipping** (for Joshua to
+    decide; it is node configuration and can change without a release).
+    It was 0.0005 before tipping; with tipping the minimum no longer has
+    to keep spam out on its own, so it can be as low as gas is meant to
+    be (Joshua, 2026-11-03: as minimal as possible, for agents, bots and
+    people). Measured on an
     `aether-rc-gas` devnet (2026-11-02), gas used and size of each
     transaction:
 
@@ -312,6 +316,12 @@ in escrow for Aether. Keep that small while the chain is young:
     - in USDC at 0.0025, a send at the default limit costs 1,000 base units
       ($0.001).
 
+    At the proposed 0.0001uaeth, a fifth of all that: a send costs 40 uaeth
+    (0.00004 AETH) at the default limit or about 17 with `--gas auto`, one
+    find pays for about 106,000, and in USDC at 0.0005 a send costs 200
+    base units ($0.0002). Filling every 4 MB block at the minimum would
+    cost about 10 AETH an hour; anyone who tips goes ahead of it.
+
     **Spam.** Every transaction is about 4 KB (an ML-DSA-44 signature is
     2,420 bytes and a public key 1,312), and the genesis template leaves
     `max_gas` unlimited (`-1`) with `max_bytes` at 22,020,096, so a block
@@ -321,7 +331,40 @@ in escrow for Aether. Keep that small while the chain is young:
     an hour). At 0.0001 it would be 56 AETH an hour, a fifth of it; at
     0.001, 560. In USDC at 0.0025 it is about $2.20 a block. The mempool
     is first come, first served (no fee priority), so a spammer who fills
-    blocks delays everyone rather than being outbid.
+    blocks delays everyone rather than being outbid. **Tipping changes
+    that (built 2026-11-03, below).**
+  - **Tipping: built (`app/tipping.go`, 2026-11-03).** Paying more than
+    the minimum price is a tip, like Solana's priority fee or Ethereum's
+    tip: when blocks are full, the higher fee per gas goes first; when
+    they aren't, the minimum is enough. Fees, tips included, go to the
+    treasury. aetherd runs the SDK's priority mempool on every node, and a
+    transaction's priority is its fee per gas as a multiple of the node's
+    minimum for that denom (the SDK's own priority is an integer price,
+    0 for anything under 1 uaeth a gas, so it couldn't see a tip). A lone
+    native mining find with valid proof-of-work goes first, so spam can't
+    hold it past its 60-block recency window. It is the proposer's choice,
+    not a block rule, so mixed binaries agree. To tip, pay more: `--fees
+    80uaeth` on a 400,000-gas transaction is twice a 0.0001 minimum.
+    - **Tests:** `app/tipping_test.go` (sends paying the minimum arrive
+      first, then a send paying 10x, then a fee-free find; a proposal with
+      room for two takes the find and the tip, and with room for all puts
+      them first; the block accepts all seven). It fails with the SDK's
+      mempool, with the SDK's integer priority, and with the find at the
+      bottom. `app/tipping_internal_test.go` covers the priority in AETH
+      and USDC and the mempool size.
+    - **Devnet (`aether-rc-tip`, real aetherd, 0.0001uaeth, 64 KB blocks
+      of 15 sends):** 60 sends paying the minimum went in first, then one
+      paying 10x. The tipped send was the first transaction of the next
+      block (646); the 60 took four blocks (646 to 650).
+    - **Limit:** CometBFT's own mempool refuses everything while it is
+      full, tip or not (0.38 can't evict by fee). Operators give it several
+      blocks' worth (`docs/OPERATOR.md`: `size = 20000`). A spammer who
+      keeps even that full pays for every transaction that lands, at the
+      minimum, the same as filling blocks.
+    - **Not built:** a fee that rises with congestion (Ethereum's base fee,
+      Skip's x/feemarket), which raises prices just when they should stay
+      flat; and paying tips to the block's proposer (Ethereum, Solana),
+      which changes where fees go, a consensus change.
   - **Block limits (genesis, to decide with the price).** 22 MB every 5.7 s
     is about 3.7 MB/s to every peer, more than a home link and more than
     the network needs: the testnet has never come near it. Proposed:
