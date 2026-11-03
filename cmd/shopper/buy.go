@@ -106,7 +106,7 @@ func exitCode(d shopper.Decision, err error) int {
 		return 0
 	case shopper.CodeNeedsConfirm, shopper.CodeNeedsApproval, shopper.CodeUSDCNeedsApproval:
 		return 3
-	case shopper.CodeFacilitatorDown, shopper.CodeSettlementUnknown:
+	case shopper.CodeFacilitatorDown, shopper.CodeSettlementUnknown, shopper.CodePaidNotDelivered:
 		return 4
 	case "":
 		if err != nil {

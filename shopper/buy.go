@@ -26,7 +26,7 @@ const (
 	maxResourceTries = 3
 )
 
-// Chain is the node reads a buy needs. Broadcast stays with the facilitator.
+// Chain is the node reads a buy needs. The service's paywall broadcasts.
 type Chain interface {
 	Account(ctx context.Context, address string) (number, sequence uint64, err error)
 	Tx(ctx context.Context, hash string) (found bool, code uint32, height int64, err error)
@@ -70,9 +70,10 @@ type Buyer struct {
 	ResourceWait time.Duration
 }
 
-// Buy signs at most one transaction for the idempotency key and asks
-// the facilitator to settle it. A retry sends those same bytes or sends
-// nothing.
+// Buy signs at most one transaction for the idempotency key. The
+// service's paywall settles it: the shopper shows it the
+// PAYMENT-SIGNATURE and does not broadcast first. A retry sends those
+// same bytes or sends nothing.
 func (b Buyer) Buy(ctx context.Context, in BuyInput) (BuyResult, error) {
 	if in.IdempotencyKey == "" || utf8.RuneCountInString(in.IdempotencyKey) > maxKeyLen {
 		return BuyResult{}, fail(CodeRefused, NextStop, "An idempotency key is required, up to 128 characters.")
@@ -182,10 +183,18 @@ func (b Buyer) Buy(ctx context.Context, in BuyInput) (BuyResult, error) {
 			return BuyResult{Decision: decision}, nil
 		}
 		if in.DryRun {
-			return BuyResult{Decision: decide(CodeDryRun, NextSubmit, "Dry run: nothing was signed. "+decision.Message, offer.QuoteID)}, nil
+			note, err := b.feeNote(ctx)
+			if err != nil {
+				return BuyResult{}, err
+			}
+			return BuyResult{Decision: decide(CodeDryRun, NextSubmit, "Dry run: nothing was signed. "+note+" "+decision.Message, offer.QuoteID)}, nil
 		}
 	} else if in.DryRun {
-		return BuyResult{Decision: decide(CodeDryRun, NextSubmit, "Dry run: this attempt already has one signature and it was not sent again.", offer.QuoteID)}, nil
+		note, err := b.feeNote(ctx)
+		if err != nil {
+			return BuyResult{}, err
+		}
+		return BuyResult{Decision: decide(CodeDryRun, NextSubmit, "Dry run: this attempt already has one signature and it was not sent again. "+note, offer.QuoteID)}, nil
 	}
 
 	txBytes, hash, err := b.signature(ctx, in.IdempotencyKey, acc.Address, offer, prev)
@@ -202,63 +211,18 @@ func (b Buyer) Buy(ctx context.Context, in BuyInput) (BuyResult, error) {
 		if !vr.IsValid {
 			found, _, _, lookErr := b.Chain.Tx(ctx, hash)
 			if lookErr == nil && !found {
-				_ = b.mark(in, offer, acc.Address, hash, txBytes, attemptRejected, vr.InvalidReason, 0)
+				_ = b.mark(in, offer, acc.Address, hash, txBytes, attemptRejected, vr.InvalidReason, 0, 0)
 				return BuyResult{}, fail(CodeRefused, NextNewKey, "The payment was refused before it was sent. Nothing was spent. Use a new idempotency key to try again.")
 			}
 		}
 	}
 
-	found, code, height, lookErr := b.Chain.Tx(ctx, hash)
-	if lookErr != nil {
-		return BuyResult{}, fail(CodeSettlementUnknown, NextPoll, "The payment may have been sent. Check status before trying again. Nothing new was signed.")
-	}
-	var settled x402.SettleResponse
-	if !found {
-		settled, err = b.Facilitator.Settle(ctx, payload, *req)
-		if err != nil {
-			_ = b.mark(in, offer, acc.Address, hash, txBytes, attemptUnknown, "", 0)
-			return BuyResult{}, fail(CodeSettlementUnknown, NextPoll, "The payment may have been sent. Check status with the same idempotency key. Nothing new was signed.")
-		}
-		if !settled.Success {
-			found, code, height, lookErr = b.Chain.Tx(ctx, hash)
-			if lookErr == nil && found && code == 0 {
-				// The facilitator timed out after the block landed.
-			} else if preBroadcast(settled.ErrorReason) && lookErr == nil && !found {
-				_ = b.mark(in, offer, acc.Address, hash, txBytes, attemptRejected, settled.ErrorReason, 0)
-				return BuyResult{}, fail(CodeRefused, NextNewKey, "The payment was refused before it was sent. Nothing was spent. Use a new idempotency key to try again.")
-			} else {
-				_ = b.mark(in, offer, acc.Address, hash, txBytes, attemptUnknown, settled.ErrorReason, 0)
-				return BuyResult{}, fail(CodeSettlementUnknown, NextPoll, "The payment may have been sent. Check status with the same idempotency key. Nothing new was signed.")
-			}
-		}
-		if settled.Transaction == "" {
-			settled.Transaction = hash
-		}
-		found, code, height, lookErr = b.Chain.Tx(ctx, hash)
-		if lookErr != nil || !found {
-			_ = b.mark(in, offer, acc.Address, hash, txBytes, attemptUnknown, "", 0)
-			return BuyResult{}, fail(CodeSettlementUnknown, NextPoll, "The payment was submitted and is not in a block yet. Check status with the same idempotency key. Nothing new was signed.")
-		}
-	} else if code == 0 {
-		settled = x402.SettleResponse{Success: true, Transaction: hash, Payer: acc.Address, Network: x402.Network(b.ChainID), Amount: offer.Amount}
-	}
-	if code != 0 {
-		_ = b.mark(in, offer, acc.Address, hash, txBytes, attemptFailed, "the payment failed on chain", 0)
-		rec := b.receipt(in, offer, acc.Address, hash, settled, true, code, height, 0)
-		_ = saveReceipt(b.StateDir, rec)
-		return BuyResult{Receipt: &rec}, fail(CodeRefused, NextNewKey, "The payment was included and failed. Nothing new was signed.")
-	}
-
-	status, body, tries, err := b.fetchPaid(ctx, offer, payload, prev)
-	rec := b.receipt(in, offer, acc.Address, hash, settled, true, 0, height, status)
-	_ = saveReceipt(b.StateDir, rec)
-	_ = b.mark(in, offer, acc.Address, hash, txBytes, attemptSettled, "", tries)
-	out := BuyResult{Decision: decide(CodeAlreadyPaid, NextReadReceipt, "Paid "+offer.PriceDisplay+".", offer.QuoteID), Receipt: &rec, Body: body}
-	if err != nil {
-		out.Decision = decide(CodeAlreadyPaid, NextPoll, "You paid, and the service failed. The receipt has the payment. Run the same command to ask again. Nothing new will be signed.", offer.QuoteID)
-	}
-	out.Decision.Spent = true
-	return out, nil
+	// Show the signed payment to the service. Its paywall settles that
+	// header and serves the body only for a payment it broadcast itself.
+	// POST /settle on the public facilitator first would land the
+	// transaction, use up the sequence, and the paywall would answer 402.
+	status, body, tries, reason, hdr, ferr := b.fetchPaid(ctx, offer, payload, prev)
+	return b.finish(ctx, in, offer, acc.Address, hash, txBytes, status, body, tries, reason, hdr, ferr)
 }
 
 func (b Buyer) resumeSettled(ctx context.Context, in BuyInput, offer Offer, prev *attempt) (BuyResult, error) {
@@ -266,27 +230,74 @@ func (b Buyer) resumeSettled(ctx context.Context, in BuyInput, offer Offer, prev
 	if err != nil {
 		rec = b.receipt(in, offer, prev.Payer, prev.TxHash, x402.SettleResponse{Success: true, Transaction: prev.TxHash}, true, 0, 0, prev.HTTPStatus)
 	}
-	if prev.HTTPStatus >= 500 && prev.ResourceTries < maxResourceTries {
-		txBytes, err := base64.StdEncoding.DecodeString(prev.TxB64)
-		if err == nil && offer.Requirements != nil {
-			status, body, tries, ferr := b.fetchPaid(ctx, offer, paymentPayload(*offer.Requirements, txBytes), prev)
-			rec.HTTPStatus = status
-			_ = saveReceipt(b.StateDir, rec)
-			prev.ResourceTries = tries
-			prev.HTTPStatus = status
-			_ = saveAttempt(b.StateDir, prev)
-			out := BuyResult{Decision: decide(CodeAlreadyPaid, NextReadReceipt, "Paid "+offer.PriceDisplay+".", offer.QuoteID), Receipt: &rec, Body: body}
-			out.Decision.Spent = true
-			if ferr != nil {
-				out.Decision.NextAction = NextPoll
-				out.Decision.Message = "You paid, and the service failed again. Nothing new was signed."
-			}
-			return out, nil
-		}
+	if delivered(prev.HTTPStatus) || delivered(rec.HTTPStatus) {
+		d := decide(CodeAlreadyPaid, NextReadReceipt, "You already paid for this. Here is the receipt.", offer.QuoteID)
+		d.Spent = true
+		return BuyResult{Decision: d, Receipt: &rec}, nil
 	}
-	d := decide(CodeAlreadyPaid, NextReadReceipt, "You already paid for this. Here is the receipt.", offer.QuoteID)
-	d.Spent = true
-	return BuyResult{Decision: d, Receipt: &rec}, nil
+	txBytes, err := base64.StdEncoding.DecodeString(prev.TxB64)
+	if err != nil || len(txBytes) == 0 || offer.Requirements == nil {
+		d := notDelivered(offer, prev.TxHash)
+		d.Spent = true
+		return BuyResult{Decision: d, Receipt: &rec}, nil
+	}
+	status, body, tries, reason, hdr, ferr := b.fetchPaid(ctx, offer, paymentPayload(*offer.Requirements, txBytes), prev)
+	return b.finish(ctx, in, offer, prev.Payer, prev.TxHash, txBytes, status, body, tries, reason, hdr, ferr)
+}
+
+// finish records the chain result after the resource has been asked.
+// A 2xx with a successful transaction is the only "paid" result. A
+// transaction that landed while the resource is still 402 is reported
+// as paid but not delivered, and a later call retries the same proof.
+func (b Buyer) finish(ctx context.Context, in BuyInput, offer Offer, payer, hash string, tx []byte, status int, body string, tries int, reason string, hdr http.Header, ferr error) (BuyResult, error) {
+	found, code, height, lookErr := b.Chain.Tx(ctx, hash)
+	if lookErr != nil {
+		_ = b.mark(in, offer, payer, hash, tx, attemptUnknown, "", tries, status)
+		return BuyResult{}, fail(CodeSettlementUnknown, NextPoll, "The payment may have been sent. Check status with the same idempotency key. Nothing new was signed.")
+	}
+	settled := settlementFrom(hdr, hash, payer, b.ChainID, offer.Amount)
+	if delivered(status) {
+		if !found {
+			_ = b.mark(in, offer, payer, hash, tx, attemptUnknown, "", tries, status)
+			return BuyResult{}, fail(CodeSettlementUnknown, NextPoll, "The service answered, and the payment is not in a block yet. Run the same command to check. Nothing new was signed.")
+		}
+		if code != 0 {
+			_ = b.mark(in, offer, payer, hash, tx, attemptFailed, "the payment failed on chain", tries, status)
+			rec := b.receipt(in, offer, payer, hash, settled, true, code, height, status)
+			_ = saveReceipt(b.StateDir, rec)
+			return BuyResult{Receipt: &rec}, fail(CodeRefused, NextNewKey, "The payment was included and failed. Nothing new was signed.")
+		}
+		settled.Success = true
+		rec := b.receipt(in, offer, payer, hash, settled, true, 0, height, status)
+		_ = saveReceipt(b.StateDir, rec)
+		_ = b.mark(in, offer, payer, hash, tx, attemptSettled, "", tries, status)
+		out := BuyResult{Decision: decide(CodeAlreadyPaid, NextReadReceipt, "Paid "+offer.PriceDisplay+".", offer.QuoteID), Receipt: &rec, Body: body}
+		out.Decision.Spent = true
+		return out, nil
+	}
+	if found && code == 0 {
+		rec := b.receipt(in, offer, payer, hash, settled, true, 0, height, status)
+		_ = saveReceipt(b.StateDir, rec)
+		_ = b.mark(in, offer, payer, hash, tx, attemptSettled, reason, tries, status)
+		d := notDelivered(offer, hash)
+		if status >= 500 || ferr != nil {
+			d.Message = "You paid, and the service failed. Payment " + hash + ". Run the same command to ask again with the same proof. Nothing new will be signed."
+		}
+		d.Spent = true
+		return BuyResult{Decision: d, Receipt: &rec}, nil
+	}
+	if found && code != 0 {
+		_ = b.mark(in, offer, payer, hash, tx, attemptFailed, "the payment failed on chain", tries, status)
+		rec := b.receipt(in, offer, payer, hash, settled, true, code, height, status)
+		_ = saveReceipt(b.StateDir, rec)
+		return BuyResult{Receipt: &rec}, fail(CodeRefused, NextNewKey, "The payment was included and failed. Nothing new was signed.")
+	}
+	if status == http.StatusPaymentRequired && preBroadcast(reason) {
+		_ = b.mark(in, offer, payer, hash, tx, attemptRejected, reason, tries, status)
+		return BuyResult{}, fail(CodeRefused, NextNewKey, "The payment was refused before it was sent. Nothing was spent. Use a new idempotency key to try again.")
+	}
+	_ = b.mark(in, offer, payer, hash, tx, attemptUnknown, reason, tries, status)
+	return BuyResult{}, fail(CodeSettlementUnknown, NextPoll, "The payment was submitted and is not in a block yet. Run the same command to ask again. Nothing new was signed.")
 }
 
 func (b Buyer) signature(ctx context.Context, key, payer string, offer Offer, prev *attempt) ([]byte, string, error) {
@@ -333,34 +344,38 @@ func (b Buyer) signature(ctx context.Context, key, payer string, offer Offer, pr
 		return nil, "", fail(CodeRefused, NextStop, "The payment could not be signed. Nothing was spent.")
 	}
 	hash := x402.TxHash(signed.Bytes)
-	if err := b.mark(BuyInput{IdempotencyKey: key}, offer, payer, hash, signed.Bytes, attemptSigned, "", 0); err != nil {
+	if err := b.mark(BuyInput{IdempotencyKey: key}, offer, payer, hash, signed.Bytes, attemptSigned, "", 0, 0); err != nil {
 		return nil, "", err
 	}
 	return signed.Bytes, hash, nil
 }
 
-func (b Buyer) mark(in BuyInput, offer Offer, payer, hash string, tx []byte, state, reason string, tries int) error {
+func (b Buyer) mark(in BuyInput, offer Offer, payer, hash string, tx []byte, state, reason string, tries, httpStatus int) error {
 	prev, _ := loadAttempt(b.StateDir, in.IdempotencyKey)
 	triesOut := tries
+	statusOut := httpStatus
 	if prev != nil && tries < prev.ResourceTries {
 		triesOut = prev.ResourceTries
+	}
+	if prev != nil && statusOut == 0 {
+		statusOut = prev.HTTPStatus
 	}
 	return saveAttempt(b.StateDir, &attempt{
 		Key: in.IdempotencyKey, QuoteID: offer.QuoteID, Payer: payer, TxHash: hash,
 		TxB64: base64.StdEncoding.EncodeToString(tx), State: state, URL: offer.URL, Method: offer.Method,
 		Amount: offer.Amount, Asset: offer.Asset, PayTo: offer.PayTo, Reason: reason,
-		ResourceTries: triesOut,
+		ResourceTries: triesOut, HTTPStatus: statusOut,
 	})
 }
 
-func (b Buyer) fetchPaid(ctx context.Context, offer Offer, payload x402.PaymentPayload, prev *attempt) (status int, body string, tries int, err error) {
+func (b Buyer) fetchPaid(ctx context.Context, offer Offer, payload x402.PaymentPayload, prev *attempt) (status int, body string, tries int, reason string, hdr http.Header, err error) {
 	header, err := paywall.EncodeHeader(payload)
 	if err != nil {
-		return 0, "", 0, err
+		return 0, "", 0, "", nil, err
 	}
-	start := 0
+	base := 0
 	if prev != nil {
-		start = prev.ResourceTries
+		base = prev.ResourceTries
 	}
 	wait := b.ResourceWait
 	switch {
@@ -370,45 +385,62 @@ func (b Buyer) fetchPaid(ctx context.Context, offer Offer, payload x402.PaymentP
 		wait = 10 * time.Second
 	}
 	var lastErr error
-	for tries = start; tries < maxResourceTries; tries++ {
-		if tries > start {
+	for made := 0; made < maxResourceTries; made++ {
+		if made > 0 {
 			select {
 			case <-ctx.Done():
-				return status, body, tries, ctx.Err()
+				return status, body, base + made, reason, hdr, ctx.Err()
 			case <-time.After(wait):
 			}
 		}
-		status, body, lastErr = b.oneRequest(ctx, offer, header)
+		var h http.Header
+		status, body, h, lastErr = b.oneRequest(ctx, offer, header)
+		tries = base + made + 1
 		if lastErr != nil {
 			continue
 		}
-		if status < 500 {
-			return status, body, tries + 1, nil
+		hdr = h
+		reason = paymentError(h)
+		// A 402 that is not "wait for the block" is the service's answer.
+		// 5xx and payment_not_confirmed are retried with the same header.
+		if status < 500 && reason != paywall.ErrNotConfirmed {
+			return status, body, tries, reason, hdr, nil
 		}
 	}
 	if lastErr == nil && status >= 500 {
-		lastErr = fail(CodeAlreadyPaid, NextPoll, "You paid, and the service failed.")
+		lastErr = fail(CodePaidNotDelivered, NextRefetch, "You paid, and the service failed.")
 	}
-	return status, body, tries, lastErr
+	return status, body, tries, reason, hdr, lastErr
 }
 
-func (b Buyer) oneRequest(ctx context.Context, offer Offer, header string) (int, string, error) {
+func (b Buyer) oneRequest(ctx context.Context, offer Offer, header string) (int, string, http.Header, error) {
 	var rdr io.Reader
 	req, err := http.NewRequestWithContext(ctx, offer.Method, offer.URL, rdr)
 	if err != nil {
-		return 0, "", err
+		return 0, "", nil, err
 	}
 	req.Header.Set(paywall.HeaderPaymentSignature, header)
 	resp, err := b.http().Do(req)
 	if err != nil {
-		return 0, "", err
+		return 0, "", nil, err
 	}
 	defer resp.Body.Close()
 	buf, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if err != nil {
-		return resp.StatusCode, "", err
+		return resp.StatusCode, "", resp.Header, err
 	}
-	return resp.StatusCode, string(buf), nil
+	return resp.StatusCode, string(buf), resp.Header, nil
+}
+
+func (b Buyer) feeNote(ctx context.Context) (string, error) {
+	fees, err := b.Chain.Fee(ctx, BuyGasLimit, wallet.BaseDenom)
+	if err != nil {
+		return "", fail(CodeFacilitatorDown, NextRetryLater, "The node's gas price could not be read. Nothing was signed.")
+	}
+	if len(fees) == 0 {
+		return "Fee: none. The node asks no minimum gas price.", nil
+	}
+	return "Fee: " + fees.String() + ".", nil
 }
 
 func (b Buyer) receipt(in BuyInput, offer Offer, payer, hash string, settled x402.SettleResponse, found bool, code uint32, height int64, status int) Receipt {
@@ -434,6 +466,47 @@ func (b Buyer) http() *http.Client {
 	return &http.Client{Timeout: 150 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
+}
+
+func delivered(status int) bool {
+	return status >= 200 && status < 300
+}
+
+func notDelivered(offer Offer, hash string) Decision {
+	return decide(CodePaidNotDelivered, NextRefetch,
+		"Paid but the service didn't deliver. Payment "+hash+". Run the same command to ask again with the same proof. Nothing new will be signed.",
+		offer.QuoteID)
+}
+
+func paymentError(h http.Header) string {
+	if h == nil {
+		return ""
+	}
+	var pr x402.PaymentRequired
+	if paywall.DecodeHeader(h.Get(paywall.HeaderPaymentRequired), &pr) != nil {
+		return ""
+	}
+	return pr.Error
+}
+
+func settlementFrom(h http.Header, hash, payer, chainID, amount string) x402.SettleResponse {
+	var s x402.SettleResponse
+	if h != nil {
+		_ = paywall.DecodeHeader(h.Get(paywall.HeaderPaymentResponseV2), &s)
+	}
+	if s.Transaction == "" {
+		s.Transaction = hash
+	}
+	if s.Payer == "" {
+		s.Payer = payer
+	}
+	if s.Network == "" {
+		s.Network = x402.Network(chainID)
+	}
+	if s.Amount == "" {
+		s.Amount = amount
+	}
+	return s
 }
 
 func paymentPayload(req x402.PaymentRequirements, tx []byte) x402.PaymentPayload {
