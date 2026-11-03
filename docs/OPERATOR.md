@@ -228,7 +228,9 @@ power is back (`docs/UPGRADE-INFLOWCAP-FEES.md` is a worked example).
    It refuses a chain ID that isn't fresh (`aether-1` or `aether-rc-*`), a
    key or miner listed twice, and a base file that gives anyone a balance.
    It writes validators and accounts in a fixed order, so the same input
-   gives the same file, and prints its sha256.
+   gives the same file, and prints its sha256. It also locks escrow for
+   43,200 blocks (3 days) and keeps evidence 48 hours, so a validator
+   that double-signs can't take its escrow out before the evidence lands.
 
 3. Share `genesis.json` and its hash; every operator checks it.
 

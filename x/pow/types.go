@@ -38,6 +38,10 @@ type MiningHeader struct {
 
 type GenesisState struct {
 	Params Params `json:"params"`
+	// RewardScheduleStart is the unix time the reward schedule's first
+	// year starts at, on a fresh chain (reward_schedule.go). Left out, it
+	// is the genesis time; an exported fresh chain carries its own.
+	RewardScheduleStart int64 `json:"reward_schedule_start,omitempty"`
 }
 
 func DefaultGenesisState() GenesisState {

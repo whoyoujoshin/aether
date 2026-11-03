@@ -225,6 +225,37 @@ in escrow for Aether. Keep that small while the chain is young:
   - The native and AuxPoW difficulty bounds: `MaxDifficulty` is 10⁸ expected
     hashes, under a second for one GPU.
   - The block-time target.
+  - **The reward schedule ran about ten times too fast: fixed for fresh
+    chains (found 2026-11-02, built 2026-11-03; Joshua chose time).**
+    `ComputeScheduledBlockReward` counted years in block heights,
+    `SecondsPerYear / TargetBlockTime` = 525,960 blocks, which assumes a
+    block every 60 s. Blocks come every 5.7 s, so each "year" lasted about
+    35 days and the eight steps from 5 AETH to the 0.20 AETH tail about
+    nine months. (`TargetBlockTime` is really the target time between
+    accepted submissions, which ASERT holds at one a minute; the schedule
+    borrowed it as a block time.) On `aether-1` and `aether-rc-*` a year is
+    now 365.25 days of block time after the genesis time
+    (`x/pow/reward_schedule.go`): InitGenesis records the genesis time
+    (or the genesis file's `reward_schedule_start`, so an exported chain
+    keeps its start), and the export writes it. Block time is consensus
+    data, the power-weighted median of the last commit's vote times, so
+    every node agrees and moving it takes a third of the power. The
+    testnet keeps the height count: its second step falls at height
+    525,960, around 2026-10-30 (3.3 AETH a find instead of 5), unless its
+    genesis stored a fixed reward. Tests: `app/reward_schedule_test.go`
+    (on both fresh chain IDs, 600,000 blocks and a day after genesis is
+    still 5 AETH; a year after, 3.3; eight, the tail; the testnet's chain
+    ID unchanged) and `x/pow/reward_schedule_test.go` (a start from the
+    genesis file is kept and exported); both fail with the change undone.
+  - **The escrow lock outlasts the evidence window: set by `rcgenesis`.**
+    `BondCooldown`'s 4,320 blocks were meant as 3 days (48 hours of
+    evidence plus a day) but are about 7 hours at 5.7 s, so a validator
+    that double-signed could take its escrow out before the evidence
+    arrived. `cmd/rcgenesis` writes `bond_cooldown` 43,200 (3 days at 6 s,
+    60 hours even at 5 s) and evidence `max_age_num_blocks` 28,800 with
+    `max_age_duration` 48 h; CometBFT drops evidence only once it is past
+    both, so the window stays 48 hours. The testnet's values are
+    unchanged.
 - **Supply.** `docs/genesis.template.json` gives no one a balance: every AETH
   is mined. The reward is 5 AETH a submission in year 1, kept at 66% each year
   for 8 years, then 0.20 AETH for good. Of each reward, 15% is a cut: 13/15 of
@@ -256,8 +287,49 @@ in escrow for Aether. Keep that small while the chain is young:
     that the first swept block moves. It adds no store, but it changes
     every block, so validators need a binary carrying the height first. It
     is on the review's list.
-  - **Still open:** the price itself, which is node configuration and can
-    change without a release.
+  - **The price itself: proposed 0.0005uaeth, plus 0.0025 per gas in the
+    USDC voucher once a USDC path opens** (for Joshua to decide; it is node
+    configuration and can change without a release). Measured on an
+    `aether-rc-gas` devnet (2026-11-02), gas used and size of each
+    transaction:
+
+    | Transaction | Gas used | Bytes |
+    |---|---|---|
+    | Send, account's first (stores its key) | 199,209–214,404 | 3,973–3,979 |
+    | Send to a new account | 169,027 | 3,981 |
+    | Send to an existing account (a directory listing is one) | 156,934 | 4,178 with a 200-byte memo |
+    | Multi-send to 10 | 390,314 | 4,759 |
+    | Escrow create / release | 178,481 / 149,936 | 4,016 / 3,901 |
+    | Treasury-spend proposal / vote | 193,373 / 137,716 | 3,993 / 3,898 |
+    | Register a consensus key | 163,632 | |
+    | Mining submission (no fee at any price) | 287,331 | |
+
+    A fee is checked against the gas **limit**, not the gas used, and the
+    CLI, faucet, listings and agentmcp all ask 400,000. At 0.0005uaeth:
+    - a send costs 200 uaeth (0.0002 AETH) at the default limit, or about
+      85 with `--gas auto`; one find's 4.25 AETH pays for about 21,000;
+    - registering a consensus key costs 200 uaeth, as on the rehearsal;
+    - in USDC at 0.0025, a send at the default limit costs 1,000 base units
+      ($0.001).
+
+    **Spam.** Every transaction is about 4 KB (an ML-DSA-44 signature is
+    2,420 bytes and a public key 1,312), and the genesis template leaves
+    `max_gas` unlimited (`-1`) with `max_bytes` at 22,020,096, so a block
+    holds about 5,600 sends. Filling every block at 0.0005uaeth costs
+    about 0.44 AETH a block, about 280 AETH an hour at 5.7 s blocks: close
+    to the whole year-1 native issuance (one 5 AETH reward a minute, 300
+    an hour). At 0.0001 it would be 56 AETH an hour, a fifth of it; at
+    0.001, 560. In USDC at 0.0025 it is about $2.20 a block. The mempool
+    is first come, first served (no fee priority), so a spammer who fills
+    blocks delays everyone rather than being outbid.
+  - **Block limits (genesis, to decide with the price).** 22 MB every 5.7 s
+    is about 3.7 MB/s to every peer, more than a home link and more than
+    the network needs: the testnet has never come near it. Proposed:
+    `max_bytes` 4,194,304 (about 1,000 sends a block, 175 a second) and
+    `max_gas` 200,000,000 (Helicase's relays may use up to half). Filling
+    those blocks at 0.0005uaeth costs about 50 AETH an hour, a sixth of
+    the year-1 issuance, while each block stays small enough for an
+    ordinary server.
   - **Governance spends the treasury's USDC** (AET-27): a treasury-spend
     proposal's amount may be one coin of any denom the treasury holds,
     paid from its bank balance; uaeth still goes through the ledger. On
