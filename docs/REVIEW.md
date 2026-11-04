@@ -31,21 +31,28 @@ one holds a key.
 
 ### Fuzzing
 
-Go's built-in fuzzer, three targets:
+Go's built-in fuzzer, four targets:
 
 | Target | What it feeds | Run for longer |
 |---|---|---|
 | `FuzzCheckAuxPow` (`x/pow`) | any bytes, decoded as an `AuxPowData`, through the whole AuxPoW check | `go test ./x/pow -run '^$' -fuzz '^FuzzCheckAuxPow$' -fuzztime 10m` |
 | `FuzzAuxPowCommitment` (`x/pow`) | any bytes as a parent coinbase, through the parser the pool bridge also uses | `... -fuzz '^FuzzAuxPowCommitment$' ...` |
 | `FuzzAetherMsgHandlers` (`app`) | any bytes, decoded as one of Aether's 42 message types, through its real handler on a fresh chain with every gate open; fails on a panic | `go test ./app -run '^$' -fuzz '^FuzzAetherMsgHandlers$' -fuzztime 10m` |
+| `FuzzMoneySequences` (`app`) | a program of up to 64 steps (sends, also to module accounts; escrows created, released, refunded; treasury-spend proposals of either denom; deposits; votes; block rewards; time moving on through the app's EndBlocker) on a chain whose four accounts hold money and are active validators; every invariant after every step, and no panic | `go test ./app -run '^$' -fuzz '^FuzzMoneySequences$' -fuzztime 10m` |
 
 Plain `go test` runs only their seeds, so CI stays fast. A failing input is
 saved under `testdata/fuzz/` and from then on runs as a seed: commit it
 with the fix.
 
 The handler target starts from an empty chain, so most messages stop early
-(no account, no funds). It finds panics in input handling; it doesn't reach
-deep states. Seeding it with messages from the app tests is the next step.
+(no account, no funds): it finds panics in input handling. The sequence
+target reaches the states where money moves: its seeds each tell a story
+(an escrow left to expire; a treasury spend voted through and paid; a
+vetoed proposal; money sent straight to module accounts), and
+`TestMoneySequences_SeedsReachRealStates` checks each seed does real work
+rather than being refused, and that a voted spend pays its recipient
+exactly. Not covered yet: rotations and guardians (they need real ML-DSA
+signatures), IBC packets, and mining with real proof-of-work.
 
 ### Invariants
 
@@ -114,34 +121,67 @@ From the first fuzzing and invariant runs (2026-11-04).
 | F3 | **The AuxPoW coinbase branch had no length limit.** Every hash in it is hashed before the proof is refused: a 1 MB branch of one-byte hashes took about 0.1 s to check. At the mainnet price a block of four costs about 0.004 AETH and slows every validator by about 0.4 s. | Low | From the same height: at most 32 levels (its index is a uint32, so a longer branch names no position in any tree), and every branch hash 32 bytes. |
 | F4 | **The pool bridge used the testnet's merged-mining height on every chain.** `cmd/auxpowd` checked proofs with `CheckAuxPow` (testnet heights) and refused work below 205,000. On `aether-1`, where merged mining is on from block 1, it would have handed out no work for the first 205,000 blocks (about 13 days) and checked proofs under the old byte order. | Medium (availability) | It reads the gate for the chain it talks to (`gates.Height(st.ChainID, …)`). |
 
+| F5 | **One plain send could stop a fresh chain for good** (found by `FuzzMoneySequences` within seconds). Bank blocks no addresses here, and a module account is created only the first time its module uses it: after a fresh genesis pow, treasury, governance, transfer and interchainaccounts don't exist. A send of 1 uaeth to the treasury's address leaves an ordinary account there; that send's own fee reaches the fee collector, and the fee sweep at the end of the block panics ("account is not a module account"), on every node, again on every restart. The same send to pow's address makes every mining reward fail; to governance's, every proposal. | Critical (fresh chains) | From `ModuleAccountsActivationHeight` every module account is created, or a squatted one converted in place keeping its coins (`app/module_accounts.go`, generalising what x/escrow already did at its activation). Block 1 on fresh chains, before any transaction; a placeholder on the testnet, where rewards, fees and vouchers created these accounts long ago (check below). |
+
 No invariant broke in any app test scenario. The one test that tripped one,
 `TestFeesToTreasury_CreditsDirectSends`, raises the treasury ledger with no
 coins behind it on purpose, to check the sweep never lowers it; it now
 turns the halt off for that step.
 
-## 4. Bug bounty (proposed)
+### Checking the testnet's module accounts (F5)
 
-Joshua decides the amounts and the budget; this is the shape.
+On the seed (or any node), each line should print `code 0` (it exists and
+is a module account); anything else means its address can still be
+squatted until `ModuleAccountsActivationHeight` is set and reached:
+
+```bash
+for m in fee_collector:0a0d6665655f636f6c6c6563746f72 pow:0a03706f77 treasury:0a087472656173757279 \
+         governance:0a0a676f7665726e616e6365 transfer:0a087472616e73666572 \
+         interchainaccounts:0a12696e746572636861696e6163636f756e7473 escrow:0a06657363726f77; do
+  printf '%s: ' "${m%%:*}"
+  curl -s "localhost:26657/abci_query?path=%22/cosmos.auth.v1beta1.Query/ModuleAccountByName%22&data=0x${m#*:}" |
+    jq -r '"code \(.result.response.code) \(.result.response.log)"'
+done
+```
+
+## 4. Bug bounty (proposed, small budget)
+
+Joshua decides; this is the shape. There is no budget for thousands of
+dollars in cash, so the bounty pays mostly in credit and in AETH, and in
+USDC only from a pool when there is one.
 
 - **Where reports go:** GitHub's private vulnerability reporting on this
   repository (Security → Report a vulnerability), so a report and its fix
   stay private until released. Turn it on in the repository settings
-  before launch, and add a `SECURITY.md` pointing to it.
-- **Paid in USDC** on Aether or Injective, from a bounty fund held apart
-  from the treasury.
-- **Tiers** (proposed amounts, scaled to a small launch):
+  before launch, and add a `SECURITY.md` pointing to it. It costs nothing.
+- **Every valid report is credited** by name (or handle) in the release
+  notes of the fix and on a hall-of-fame page, unless the reporter asks
+  not to be.
+- **AETH from the treasury.** The treasury fills itself from every block
+  reward (2% of it, while validators take the rest of the 15% cut:
+  `DistributeReward`) and from every fee (`app/fees.go`): at 5 AETH a block
+  and ~15,000 blocks a day that is about 1,500 AETH a day, so a bounty paid
+  from it costs no one cash. Each payout is a treasury-spend proposal, so it is
+  public and validators approve it. Proposed tiers, in AETH:
 
 | Tier | Examples | Proposed |
 |---|---|---|
-| Critical | mint or move value without a valid signature; get past the inflow cap; split or halt the chain from outside; take a seat without the work the seat rule asks | up to 2,000 USDC |
-| High | freeze funds in escrow or the treasury; halt the chain with a passing vote; a key-holding service tricked into paying | up to 500 USDC |
-| Medium | slow every block measurably for little cost; crash a public service from outside | up to 150 USDC |
-| Low | wrong numbers in a query or the explorer with no loss | up to 50 USDC |
+| Critical | mint or move value without a valid signature; get past the inflow cap; split or halt the chain from outside; take a seat without the work the seat rule asks | up to 2,000 AETH |
+| High | freeze funds in escrow or the treasury; halt the chain with a passing vote; a key-holding service tricked into paying | up to 500 AETH |
+| Medium | slow every block measurably for little cost; crash a public service from outside | up to 100 AETH |
+| Low | wrong numbers in a query or the explorer with no loss | credit only |
 
+- **USDC only from a pool, if one exists.** Should Joshua set some USDC
+  aside later, it tops up Critical and High findings first, first come,
+  until it runs out; the page says how much is left. Nothing is promised
+  beyond what the pool holds.
+- **A testnet bug hunt before mainnet** costs nothing and finds the same
+  bugs earlier: the same tiers, paid in credit and in mainnet AETH from
+  the treasury after launch.
 - **Rules:** test on the testnet or your own devnet, never on mainnet
   funds that aren't yours; no denial of service by volume, no social
   engineering, nothing against operators' machines; first report of each
-  issue is paid; disclosure after the fix ships, or 90 days.
+  issue counts; disclosure after the fix ships, or 90 days.
 - **Safe harbor:** research within these rules isn't pursued.
 
 The findings above (F1 to F4) were found before the bounty and aren't
@@ -149,9 +189,10 @@ eligible.
 
 ## 5. Before launch
 
-- Merge the guard and fixes; pick `AuxPoWInputGuardHeight` for the testnet
-  with the next validator swap.
+- Pick `AuxPoWInputGuardHeight` and `ModuleAccountsActivationHeight` for
+  the testnet with the next validator swap (after checking the module
+  accounts above).
 - Run each fuzz target for an hour on a workstation; commit any crasher.
 - Run the replay against the testnet's history once.
 - A reviewer goes through §1's table, with these tools.
-- Open the bounty with launch.
+- Open the bounty (and the testnet bug hunt before it) with launch.
