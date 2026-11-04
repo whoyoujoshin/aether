@@ -454,3 +454,26 @@ func TestBridge_ProofNamingNewerWorkUsesTheCommittedWork(t *testing.T) {
 	require.Equal(t, committed.Height-1, d.TemplateHeight)
 	require.NoError(t, pow.CheckAuxPow(d, testDiff, fc.st.Height+1))
 }
+
+// On a fresh chain (aether-1, aether-rc-*) merged mining's rules apply
+// from block 1, as x/pow reads them, so the bridge hands out work there
+// from the start and checks proofs the way the chain will: a proof mined
+// to the little-endian target is sent, not refused under the testnet's
+// pre-activation byte order.
+func TestBridge_FreshChainFromBlockOne(t *testing.T) {
+	_, fc, srv := newTestBridge(t)
+	fc.st.ChainID = "aether-rc-bridge"
+	fc.st.Height = 100
+
+	resp, err := http.Get(srv.URL + "/health")
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	ab := createAuxBlock(t, srv, poolAddr.String())
+	res, rerr, _ := rpc(t, srv, "submitauxblock", ab.Hash, minePool(t, ab))
+	require.Nil(t, rerr)
+	require.Equal(t, "true", string(res))
+	require.Len(t, fc.submitted, 1)
+	require.NoError(t, pow.CheckAuxPowOn(fc.st.ChainID, fc.submitted[0], testDiff, fc.st.Height+1))
+}

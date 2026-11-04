@@ -9,8 +9,6 @@ import (
 	"io"
 	"net/http"
 	"time"
-
-	pow "github.com/whoyoujoshin/aether/x/pow"
 )
 
 // rpcRequest is a bitcoind-style JSON-RPC request. Params are strings for
@@ -124,15 +122,16 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func (b *bridge) health(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	out := map[string]any{"activation_height": pow.MergedMiningActivationHeight}
+	out := map[string]any{}
 	st, err := b.chain.State(ctx)
 	if err != nil {
 		out["ok"], out["error"] = false, err.Error()
 		writeJSON(w, http.StatusServiceUnavailable, out)
 		return
 	}
+	out["activation_height"] = mergedFrom(st.ChainID)
 	out["height"], out["aux_difficulty"] = st.Height, st.AuxDifficulty
-	if st.Height+1 < pow.MergedMiningActivationHeight {
+	if st.Height+1 < mergedFrom(st.ChainID) {
 		out["ok"], out["error"] = false, "merged mining isn't active yet"
 		writeJSON(w, http.StatusServiceUnavailable, out)
 		return

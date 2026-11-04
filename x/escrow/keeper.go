@@ -200,6 +200,16 @@ func (k Keeper) OpenEscrowsOf(ctx sdk.Context, addr sdk.AccAddress, afterID uint
 	return out, 0
 }
 
+// TotalHeld is what every open escrow together is owed, by denom: the
+// least the module account must hold (app's invariants check it).
+func (k Keeper) TotalHeld(ctx sdk.Context) sdk.Coins {
+	total := sdk.NewCoins()
+	for _, e := range k.allEscrows(ctx) {
+		total = total.Add(e.Amount...)
+	}
+	return total
+}
+
 func (k Keeper) allEscrows(ctx sdk.Context) []Escrow {
 	it := storetypes.KVStorePrefixIterator(ctx.KVStore(k.storeKey), KeyEscrowPrefix)
 	defer it.Close()

@@ -280,6 +280,10 @@ type App struct {
 
 	inflowCapWired bool
 
+	// When to check the invariants at the end of a block (invariants.go);
+	// off unless AETHER_INVARIANTS_EVERY is set.
+	invariants invariantCheck
+
 	// The worker this node proposes relay transactions from; see
 	// app/helicase.go.
 	helicase helicaseState
@@ -318,6 +322,7 @@ func New(
 	bApp.SetVersion("0.1")
 
 	app := &App{
+		invariants:        invariantsFromEnv(),
 		BaseApp:           bApp,
 		cdc:               appCodec,
 		interfaceRegistry: interfaceRegistry,
@@ -804,6 +809,9 @@ func (app *App) EndBlocker(ctx sdk.Context) (sdk.EndBlock, error) {
 		app.AccountAuthKeeper.ApplyDueRotations(ctx.WithEventManager(em))
 	}
 	res.Events = append(res.Events, em.ABCIEvents()...)
+	if err := app.checkInvariantsAtEnd(ctx); err != nil {
+		return res, err
+	}
 	return res, nil
 }
 

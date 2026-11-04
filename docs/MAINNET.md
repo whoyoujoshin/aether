@@ -431,6 +431,9 @@ Method:
 - Run a public bug bounty from launch, paid in USDC, with the top tier
   reserved for consensus and IBC.
 
+The fuzz targets, the invariants, the replay script, the findings so far
+and the proposed bounty are in `docs/REVIEW.md`.
+
 ## 6. Services and clients
 
 - **The clients default to the testnet.** They need a mainnet profile: chain

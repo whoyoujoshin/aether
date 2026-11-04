@@ -253,3 +253,38 @@ func TestResolveProposal_AfterActivation_TreasurySpendAlsoUsesExecutionFailedSta
 }
 
 var _ baseapp.MessageRouter // referenced only to confirm the import resolves
+
+// A handler that panics on the message a passed proposal carries runs in
+// EndBlock, where no transaction's recovery applies. The proposal lands
+// as EXECUTION_FAILED, its writes are dropped, and the block goes on.
+func TestResolveProposal_AfterActivation_PanickingHandlerFailsTheProposalNotTheChain(t *testing.T) {
+	k, ctx, router, mockPow := setupKeeperWithRouter(t)
+	ctx = ctx.WithBlockHeight(governance.ParamChangeGovernanceActivationHeight)
+
+	router.Handlers["/cosmos.consensus.v1.MsgUpdateParams"] = func(ctx sdk.Context, req sdk.Msg) (*sdk.Result, error) {
+		k.SetProposal(ctx, governance.Proposal{Id: 99, Status: governance.ProposalStatus_PROPOSAL_STATUS_PASSED})
+		var branch *struct{ Hashes [][]byte }
+		_ = branch.Hashes // nil dereference, as in an AuxPoW submission with no branch
+		return &sdk.Result{}, nil
+	}
+
+	proposal := governance.Proposal{
+		Id:           1,
+		TotalDeposit: "25000000",
+		Status:       governance.ProposalStatus_PROPOSAL_STATUS_VOTING_PERIOD,
+		ProposalType: governance.ProposalType_PROPOSAL_TYPE_PARAM_CHANGE,
+		ExecuteMsg:   packUpdateParams(t, governanceAddr().String()),
+	}
+	k.SetProposal(ctx, proposal)
+	voterYes := sdk.AccAddress("paramchange_voter_pan")
+	mockPow.ActiveValidators[voterYes.String()] = true
+	k.SetVote(ctx, governance.Vote{ProposalId: 1, Voter: voterYes.String(), Option: governance.VoteOption_VOTE_OPTION_YES, Weight: "1"})
+
+	require.NotPanics(t, func() { require.NoError(t, k.ResolveProposal(ctx, proposal, 0)) })
+
+	updated, ok := k.GetProposal(ctx, 1)
+	require.True(t, ok)
+	require.Equal(t, governance.ProposalStatus_PROPOSAL_STATUS_EXECUTION_FAILED, updated.Status)
+	_, wrote := k.GetProposal(ctx, 99)
+	require.False(t, wrote, "the panicking execution's writes must be dropped")
+}
