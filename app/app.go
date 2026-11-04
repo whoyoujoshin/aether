@@ -779,6 +779,8 @@ func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 	if err := app.checkEscrowActivation(ctx); err != nil {
 		return sdk.BeginBlock{}, err
 	}
+	// Every module account exists from here (module_accounts.go).
+	app.ensureModuleAccountsAt(ctx)
 	if err := app.checkInflowCapActivation(ctx); err != nil {
 		return sdk.BeginBlock{}, err
 	}

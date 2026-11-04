@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 
 	"github.com/whoyoujoshin/aether/gates"
 	"github.com/whoyoujoshin/aether/x/escrow"
@@ -70,17 +69,7 @@ func (app *App) checkEscrowActivation(ctx sdk.Context) error {
 // Bank blocks no addresses on this chain, so before activation anyone
 // could send coins to that address and leave an ordinary account there;
 // the first escrow would then panic ("is not a module account"). Such an
-// account can't have a key, so it's converted in place, keeping its
-// number and its coins.
+// account is converted in place (ensureModuleAccount).
 func (app *App) ensureEscrowModuleAccount(ctx sdk.Context) {
-	addr := authtypes.NewModuleAddress(escrow.ModuleName)
-	acc := app.AccountKeeper.GetAccount(ctx, addr)
-	switch acc.(type) {
-	case nil:
-		app.AccountKeeper.GetModuleAccount(ctx, escrow.ModuleName) // creates it
-	case sdk.ModuleAccountI:
-	default:
-		base := authtypes.NewBaseAccount(addr, nil, acc.GetAccountNumber(), acc.GetSequence())
-		app.AccountKeeper.SetAccount(ctx, authtypes.NewModuleAccount(base, escrow.ModuleName))
-	}
+	app.ensureModuleAccount(ctx, escrow.ModuleName)
 }
