@@ -446,6 +446,12 @@ and the proposed bounty are in `docs/REVIEW.md`.
   to fill in at launch: the public endpoints, the USDC channel, the
   explorer's flags and an MCP Registry entry for mainnet.
   `docs/API-STABILITY.md` applies to both networks.
+- **Aether Pay keeps keys encrypted** (built 2026-11-04): the desktop app
+  runs walletapi with a `file` keyring, asks for a password chosen on
+  first launch, holds it in memory only, and moves accounts an earlier
+  version kept unencrypted into it before deleting the unencrypted copies
+  (`desktop/README.md`). Still to build before real value: a mainnet
+  setting in the app, changing the password, locking when idle.
 - **The paid services earn and spend real money.**
   - Inference pays OpenRouter in dollars and is paid in USDC, so its price
     must cover its cost. The daily cap stays.

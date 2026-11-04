@@ -190,6 +190,13 @@
         throw new Error("The wallet's local service isn't answering. Restart Aether Pay.");
       }
       const data = await res.json().catch(() => ({}));
+      if (res.status === 423) {
+        // walletapi forgot the password (it restarted): ask for it again.
+        window.dispatchEvent(new Event("wallet-locked"));
+        const e = new Error(data.error || "the wallet is locked");
+        e.locked = true;
+        throw e;
+      }
       if (!res.ok) throw new Error(data.error || data.message || "request failed");
       return data;
     }
@@ -1069,7 +1076,120 @@
       );
     }
 
-    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    // The keys are in an encrypted keyring (walletapi --keyring-backend
+    // file): nothing opens until its password is given. The password goes to
+    // walletapi on this computer once per launch and is kept only in its
+    // memory. Accounts an earlier version kept unencrypted are moved in,
+    // then their unencrypted copies deleted, with the person's say-so.
+    function Gate() {
+      const [state, setState] = useState(null); // GET /api/keyring
+      const [err, setErr] = useState("");
+      const [skipMove, setSkipMove] = useState(false);
+      const load = useCallback(async () => {
+        try {
+          const next = await api("/api/keyring");
+          setState((prev) => (prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+          setErr("");
+        } catch (e) { setErr(e.message); }
+      }, []);
+      // Every 10 s too: if walletapi restarts (and forgets the password),
+      // the window locks at once, not at the next payment.
+      useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, []);
+      useEffect(() => {
+        const relock = () => load();
+        window.addEventListener("wallet-locked", relock);
+        return () => window.removeEventListener("wallet-locked", relock);
+      }, []);
+
+      if (err) {
+        return (
+          <div className="setup"><div className="card">
+            <h2>Can't open the wallet</h2>
+            <div className="warn"><span>⚠</span><div>{err}</div></div>
+            <div className="actions"><button className="btn primary" onClick={load}>Try again</button></div>
+          </div></div>
+        );
+      }
+      if (!state) return <div className="setup faint mono">Opening wallet…</div>;
+      if (state.encrypted && state.locked) return <Unlock created={state.created} onDone={load} />;
+      if (state.encrypted && state.unencrypted.length && !skipMove) {
+        return <MoveIn accounts={state.unencrypted} onDone={load} onLater={() => setSkipMove(true)} />;
+      }
+      return <App />;
+    }
+
+    function Unlock({ created, onDone }) {
+      const [pass, setPass] = useState("");
+      const [again, setAgain] = useState("");
+      const [ack, setAck] = useState(false);
+      const [busy, setBusy] = useState(false);
+      const [err, setErr] = useState("");
+      const ok = created ? pass.length > 0 : pass.length >= 8 && pass === again && ack;
+      async function go() {
+        setBusy(true); setErr("");
+        try { await api("/api/keyring/unlock", { password: pass }); setPass(""); setAgain(""); await onDone(); }
+        catch (e) { setErr(e.message); }
+        setBusy(false);
+      }
+      return (
+        <div className="setup"><div className="card">
+          <div className="brand" style={{ padding: "0 0 18px" }}><img src="aether-mark.svg" alt="" /><div><b>Aether Pay</b><small>TESTNET</small></div></div>
+          <h2>{created ? "Unlock your wallet" : "Choose a password"}</h2>
+          {!created && <p className="note">Your keys are kept encrypted on this computer with this password. Aether Pay asks for it each time it opens. It never leaves this computer.</p>}
+          <form onSubmit={(e) => { e.preventDefault(); if (ok && !busy) go(); }}>
+            <label className="f">Password</label>
+            <input className="field" type="password" autoFocus value={pass} onChange={(e) => setPass(e.target.value)} autoComplete={created ? "current-password" : "new-password"} />
+            {!created && <>
+              <div className={"hint" + (pass && pass.length < 8 ? " bad" : "")}>at least 8 characters</div>
+              <label className="f">The same password again</label>
+              <input className="field" type="password" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" />
+              {again && again !== pass && <div className="hint bad">the two don't match</div>}
+              <div className="warn" style={{ marginTop: 14 }}><span>⚠</span><div>No one can recover this password. If you forget it, only your accounts' recovery phrases bring them back.</div></div>
+              <label className="check"><input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />I understand, and I have my recovery phrases</label>
+            </>}
+            {err && <div className="banner" style={{ margin: "14px 0 0" }}>{err}</div>}
+            <div className="actions"><button className="btn primary" type="submit" disabled={!ok || busy}>{busy ? "Opening…" : created ? "Unlock" : "Encrypt my wallet"}</button></div>
+          </form>
+        </div></div>
+      );
+    }
+
+    function MoveIn({ accounts, onDone, onLater }) {
+      const [moved, setMoved] = useState(false);
+      const [busy, setBusy] = useState("");
+      const [err, setErr] = useState("");
+      async function run(what, path) {
+        setBusy(what); setErr("");
+        try { await api(path, {}); if (what === "move") setMoved(true); else await onDone(); }
+        catch (e) { setErr(e.message); }
+        setBusy("");
+      }
+      return (
+        <div className="setup"><div className="card">
+          <h2>{moved ? "Delete the unencrypted copies" : "Encrypt your accounts"}</h2>
+          {!moved ? <>
+            <p className="note">An earlier version of Aether Pay kept {accounts.length === 1 ? "this account" : "these accounts"} on this computer without encryption. Move {accounts.length === 1 ? "it" : "them"} into your encrypted wallet. {accounts.length === 1 ? "Its address stays" : "Their addresses stay"} the same.</p>
+            {accounts.map((a) => (
+              <div className="row" key={a.name}><span className="av">{initials(a.name)}</span><span className="grow"><div className="nm">{a.name}</div><div className="ad">{short(a.address)}</div></span></div>
+            ))}
+            {err && <div className="banner" style={{ margin: "14px 0 0" }}>{err}</div>}
+            <div className="actions">
+              <button className="btn" disabled={!!busy} onClick={onLater}>Later</button>
+              <button className="btn primary" disabled={!!busy} onClick={() => run("move", "/api/keyring/migrate")}>{busy ? "Moving…" : accounts.length === 1 ? "Move it in" : "Move them in"}</button>
+            </div>
+          </> : <>
+            <p className="note">Your accounts are in the encrypted wallet now. The old unencrypted copies are still on this computer, readable by anything that can read your files. Delete them. Your recovery phrases still restore every account.</p>
+            {err && <div className="banner" style={{ margin: "14px 0 0" }}>{err}</div>}
+            <div className="actions">
+              <button className="btn" disabled={!!busy} onClick={onLater}>Keep them for now</button>
+              <button className="btn primary" disabled={!!busy} onClick={() => run("remove", "/api/keyring/remove-unencrypted")}>{busy ? "Deleting…" : "Delete the unencrypted copies"}</button>
+            </div>
+          </>}
+        </div></div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<Gate />);
   </script>
 </body>
 </html>

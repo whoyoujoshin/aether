@@ -15,6 +15,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -24,12 +25,9 @@ import (
 	"strings"
 
 	"cosmossdk.io/math"
-	"github.com/cosmos/cosmos-sdk/codec"
-	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/whoyoujoshin/aether/app"
-	"github.com/whoyoujoshin/aether/crypto/mldsa"
 	"github.com/whoyoujoshin/aether/wallet"
 )
 
@@ -58,10 +56,7 @@ func defaultHomeDir() string {
 }
 
 func newWallet() (*wallet.Wallet, error) {
-	registry := codectypes.NewInterfaceRegistry()
-	mldsa.RegisterInterfaces(registry)
-	cdc := codec.NewProtoCodec(registry)
-	return wallet.NewWallet("aetherd", keyringBackend, keyringDir, cdc)
+	return openWallet()
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
@@ -72,6 +67,10 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 }
 
 func writeError(w http.ResponseWriter, status int, err error) {
+	if errors.Is(err, errLocked) {
+		writeJSON(w, http.StatusLocked, map[string]any{"error": err.Error(), "locked": true})
+		return
+	}
 	writeJSON(w, status, map[string]string{"error": err.Error()})
 }
 
@@ -322,7 +321,7 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.StringVar(&keyringDir, "keyring-dir", defaultHomeDir(), "keyring storage directory")
-	flag.StringVar(&keyringBackend, "keyring-backend", "test", "keyring backend (test|file|os)")
+	flag.StringVar(&keyringBackend, "keyring-backend", "test", `keyring backend (test|file|os); "file" (what the desktop app runs) is encrypted, its password typed into the wallet window`)
 	flag.StringVar(&grpcEndpoint, "grpc", "grpc.157-245-252-221.sslip.io:443", "node gRPC endpoint (defaults to the public testnet, over TLS)")
 	flag.StringVar(&rpcEndpoint, "rpc", "https://rpc.157-245-252-221.sslip.io", "node RPC endpoint (defaults to the public testnet, over TLS)")
 	flag.StringVar(&chainID, "chain-id", "aether-testnet-1", "chain ID")
@@ -376,6 +375,10 @@ func main() {
 	http.HandleFunc("/api/mine/start", withCORS(handleMineStart))
 	http.HandleFunc("/api/mine/stop", withCORS(handleMineStop))
 	http.HandleFunc("/api/mine/status", withCORS(handleMineStatus))
+	http.HandleFunc("/api/keyring", withCORS(handleKeyring))
+	http.HandleFunc("/api/keyring/unlock", withCORS(handleUnlock))
+	http.HandleFunc("/api/keyring/migrate", withCORS(handleMigrate))
+	http.HandleFunc("/api/keyring/remove-unencrypted", withCORS(handleRemoveUnencrypted))
 
 	addr := "localhost:" + port
 	log.Printf("Aether wallet API listening on %s (chain %s via gRPC %s)", addr, chainID, grpcEndpoint)
