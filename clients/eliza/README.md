@@ -52,6 +52,7 @@ The `AETHER_WALLET` provider tells the agent its address and what's left of its 
 | Setting | Default | |
 | --- | --- | --- |
 | `AETHER_MNEMONIC` | none | The agent account's 24-word recovery phrase. A secret. Without it the plugin is read-only. |
+| `AETHER_ACCOUNT` | the phrase's own address | Only after a key rotation (`docs/PQ-KEY-ROTATION.md`): the account the phrase's key was rotated onto. The agent then sends from that account, which keeps its address and balance. |
 | `AETHER_MAX_PER_PAYMENT` | `1 AETH` | Most one payment may be, with its unit. |
 | `AETHER_DAILY_BUDGET` | `5 AETH` | Most it may spend in a rolling 24 hours, in the same asset. |
 | `AETHER_RPC_URL` | `https://rpc.157-245-252-221.sslip.io` | The public testnet. |

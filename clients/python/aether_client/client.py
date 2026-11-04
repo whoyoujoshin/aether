@@ -206,6 +206,15 @@ class AetherClient:
             return False
         return signs_for(account, pubkey, self.account_pub_key(account))
 
+    def key_for(self, key: Key, account: str) -> Key:
+        """key, signing for account once a rotation has made it the key stored there: what sends
+        from a rotated account (key.for_account), checked against the chain first. Raises
+        ValueError if key doesn't sign for account now, for example while the rotation is pending."""
+        if not self.signs_for(account, key.public_key):
+            raise ValueError(f"key {key.key_address} doesn't sign for {account}: it isn't the key stored on that "
+                             "account (is the rotation still pending?)")
+        return key.for_account(account)
+
     def rotation(self, account: str) -> Rotation:
         """The account's rotation record: nonces, recovery set, pending changes, and the key stored on it."""
         return decode_rotation(self.rpc.abci_query(ROTATION_QUERY_PATH, rotation_request(account)))

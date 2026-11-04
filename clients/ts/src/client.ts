@@ -222,6 +222,19 @@ export class AetherClient {
     return signsFor(account, pubKey, await this.accountPubKey(account));
   }
 
+  /**
+   * key, signing for account once a rotation has made it the key stored
+   * there: what sends from a rotated account (key.forAccount), checked
+   * against the chain first. Throws if key doesn't sign for account now,
+   * for example while the rotation is still pending.
+   */
+  async keyFor(key: Key, account: string): Promise<Key> {
+    if (!(await this.signsFor(account, key.publicKey))) {
+      throw new Error(`key ${key.keyAddress} doesn't sign for ${account}: it isn't the key stored on that account (is the rotation still pending?)`);
+    }
+    return key.forAccount(account);
+  }
+
   /** The account's rotation record: nonces, recovery set, pending changes, and the key stored on it. */
   async rotation(account: string): Promise<Rotation> {
     return decodeRotation(await this.rpc.abciQuery(ROTATION_QUERY_PATH, rotationRequest(account)));

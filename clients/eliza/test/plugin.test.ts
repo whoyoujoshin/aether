@@ -121,6 +121,11 @@ test("settings build the toolkit: read-only without a mnemonic, limits and USDC 
   }, []).runtime);
   assert.equal(kit.key!.address, Key.fromMnemonic(mnemonic).address);
   assert.equal(kit.spendingStatus().perPaymentLimit, "0.2 USDC");
+
+  const account = Key.generate().key.address;
+  const rotated = toolkitFromSettings(fakeRuntime({ AETHER_MNEMONIC: mnemonic, AETHER_ACCOUNT: account }, []).runtime);
+  assert.equal(rotated.key!.address, account, "AETHER_ACCOUNT: sends from the account the key was rotated onto");
+  assert.equal(rotated.key!.keyAddress, Key.fromMnemonic(mnemonic).address);
 });
 
 test("parseArgs takes the first JSON object", () => {

@@ -11,6 +11,8 @@ import { AetherClient, Key, fetchPaid, findServices, rateService, withdrawPrepai
 
 const client = new AetherClient({ rpc: "http://localhost:26657", chainId: "aether-testnet-1" });
 const key = Key.fromMnemonic(process.env.AETHER_MNEMONIC!); // same address as `aetherd keys add` / `agentmcp`
+// After a key rotation (docs/PQ-KEY-ROTATION.md) the account keeps its address; the new key sends from it:
+//   const key = await client.keyFor(Key.fromMnemonic(newPhrase), "aether1...the account");
 
 const sent = await client.send(key, "aether1...", "0.5 AETH", { memo: "invoice-42" });
 const done = await client.waitForTransaction(sent.hash);         // confirmed | failed | pending (timeout)

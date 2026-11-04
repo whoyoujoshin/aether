@@ -76,6 +76,10 @@ type rotationVectors struct {
 	} `json:"signingBytes"`
 	Messages    []rotMsgVector `json:"messages"`
 	RotateKeyTx txVector       `json:"rotateKeyTx"`
+	// RotatedSendTx is a send from the owner's account signed by "next",
+	// the key rotated onto it: the account's address in the message, the
+	// new key in the signer info.
+	RotatedSendTx txVector `json:"rotatedSendTx"`
 	Query       struct {
 		Request  string          `json:"request"`  // QueryRotationRequest, base64 as abci_query takes it
 		Response string          `json:"response"` // QueryRotationResponse, base64 as the node returns it
@@ -204,6 +208,24 @@ func buildRotation(t *testing.T) rotationVectors {
 	v.RotateKeyTx = txVector{ChainID: rotationChainID, AccountNumber: 7, Sequence: 3, From: account, GasLimit: 400_000,
 		BodyBytes: hex.EncodeToString(raw.BodyBytes), AuthInfoBytes: hex.EncodeToString(raw.AuthInfoBytes), SignDoc: hex.EncodeToString(docBytes),
 		Signature: hex.EncodeToString(raw.Signatures[0]), TxBytes: hex.EncodeToString(signed.Bytes), TxHash: wallet.TxHash(signed)}
+
+	// A send from the owner's account once "next" is the key stored on it
+	// (wallet SignFor, as aetherd tx --from with signs-for.json does).
+	require.NoError(t, w.SignFor("next", account))
+	sendTo := keys["guardian1"].Address
+	sendParams := wallet.TxParams{ChainID: rotationChainID, AccountNumber: 7, Sequence: 5, GasLimit: 200_000, Memo: "after rotation",
+		Fees: sdk.NewCoins(sdk.NewCoin("uaeth", math.NewInt(20)))}
+	sent, err := w.BuildAndSignSendTx("next", account, sendTo, sdk.NewCoins(sdk.NewCoin("uaeth", math.NewInt(1500))), sendParams)
+	require.NoError(t, err)
+	var sentRaw txtypes.TxRaw
+	require.NoError(t, sentRaw.Unmarshal(sent.Bytes))
+	sentDoc, err := (&txtypes.SignDoc{BodyBytes: sentRaw.BodyBytes, AuthInfoBytes: sentRaw.AuthInfoBytes, ChainId: rotationChainID, AccountNumber: 7}).Marshal()
+	require.NoError(t, err)
+	require.True(t, (&mldsa.PubKey{Key: next.PubKey}).VerifySignature(sentDoc, sentRaw.Signatures[0]), "signed by the rotated-in key")
+	v.RotatedSendTx = txVector{ChainID: rotationChainID, AccountNumber: 7, Sequence: 5, From: account, To: sendTo, AmountUaeth: "1500",
+		Memo: "after rotation", GasLimit: 200_000,
+		BodyBytes: hex.EncodeToString(sentRaw.BodyBytes), AuthInfoBytes: hex.EncodeToString(sentRaw.AuthInfoBytes), SignDoc: hex.EncodeToString(sentDoc),
+		Signature: hex.EncodeToString(sentRaw.Signatures[0]), TxBytes: hex.EncodeToString(sent.Bytes), TxHash: wallet.TxHash(sent)}
 
 	// A Rotation query answer: a recovery set, a pending rotation.
 	req, err := (&accountauth.QueryRotationRequest{Account: account}).Marshal()

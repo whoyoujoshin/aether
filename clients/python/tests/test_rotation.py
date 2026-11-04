@@ -6,7 +6,7 @@ import json
 import pathlib
 import unittest
 
-from aether_client import (PUBKEY_TYPE_URL, AetherClient, Key, build_tx, create_receipt_delegation, decode_account_pubkey,
+from aether_client import (PUBKEY_TYPE_URL, AetherClient, Key, build_send, build_tx, create_receipt_delegation, decode_account_pubkey,
                            decode_rotation, delegation_signing_message, guardian_cancel_signing_bytes,
                            guardian_set_recovery_signing_bytes, msg_cancel_pending_rotation, msg_guardian_cancel,
                            msg_guardian_set_recovery, msg_recover_key, msg_rotate_key, msg_set_recovery,
@@ -91,6 +91,45 @@ class RotationVectors(unittest.TestCase):
         self.assertEqual(signed.signature.hex(), tx["signature"], "signature")
         self.assertEqual(signed.tx_bytes.hex(), tx["txBytes"], "tx bytes")
         self.assertEqual(signed.hash, tx["txHash"], "tx hash")
+
+    def test_a_rotated_key_sends_from_the_account_as_go_builds_it(self):
+        tx = FILE["rotatedSendTx"]
+        signer = NEXT.for_account(ACCOUNT)
+        self.assertEqual(signer.address, ACCOUNT)
+        self.assertEqual(signer.key_address, NEXT.address)
+        self.assertTrue(signer.rotated)
+        self.assertFalse(NEXT.rotated)
+        self.assertFalse(NEXT.for_account(NEXT.address).rotated)
+        with self.assertRaises(ValueError):
+            NEXT.for_account("not-an-address")
+        signed = build_send(signer, chain_id=tx["chainId"], account_number=tx["accountNumber"], sequence=tx["sequence"],
+                            to=tx["to"], amount_uaeth=int(tx["amountUaeth"]), memo=tx["memo"], gas_limit=tx["gasLimit"],
+                            fee=(20, "uaeth"), deterministic=True)
+        self.assertEqual(signed.body_bytes.hex(), tx["bodyBytes"], "body")
+        self.assertEqual(signed.auth_info_bytes.hex(), tx["authInfoBytes"], "auth info")
+        self.assertEqual(signed.sign_doc.hex(), tx["signDoc"], "sign doc")
+        self.assertEqual(signed.signature.hex(), tx["signature"], "signature")
+        self.assertEqual(signed.hash, tx["txHash"], "tx hash")
+
+    def test_key_for_checks_the_chain_first(self):
+        def info(pub=None):
+            body = Writer()
+            if pub is not None:
+                body.message(2, Writer().string(1, PUBKEY_TYPE_URL).bytes(2, Writer().bytes(1, pub).finish()).finish())
+            return Writer().message(1, body.uint64(3, 7).uint64(4, 1).finish()).finish()
+
+        def client(value):
+            c = AetherClient("http://node", CHAIN)
+            c.rpc.call = lambda method, params=None: {"response": {"code": 0, "value": base64.b64encode(value).decode()}}
+            return c
+
+        after = client(info(NEXT.public_key))
+        self.assertEqual(after.key_for(NEXT, ACCOUNT).address, ACCOUNT, "rotated: the new key signs for it")
+        with self.assertRaisesRegex(ValueError, "doesn't sign for"):
+            after.key_for(OWNER, ACCOUNT)
+        with self.assertRaisesRegex(ValueError, "rotation still pending"):
+            client(info()).key_for(NEXT, ACCOUNT)
+        self.assertFalse(client(info()).key_for(OWNER, ACCOUNT).rotated, "its own account, nothing stored")
 
     def test_rotation_query_decodes_the_chains_answer(self):
         q = FILE["rotationQuery"]
