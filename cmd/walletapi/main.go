@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -336,7 +337,12 @@ func main() {
 		BaseDenom: os.Getenv("AETHER_USDC_BASE_DENOM"),
 		Issuer:    os.Getenv("AETHER_USDC_ISSUER"),
 	})
+	netName := flag.String("network", "", `"testnet" or "mainnet": that network's chain, public node, explorer and USDC unless given; mainnet needs --grpc and --rpc (no public node yet) and the encrypted keyring`)
+	flag.DurationVar(&lockAfter, "lock-after", 15*time.Minute, "with the encrypted keyring, forget its password after this long unused (0: never; a running miner counts as use)")
 	flag.Parse()
+	if err := applyNetwork(flag.CommandLine, *netName, usdc); err != nil {
+		log.Fatal(err)
+	}
 	var err error
 	if assets, err = wallet.NewAssetsFor(*usdc); err != nil {
 		log.Fatal(err)
@@ -379,6 +385,10 @@ func main() {
 	http.HandleFunc("/api/keyring/unlock", withCORS(handleUnlock))
 	http.HandleFunc("/api/keyring/migrate", withCORS(handleMigrate))
 	http.HandleFunc("/api/keyring/remove-unencrypted", withCORS(handleRemoveUnencrypted))
+	http.HandleFunc("/api/keyring/lock", withCORS(handleLock))
+	http.HandleFunc("/api/keyring/lock-after", withCORS(handleLockAfter))
+	http.HandleFunc("/api/keyring/change-password", withCORS(handleChangePassword))
+	http.HandleFunc("/api/network", withCORS(handleNetwork))
 
 	addr := "localhost:" + port
 	log.Printf("Aether wallet API listening on %s (chain %s via gRPC %s)", addr, chainID, grpcEndpoint)

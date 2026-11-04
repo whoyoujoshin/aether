@@ -125,5 +125,16 @@ this since it only needs to run once per logo change.
   `test` keyring are offered for moving in, at the same addresses, and
   then the unencrypted copies are deleted on the user's say-so
   (`cmd/walletapi/keyring.go`). No password reset: the recovery phrases
-  restore accounts. Not yet: changing the password, and locking after a
-  while idle.
+  restore accounts. Settings → Security changes the password (every key
+  re-encrypted under the new one and checked before the old keyring is
+  replaced), locks now, and locks after 5 min, 15 min (the default), an
+  hour or never unused; a running miner counts as use, and locking stops
+  it.
+- Settings → Network picks testnet or mainnet. The choice lives in
+  `settings.json` beside the keyring and walletapi restarts on it
+  (`--network`); mainnet has no public node yet, so it asks for a node's
+  gRPC and RPC, and walletapi refuses the unencrypted keyring there. The
+  window labels the network and hides the faucet where there is none.
+  The switch itself (the shell writing the setting and restarting
+  walletapi) is untested in Electron so far; walletapi's side and the
+  window are checked in a browser.
