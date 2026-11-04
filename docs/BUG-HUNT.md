@@ -10,6 +10,17 @@ Report privately (GitHub **Security → Report a vulnerability**, see
 [SECURITY.md](../SECURITY.md)). The rules below apply to everyone taking
 part.
 
+**Not open yet.** Before it is announced:
+
+1. Joshua turns on private vulnerability reporting (Settings → Code
+   security → Private vulnerability reporting), which `SECURITY.md` relies
+   on.
+2. Gitty runs the module-account check on the seed ([REVIEW.md](REVIEW.md)
+   §3). A missing module account would make F5 a way to halt the testnet,
+   so it must come back clean first.
+3. Joshua confirms the reward tiers below (proposed in REVIEW.md §4) and
+   picks the start date. The two weeks start then.
+
 ## What to go after
 
 The chain is stock Cosmos SDK v0.50, CometBFT v0.38 and ibc-go v8 around
@@ -134,8 +145,31 @@ reports, as signed webhooks:
 
 The testnet's seed runs it with its webhook to the operators' Discord.
 
-**Staged takeover (devnet, 2026-11-04).** See "Staged takeover" below for
-the run and what fired.
+**Staged takeover (devnet, 2026-11-04).** An `aether-rc-takeover` devnet
+with 20-block epochs: two honest operators from `cmd/rcgenesis`, each
+mining at a quarter of the time, and an attacker who joined later. The
+attacker opened a miner account (1 AETH sent to it), registered its own
+consensus key and mined flat out, about two thirds of all the hashing.
+minerwatch watched one honest operator's node with
+`--concentration-above 0.3334 --new-validators`.
+
+| Height | Attacker's power | minerwatch |
+|---|---|---|
+| 26 | 0 | attacker starts mining |
+| 81 | 10.0% | `validator_new`: "validator 6F65714F, not seen before, joined the validator set with 10.0% of the voting power" |
+| 109 | 17.8% | |
+| 126 | 27.3% | |
+| 141 | 37.3% | `power_concentrated`: "validator 6F65714F holds 37.3% of the voting power, over 33.3%" |
+
+Power moved at most 10 points of the total per epoch, as the rule says:
+the newcomer entered at 10%, and the honest operator it overtook fell
+74.9 → 64.9 → 54.9 → 44.9 → 35.6%. Each alert fired at the boundary
+where the change took effect: `validator_new` three epochs before the
+attacker could halt the chain alone, and `power_concentrated` as soon as it
+could. At the testnet's 1,440-block epochs (about 2.4 hours) that is about
+seven hours' warning before an attacker with two thirds of the hash can
+halt it, and about another four epochs before it holds two thirds. The
+script is `scripts/rc/staged-takeover.sh`.
 
 ## Credits
 
