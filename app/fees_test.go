@@ -133,6 +133,10 @@ func TestFeesToTreasury_CreditsDirectSends(t *testing.T) {
 	// A ledger above the bank balance isn't lowered.
 	require.NoError(t, finalizeBlock(app, activation+1))
 	ctx = check(activation + 1)
+	// Raising the ledger with no coins behind it breaks the
+	// treasury-ledger-backed invariant on purpose (invariants.go), so
+	// the rest of this test runs without halting on it.
+	app.invariants.halt = false
 	app.TreasuryKeeper.FundTreasury(ctx, sdkmath.NewInt(5))
 	over := app.TreasuryKeeper.GetTreasuryBalance(ctx)
 	_, err = app.Commit()

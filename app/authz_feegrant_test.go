@@ -24,6 +24,11 @@ func TestMain(m *testing.M) {
 	// aetherd's main does this before New(); keepers validate their
 	// authority addresses against the configured prefix.
 	SetAddressPrefixes()
+	// Every app built in this package's tests checks the invariants
+	// (invariants.go) at the end of every block and fails the block if
+	// one breaks, so each scenario here is also an invariant test.
+	os.Setenv("AETHER_INVARIANTS_EVERY", "1")
+	os.Setenv("AETHER_INVARIANTS_HALT", "yes")
 	os.Exit(m.Run())
 }
 
@@ -84,7 +89,7 @@ func finalizeBlock(app *App, height int64) error {
 	return err
 }
 
-func finalizeAndCommit(t *testing.T, app *App, height int64) {
+func finalizeAndCommit(t testing.TB, app *App, height int64) {
 	t.Helper()
 	require.NoError(t, finalizeBlock(app, height), "finalize height %d", height)
 	_, err := app.Commit()

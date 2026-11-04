@@ -1,6 +1,8 @@
 package governance
 
 import (
+	"fmt"
+
 	sdkerrors "cosmossdk.io/errors"
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
@@ -566,13 +568,14 @@ func (k Keeper) executeTreasurySpend(ctx sdk.Context, proposal Proposal) error {
 func (k Keeper) resolvePassedProposal(ctx sdk.Context, proposal Proposal) error {
 	cacheCtx, writeCache := ctx.CacheContext()
 
-	var execErr error
-	switch proposal.ProposalType {
-	case ProposalType_PROPOSAL_TYPE_PARAM_CHANGE:
-		execErr = k.executeParamChange(cacheCtx, proposal)
-	default:
-		execErr = k.executeTreasurySpend(cacheCtx, proposal)
-	}
+	execErr := safeExecute(func() error {
+		switch proposal.ProposalType {
+		case ProposalType_PROPOSAL_TYPE_PARAM_CHANGE:
+			return k.executeParamChange(cacheCtx, proposal)
+		default:
+			return k.executeTreasurySpend(cacheCtx, proposal)
+		}
+	})
 
 	if execErr != nil {
 		proposal.Status = ProposalStatus_PROPOSAL_STATUS_EXECUTION_FAILED
@@ -588,6 +591,23 @@ func (k Keeper) resolvePassedProposal(ctx sdk.Context, proposal Proposal) error 
 	// genuinely passed either way, and the depositors did nothing
 	// wrong if the proposal's own action later failed to execute.
 	return k.refundDeposits(ctx, proposal.Id)
+}
+
+// safeExecute runs a passed proposal's action and turns a panic into an
+// error, as the SDK's own x/gov does (safeExecuteHandler in
+// x/gov/abci.go). The action runs in EndBlock, where no transaction's
+// recovery applies: a message handler that panics on the message a
+// proposal carries would otherwise stop every node at that block. With
+// it the proposal lands as EXECUTION_FAILED and its cached writes are
+// dropped. A panic here never happened on the testnet (the chain would
+// have stopped), so history replays unchanged and it needs no height.
+func safeExecute(run func() error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("proposal execution panicked: %v", r)
+		}
+	}()
+	return run()
 }
 
 // executeParamChange unpacks and routes a param-change proposal's

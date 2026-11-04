@@ -203,6 +203,25 @@ func AuxPoWTemplateHash(chainID string, templateHeight int64, blockHash []byte, 
 
 const maxChainMerkleBranchLength = 30
 
+// maxCoinbaseMerkleBranchLength bounds the coinbase branch from
+// AuxPoWInputGuardHeight. Its index is a uint32, so a branch longer than
+// 32 levels names no position in any tree; without the bound a submitter
+// could send a megabyte of one-byte "hashes" and have every validator
+// hash all of them before the proof is refused.
+const maxCoinbaseMerkleBranchLength = 32
+
+// AuxPoWInputGuardHeight is where CheckAuxPow refuses malformed input
+// with an error instead of panicking, found by FuzzCheckAuxPow
+// (docs/REVIEW.md): a submission without a coinbase or chain branch, a
+// coinbase whose scriptSig length overflows int, and a coinbase branch
+// longer than maxCoinbaseMerkleBranchLength (or a branch hash that isn't
+// 32 bytes). Inside a transaction the SDK already turns the panic into a
+// failed transaction, so nothing halts, but the failure's code and gas
+// change, and so does LastResultsHash: every node needs a binary carrying
+// it before this height. On fresh chains it is on from block 1; on the
+// testnet the height is a placeholder until one is chosen.
+const AuxPoWInputGuardHeight int64 = 50_000_000
+
 // CheckAuxPow performs the complete AuxPoW validation sequence,
 // matching the real reference implementation's order exactly (see
 // auxpow-binary-format-reference.md section 5), plus the actual
@@ -224,6 +243,12 @@ func CheckAuxPow(data *AuxPowData, currentDifficulty uint64, height int64) error
 // apply from gates.Height(chainID, MergedMiningActivationHeight).
 func CheckAuxPowOn(chainID string, data *AuxPowData, currentDifficulty uint64, height int64) error {
 	merged := height >= gates.Height(chainID, MergedMiningActivationHeight)
+	guarded := height >= gates.Height(chainID, AuxPoWInputGuardHeight)
+	if guarded {
+		if err := checkAuxPowShape(data); err != nil {
+			return err
+		}
+	}
 	auxBlockHash := data.AuxBlockHash
 	if len(data.ChainBranch.Hashes) > maxChainMerkleBranchLength {
 		return fmt.Errorf("chain merkle branch too long: %d exceeds maximum of %d", len(data.ChainBranch.Hashes), maxChainMerkleBranchLength)
@@ -250,7 +275,7 @@ func CheckAuxPowOn(chainID string, data *AuxPowData, currentDifficulty uint64, h
 
 	// 2. Extract and validate the merge-mining commitment embedded in
 	// the coinbase.
-	coinbaseTxParsed, err := extractCoinbaseScriptSig(data.CoinbaseTx)
+	coinbaseTxParsed, err := extractCoinbaseScriptSigOn(data.CoinbaseTx, guarded)
 	if err != nil {
 		return fmt.Errorf("failed to locate coinbase scriptSig: %w", err)
 	}
@@ -321,6 +346,31 @@ func CheckAuxPowOn(chainID string, data *AuxPowData, currentDifficulty uint64, h
 	return nil
 }
 
+// checkAuxPowShape refuses an AuxPowData CheckAuxPow can't read without
+// panicking or hashing without bound (AuxPoWInputGuardHeight).
+func checkAuxPowShape(data *AuxPowData) error {
+	if data == nil {
+		return errors.New("aux_pow is empty")
+	}
+	if data.CoinbaseBranch == nil {
+		return errors.New("coinbase_branch is missing")
+	}
+	if data.ChainBranch == nil {
+		return errors.New("chain_branch is missing")
+	}
+	if len(data.CoinbaseBranch.Hashes) > maxCoinbaseMerkleBranchLength {
+		return fmt.Errorf("coinbase merkle branch too long: %d exceeds maximum of %d", len(data.CoinbaseBranch.Hashes), maxCoinbaseMerkleBranchLength)
+	}
+	for _, branch := range []*MerkleBranch{data.CoinbaseBranch, data.ChainBranch} {
+		for i, h := range branch.Hashes {
+			if len(h) != 32 {
+				return fmt.Errorf("merkle branch hash %d is %d bytes, not 32", i, len(h))
+			}
+		}
+	}
+	return nil
+}
+
 // AuxPowCommitment returns a parent coinbase's merge-mining commitment:
 // the chain merkle root (internal byte order, as the chain branch
 // reconstructs it) and the nonce AuxPowData.chain_nonce must carry. It
@@ -375,6 +425,16 @@ func readVarInt(data []byte, offset int) (uint64, int, error) {
 // locktime) is irrelevant to merge-mining commitment extraction and
 // is deliberately not parsed.
 func extractCoinbaseScriptSig(tx []byte) ([]byte, error) {
+	return extractCoinbaseScriptSigOn(tx, true)
+}
+
+// extractCoinbaseScriptSigOn is extractCoinbaseScriptSig with the
+// scriptSig length checked against what is left of tx (strict), as from
+// AuxPoWInputGuardHeight. Without it a length of 2^63 or more turns
+// negative in int and slices out of range: the panic below that height,
+// kept so the testnet's history replays unchanged. Everything off the
+// chain (AuxPowCommitment, the pool bridge) is strict.
+func extractCoinbaseScriptSigOn(tx []byte, strict bool) ([]byte, error) {
 	offset := 4 // skip 4-byte version
 
 	inputCount, n, err := readVarInt(tx, offset)
@@ -396,6 +456,9 @@ func extractCoinbaseScriptSig(tx []byte) ([]byte, error) {
 	}
 	offset += n
 
+	if strict && (offset > len(tx) || scriptSigLen > uint64(len(tx)-offset)) {
+		return nil, errors.New("scriptSig length extends beyond end of transaction data")
+	}
 	if offset+int(scriptSigLen) > len(tx) {
 		return nil, errors.New("scriptSig length extends beyond end of transaction data")
 	}

@@ -16,7 +16,7 @@ import (
 	"github.com/whoyoujoshin/aether/x/escrow"
 )
 
-func newChainApp(t *testing.T, db dbm.DB, chainID string) *App {
+func newChainApp(t testing.TB, db dbm.DB, chainID string) *App {
 	t.Helper()
 	return New(log.NewNopLogger(), db, nil, true, nil, t.TempDir(), 0, emptyAppOptions{}, baseapp.SetChainID(chainID)).(*App)
 }
@@ -24,7 +24,7 @@ func newChainApp(t *testing.T, db dbm.DB, chainID string) *App {
 // genesisOn starts the chain from a genesis with only the modules the
 // testnet launched with, as docs/genesis.template.json has: the rest
 // must start from their defaults.
-func genesisOn(t *testing.T, app *App, chainID string) {
+func genesisOn(t testing.TB, app *App, chainID string) {
 	t.Helper()
 	full := ModuleBasics.DefaultGenesis(MakeEncodingConfig().Codec)
 	launch := map[string]json.RawMessage{}

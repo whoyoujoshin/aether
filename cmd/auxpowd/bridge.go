@@ -13,6 +13,7 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/whoyoujoshin/aether/gates"
 	pow "github.com/whoyoujoshin/aether/x/pow"
 	powtypes "github.com/whoyoujoshin/aether/x/pow/types"
 )
@@ -95,12 +96,19 @@ func (b *bridge) state(ctx context.Context) (chainState, error) {
 	if err != nil {
 		return chainState{}, &rpcError{rpcMiscError, "reading the Aether node: " + err.Error()}
 	}
-	if st.Height+1 < pow.MergedMiningActivationHeight {
+	if from := mergedFrom(st.ChainID); st.Height+1 < from {
 		return chainState{}, &rpcError{rpcNotActive, fmt.Sprintf(
 			"merged mining isn't active: it starts at Aether height %d and the chain is at %d",
-			pow.MergedMiningActivationHeight, st.Height)}
+			from, st.Height)}
 	}
 	return st, nil
+}
+
+// mergedFrom is the height merged mining's rules apply from on chainID:
+// the testnet's height there, block 1 on a fresh chain (aether-1,
+// aether-rc-*), as x/pow reads it.
+func mergedFrom(chainID string) int64 {
+	return gates.Height(chainID, pow.MergedMiningActivationHeight)
 }
 
 func (b *bridge) createAuxBlock(ctx context.Context, address string) (*auxBlock, error) {
@@ -168,7 +176,7 @@ func (b *bridge) submitAuxBlock(ctx context.Context, hashHex, auxPowHex string) 
 		b.log.Printf("stale: template at height %d is more than %d blocks behind height %d", t.Height, st.RecencyWindow, next)
 		return false, nil
 	}
-	if err := pow.CheckAuxPow(d, st.AuxDifficulty, next); err != nil {
+	if err := pow.CheckAuxPowOn(st.ChainID, d, st.AuxDifficulty, next); err != nil {
 		b.m.invalid.Add(1)
 		b.log.Printf("refused proof for template at height %d: %v", t.Height, err)
 		return false, nil
