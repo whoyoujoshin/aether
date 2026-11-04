@@ -149,7 +149,9 @@ The testnet's seed runs it with its webhook to the operators' Discord.
 with 20-block epochs: two honest operators from `cmd/rcgenesis`, each
 mining at a quarter of the time, and an attacker who joined later. The
 attacker opened a miner account (1 AETH sent to it), registered its own
-consensus key and mined flat out, about two thirds of all the hashing.
+consensus key and mined flat out. All of it shared four cores with three
+nodes, so the attacker's share of the window's work at each boundary came
+out between 37% and 50%, not the two thirds intended.
 minerwatch watched one honest operator's node with
 `--concentration-above 0.3334 --new-validators`.
 
@@ -157,18 +159,24 @@ minerwatch watched one honest operator's node with
 |---|---|---|
 | 26 | 0 | attacker starts mining |
 | 81 | 10.0% | `validator_new`: "validator 6F65714F, not seen before, joined the validator set with 10.0% of the voting power" |
-| 109 | 17.8% | |
-| 126 | 27.3% | |
+| 101 | 17.8% | |
+| 121 | 27.3% | |
 | 141 | 37.3% | `power_concentrated`: "validator 6F65714F holds 37.3% of the voting power, over 33.3%" |
+| 161 | 47.3% | |
+| 181 | 39.9% | (its window share was 39.9% at that boundary) |
 
-Power moved at most 10 points of the total per epoch, as the rule says:
-the newcomer entered at 10%, and the honest operator it overtook fell
-74.9 → 64.9 → 54.9 → 44.9 → 35.6%. Each alert fired at the boundary
+Power moved at most 10 points of the total per epoch, as the rule says,
+and followed the work both ways: the newcomer entered at 10%, the honest
+operator it overtook fell 74.9 → 64.9 → 54.9 → 44.9 → 35.6%, and when the
+attacker's share of the work fell back, so did its power. At every boundary the
+new powers were exactly what the rule computes from the window's work
+(`aetherd q pow seat-work --height <boundary − 1>`, plus any find in the
+boundary block itself). Each alert fired at the boundary
 where the change took effect: `validator_new` three epochs before the
 attacker could halt the chain alone, and `power_concentrated` as soon as it
 could. At the testnet's 1,440-block epochs (about 2.4 hours) that is about
-seven hours' warning before an attacker with two thirds of the hash can
-halt it, and about another four epochs before it holds two thirds. The
+seven hours' warning before a newcomer with most of the hash can halt
+the chain alone. The
 script is `scripts/rc/staged-takeover.sh`.
 
 ## Credits
