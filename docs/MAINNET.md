@@ -450,8 +450,9 @@ and the proposed bounty are in `docs/REVIEW.md`.
   runs walletapi with a `file` keyring, asks for a password chosen on
   first launch, holds it in memory only, and moves accounts an earlier
   version kept unencrypted into it before deleting the unencrypted copies
-  (`desktop/README.md`). Still to build before real value: a mainnet
-  setting in the app, changing the password, locking when idle.
+  (`desktop/README.md`). Since 2026-11-04 also: changing the password,
+  locking now and after a set time unused, and a testnet/mainnet setting
+  (mainnet asks for a node until a public one exists).
 - **The paid services earn and spend real money.**
   - Inference pays OpenRouter in dollars and is paid in USDC, so its price
     must cover its cost. The daily cap stays.

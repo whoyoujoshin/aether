@@ -74,3 +74,59 @@ func NewFileWallet(appName, rootDir, pass string, cdc codec.Codec) (*Wallet, err
 	}
 	return newWalletFrom(appName, keyring.BackendFile, rootDir, &repeatReader{line: []byte(pass + "\n")}, cdc)
 }
+
+// ChangeFilePassphrase re-encrypts rootDir's file keyring under newPass:
+// every key is copied into a new keyring with newPass, each copy checked
+// against its address, and only then is the new keyring put in the old
+// one's place. If anything fails before the swap, the old keyring is left
+// as it was.
+func ChangeFilePassphrase(appName, rootDir, oldPass, newPass string, cdc codec.Codec) error {
+	if err := validPassphrase(newPass); err != nil {
+		return err
+	}
+	if !FileKeyringCreated(rootDir) {
+		return errors.New("there is no encrypted keyring to change the password of")
+	}
+	src, err := NewFileWallet(appName, rootDir, oldPass, cdc)
+	if err != nil {
+		return err
+	}
+	accounts, err := src.ListAccounts()
+	if err != nil {
+		return err
+	}
+	tmpRoot, err := os.MkdirTemp(rootDir, ".rekey-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpRoot)
+	dst, err := NewFileWallet(appName, tmpRoot, newPass, cdc)
+	if err != nil {
+		return err
+	}
+	for _, a := range accounts {
+		copied, err := CopyKey(a.Name, src, dst)
+		if err != nil {
+			return fmt.Errorf("copying %s: %w", a.Name, err)
+		}
+		if copied.Address != a.Address {
+			return fmt.Errorf("copying %s: got address %s, want %s", a.Name, copied.Address, a.Address)
+		}
+	}
+	// Swap: the old keyring aside, the new one in, the old one gone.
+	live := filepath.Join(rootDir, "keyring-file")
+	aside := live + ".old"
+	if err := os.RemoveAll(aside); err != nil {
+		return err
+	}
+	if err := os.Rename(live, aside); err != nil {
+		return err
+	}
+	if err := os.Rename(filepath.Join(tmpRoot, "keyring-file"), live); err != nil {
+		if rerr := os.Rename(aside, live); rerr != nil {
+			return fmt.Errorf("%v; and putting the old keyring back failed too (it is at %s): %v", err, aside, rerr)
+		}
+		return err
+	}
+	return os.RemoveAll(aside)
+}

@@ -71,3 +71,39 @@ func TestNewFileWallet_TakesKeysFromATestKeyring(t *testing.T) {
 	require.NotEmpty(t, sig)
 	require.NotEmpty(t, pub)
 }
+
+// A new password re-encrypts every key: the old password no longer opens
+// it, the new one does, every address is kept, and the keys still sign.
+func TestChangeFilePassphrase(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(KeyringPassphraseFileEnv, "")
+	w, err := NewFileWallet("aetherd", dir, "correct horse", testCodec())
+	require.NoError(t, err)
+	a, _, err := w.CreateAccount("savings")
+	require.NoError(t, err)
+	b, _, err := w.CreateAccount("spending")
+	require.NoError(t, err)
+
+	require.ErrorIs(t, ChangeFilePassphrase("aetherd", dir, "wrong horse", "battery staple", testCodec()), ErrWrongPassphrase)
+	require.ErrorContains(t, ChangeFilePassphrase("aetherd", dir, "correct horse", "short", testCodec()), "at least 8")
+	require.NoError(t, CheckPassphrase(dir, "correct horse"), "a refused change leaves the old password")
+
+	require.NoError(t, ChangeFilePassphrase("aetherd", dir, "correct horse", "battery staple", testCodec()))
+	require.ErrorIs(t, CheckPassphrase(dir, "correct horse"), ErrWrongPassphrase)
+	again, err := NewFileWallet("aetherd", dir, "battery staple", testCodec())
+	require.NoError(t, err)
+	for _, want := range []Account{a, b} {
+		got, err := again.GetAccount(want.Name)
+		require.NoError(t, err)
+		require.Equal(t, want.Address, got.Address)
+	}
+	_, _, err = again.SignBytes("savings", []byte("hello"))
+	require.NoError(t, err)
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	for _, e := range entries {
+		require.NotContains(t, e.Name(), ".rekey-", "no copy left behind")
+		require.NotEqual(t, "keyring-file.old", e.Name(), "no copy left behind")
+	}
+}

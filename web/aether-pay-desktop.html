@@ -169,8 +169,12 @@
     const { useState, useEffect, useCallback, useRef } = React;
 
     const API = "http://localhost:8090";
-    const EXPLORER = "https://explorer.157-245-252-221.sslip.io";
-    const FAUCET = "https://faucet.157-245-252-221.sslip.io/request";
+    // The network walletapi is on (GET /api/network), set by Gate before
+    // the wallet opens: its explorer and faucet, "" where there is none.
+    let NET = { name: "testnet", chainId: "aether-testnet-1", real: false, explorer: "https://explorer.157-245-252-221.sslip.io", faucet: "https://faucet.157-245-252-221.sslip.io/request" };
+    // A link into the explorer, or undefined (plain text) where there's none.
+    function exLink(path) { return NET.explorer ? NET.explorer + path : undefined; }
+    function netLabel() { return NET.name ? NET.name.toUpperCase() : NET.chainId.toUpperCase(); }
     // walletapi refuses requests without the secret the desktop app (or
     // walletapi itself, when run by hand) put in this page's URL.
     const TOKEN = new URLSearchParams(location.search).get("token") || "";
@@ -393,9 +397,9 @@
           <aside className="side">
             <div className="brand">
               <img src="aether-mark.svg" alt="" />
-              <div><b>Aether Pay</b><small>TESTNET</small></div>
+              <div><b>Aether Pay</b><small>{netLabel()}</small></div>
             </div>
-            {NAV.map(([k, label, g]) => (
+            {NAV.filter(([k]) => k !== "faucet" || NET.faucet).map(([k, label, g]) => (
               <button key={k} className={"nav" + (screen === k ? " on" : "")} onClick={() => go(k)}>
                 <span className="g">{g}</span>{label}
                 {k === "settings" && updateFlag && <span className="dot upd" title="Update available" />}
@@ -482,7 +486,7 @@
                           <button className="btn primary" onClick={() => go("send")}>Send</button>
                           <button className="btn" onClick={() => go("receive")}>Receive</button>
                           <button className="btn" onClick={() => go("agents")}>Agents</button>
-                          <button className="btn" onClick={() => go("faucet")}>Get testnet AETH</button>
+                          {NET.faucet && <button className="btn" onClick={() => go("faucet")}>Get testnet AETH</button>}
                         </>
                       )}
                     </div>
@@ -605,7 +609,7 @@
               <div className={"memo" + (t.Memo ? "" : " none")}>{t.Memo || "no memo"}</div>
             </div>
             <div><div className="amt faint">no transfer</div>
-              <div className="meta">{(ago(t.Timestamp) + " · ").toUpperCase()}<a href={EXPLORER + "/tx/" + t.Hash} target="_blank" rel="noreferrer">HEIGHT {int(t.Height)}</a></div></div>
+              <div className="meta">{(ago(t.Timestamp) + " · ").toUpperCase()}<a href={exLink("/tx/" + t.Hash)} target="_blank" rel="noreferrer">HEIGHT {int(t.Height)}</a></div></div>
           </div>
         );
       }
@@ -623,7 +627,7 @@
           </div>
           <div>
             <div className={"amt" + (failed ? " fail" : sent ? "" : " in")} title={m.title}>{(sent ? "−" : "+") + m.text} {m.unit}</div>
-            <div className="meta">{(ago(t.Timestamp) + " · ").toUpperCase()}<a href={EXPLORER + "/tx/" + t.Hash} target="_blank" rel="noreferrer">HEIGHT {int(t.Height)}</a></div>
+            <div className="meta">{(ago(t.Timestamp) + " · ").toUpperCase()}<a href={exLink("/tx/" + t.Hash)} target="_blank" rel="noreferrer">HEIGHT {int(t.Height)}</a></div>
           </div>
         </div>
       );
@@ -685,7 +689,7 @@
             <p className="note">{units(base, asset.decimals, 2)} {asset.symbol} to <span className="mono">{short(to)}</span>. It's final once it's in a block, usually within a minute.</p>
             <div className="addr">{result.tx_hash}</div>
             <div className="actions">
-              <a className="btn" style={{ textAlign: "center" }} href={EXPLORER + "/tx/" + result.tx_hash} target="_blank" rel="noreferrer">View on explorer</a>
+              <a className="btn" style={{ textAlign: "center" }} href={exLink("/tx/" + result.tx_hash)} target="_blank" rel="noreferrer">View on explorer</a>
               <button className="btn primary" onClick={() => { setResult(null); setTo(""); setAmt(""); }}>Send another</button>
             </div>
           </div>
@@ -723,7 +727,7 @@
           <p className="note">Anyone can pay this address. Payments show up in Activity once they're in a block.</p>
           <div className="actions">
             <button className="btn primary" onClick={() => { navigator.clipboard.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1600); }}>{copied ? "Copied" : "Copy address"}</button>
-            <a className="btn" style={{ textAlign: "center" }} href={EXPLORER + "/address/" + address} target="_blank" rel="noreferrer">View on explorer</a>
+            <a className="btn" style={{ textAlign: "center" }} href={exLink("/address/" + address)} target="_blank" rel="noreferrer">View on explorer</a>
           </div>
         </div>
       );
@@ -735,7 +739,7 @@
       async function request() {
         setState("sending"); setMsg("");
         try {
-          const res = await fetch(FAUCET, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address }) });
+          const res = await fetch(NET.faucet, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address }) });
           const d = await res.json().catch(() => ({}));
           if (res.ok && d.success !== false) {
             setState("done");
@@ -837,7 +841,7 @@
                   {" · block " + int(x.height)}
                   {x.reason ? <span className="faint"> · {x.reason}</span> : null}
                 </span>
-                <span>{x.hash ? <a href={EXPLORER + "/tx/" + x.hash} target="_blank" rel="noreferrer" className="mono">{x.hash.slice(0, 10)}…</a> : ""}</span>
+                <span>{x.hash ? <a href={exLink("/tx/" + x.hash)} target="_blank" rel="noreferrer" className="mono">{x.hash.slice(0, 10)}…</a> : ""}</span>
               </div>
             ))}
           </div>
@@ -944,6 +948,86 @@
       );
     }
 
+    // The auto-lock choice, kept in this window so it survives walletapi
+    // restarts (which forget it); null until chosen.
+    function storedLockAfter() {
+      try { const v = localStorage.getItem("aether-lock-after"); return v === null ? null : Number(v); } catch { return null; }
+    }
+
+    function Security() {
+      const [lockAfter, setLockAfter] = useState(null);
+      const [cur, setCur] = useState(""), [next, setNext] = useState(""), [again, setAgain] = useState("");
+      const [msg, setMsg] = useState(""), [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+      useEffect(() => { api("/api/keyring").then((k) => setLockAfter(k.lockAfterMinutes)).catch(() => {}); }, []);
+      async function choose(m) {
+        setErr("");
+        try { await api("/api/keyring/lock-after", { minutes: m }); setLockAfter(m); try { localStorage.setItem("aether-lock-after", String(m)); } catch {} }
+        catch (e) { setErr(e.message); }
+      }
+      async function change() {
+        setBusy(true); setErr(""); setMsg("");
+        try { await api("/api/keyring/change-password", { current: cur, new: next }); setCur(""); setNext(""); setAgain(""); setMsg("Password changed. Use the new one from now on."); }
+        catch (e) { setErr(e.message); }
+        setBusy(false);
+      }
+      const ok = cur && next.length >= 8 && next === again;
+      return (
+        <div className="card">
+          <h2>Security</h2>
+          <p className="note">Your keys are encrypted with your password. Locking forgets it until you type it again; a miner that is running keeps the wallet open, and locking stops it.</p>
+          <label className="f">Lock after</label>
+          <div className="tabs">
+            {[[5, "5 min"], [15, "15 min"], [60, "1 hour"], [0, "Never"]].map(([m, l]) => (
+              <button key={m} className={lockAfter === m ? "on" : ""} onClick={() => choose(m)}>{l}</button>
+            ))}
+          </div>
+          <div className="actions"><button className="btn" onClick={() => api("/api/keyring/lock", {}).then(() => window.dispatchEvent(new Event("wallet-locked")))}>Lock now</button></div>
+          <label className="f" style={{ marginTop: 18 }}>Change password</label>
+          <input className="field" type="password" placeholder="current password" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" />
+          <input className="field" style={{ marginTop: 8 }} type="password" placeholder="new password, at least 8 characters" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" />
+          <input className="field" style={{ marginTop: 8 }} type="password" placeholder="new password again" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" />
+          {again && again !== next && <div className="hint bad">the two don't match</div>}
+          {err && <div className="banner" style={{ margin: "14px 0 0" }}>{err}</div>}
+          {msg && <p className="note" style={{ color: "var(--green)" }}>{msg}</p>}
+          <div className="actions"><button className="btn primary" disabled={!ok || busy} onClick={change}>{busy ? "Re-encrypting…" : "Change password"}</button></div>
+        </div>
+      );
+    }
+
+    // Which network the app uses: the desktop app keeps the choice and
+    // restarts its wallet service on it (desktop/main.js).
+    function NetworkSetting() {
+      const [cfg, setCfg] = useState(null);
+      const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+      useEffect(() => { shellApp.network().then((c) => setCfg({ network: c.network || "testnet", grpc: c.grpc || "", rpc: c.rpc || "" })); }, []);
+      if (!cfg) return null;
+      const main = cfg.network === "mainnet";
+      const ok = !main || (/^[^\s/]+:\d+$/.test(cfg.grpc) && /^https?:\/\/\S+$/.test(cfg.rpc));
+      async function save() {
+        setBusy(true); setErr("");
+        try { await shellApp.setNetwork(cfg); } catch (e) { setErr(e.message); setBusy(false); }
+      }
+      return (
+        <div className="card">
+          <h2>Network</h2>
+          <div className="tabs">
+            <button className={!main ? "on" : ""} onClick={() => setCfg({ ...cfg, network: "testnet" })}>Testnet</button>
+            <button className={main ? "on" : ""} onClick={() => setCfg({ ...cfg, network: "mainnet" })}>Mainnet</button>
+          </div>
+          {main ? <>
+            <div className="warn" style={{ marginTop: 12 }}><span>⚠</span><div>Mainnet holds real money. There's no public mainnet node yet: give the addresses of your own node, or one you trust.</div></div>
+            <label className="f">Node gRPC (host:port)</label>
+            <input className="field" value={cfg.grpc} placeholder="localhost:9090" onChange={(e) => setCfg({ ...cfg, grpc: e.target.value.trim() })} />
+            <label className="f">Node RPC (URL)</label>
+            <input className="field" value={cfg.rpc} placeholder="http://localhost:26657" onChange={(e) => setCfg({ ...cfg, rpc: e.target.value.trim() })} />
+          </> : <p className="note">The public testnet: test money only, its own faucet and explorer.</p>}
+          <p className="note">Your accounts work on both: the same keys, the same addresses. Switching restarts the wallet service, so you'll unlock again.</p>
+          {err && <div className="banner" style={{ margin: "14px 0 0" }}>{err}</div>}
+          <div className="actions"><button className="btn primary" disabled={!ok || busy || cfg.network === NET.name} onClick={save}>{busy ? "Switching…" : "Use " + (main ? "mainnet" : "testnet")}</button></div>
+        </div>
+      );
+    }
+
     function Settings({ update }) {
       const [info, setInfo] = useState(null);
       const [svc, setSvc] = useState(null);
@@ -973,6 +1057,8 @@
 
       return (
         <div className="col">
+          <Security />
+          {shellApp && shellApp.network && <NetworkSetting />}
           <div className="card">
             <h2>Aether Pay</h2>
             <div className="kv"><span>Version</span><span>{info ? info.version : shellApp ? "…" : "not the desktop app"}</span></div>
@@ -1039,7 +1125,7 @@
       }
       return (
         <div className="setup"><div className="card">
-          <div className="brand" style={{ padding: "0 0 18px" }}><img src="aether-mark.svg" alt="" /><div><b>Aether Pay</b><small>TESTNET</small></div></div>
+          <div className="brand" style={{ padding: "0 0 18px" }}><img src="aether-mark.svg" alt="" /><div><b>Aether Pay</b><small>{netLabel()}</small></div></div>
           <h2>{canCancel ? "Add an account" : "Set up your wallet"}</h2>
           <div className="tabs">
             <button className={mode === "create" ? "on" : ""} onClick={() => setMode("create")}>Create new</button>
@@ -1087,6 +1173,7 @@
       const [skipMove, setSkipMove] = useState(false);
       const load = useCallback(async () => {
         try {
+          NET = await api("/api/network");
           const next = await api("/api/keyring");
           setState((prev) => (prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
           setErr("");
@@ -1127,13 +1214,19 @@
       const ok = created ? pass.length > 0 : pass.length >= 8 && pass === again && ack;
       async function go() {
         setBusy(true); setErr("");
-        try { await api("/api/keyring/unlock", { password: pass }); setPass(""); setAgain(""); await onDone(); }
+        try {
+          await api("/api/keyring/unlock", { password: pass });
+          setPass(""); setAgain("");
+          const saved = storedLockAfter();
+          if (saved !== null) await api("/api/keyring/lock-after", { minutes: saved }).catch(() => {});
+          await onDone();
+        }
         catch (e) { setErr(e.message); }
         setBusy(false);
       }
       return (
         <div className="setup"><div className="card">
-          <div className="brand" style={{ padding: "0 0 18px" }}><img src="aether-mark.svg" alt="" /><div><b>Aether Pay</b><small>TESTNET</small></div></div>
+          <div className="brand" style={{ padding: "0 0 18px" }}><img src="aether-mark.svg" alt="" /><div><b>Aether Pay</b><small>{netLabel()}</small></div></div>
           <h2>{created ? "Unlock your wallet" : "Choose a password"}</h2>
           {!created && <p className="note">Your keys are kept encrypted on this computer with this password. Aether Pay asks for it each time it opens. It never leaves this computer.</p>}
           <form onSubmit={(e) => { e.preventDefault(); if (ok && !busy) go(); }}>

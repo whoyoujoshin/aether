@@ -12,6 +12,7 @@ const path = require("path");
 const os = require("os");
 const http = require("http");
 const crypto = require("crypto");
+const fs = require("fs");
 
 const PORT = 8090;
 const EXPLORER_URL = "https://explorer.157-245-252-221.sslip.io";
@@ -71,33 +72,50 @@ function backendBinaryPath() {
 // The keys are encrypted (--keyring-backend file): walletapi asks the
 // window for the password, holds it in memory only, and moves accounts an
 // earlier version kept unencrypted into it (cmd/walletapi/keyring.go).
+// The network (Settings → Network) lives in settings.json beside the
+// keyring: testnet by default; mainnet needs a node's gRPC and RPC, since
+// no public mainnet node exists yet.
+function settingsPath() {
+  return path.join(app.getPath("userData"), "settings.json");
+}
+function readSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(settingsPath(), "utf8"));
+  } catch {
+    return {};
+  }
+}
+function validNetwork(s) {
+  if (!s || (s.network !== "testnet" && s.network !== "mainnet")) return "network must be testnet or mainnet";
+  if (s.network === "mainnet") {
+    if (!/^[^\s/]+:\d+$/.test(s.grpc || "")) return "mainnet needs the node's gRPC as host:port";
+    if (!/^https?:\/\/\S+$/.test(s.rpc || "")) return "mainnet needs the node's RPC as a URL";
+  }
+  return "";
+}
+
 function backendArgs() {
-  return [
+  const s = readSettings();
+  const args = [
     "--keyring-dir", path.join(app.getPath("userData"), "keyring"),
     "--keyring-backend", "file",
     "--legacy-keyring-dir", path.join(os.homedir(), ".aether"),
   ];
-}
-
-// The USDC the wallet shows and sends on the public testnet: Circle's
-// USDC on Injective's testnet, over Aether's direct channel to Injective
-// (wallet.TestnetUSDC in Go; see docs/INJECTIVE-TESTNET.md). Any other token shows by its bare denom,
-// never as USDC. A USDC setting already in the environment wins.
-function usdcEnv() {
-  const e = process.env;
-  if (e.AETHER_USDC_CHANNEL || e.AETHER_USDC_PATH) return {};
-  return {
-    AETHER_USDC_PATH: "transfer/channel-2",
-    AETHER_USDC_BASE_DENOM: "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d",
-    AETHER_USDC_ISSUER: "Injective",
-  };
+  if (s.network === "mainnet" && !validNetwork(s)) {
+    args.push("--network", "mainnet", "--grpc", s.grpc, "--rpc", s.rpc);
+  } else {
+    args.push("--network", "testnet");
+  }
+  return args;
 }
 
 function startBackend() {
   const binPath = backendBinaryPath();
   backendProcess = spawn(binPath, backendArgs(), {
     stdio: ["ignore", "pipe", "pipe"],
-    env: Object.assign({}, process.env, usdcEnv(), { AETHER_WALLET_TOKEN: API_TOKEN }),
+    // The network (--network) brings its own USDC; an AETHER_USDC_* setting
+    // already in the environment still wins.
+    env: Object.assign({}, process.env, { AETHER_WALLET_TOKEN: API_TOKEN }),
   });
 
   backendProcess.stdout.on("data", (d) => process.stdout.write(`[walletapi] ${d}`));
@@ -116,6 +134,18 @@ function stopBackend() {
     backendProcess.kill();
     backendProcess = null;
   }
+}
+
+// Stops walletapi and waits for it to exit, so its port is free again.
+function stopBackendAndWait(timeoutMs = 5000) {
+  const p = backendProcess;
+  if (!p) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => resolve();
+    p.once("exit", done);
+    setTimeout(done, timeoutMs);
+    stopBackend();
+  });
 }
 
 function waitForBackend(timeoutMs = 10000, intervalMs = 200) {
@@ -168,6 +198,19 @@ function setupUpdates() {
     releasesUrl: RELEASES_URL,
   }));
   ipcMain.handle("update-state", () => updateState);
+  ipcMain.handle("network-get", () => readSettings());
+  // Keeps the choice and restarts walletapi on it; the window reloads and
+  // asks for the password again (a restart forgets it).
+  ipcMain.handle("network-set", async (_event, s) => {
+    const next = { network: s && s.network, grpc: (s && s.grpc) || "", rpc: (s && s.rpc) || "" };
+    const problem = validNetwork(next);
+    if (problem) throw new Error(problem);
+    fs.writeFileSync(settingsPath(), JSON.stringify(next, null, 2));
+    await stopBackendAndWait();
+    startBackend();
+    await waitForBackend();
+    if (mainWindow) mainWindow.reload();
+  });
   ipcMain.handle("update-check", () => checkForUpdates());
   ipcMain.handle("update-download", async () => {
     if (!updatable || updateState.state !== "available") return updateState;

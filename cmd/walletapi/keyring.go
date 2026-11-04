@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/whoyoujoshin/aether/wallet"
 )
@@ -25,6 +27,11 @@ import (
 var (
 	passMu   sync.RWMutex
 	unlocked string
+	// lastUse is when the password last opened the keyring; lockAfter
+	// (--lock-after, or POST /api/keyring/lock-after) forgets it after
+	// that long unused, 0 never. A running miner counts as use.
+	lastUse   time.Time
+	lockAfter = 15 * time.Minute
 )
 
 // errLocked answers 423 (see writeError).
@@ -33,9 +40,44 @@ var errLocked = errors.New("the wallet is locked: enter its password")
 func encrypted() bool { return keyringBackend == "file" }
 
 func currentPass() string {
-	passMu.RLock()
-	defer passMu.RUnlock()
+	passMu.Lock()
+	defer passMu.Unlock()
+	if unlocked != "" && lockAfter > 0 && time.Since(lastUse) > lockAfter && !miningActive() {
+		unlocked = ""
+	}
 	return unlocked
+}
+
+// forget locks the wallet now, stopping a miner: nothing signs until the
+// password is given again.
+func forget() {
+	passMu.Lock()
+	unlocked = ""
+	passMu.Unlock()
+	stopMining()
+}
+
+func miningActive() bool {
+	mineMu.Lock()
+	s := mineCur
+	mineMu.Unlock()
+	if s == nil {
+		return false
+	}
+	select {
+	case <-s.stopped:
+		return false
+	default:
+		return true
+	}
+}
+
+func stopMining() {
+	mineMu.Lock()
+	if mineCur != nil {
+		mineCur.cancel()
+	}
+	mineMu.Unlock()
 }
 
 // openWallet is this wallet's keyring: the encrypted one with the typed
@@ -48,6 +90,9 @@ func openWallet() (*wallet.Wallet, error) {
 		if pass == "" {
 			return nil, errLocked
 		}
+		passMu.Lock()
+		lastUse = time.Now()
+		passMu.Unlock()
 		return wallet.NewFileWallet("aetherd", keyringDir, pass, walletCodec())
 	}
 	return wallet.NewWallet("aetherd", keyringBackend, keyringDir, walletCodec())
@@ -72,7 +117,8 @@ func unencryptedAccounts() ([]wallet.Account, error) {
 
 // GET /api/keyring -> {encrypted, created, locked, unencrypted: [accounts]}
 func handleKeyring(w http.ResponseWriter, r *http.Request) {
-	out := map[string]any{"encrypted": encrypted(), "created": false, "locked": false, "unencrypted": []accountDTO{}}
+	out := map[string]any{"encrypted": encrypted(), "created": false, "locked": false, "unencrypted": []accountDTO{},
+		"lockAfterMinutes": int(lockAfter / time.Minute)}
 	if encrypted() {
 		out["created"] = wallet.FileKeyringCreated(keyringDir)
 		out["locked"] = currentPass() == "" && os.Getenv(wallet.KeyringPassphraseFileEnv) == ""
@@ -112,7 +158,7 @@ func handleUnlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	passMu.Lock()
-	unlocked = req.Password
+	unlocked, lastUse = req.Password, time.Now()
 	passMu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{"unlocked": true, "created": !created})
 }
@@ -189,4 +235,69 @@ func handleRemoveUnencrypted(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"removed": len(old)})
+}
+
+// POST /api/keyring/lock: forgets the password now (and stops a miner).
+func handleLock(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use POST"))
+		return
+	}
+	forget()
+	writeJSON(w, http.StatusOK, map[string]any{"locked": true})
+}
+
+// POST /api/keyring/lock-after {"minutes"}: lock after that long unused,
+// 0 never (at most a day).
+func handleLockAfter(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Minutes *int `json:"minutes"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.Minutes == nil || *req.Minutes < 0 || *req.Minutes > 24*60 {
+		writeError(w, http.StatusBadRequest, errors.New("minutes must be 0 (never) to 1440"))
+		return
+	}
+	passMu.Lock()
+	lockAfter = time.Duration(*req.Minutes) * time.Minute
+	passMu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]any{"lockAfterMinutes": *req.Minutes})
+}
+
+// POST /api/keyring/change-password {"current", "new"}: re-encrypts every
+// key under the new password (wallet.ChangeFilePassphrase), stopping a
+// miner first; the wallet stays unlocked with the new one.
+func handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Current string `json:"current"`
+		New     string `json:"new"`
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, errors.New("use POST"))
+		return
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if !encrypted() {
+		writeError(w, http.StatusBadRequest, errors.New("this wallet's keyring isn't encrypted"))
+		return
+	}
+	stopMining()
+	passMu.Lock()
+	defer passMu.Unlock()
+	if err := wallet.ChangeFilePassphrase("aetherd", keyringDir, req.Current, req.New, walletCodec()); err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, wallet.ErrWrongPassphrase) {
+			status = http.StatusUnauthorized
+		}
+		writeError(w, status, err)
+		return
+	}
+	unlocked, lastUse = req.New, time.Now()
+	writeJSON(w, http.StatusOK, map[string]any{"changed": true})
 }

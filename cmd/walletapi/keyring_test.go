@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -156,4 +157,66 @@ func TestKeyring_MigrateRefusesANameClash(t *testing.T) {
 	code, out := call(t, handleMigrate, "POST", "/api/keyring/migrate", "")
 	require.Equal(t, http.StatusConflict, code)
 	require.Contains(t, out["error"], "different account called main")
+}
+
+// Lock now, lock after a while unused, and a new password.
+func TestKeyring_LockAutoLockAndNewPassword(t *testing.T) {
+	encryptedWallet(t)
+	origAfter := lockAfter
+	t.Cleanup(func() { lockAfter = origAfter })
+
+	code, _ := call(t, handleUnlock, "POST", "/api/keyring/unlock", `{"password":"correct horse"}`)
+	require.Equal(t, http.StatusOK, code)
+	code, out := call(t, handleCreateAccount, "POST", "/api/accounts/create", `{"name":"main"}`)
+	require.Equal(t, http.StatusOK, code)
+	addr := out["address"]
+
+	// Lock now.
+	code, _ = call(t, handleLock, "POST", "/api/keyring/lock", "")
+	require.Equal(t, http.StatusOK, code)
+	code, _ = call(t, handleAccounts, "GET", "/api/accounts", "")
+	require.Equal(t, http.StatusLocked, code)
+
+	// Locks itself after the set time unused.
+	call(t, handleUnlock, "POST", "/api/keyring/unlock", `{"password":"correct horse"}`)
+	code, out = call(t, handleLockAfter, "POST", "/api/keyring/lock-after", `{"minutes":5}`)
+	require.Equal(t, http.StatusOK, code)
+	_, out = call(t, handleKeyring, "GET", "/api/keyring", "")
+	require.EqualValues(t, 5, out["lockAfterMinutes"])
+	passMu.Lock()
+	lastUse = time.Now().Add(-6 * time.Minute)
+	passMu.Unlock()
+	_, out = call(t, handleKeyring, "GET", "/api/keyring", "")
+	require.Equal(t, true, out["locked"], "six minutes unused with a five-minute lock")
+	code, _ = call(t, handleLockAfter, "POST", "/api/keyring/lock-after", `{"minutes":-1}`)
+	require.Equal(t, http.StatusBadRequest, code)
+	code, _ = call(t, handleLockAfter, "POST", "/api/keyring/lock-after", `{"minutes":0}`)
+	require.Equal(t, http.StatusOK, code)
+	call(t, handleUnlock, "POST", "/api/keyring/unlock", `{"password":"correct horse"}`)
+	passMu.Lock()
+	lastUse = time.Now().Add(-48 * time.Hour)
+	passMu.Unlock()
+	_, out = call(t, handleKeyring, "GET", "/api/keyring", "")
+	require.Equal(t, false, out["locked"], "0 never locks")
+
+	// A new password: the wrong current one is refused; the right one
+	// re-encrypts, and only the new one unlocks after.
+	code, _ = call(t, handleChangePassword, "POST", "/api/keyring/change-password", `{"current":"wrong horse","new":"battery staple"}`)
+	require.Equal(t, http.StatusUnauthorized, code)
+	code, _ = call(t, handleChangePassword, "POST", "/api/keyring/change-password", `{"current":"correct horse","new":"short"}`)
+	require.Equal(t, http.StatusBadRequest, code)
+	code, out = call(t, handleChangePassword, "POST", "/api/keyring/change-password", `{"current":"correct horse","new":"battery staple"}`)
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	code, out = call(t, handleAccounts, "GET", "/api/accounts", "")
+	require.Equal(t, http.StatusOK, code, "still unlocked, with the new password")
+	call(t, handleLock, "POST", "/api/keyring/lock", "")
+	code, _ = call(t, handleUnlock, "POST", "/api/keyring/unlock", `{"password":"correct horse"}`)
+	require.Equal(t, http.StatusUnauthorized, code)
+	code, _ = call(t, handleUnlock, "POST", "/api/keyring/unlock", `{"password":"battery staple"}`)
+	require.Equal(t, http.StatusOK, code)
+	w, err := openWallet()
+	require.NoError(t, err)
+	acc, err := w.GetAccount("main")
+	require.NoError(t, err)
+	require.Equal(t, addr, acc.Address)
 }

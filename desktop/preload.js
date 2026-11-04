@@ -1,5 +1,5 @@
-// The only way the wallet page reaches the Electron shell: app version
-// and updates. Nothing here can touch keys, files or the network.
+// The only way the wallet page reaches the Electron shell: app version,
+// updates, and which network the app uses. Nothing here can touch keys.
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("aetherApp", {
@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld("aetherApp", {
   checkForUpdates: () => ipcRenderer.invoke("update-check"),
   downloadUpdate: () => ipcRenderer.invoke("update-download"),
   installUpdate: () => ipcRenderer.invoke("update-install"),
+  network: () => ipcRenderer.invoke("network-get"),
+  setNetwork: (s) => ipcRenderer.invoke("network-set", s),
   onUpdateState: (cb) => {
     const listener = (_event, state) => cb(state);
     ipcRenderer.on("update-state", listener);
