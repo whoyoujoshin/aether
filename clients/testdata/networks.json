@@ -1,0 +1,32 @@
+{
+  "about": "Aether's public networks, as every client names them: --network in agentmcp (wallet/network.go), network in the TypeScript (src/networks.ts) and Python (aether_client/networks.py) clients. Endpoints are empty where none is published yet. On mainnet the USDC path is empty until the Injective channel is opened and listed after launch; a path given alone is then Circle's USDC on Injective over it (usdcWith). Checked by wallet/network_test.go, test/networks.test.ts and tests/test_networks.py.",
+  "networks": [
+    {
+      "name": "testnet",
+      "chainId": "aether-testnet-1",
+      "rpc": "https://rpc.157-245-252-221.sslip.io",
+      "grpc": "grpc.157-245-252-221.sslip.io:443",
+      "faucet": "https://faucet.157-245-252-221.sslip.io/request",
+      "jobBoard": "https://explorer.157-245-252-221.sslip.io/jobs",
+      "usdc": {"path": "transfer/channel-2", "baseDenom": "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d", "issuer": "Injective"},
+      "real": false
+    },
+    {
+      "name": "mainnet",
+      "chainId": "aether-1",
+      "rpc": "",
+      "grpc": "",
+      "faucet": "",
+      "jobBoard": "",
+      "usdc": {"path": "", "baseDenom": "erc20:0xa00C59fF5a080D2b954d0c75e46E22a0c371235a", "issuer": "Injective"},
+      "real": true
+    }
+  ],
+  "usdcWith": [
+    {"name": "testnet, nothing given: its USDC", "network": "testnet", "given": {}, "usdc": {"path": "transfer/channel-2", "baseDenom": "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d", "issuer": "Injective"}},
+    {"name": "mainnet, nothing given: no USDC yet", "network": "mainnet", "given": {}, "usdc": {}},
+    {"name": "mainnet, a path alone: Circle's USDC on Injective over it", "network": "mainnet", "given": {"path": "transfer/channel-7"}, "usdc": {"path": "transfer/channel-7", "baseDenom": "erc20:0xa00C59fF5a080D2b954d0c75e46E22a0c371235a", "issuer": "Injective"}},
+    {"name": "mainnet, a base denom given: left as it is", "network": "mainnet", "given": {"path": "transfer/channel-7", "baseDenom": "uusdc"}, "usdc": {"path": "transfer/channel-7", "baseDenom": "uusdc"}},
+    {"name": "mainnet, a Noble channel given: left as it is", "network": "mainnet", "given": {"channel": "channel-3"}, "usdc": {"channel": "channel-3"}}
+  ]
+}

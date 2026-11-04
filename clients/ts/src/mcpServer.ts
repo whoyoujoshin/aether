@@ -12,6 +12,7 @@
 
 import { AetherClient } from "./client.js";
 import { AetherToolkit, INFLOW_CAPS_DESCRIPTION, ToolResult } from "./agentTools.js";
+import { TESTNET, networkByName, networkForChain, usdcWith } from "./networks.js";
 
 export const MCP_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 export const MCP_SERVER_NAME = "aether-wallet";
@@ -128,6 +129,8 @@ export async function handleMcpMessage(tools: McpTool[], msg: JsonRpcRequest, ve
 export interface McpServerOptions {
   rpc?: string;
   chainId?: string;
+  /** "testnet" or "mainnet": its chain ID, RPC and USDC unless given. */
+  network?: "testnet" | "mainnet";
   usdcPath?: string;
   usdcBaseDenom?: string;
   usdcIssuer?: string;
@@ -136,20 +139,20 @@ export interface McpServerOptions {
   output?: NodeJS.WritableStream;
 }
 
-export const TESTNET_RPC = "https://rpc.157-245-252-221.sslip.io";
+export const TESTNET_RPC = TESTNET.rpc;
 
 /** Serves MCP over stdio until the input closes. */
 export async function serveMcp(opts: McpServerOptions = {}): Promise<void> {
-  const chainId = opts.chainId ?? "aether-testnet-1";
-  const testnet = chainId === "aether-testnet-1";
-  const client = new AetherClient({
-    rpc: opts.rpc ?? TESTNET_RPC,
-    chainId,
-    // The testnet's USDC: Circle's, from Injective over channel-2.
-    usdcPath: opts.usdcPath ?? (testnet ? "transfer/channel-2" : undefined),
-    usdcBaseDenom: opts.usdcBaseDenom ?? (testnet ? "erc20:0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d" : undefined),
-    usdcIssuer: opts.usdcIssuer ?? (testnet ? "Injective" : undefined),
-  });
+  // network (or a public chain ID) brings its RPC and USDC (networks.ts);
+  // with neither, the testnet, as before.
+  const named = opts.network ? networkByName(opts.network) : undefined;
+  if (named && opts.chainId && opts.chainId !== named.chainId) throw new Error(`network ${named.name} is chain ${named.chainId}, but chainId is ${opts.chainId}`);
+  const chainId = opts.chainId ?? named?.chainId ?? TESTNET.chainId;
+  const network = named ?? networkForChain(chainId);
+  const rpc = opts.rpc ?? (network ? network.rpc : TESTNET_RPC);
+  if (!rpc) throw new Error(`no public RPC for ${network?.name ?? chainId} yet: set AETHER_RPC_URL to your node`);
+  const given = { usdcPath: opts.usdcPath, usdcBaseDenom: opts.usdcBaseDenom, usdcIssuer: opts.usdcIssuer };
+  const client = new AetherClient({ rpc, chainId, ...(network ? usdcWith(network, given) : given) });
   const tools = mcpTools(new AetherToolkit(client, undefined, { faucetUrl: null }));
   const input = opts.input ?? process.stdin;
   const output = opts.output ?? process.stdout;

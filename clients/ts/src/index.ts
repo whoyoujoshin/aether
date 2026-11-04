@@ -39,3 +39,4 @@ export type { AetherToolkitOptions, ToolSpec, ToolResult } from "./agentTools.js
 export { serveMcp, handleMcpMessage, mcpTools, MCP_PROTOCOL_VERSIONS } from "./mcpServer.js";
 export { ExactAetherScheme, x402Network } from "./x402.js";
 export type { ExactAetherOptions, ExactAetherPayload, X402PaymentRequirements } from "./x402.js";
+export { NETWORKS, TESTNET, MAINNET, networkByName, networkForChain, usdcWith, type Network } from "./networks.js";

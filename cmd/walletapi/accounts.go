@@ -100,7 +100,7 @@ func handleRecoverAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func legacyAvailable() bool {
-	if legacyKeyringDir == "" || keyringBackend != "test" {
+	if legacyKeyringDir == "" || (keyringBackend != "test" && !encrypted()) {
 		return false
 	}
 	a, errA := filepath.Abs(legacyKeyringDir)
@@ -148,7 +148,19 @@ func handleBringOverAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("no other keyring to bring an account from"))
 		return
 	}
-	acc, err := wallet.CopyTestKey(legacyKeyringDir, keyringDir, req.Name, walletCodec())
+	var acc wallet.Account
+	var err error
+	if encrypted() {
+		// Into the encrypted keyring, from the CLI's test one.
+		var dst, src *wallet.Wallet
+		if dst, err = openWallet(); err == nil {
+			if src, err = wallet.NewWallet("aetherd", "test", legacyKeyringDir, walletCodec()); err == nil {
+				acc, err = wallet.CopyKey(req.Name, src, dst)
+			}
+		}
+	} else {
+		acc, err = wallet.CopyTestKey(legacyKeyringDir, keyringDir, req.Name, walletCodec())
+	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

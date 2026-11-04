@@ -134,6 +134,28 @@ spend caps set. Run it again to print them again for the same key.
 
 Selling to agents instead? See [SELL.md](SELL.md).
 
+### Mainnet
+
+`--network mainnet` (or `testnet`) sets the chain ID, the public endpoints
+where some are published, and the USDC; a flag given wins. Mainnet,
+`aether-1`, holds real funds, so:
+
+- `agentmcp init --network mainnet` puts the key in an encrypted keyring
+  (`--keyring-backend file`, its passphrase asked, or read from the file
+  `AETHER_KEYRING_PASSPHRASE_FILE` names) and asks no faucet: there is none.
+  The MCP client's environment needs `AETHER_KEYRING_PASSPHRASE_FILE` too.
+- agentmcp refuses to sign on `aether-1` from the unencrypted test keyring.
+- No public mainnet node is published yet, so give `--grpc` and `--rpc`
+  (your own node by default: `localhost:9090`, `http://localhost:26657`).
+- USDC is Circle's USDC on Injective. Its channel opens after launch, so
+  until then the tools know only AETH; once it is listed, give its path
+  alone (`--usdc-path transfer/channel-N`) and the rest follows.
+
+In code: `new AetherClient({ network: "mainnet", rpc })` (TypeScript),
+`AetherClient(rpc, network="mainnet")` (Python), `AETHER_NETWORK=mainnet`
+for `aether-mcp`. The networks are in `clients/testdata/networks.json`,
+which every client is tested against.
+
 The read-only tools can also run locally from npm, with no key:
 `npx -y -p aether-chain-client aether-mcp`, or in an `mcpServers` block
 `{"command": "npx", "args": ["-y", "-p", "aether-chain-client", "aether-mcp"]}`.

@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"errors"
+	"io"
 
 	"github.com/cosmos/go-bip39"
 
@@ -53,6 +54,10 @@ func NewWallet(appName, backend, rootDir string, cdc codec.Codec) (*Wallet, erro
 	if err != nil {
 		return nil, err
 	}
+	return newWalletFrom(appName, backend, rootDir, in, cdc)
+}
+
+func newWalletFrom(appName, backend, rootDir string, in io.Reader, cdc codec.Codec) (*Wallet, error) {
 	kr, err := NewKeyring(appName, backend, rootDir, in, cdc, func(options *keyring.Options) {
 		options.SupportedAlgos = append(options.SupportedAlgos, mldsa.Algo)
 	})

@@ -4,6 +4,7 @@ import { Key, PUBKEY_BYTES, isAddress } from "./keys.js";
 import { buildSend, buildTx, memoOf, DEFAULT_GAS_LIMIT, MSG_SEND_TYPE_URL, SEND_AUTHORIZATION_TYPE_URL, type AnyMsg, SignedTx } from "./tx.js";
 import { decodeAccountPubKey, decodeRotation, ROTATION_QUERY_PATH, rotationRequest, signsFor, type Rotation } from "./rotation.js";
 import { AETH, Assets, DENOM, type Asset, type UsdcSetting } from "./amount.js";
+import { networkByName, usdcWith } from "./networks.js";
 import { decodeInflowCaps, INFLOW_CAPS_PATH, type InflowCaps } from "./inflowCaps.js";
 import { feeFor, parseGasPrices, type Fee, type GasPrice } from "./fees.js";
 
@@ -116,10 +117,29 @@ export class AetherClient {
    * minimum, or a price such as "0.0001uaeth". tip multiplies it (at least 1):
    * 2 pays twice the minimum, ahead of those paying the minimum when blocks are full.
    */
-  constructor(readonly opts: { rpc: string; chainId?: string; fetch?: typeof fetch; gasPrice?: string; tip?: number } & UsdcSetting) {
-    this.rpc = new Rpc(opts.rpc, opts.fetch);
-    this.assets = new Assets({ usdcChannel: opts.usdcChannel, usdcPath: opts.usdcPath, usdcBaseDenom: opts.usdcBaseDenom, usdcIssuer: opts.usdcIssuer });
+  /**
+   * network ("testnet" or "mainnet") fills in what isn't given: the chain ID,
+   * the public RPC where one is published, and the USDC. Mainnet has no public
+   * endpoint yet, so give rpc there.
+   */
+  constructor(readonly opts: { rpc?: string; chainId?: string; network?: "testnet" | "mainnet"; fetch?: typeof fetch; gasPrice?: string; tip?: number } & UsdcSetting) {
+    const given: UsdcSetting = { usdcChannel: opts.usdcChannel, usdcPath: opts.usdcPath, usdcBaseDenom: opts.usdcBaseDenom, usdcIssuer: opts.usdcIssuer };
+    let usdc = given;
+    let rpc = opts.rpc;
+    this.chainIdResolved = opts.chainId ?? "aether-testnet-1";
+    if (opts.network) {
+      const n = networkByName(opts.network);
+      if (opts.chainId && opts.chainId !== n.chainId) throw new Error(`network ${n.name} is chain ${n.chainId}, but chainId is ${opts.chainId}`);
+      this.chainIdResolved = n.chainId;
+      rpc = rpc || n.rpc;
+      usdc = usdcWith(n, given);
+    }
+    if (!rpc) throw new Error(opts.network ? `no public RPC for ${opts.network} yet: give rpc` : "rpc is required");
+    this.rpc = new Rpc(rpc, opts.fetch);
+    this.assets = new Assets(usdc);
   }
+
+  private readonly chainIdResolved: string;
 
   /**
    * The node's minimum gas prices (cosmos.base.node.v1beta1 Config), kept for
@@ -147,7 +167,7 @@ export class AetherClient {
   }
 
   get chainId(): string {
-    return this.opts.chainId ?? "aether-testnet-1";
+    return this.chainIdResolved;
   }
 
   latestHeight(): Promise<number> {

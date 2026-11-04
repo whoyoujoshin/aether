@@ -68,9 +68,13 @@ function backendBinaryPath() {
 // The wallet keeps its own keyring (e.g. %APPDATA%\Aether Pay\keyring),
 // so it lists only accounts its user created or chose to bring over,
 // never every key the CLI tools ever made in ~/.aether.
+// The keys are encrypted (--keyring-backend file): walletapi asks the
+// window for the password, holds it in memory only, and moves accounts an
+// earlier version kept unencrypted into it (cmd/walletapi/keyring.go).
 function backendArgs() {
   return [
     "--keyring-dir", path.join(app.getPath("userData"), "keyring"),
+    "--keyring-backend", "file",
     "--legacy-keyring-dir", path.join(os.homedir(), ".aether"),
   ];
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/whoyoujoshin/aether/a2a"
 	"github.com/whoyoujoshin/aether/app"
 	"github.com/whoyoujoshin/aether/gates"
+	"github.com/whoyoujoshin/aether/wallet"
 )
 
 // --- GET /api/agents ---
@@ -19,11 +20,14 @@ import (
 // machine-readable response. The explorer's /agents page renders it.
 
 // The public testnet's endpoints: the defaults on aether-testnet-1.
+var (
+	testnetRPC    = wallet.TestnetNetwork.RPC
+	testnetGRPC   = wallet.TestnetNetwork.GRPC
+	testnetFaucet = wallet.TestnetNetwork.Faucet
+)
+
 const (
-	testnetRPC    = "https://rpc.157-245-252-221.sslip.io"
-	testnetGRPC   = "grpc.157-245-252-221.sslip.io:443"
-	testnetFaucet = "https://faucet.157-245-252-221.sslip.io/request"
-	testnetSeed   = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"
+	testnetSeed = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"
 	// testnetJobs is the job board's host (cmd/jobboard behind the seed's Caddy).
 	testnetJobs = "https://explorer.157-245-252-221.sslip.io"
 )

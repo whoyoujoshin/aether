@@ -117,6 +117,13 @@ this since it only needs to run once per logo change.
   warnings (Windows SmartScreen, macOS Gatekeeper) on first run --
   expected for a devnet-stage app, but something to revisit before
   wider distribution.
-- The wallet's default keyring backend (`test`) stores keys unencrypted
-  on disk -- fine for the current testnet, not something to ship
-  as-is for real value. See `cmd/walletapi`'s `-keyring-backend` flag.
+- Keys are encrypted on disk (since 2026-11-04): the app runs walletapi
+  with `--keyring-backend file`, and the window asks for a password
+  (chosen on first launch, asked at each launch after). walletapi keeps
+  the password in memory only and answers 423 to anything needing a key
+  until it has it. Accounts an earlier version kept in the unencrypted
+  `test` keyring are offered for moving in, at the same addresses, and
+  then the unencrypted copies are deleted on the user's say-so
+  (`cmd/walletapi/keyring.go`). No password reset: the recovery phrases
+  restore accounts. Not yet: changing the password, and locking after a
+  while idle.

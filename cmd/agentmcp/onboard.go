@@ -24,10 +24,10 @@ import (
 // faucet.
 
 // The public testnet's endpoints: what `agentmcp init` connects to by default.
-const (
-	testnetFaucet = "https://faucet.157-245-252-221.sslip.io/request"
-	testnetGRPC   = "grpc.157-245-252-221.sslip.io:443"
-	testnetRPC    = "https://rpc.157-245-252-221.sslip.io"
+var (
+	testnetFaucet = wallet.TestnetNetwork.Faucet
+	testnetGRPC   = wallet.TestnetNetwork.GRPC
+	testnetRPC    = wallet.TestnetNetwork.RPC
 )
 
 var (
@@ -130,10 +130,20 @@ func runInit(args []string) error {
 	fs.StringVar(&chainID, "chain-id", "aether-testnet-1", "chain ID")
 	faucet := fs.String("faucet", "", "faucet URL (default: the public testnet faucet on aether-testnet-1)")
 	noFaucet := fs.Bool("no-faucet", false, "don't request starter funds")
+	network := fs.String("network", "", `"testnet" or "mainnet": its chain ID and public endpoints; on mainnet the key goes in an encrypted keyring and nothing is asked of a faucet`)
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	keyringBackend = "test"
+	if err := applyNetwork(fs, *network, nil); err != nil {
+		return err
+	}
+	realFunds := false
+	if n, ok := wallet.NetworkForChain(chainID); ok && n.Real {
+		// Real funds: the key in an encrypted keyring, its passphrase
+		// asked here or read from $AETHER_KEYRING_PASSPHRASE_FILE.
+		realFunds, keyringBackend = true, "file"
+	}
 	if grpcEndpoint == "" {
 		grpcEndpoint = "localhost:9090"
 		if chainID == "aether-testnet-1" {
@@ -185,6 +195,9 @@ func runInit(args []string) error {
 	command, installHint := selfCommand()
 	serverArgs := []string{"--grpc", grpcEndpoint, "--rpc", rpcEndpoint, "--chain-id", chainID, "--keyring-dir", keyringDir,
 		"--per-tx-limit", "1000000", "--daily-limit", "5000000"}
+	if realFunds {
+		serverArgs = append(serverArgs, "--keyring-backend", "file")
+	}
 	if accountName != "agent" {
 		serverArgs = append(serverArgs, "--account-name", accountName)
 	}
@@ -210,6 +223,9 @@ func runInit(args []string) error {
 	openclaw, _ := json.MarshalIndent(map[string]any{"mcp": map[string]any{"servers": map[string]server{"aether-wallet": {command, serverArgs}}}}, "  ", "  ")
 	fmt.Fprintf(out, "\n  OpenClaw (merge into ~/.openclaw/openclaw.json):\n  %s\n", openclaw)
 	fmt.Fprintf(out, "\nEvery host, and the hosted servers that need no install: https://github.com/whoyoujoshin/aether/blob/main/docs/CONNECT.md\n")
+	if realFunds {
+		fmt.Fprintf(out, "\n%s holds real funds. The key is in an encrypted keyring: the MCP client's environment needs\nAETHER_KEYRING_PASSPHRASE_FILE naming a file (mode 0600) that holds its passphrase (docs/SERVICE-KEYS.md).\n", chainID)
+	}
 	fmt.Fprintf(out, "\nLimits: at most 1 AETH per payment and 5 AETH per 24h (change --per-tx-limit/--daily-limit, in uaeth).\n")
 	fmt.Fprintf(out, "For oversight add --approval-threshold \"0.5 AETH\" --approver <your address> and --notify-webhook <url>.\n")
 	return nil
