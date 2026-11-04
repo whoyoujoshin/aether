@@ -436,9 +436,15 @@ and the proposed bounty are in `docs/REVIEW.md`.
 
 ## 6. Services and clients
 
-- **The clients default to the testnet.** They need a mainnet profile: chain
-  ID, the USDC path and denom, endpoints. That applies to agentmcp, the
-  TypeScript and Python clients, the explorer and the MCP Registry entry.
+- **The clients default to the testnet.** The mainnet profile is built
+  (2026-11-04, `wallet/network.go`, `clients/testdata/networks.json`):
+  `--network mainnet` in agentmcp and `network: "mainnet"` in the
+  TypeScript and Python clients set the chain ID and Circle's USDC on
+  Injective (path empty until the channel is listed; a path given alone
+  gets the Injective denom), default agentmcp to an encrypted keyring and
+  refuse the test keyring on `aether-1` (docs/CONNECT.md, "Mainnet"). Still
+  to fill in at launch: the public endpoints, the USDC channel, the
+  explorer's flags and an MCP Registry entry for mainnet.
   `docs/API-STABILITY.md` applies to both networks.
 - **The paid services earn and spend real money.**
   - Inference pays OpenRouter in dollars and is paid in USDC, so its price

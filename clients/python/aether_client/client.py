@@ -7,6 +7,7 @@ from .amount import AETH, DENOM, Asset, Assets
 from .fees import fee_for, parse_gas_prices
 from .inflow_caps import INFLOW_CAPS_PATH, InflowCaps, decode_inflow_caps
 from .keys import PUBKEY_BYTES, Key, is_address
+from .networks import network_by_name, usdc_with
 from .proto import Writer, first, read_fields
 from .rotation import ROTATION_QUERY_PATH, Rotation, decode_account_pubkey, decode_rotation, rotation_request, signs_for
 from .rpc import Rpc, RpcError
@@ -123,21 +124,40 @@ def decode_send_grant(resp: bytes, denom: str = DENOM) -> Optional[SendGrant]:
 
 
 class AetherClient:
-    def __init__(self, rpc: str, chain_id: str = "aether-testnet-1", usdc_channel: Optional[str] = None,
+    def __init__(self, rpc: Optional[str] = None, chain_id: Optional[str] = None, usdc_channel: Optional[str] = None,
                  usdc_path: Optional[str] = None, usdc_base_denom: Optional[str] = None,
-                 usdc_issuer: Optional[str] = None, gas_price: str = "auto", tip: float = 1):
+                 usdc_issuer: Optional[str] = None, gas_price: str = "auto", tip: float = 1,
+                 network: Optional[str] = None):
         """usdc_channel: Aether's end of its direct channel to Noble (e.g. "channel-3"); or usdc_path and
         usdc_base_denom for USDC that arrives another way (see usdc_for). With one, amounts may be in
-        USDC ("5 USDC"); without, USDC is an unknown unit, never guessed at."""
+        USDC ("5 USDC"); without, USDC is an unknown unit, never guessed at.
+
+        network ("testnet" or "mainnet") fills in what isn't given: the chain ID, the public RPC where one
+        is published, and the USDC (networks.py). Mainnet has no public endpoint yet, so give rpc there.
+        Without it, chain_id defaults to aether-testnet-1, as before."""
+        usdc = {k: v for k, v in (("usdc_channel", usdc_channel), ("usdc_path", usdc_path),
+                                  ("usdc_base_denom", usdc_base_denom), ("usdc_issuer", usdc_issuer)) if v}
+        if network:
+            n = network_by_name(network)
+            if chain_id and chain_id != n.chain_id:
+                raise ValueError(f"network {n.name} is chain {n.chain_id}, but chain_id is {chain_id}")
+            chain_id = n.chain_id
+            rpc = rpc or n.rpc or None
+            usdc = usdc_with(n, usdc_channel, usdc_path, usdc_base_denom, usdc_issuer)
+            if not rpc:
+                raise ValueError(f"no public RPC for {n.name} yet: give rpc")
+        if not rpc:
+            raise ValueError("rpc is required")
         self.rpc = Rpc(rpc)
-        self.chain_id = chain_id
+        self.chain_id = chain_id or "aether-testnet-1"
         # gas_price: "auto" pays the node's own minimum, or a price such as "0.0001uaeth"; tip
         # multiplies it (at least 1): 2 pays twice the minimum, ahead of those paying the minimum
         # when blocks are full.
         self.gas_price = gas_price
         self.tip = tip
         self._gas_prices = None  # (time, prices)
-        self.assets = Assets(usdc_channel, usdc_path, usdc_base_denom, usdc_issuer)
+        self.assets = Assets(usdc.get("usdc_channel"), usdc.get("usdc_path"), usdc.get("usdc_base_denom"),
+                             usdc.get("usdc_issuer"))
         # Sequences used but maybe not reported by the chain yet (a second
         # send within one block would otherwise reuse one).
         self._next_seq = {}

@@ -452,6 +452,7 @@ func main() {
 	}
 	flag.StringVar(&grpcEndpoint, "grpc", "localhost:9090", "node gRPC endpoint")
 	flag.StringVar(&chainID, "chain-id", "aether-testnet-1", "chain ID")
+	network := flag.String("network", "", `"testnet" or "mainnet": sets --chain-id, the public endpoints where some are published, and the USDC for that network, unless given; on mainnet the keyring is encrypted (file) by default, and the test keyring is refused`)
 	flag.StringVar(&keyringDir, "keyring-dir", defaultKeyringDir(), "directory for the agent's dedicated keyring")
 	flag.StringVar(&keyringBackend, "keyring-backend", "test", `keyring backend -- "test" (unencrypted) or "file" (encrypted, its passphrase read from the file $AETHER_KEYRING_PASSPHRASE_FILE names); see this file's package doc comment before using anything but a small, disposable balance`)
 	flag.StringVar(&accountName, "account-name", "agent", "name of the managed account within the keyring")
@@ -494,6 +495,9 @@ func main() {
 	flag.StringVar(&jobBoardURL, "job-board", "", `job board host's /jobs URL, which stores job specs and deliveries (default on aether-testnet-1: the public one; "off" turns the job tools' texts off)`)
 	flag.StringVar(&mandateFile, "mandate-file", "", "an owner's spending mandate (agentmcp mandate) to send with every paid request (docs/MANDATES.md)")
 	flag.Parse()
+	if err := applyNetwork(flag.CommandLine, *network, usdc); err != nil {
+		log.Fatal(err)
+	}
 	if err := fees.Validate(); err != nil {
 		log.Fatal(err)
 	}
@@ -593,6 +597,9 @@ func main() {
 		return
 	}
 
+	if err := checkRealFundsKeyring(); err != nil {
+		log.Fatal(err)
+	}
 	if stateFile == "" {
 		stateFile = filepath.Join(keyringDir, "agentmcp-spend.json")
 	}
