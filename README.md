@@ -544,4 +544,4 @@ Major design decisions and subtle Cosmos SDK / CometBFT integration fixes are do
 
 ## Security
 
-No professional third-party audit yet. Community review and responsible disclosure are welcome via issues. Researchers scoping an engagement should use the wiki known-gaps materials and this README’s status table.
+No professional third-party audit yet; mainnet gets a focused review and a bug bounty instead ([docs/REVIEW.md](docs/REVIEW.md)). Report a vulnerability privately through GitHub (**Security → Report a vulnerability**), not in an issue: see [SECURITY.md](SECURITY.md). The testnet bug hunt, its scope, rules and rewards are in [docs/BUG-HUNT.md](docs/BUG-HUNT.md).

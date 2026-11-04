@@ -152,8 +152,9 @@ USDC only from a pool when there is one.
 
 - **Where reports go:** GitHub's private vulnerability reporting on this
   repository (Security → Report a vulnerability), so a report and its fix
-  stay private until released. Turn it on in the repository settings
-  before launch, and add a `SECURITY.md` pointing to it. It costs nothing.
+  stay private until released. `SECURITY.md` points to it; Joshua turns
+  it on in the repository settings (Settings → Code security → Private
+  vulnerability reporting). It costs nothing.
 - **Every valid report is credited** by name (or handle) in the release
   notes of the fix and on a hall-of-fame page, unless the reporter asks
   not to be.
@@ -177,7 +178,8 @@ USDC only from a pool when there is one.
   beyond what the pool holds.
 - **A testnet bug hunt before mainnet** costs nothing and finds the same
   bugs earlier: the same tiers, paid in credit and in mainnet AETH from
-  the treasury after launch.
+  the treasury after launch. Written up as [BUG-HUNT.md](BUG-HUNT.md), with
+  `SECURITY.md` pointing to GitHub's private reporting.
 - **Rules:** test on the testnet or your own devnet, never on mainnet
   funds that aren't yours; no denial of service by volume, no social
   engineering, nothing against operators' machines; first report of each
@@ -195,4 +197,6 @@ eligible.
 - Run each fuzz target for an hour on a workstation; commit any crasher.
 - Run the replay against the testnet's history once.
 - A reviewer goes through §1's table, with these tools.
-- Open the bounty (and the testnet bug hunt before it) with launch.
+- Open the testnet bug hunt ([BUG-HUNT.md](BUG-HUNT.md)) once private
+  vulnerability reporting is on and the module-account check has run, and
+  the bounty with launch.
