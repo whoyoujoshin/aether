@@ -51,15 +51,39 @@ export function isAddress(address: string): boolean {
 
 export class Key {
   readonly publicKey: Uint8Array;
+  /**
+   * The account this key signs for: its own address, or the account it was
+   * rotated onto (forAccount). Sends, payments and sign-ins go from it.
+   */
   readonly address: string;
+  /** The address the key derives on its own; differs from address only after forAccount. */
+  readonly keyAddress: string;
   private readonly secretKey: Uint8Array;
 
-  private constructor(readonly seed: Uint8Array) {
+  private constructor(readonly seed: Uint8Array, account?: string) {
     if (seed.length !== 32) throw new Error("ML-DSA-44 seed must be 32 bytes");
     const kp = ml_dsa44.keygen(seed);
     this.publicKey = kp.publicKey;
     this.secretKey = kp.secretKey;
-    this.address = addressOf(this.publicKey);
+    this.keyAddress = addressOf(this.publicKey);
+    if (account !== undefined) addressBytes(account);
+    this.address = account ?? this.keyAddress;
+  }
+
+  /**
+   * This key signing for account, the account it was rotated onto
+   * (docs/PQ-KEY-ROTATION.md): an account keeps its address when its key
+   * changes, so the new key sends from the old address. The chain accepts
+   * it only while it is the key stored on that account; AetherClient.keyFor
+   * checks that first. forAccount(key.keyAddress) is the key on its own.
+   */
+  forAccount(account: string): Key {
+    return new Key(this.seed, account);
+  }
+
+  /** True when this key signs for an account other than its own address. */
+  get rotated(): boolean {
+    return this.address !== this.keyAddress;
   }
 
   /** A new key with its 24-word recovery phrase. Keep the phrase safe. */

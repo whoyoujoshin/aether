@@ -295,12 +295,19 @@ still the address.
 
 ## Limits and follow-ups
 
-- **Clients:** the TypeScript and Python clients don't build rotation
-  messages yet, and their sellers' sign-in checks only the hash. Their
-  vectors are `clients/testdata/rotation.json`:
+- **Clients:** the TypeScript and Python clients build every rotation
+  message, check sign-ins, receipts and x402 payments by the stored-key
+  rule (`signsFor` / `signs_for`), and send from a rotated account:
+  `client.keyFor(key, account)` (Python `key_for`) checks the key is the
+  one stored on the account, then returns `key.forAccount(account)`
+  (`for_account`), whose `address` is the account and `keyAddress` the
+  key's own. Everything that sends, pays or signs in goes from `address`.
+  The ElizaOS plugin takes `AETHER_ACCOUNT`. Their vectors are
+  `clients/testdata/rotation.json`:
   - signing bytes and signatures;
   - every message's encoding;
   - a signed `MsgRotateKey` transaction;
+  - a send from the rotated account, signed by the new key;
   - a `Rotation` query answer;
   - the signs-for rule's cases.
 

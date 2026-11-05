@@ -32,7 +32,13 @@ export function toolkitFromSettings(runtime: IAgentRuntime): AetherToolkit {
   });
   const mnemonic = setting(runtime, "AETHER_MNEMONIC");
   const faucet = setting(runtime, "AETHER_FAUCET_URL");
-  return new AetherToolkit(client, mnemonic ? Key.fromMnemonic(mnemonic) : undefined, {
+  // AETHER_ACCOUNT: the account the phrase's key was rotated onto
+  // (docs/PQ-KEY-ROTATION.md). The chain refuses its transactions until the
+  // rotation has applied.
+  const account = setting(runtime, "AETHER_ACCOUNT");
+  let key = mnemonic ? Key.fromMnemonic(mnemonic) : undefined;
+  if (key && account) key = key.forAccount(account);
+  return new AetherToolkit(client, key, {
     maxPerPayment: setting(runtime, "AETHER_MAX_PER_PAYMENT") || "1 AETH",
     dailyBudget: setting(runtime, "AETHER_DAILY_BUDGET") || "5 AETH",
     faucetUrl: faucet === "none" ? null : faucet || TESTNET_FAUCET,

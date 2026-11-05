@@ -42,12 +42,31 @@ def is_address(address: str) -> bool:
 
 
 class Key:
-    def __init__(self, seed: bytes):
+    """An ML-DSA-44 key. `address` is the account it signs for: its own address, or the account it
+    was rotated onto (for_account). Sends, payments and sign-ins go from it. `key_address` is the
+    address the key derives on its own."""
+
+    def __init__(self, seed: bytes, account: str = None):
         if len(seed) != 32:
             raise ValueError("ML-DSA-44 seed must be 32 bytes")
         self.seed = bytes(seed)
         self.public_key, self._secret_key = ML_DSA_44.key_derive(self.seed)
-        self.address = address_of(self.public_key)
+        self.key_address = address_of(self.public_key)
+        if account is not None:
+            address_bytes(account)
+        self.address = account if account is not None else self.key_address
+
+    def for_account(self, account: str) -> "Key":
+        """This key signing for `account`, the account it was rotated onto (docs/PQ-KEY-ROTATION.md):
+        an account keeps its address when its key changes, so the new key sends from the old address.
+        The chain accepts it only while it is the key stored on that account; AetherClient.key_for
+        checks that first."""
+        return Key(self.seed, account)
+
+    @property
+    def rotated(self) -> bool:
+        """True when this key signs for an account other than its own address."""
+        return self.address != self.key_address
 
     @classmethod
     def generate(cls):

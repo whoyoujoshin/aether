@@ -6,7 +6,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { base64 } from "@scure/base";
 import { Writer } from "../src/proto.js";
 import {
-  AetherClient, Key, PUBKEY_TYPE_URL, buildTx, createReceiptDelegation, decodeAccountPubKey, decodeRotation,
+  AetherClient, Key, PUBKEY_TYPE_URL, buildSend, buildTx, createReceiptDelegation, decodeAccountPubKey, decodeRotation,
   delegationSigningMessage, guardianCancelSigningBytes, guardianSetRecoverySigningBytes, msgCancelPendingRotation,
   msgGuardianCancel, msgGuardianSetRecovery, msgRecoverKey, msgRotateKey, msgSetRecovery, msgWatchtowerCancel,
   recoverKeySigningBytes, rotateKeySigningBytes, rotationRequest, signReceipt, signsFor, verifyReceipt,
@@ -183,4 +183,41 @@ test("receipts accept the payee's new key and refuse the retired one", () => {
   assert.equal(verifyReceipt(delegated(delegation(next)), rotated), undefined, "a delegation the new key signed");
   assert.match(verifyReceipt(delegated(delegation(owner)), rotated) ?? "", /payee's key/, "a delegation the retired key signed");
   assert.equal(verifyReceipt(delegated(createReceiptDelegation(owner, receiptKey.address, expires))), undefined, "hash-only, the address's own key");
+});
+
+test("a rotated key sends from the account it was rotated onto, as Go builds it", () => {
+  const tx = file.rotatedSendTx;
+  const signer = next.forAccount(account);
+  assert.equal(signer.address, account);
+  assert.equal(signer.keyAddress, next.address);
+  assert.equal(signer.rotated, true);
+  assert.equal(next.rotated, false);
+  assert.equal(next.forAccount(next.address).rotated, false);
+  assert.throws(() => next.forAccount("not-an-address"));
+  const signed = buildSend(signer, {
+    chainId: tx.chainId, accountNumber: BigInt(tx.accountNumber), sequence: BigInt(tx.sequence), to: tx.to, amountUaeth: BigInt(tx.amountUaeth),
+    memo: tx.memo, gasLimit: BigInt(tx.gasLimit), fee: { denom: "uaeth", amount: 20n },
+  }, det);
+  assert.equal(bytesToHex(signed.bodyBytes), tx.bodyBytes, "body");
+  assert.equal(bytesToHex(signed.authInfoBytes), tx.authInfoBytes, "auth info");
+  assert.equal(bytesToHex(signed.signDoc), tx.signDoc, "sign doc");
+  assert.equal(bytesToHex(signed.signature), tx.signature, "signature");
+  assert.equal(signed.hash, tx.txHash, "tx hash");
+});
+
+test("keyFor checks the chain before signing for a rotated account", async () => {
+  const info = (pub?: Uint8Array) => {
+    const body = new Writer();
+    if (pub) body.message(2, new Writer().string(1, PUBKEY_TYPE_URL).bytes(2, new Writer().bytes(1, pub).finish()).finish());
+    return new Writer().message(1, body.uint64(3, 7n).uint64(4, 1n).finish()).finish();
+  };
+  const node = (value: Uint8Array) => new AetherClient({
+    rpc: "http://node", chainId: chain,
+    fetch: (async () => new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { response: { code: 0, log: "", value: base64.encode(value) } } }))) as typeof fetch,
+  });
+  const after = node(info(next.publicKey));
+  assert.equal((await after.keyFor(next, account)).address, account, "rotated: the new key signs for it");
+  await assert.rejects(after.keyFor(owner, account), /doesn't sign for/, "the retired key");
+  await assert.rejects(node(info()).keyFor(next, account), /rotation still pending/, "not rotated yet");
+  assert.equal((await node(info()).keyFor(owner, account)).rotated, false, "its own account, nothing stored");
 });

@@ -62,6 +62,11 @@
         "required": false,
         "sensitive": true
       },
+      "AETHER_ACCOUNT": {
+        "type": "string",
+        "description": "Only after a key rotation: the aether1... account the phrase's key was rotated onto, which it then sends from.",
+        "required": false
+      },
       "AETHER_MAX_PER_PAYMENT": {
         "type": "string",
         "description": "Most one payment may be, with its unit (default \"1 AETH\").",

@@ -12,6 +12,8 @@ from aether_client import AetherClient, Key, fetch_paid, find_services, rate_ser
 
 client = AetherClient("http://localhost:26657", "aether-testnet-1")
 key = Key.from_mnemonic(os.environ["AETHER_MNEMONIC"])  # same address as `aetherd keys add` / `agentmcp`
+# After a key rotation (docs/PQ-KEY-ROTATION.md) the account keeps its address; the new key sends from it:
+#   key = client.key_for(Key.from_mnemonic(new_phrase), "aether1...the account")
 
 sent = client.send(key, "aether1...", "0.5 AETH", memo="invoice-42")
 done = client.wait_for_transaction(sent.hash)            # confirmed | failed | pending (timeout)
