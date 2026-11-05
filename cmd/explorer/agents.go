@@ -48,7 +48,6 @@ var agentmcpTools = []string{
 	"get_miner_status",
 	"create_escrow", "release_escrow", "refund_escrow", "get_escrow", "list_escrows",
 	"post_job", "find_jobs", "get_job", "offer_on_job", "hire_for_job", "deliver_job", "close_job",
-	"shop_search", "shop_quote", "shop_buy", "shop_approve_request", "shop_status", "shop_receipts", "shop_budget",
 }
 
 // testWalletTools are the hosted test wallet's tools (agentmcp

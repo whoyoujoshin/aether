@@ -44,7 +44,6 @@ const links: [string, string][] = [
   ["/ibc", "IBC"],
   ["/accounts", "Accounts"],
   ["/services", "Services"],
-  ["/shop", "Shop"],
   ["/quest", "Quest"],
   ["/agents", "For agents"],
   ["/faucet", "Faucet"],
