@@ -148,11 +148,11 @@ in escrow for Aether. Keep that small while the chain is young:
 - **Independent operators.** BFT tolerates fewer than a third faulty, so seven
   operators survive two failures. Today two people run four nodes. Mainnet
   needs operators who don't share a person, a host or a network.
-- **What an operator is (draft for Joshua).** Seats on Aether aren't handed
+- **What an operator is (decided by Joshua 2026-11-05, as drafted).** Seats on Aether aren't handed
   out: under the seat rule a validator holds power only while its miner proves
   at least 1% of the window's work. So an operator is a miner and a validator
   together, and the launch can't invite seven; it can only make seven able
-  to join. A proposed definition:
+  to join. The definition:
   - **One operator, one controller.** A person or organization whose
     validator and miner no other operator controls, pays for or can reach:
     no shared people, keys, cloud account or home network.
@@ -552,5 +552,5 @@ funds (a consensus change to `MsgSubmitPoW`, kept as a later option).
 | First USDC path | Injective (Noble is being wound down by Circle) | Injective, as on the testnet | **Injective** |
 | Inflow cap | an amount | low at launch, raised by governance | **5,000 USDC**, chain-wide, raised by governance |
 | Fees | a minimum price, USDC accepted, where fees go | accept USDC; fees to the treasury | **accept USDC; fees to the treasury** (built: `app/fees.go`). Minimum price **decided 2026-11-03: 0.0001uaeth and 0.0005 per gas in the USDC voucher** (a send at the 400,000 default limit: 0.00004 AETH or $0.0002), with tipping above it (built: `app/tipping.go`, #207). A lone native mining submission with valid proof-of-work needs no fee (built: `app/mining_fee.go`, 2026-11-01), so a miner can send a find with an empty balance; its account must still exist on chain, which the opener provides (see "Opening a new miner's account") |
-| Operators | who, and how many | seven or more before phase 2 | to define: a draft is in §3 |
+| Operators | who, and how many | seven or more before phase 2 | **the §3 definition, as drafted** (2026-11-05): one controller each, spread out, mines its own seat, runs it properly, reachable; seven before phase 2, none over a third |
 | Legal | — | one consultation before phase 2 | Joshua is researching it |
