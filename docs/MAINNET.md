@@ -475,7 +475,7 @@ position, and the plan keeps it.
 
 | Phase | Where | What | Exit when |
 |---|---|---|---|
-| 0 | testnet | the seat fix (§1) behind an activation height; invite takeover attempts | two weeks with no successful takeover; alerts tested |
+| 0 | testnet | the seat fix (§1) behind an activation height; invite takeover attempts (the bug hunt, [BUG-HUNT.md](BUG-HUNT.md), from 2026-11-06) | two weeks with no successful takeover; alerts tested |
 | 1 | `aether-rc-1`, thrown away after | mainnet build, gates from height 1, outside operators, reproducible binaries, genesis rehearsal | a clean launch and a week of running |
 | 2 | `aether-1` | mining, AETH transfers, services priced in AETH; IBC closed | a few weeks without a consensus bug |
 | 3 | `aether-1` | the one USDC channel with its inflow cap; services in USDC | the cap raised by governance in steps |

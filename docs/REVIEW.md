@@ -3,8 +3,7 @@
 `docs/MAINNET.md` §5 replaces a full audit with three things: a focused
 review of the code that is Aether's alone, the tools that review leans on,
 and a public bug bounty from launch. This is where those meet: what to
-review, how to run the tools, what they have found so far, and the bounty
-as proposed.
+review, how to run the tools, what they have found so far, and the bounty.
 
 ## 1. Scope
 
@@ -144,16 +143,22 @@ for m in fee_collector:0a0d6665655f636f6c6c6563746f72 pow:0a03706f77 treasury:0a
 done
 ```
 
-## 4. Bug bounty (proposed, small budget)
+**Checked on the testnet (Gitty, 2026-11-05, the seed at block 609,151):**
+all seven printed `code 0`, so no module account's address can be taken
+over by a send there, and F5 can't halt the testnet. The testnet's
+`ModuleAccountsActivationHeight` and `AuxPoWInputGuardHeight` can wait for
+the next validator swap.
 
-Joshua decides; this is the shape. There is no budget for thousands of
+## 4. Bug bounty (small budget; tiers confirmed 2026-11-05)
+
+Joshua confirmed the tiers on 2026-11-05. There is no budget for thousands of
 dollars in cash, so the bounty pays mostly in credit and in AETH, and in
 USDC only from a pool when there is one.
 
 - **Where reports go:** GitHub's private vulnerability reporting on this
   repository (Security → Report a vulnerability), so a report and its fix
-  stay private until released. Turn it on in the repository settings
-  before launch, and add a `SECURITY.md` pointing to it. It costs nothing.
+  stay private until released. `SECURITY.md` points to it; Joshua turned
+  it on on 2026-11-05. It costs nothing.
 - **Every valid report is credited** by name (or handle) in the release
   notes of the fix and on a hall-of-fame page, unless the reporter asks
   not to be.
@@ -162,9 +167,9 @@ USDC only from a pool when there is one.
   `DistributeReward`) and from every fee (`app/fees.go`): at 5 AETH a block
   and ~15,000 blocks a day that is about 1,500 AETH a day, so a bounty paid
   from it costs no one cash. Each payout is a treasury-spend proposal, so it is
-  public and validators approve it. Proposed tiers, in AETH:
+  public and validators approve it. The tiers, in AETH:
 
-| Tier | Examples | Proposed |
+| Tier | Examples | Reward |
 |---|---|---|
 | Critical | mint or move value without a valid signature; get past the inflow cap; split or halt the chain from outside; take a seat without the work the seat rule asks | up to 2,000 AETH |
 | High | freeze funds in escrow or the treasury; halt the chain with a passing vote; a key-holding service tricked into paying | up to 500 AETH |
@@ -177,7 +182,8 @@ USDC only from a pool when there is one.
   beyond what the pool holds.
 - **A testnet bug hunt before mainnet** costs nothing and finds the same
   bugs earlier: the same tiers, paid in credit and in mainnet AETH from
-  the treasury after launch.
+  the treasury after launch. Written up as [BUG-HUNT.md](BUG-HUNT.md), with
+  `SECURITY.md` pointing to GitHub's private reporting.
 - **Rules:** test on the testnet or your own devnet, never on mainnet
   funds that aren't yours; no denial of service by volume, no social
   engineering, nothing against operators' machines; first report of each
@@ -195,4 +201,6 @@ eligible.
 - Run each fuzz target for an hour on a workstation; commit any crasher.
 - Run the replay against the testnet's history once.
 - A reviewer goes through §1's table, with these tools.
-- Open the bounty (and the testnet bug hunt before it) with launch.
+- Open the testnet bug hunt ([BUG-HUNT.md](BUG-HUNT.md)) once the tiers and
+  start date are confirmed (private reporting on and the module accounts
+  checked, 2026-11-05), and the bounty with launch.
