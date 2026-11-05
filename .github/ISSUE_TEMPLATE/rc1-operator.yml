@@ -1,0 +1,55 @@
+name: aether-rc-1 operator
+description: Apply to run a validator on aether-rc-1, the mainnet launch rehearsal (docs/RC-1.md).
+title: "aether-rc-1 operator: <your name or handle>"
+labels: ["rc-1 operator"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for offering to run a validator on `aether-rc-1`. Read [docs/RC-1.md](https://github.com/whoyoujoshin/aether/blob/main/docs/RC-1.md) and [docs/OPERATOR.md](https://github.com/whoyoujoshin/aether/blob/main/docs/OPERATOR.md) first.
+
+        **Everything here is public.** Never paste a private key, a recovery phrase or a password. Your public consensus key and miner address come later, once operators are chosen.
+  - type: input
+    id: name
+    attributes:
+      label: Name or handle
+      description: How you'd like to be credited.
+    validations:
+      required: true
+  - type: input
+    id: contact
+    attributes:
+      label: Contact
+      description: Where we can reach you during genesis day and the drills (a Discord or Telegram handle, an email, or this GitHub account).
+    validations:
+      required: true
+  - type: input
+    id: validator-host
+    attributes:
+      label: Validator host
+      description: Cloud provider and region (or data center) for the validator, e.g. "Hetzner, Falkenstein".
+    validations:
+      required: true
+  - type: input
+    id: sentry-host
+    attributes:
+      label: Sentry host
+      description: Cloud provider and region for the sentry node, in a different data center from the validator.
+    validations:
+      required: true
+  - type: checkboxes
+    id: commitments
+    attributes:
+      label: Commitments
+      options:
+        - label: My validator and miner are mine alone. No other operator controls, pays for or can reach them.
+          required: true
+        - label: I'll run a miner from genesis, to keep my seat with my own work.
+          required: true
+        - label: I'll be reachable for genesis day (Wed 2026-12-02, 16:00 UTC, proposed) and for the two drills that week.
+          required: true
+  - type: textarea
+    id: experience
+    attributes:
+      label: Experience (optional)
+      description: Other chains you've run nodes or validators for, or anything else useful. Not required.
