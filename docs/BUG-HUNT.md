@@ -17,8 +17,8 @@ part.
 2. ~~Gitty runs the module-account check on the seed~~ ([REVIEW.md](REVIEW.md)
    §3): done 2026-11-05 at block 609,151, all seven module accounts exist,
    so F5 can't halt the testnet.
-3. Joshua confirms the reward tiers below (proposed in REVIEW.md §4) and
-   picks the start date. The two weeks start then.
+3. ~~Joshua confirms the reward tiers~~ (confirmed 2026-11-05) and picks
+   the start date. The two weeks start then.
 
 ## What to go after
 
@@ -114,8 +114,8 @@ fuzz targets, the invariants and the replay script are in
 ## Rewards
 
 The bounty is small by design: credit for every valid report, and AETH
-from the treasury once mainnet runs (proposed tiers, [REVIEW.md](REVIEW.md)
-§4).
+from the treasury once mainnet runs (tiers confirmed by Joshua on
+2026-11-05, [REVIEW.md](REVIEW.md) §4).
 
 | Tier | Examples | Testnet hunt |
 |---|---|---|

@@ -3,8 +3,7 @@
 `docs/MAINNET.md` §5 replaces a full audit with three things: a focused
 review of the code that is Aether's alone, the tools that review leans on,
 and a public bug bounty from launch. This is where those meet: what to
-review, how to run the tools, what they have found so far, and the bounty
-as proposed.
+review, how to run the tools, what they have found so far, and the bounty.
 
 ## 1. Scope
 
@@ -150,9 +149,9 @@ over by a send there, and F5 can't halt the testnet. The testnet's
 `ModuleAccountsActivationHeight` and `AuxPoWInputGuardHeight` can wait for
 the next validator swap.
 
-## 4. Bug bounty (proposed, small budget)
+## 4. Bug bounty (small budget; tiers confirmed 2026-11-05)
 
-Joshua decides; this is the shape. There is no budget for thousands of
+Joshua confirmed the tiers on 2026-11-05. There is no budget for thousands of
 dollars in cash, so the bounty pays mostly in credit and in AETH, and in
 USDC only from a pool when there is one.
 
@@ -168,9 +167,9 @@ USDC only from a pool when there is one.
   `DistributeReward`) and from every fee (`app/fees.go`): at 5 AETH a block
   and ~15,000 blocks a day that is about 1,500 AETH a day, so a bounty paid
   from it costs no one cash. Each payout is a treasury-spend proposal, so it is
-  public and validators approve it. Proposed tiers, in AETH:
+  public and validators approve it. The tiers, in AETH:
 
-| Tier | Examples | Proposed |
+| Tier | Examples | Reward |
 |---|---|---|
 | Critical | mint or move value without a valid signature; get past the inflow cap; split or halt the chain from outside; take a seat without the work the seat rule asks | up to 2,000 AETH |
 | High | freeze funds in escrow or the treasury; halt the chain with a passing vote; a key-holding service tricked into paying | up to 500 AETH |
