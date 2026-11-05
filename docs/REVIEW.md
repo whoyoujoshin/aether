@@ -152,9 +152,8 @@ USDC only from a pool when there is one.
 
 - **Where reports go:** GitHub's private vulnerability reporting on this
   repository (Security → Report a vulnerability), so a report and its fix
-  stay private until released. `SECURITY.md` points to it; Joshua turns
-  it on in the repository settings (Settings → Code security → Private
-  vulnerability reporting). It costs nothing.
+  stay private until released. `SECURITY.md` points to it; Joshua turned
+  it on on 2026-11-05. It costs nothing.
 - **Every valid report is credited** by name (or handle) in the release
   notes of the fix and on a hall-of-fame page, unless the reporter asks
   not to be.
@@ -197,6 +196,6 @@ eligible.
 - Run each fuzz target for an hour on a workstation; commit any crasher.
 - Run the replay against the testnet's history once.
 - A reviewer goes through §1's table, with these tools.
-- Open the testnet bug hunt ([BUG-HUNT.md](BUG-HUNT.md)) once private
-  vulnerability reporting is on and the module-account check has run, and
-  the bounty with launch.
+- Open the testnet bug hunt ([BUG-HUNT.md](BUG-HUNT.md)) once the
+  module-account check has run (private reporting is on since 2026-11-05),
+  and the bounty with launch.

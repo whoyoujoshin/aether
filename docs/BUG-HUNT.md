@@ -12,9 +12,8 @@ part.
 
 **Not open yet.** Before it is announced:
 
-1. Joshua turns on private vulnerability reporting (Settings → Code
-   security → Private vulnerability reporting), which `SECURITY.md` relies
-   on.
+1. ~~Joshua turns on private vulnerability reporting~~ (done 2026-11-05),
+   which `SECURITY.md` relies on.
 2. Gitty runs the module-account check on the seed ([REVIEW.md](REVIEW.md)
    §3). A missing module account would make F5 a way to halt the testnet,
    so it must come back clean first.
