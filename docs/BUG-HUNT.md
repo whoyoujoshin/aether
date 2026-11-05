@@ -10,15 +10,15 @@ Report privately (GitHub **Security → Report a vulnerability**, see
 [SECURITY.md](../SECURITY.md)). The rules below apply to everyone taking
 part.
 
-**Not open yet.** Before it is announced:
+**Dates:** opens Friday 2026-11-06 and runs two weeks, to Friday
+2026-11-20. Reports after that still count and are still credited; the
+two weeks are the launch plan's clock, not a deadline for you. If anyone
+takes over the testnet within the rule's terms (see "A takeover"), the
+clock restarts once the fix is live.
 
-1. ~~Joshua turns on private vulnerability reporting~~ (done 2026-11-05),
-   which `SECURITY.md` relies on.
-2. ~~Gitty runs the module-account check on the seed~~ ([REVIEW.md](REVIEW.md)
-   §3): done 2026-11-05 at block 609,151, all seven module accounts exist,
-   so F5 can't halt the testnet.
-3. ~~Joshua confirms the reward tiers~~ (confirmed 2026-11-05) and picks
-   the start date. The two weeks start then.
+Ready since 2026-11-05: private vulnerability reporting is on, all seven
+module accounts exist on the testnet (Gitty's check at block 609,151, so
+F5 can't halt it), and Joshua confirmed the reward tiers.
 
 ## What to go after
 
