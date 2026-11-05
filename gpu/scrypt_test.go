@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,6 +18,9 @@ func hashers(t *testing.T, batch int) []*Hasher {
 	t.Helper()
 	devs, err := Devices()
 	if err != nil || len(devs) == 0 {
+		if os.Getenv("AETHER_GPU_TESTS") == "required" {
+			t.Fatalf("AETHER_GPU_TESTS=required but no OpenCL device (%v)", err)
+		}
 		t.Skipf("no OpenCL device (%v)", err)
 	}
 	var hs []*Hasher
