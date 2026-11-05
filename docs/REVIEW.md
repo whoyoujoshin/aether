@@ -144,6 +144,12 @@ for m in fee_collector:0a0d6665655f636f6c6c6563746f72 pow:0a03706f77 treasury:0a
 done
 ```
 
+**Checked on the testnet (Gitty, 2026-11-05, the seed at block 609,151):**
+all seven printed `code 0`, so no module account's address can be taken
+over by a send there, and F5 can't halt the testnet. The testnet's
+`ModuleAccountsActivationHeight` and `AuxPoWInputGuardHeight` can wait for
+the next validator swap.
+
 ## 4. Bug bounty (proposed, small budget)
 
 Joshua decides; this is the shape. There is no budget for thousands of
@@ -196,6 +202,6 @@ eligible.
 - Run each fuzz target for an hour on a workstation; commit any crasher.
 - Run the replay against the testnet's history once.
 - A reviewer goes through §1's table, with these tools.
-- Open the testnet bug hunt ([BUG-HUNT.md](BUG-HUNT.md)) once the
-  module-account check has run (private reporting is on since 2026-11-05),
-  and the bounty with launch.
+- Open the testnet bug hunt ([BUG-HUNT.md](BUG-HUNT.md)) once the tiers and
+  start date are confirmed (private reporting on and the module accounts
+  checked, 2026-11-05), and the bounty with launch.

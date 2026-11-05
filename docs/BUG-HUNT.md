@@ -14,9 +14,9 @@ part.
 
 1. ~~Joshua turns on private vulnerability reporting~~ (done 2026-11-05),
    which `SECURITY.md` relies on.
-2. Gitty runs the module-account check on the seed ([REVIEW.md](REVIEW.md)
-   §3). A missing module account would make F5 a way to halt the testnet,
-   so it must come back clean first.
+2. ~~Gitty runs the module-account check on the seed~~ ([REVIEW.md](REVIEW.md)
+   §3): done 2026-11-05 at block 609,151, all seven module accounts exist,
+   so F5 can't halt the testnet.
 3. Joshua confirms the reward tiers below (proposed in REVIEW.md §4) and
    picks the start date. The two weeks start then.
 
