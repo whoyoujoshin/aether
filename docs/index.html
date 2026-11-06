@@ -4,13 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aether — Money for people and agents</title>
-    <meta name="description" content="Aether is a sovereign, quantum-resistant proof-of-work chain. Same ledger for humans and machines. Ticker AETH, spoken eighth.">
+    <meta name="description" content="Aether is a proof-of-work chain with post-quantum signatures, built for people and AI agents alike. Ticker AETH, spoken eighth. Testnet live; mainnet in preparation.">
+    <meta property="og:title" content="Aether — Money for people and agents">
+    <meta property="og:description" content="A proof-of-work chain with post-quantum signatures, built for people and AI agents alike. Testnet live.">
+    <meta property="og:image" content="https://raw.githubusercontent.com/whoyoujoshin/aether/main/docs/brand/icons/app-icon-512.png">
+    <meta name="theme-color" content="#1E1A16">
+    <link rel="icon" type="image/svg+xml" href="brand/icons/favicon-32.svg">
+    <link rel="apple-touch-icon" href="brand/icons/app-icon-180.png">
     <style>
         :root {
             --ground: #1E1A16;
             --ivory: #F2EEE6;
             --ember: #C74D38;
             --stone: #7C7772;
+            --line: #3a342f;
         }
         * { box-sizing: border-box; }
         body {
@@ -20,9 +27,9 @@
             color: var(--ivory);
         }
         a { color: var(--ivory); }
-        .wrap { max-width: 960px; margin: 0 auto; padding: 48px 24px 80px; }
+        .wrap { max-width: 960px; margin: 0 auto; padding: 48px 16px 80px; }
         header { text-align: center; padding: 28px 0 12px; }
-        header img { width: 88px; height: auto; }
+        header img { width: 88px; height: 88px; }
         h1 {
             font-weight: 600;
             letter-spacing: 0.28em;
@@ -64,19 +71,34 @@
             font-size: 0.85rem;
         }
         .cta.solid { background: var(--ivory); color: var(--ground); border-color: var(--ivory); }
+        .cta:focus-visible { outline: 2px solid var(--ember); outline-offset: 3px; }
         .facts {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
             gap: 18px;
             margin: 56px 0 0;
         }
-        .facts div { border-top: 1px solid #3a342f; padding-top: 14px; }
+        .facts div { border-top: 1px solid var(--line); padding-top: 14px; }
         .facts strong { display: block; font-weight: 600; margin-bottom: 6px; }
-        .facts span { color: var(--stone); font-size: 0.92rem; }
+        .facts span { color: var(--stone); font-size: 0.92rem; line-height: 1.45; }
+        h2 {
+            font-size: 0.78rem;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--stone);
+            margin: 56px 0 14px;
+        }
+        .now { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
+        .now li { border-bottom: 1px solid var(--line); padding: 14px 0; }
+        .now a { font-weight: 600; text-decoration: none; }
+        .now a:hover, .now a:focus-visible { text-decoration: underline; }
+        .now span { display: block; color: var(--stone); font-size: 0.92rem; margin-top: 4px; line-height: 1.45; }
         footer {
             text-align: center;
             color: var(--stone);
             font-size: 0.8rem;
+            line-height: 1.6;
             margin-top: 64px;
         }
     </style>
@@ -84,35 +106,64 @@
 <body>
     <div class="wrap">
         <header>
-            <img src="https://raw.githubusercontent.com/whoyoujoshin/aether/main/Aether%20Logo-selection.png" alt="Aether">
+            <img src="brand/icons/app-icon.svg" alt="Aether">
             <h1>AETHER</h1>
             <hr class="rule">
             <p class="tag">Money for people and agents</p>
         </header>
 
-        <div class="film">
+        <!-- Shown only once media/Aether_Among_Us.mp4 is in place (docs/media/README.md). -->
+        <div class="film" id="film" hidden>
             <video controls playsinline preload="metadata">
                 <source src="media/Aether_Among_Us.mp4" type="video/mp4">
-                Your browser cannot play this film.
             </video>
         </div>
 
         <p class="line">Agents already walk among us. Coffee, paid in eighth. A delivery on the stoop. One agent tips another. A remittance home. Same ledger. Aether.</p>
 
         <div class="cta-row">
-            <a class="cta solid" href="https://github.com/whoyoujoshin/aether">GitHub</a>
+            <a class="cta solid" href="https://explorer.157-245-252-221.sslip.io/mine">Mine in your browser</a>
+            <a class="cta" href="https://explorer.157-245-252-221.sslip.io">Explorer</a>
+            <a class="cta" href="https://github.com/whoyoujoshin/aether">GitHub</a>
             <a class="cta" href="https://github.com/whoyoujoshin/aether/blob/main/docs/WHITEPAPER.md">Whitepaper</a>
-            <a class="cta" href="http://157.245.252.221:8081">Explorer</a>
         </div>
 
         <div class="facts">
-            <div><strong>Fair launch</strong><span>No premine. Work from genesis.</span></div>
-            <div><strong>Quantum-resistant</strong><span>ML-DSA-44 signatures on every account tx.</span></div>
+            <div><strong>Fair launch</strong><span>No premine, no sale. Every coin is mined.</span></div>
+            <div><strong>Quantum-resistant</strong><span>ML-DSA-44 signatures on every account, and keys you can rotate without changing your address.</span></div>
+            <div><strong>Seats by work</strong><span>Validators earn voting power by mining. No staking.</span></div>
+            <div><strong>Built for agents</strong><span>MCP tools, x402 payments and spending limits, so an agent can pay and be paid.</span></div>
             <div><strong>Ticker AETH</strong><span>Spoken eighth. Base unit uaeth.</span></div>
-            <div><strong>Testnet live</strong><span>aether-testnet-1 · 60s blocks · Scrypt + AuxPoW.</span></div>
+            <div><strong>Testnet live</strong><span>aether-testnet-1 · about 6-second blocks · scrypt proof-of-work.</span></div>
         </div>
 
-        <footer>Aether — sovereign layer-1 · open source · early software</footer>
+        <h2>Happening now</h2>
+        <ul class="now">
+            <li>
+                <a href="https://github.com/whoyoujoshin/aether/blob/main/docs/BUG-HUNT.md">Testnet bug hunt, Nov 6–20 →</a>
+                <span>Try to break the testnet. Valid reports earn credit, and critical ones up to 2,000 AETH on mainnet.</span>
+            </li>
+            <li>
+                <a href="https://github.com/whoyoujoshin/aether/blob/main/docs/RC-1.md">Run a validator for the launch rehearsal →</a>
+                <span>aether-rc-1, genesis Dec 2. Applications until Nov 27.</span>
+            </li>
+            <li>
+                <a href="https://github.com/whoyoujoshin/aether/releases/latest">Aether Pay for Windows →</a>
+                <span>A wallet with a built-in miner, for the testnet.</span>
+            </li>
+        </ul>
+
+        <footer>Aether · open source, MIT · early software<br>The testnet's coins have no value. Mainnet isn't live yet.</footer>
     </div>
+    <script>
+        // Show the film only if the video file is really there.
+        (function () {
+            var film = document.getElementById("film");
+            var video = film.querySelector("video");
+            function show() { film.hidden = false; }
+            if (video.readyState >= 1) show(); // metadata already loaded
+            else video.addEventListener("loadedmetadata", show);
+        })();
+    </script>
 </body>
 </html>
