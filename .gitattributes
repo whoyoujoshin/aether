@@ -1,0 +1,4 @@
+# GitHub counts OpenCL as C, so the GPU kernel made code scanning add a
+# C/C++ analysis that fails with "no source files found". The kernel is
+# checked by `go test ./gpu` against Go's scrypt instead.
+gpu/*.cl linguist-detectable=false
