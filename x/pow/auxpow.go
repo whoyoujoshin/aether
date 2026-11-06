@@ -219,8 +219,9 @@ const maxCoinbaseMerkleBranchLength = 32
 // failed transaction, so nothing halts, but the failure's code and gas
 // change, and so does LastResultsHash: every node needs a binary carrying
 // it before this height. On fresh chains it is on from block 1; on the
-// testnet the height is a placeholder until one is chosen.
-const AuxPoWInputGuardHeight int64 = 50_000_000
+// testnet at 712,080 (docs/UPGRADE-INPUT-GUARDS.md; earlier binaries
+// carried a 50,000,000 placeholder).
+const AuxPoWInputGuardHeight int64 = 712_080
 
 // CheckAuxPow performs the complete AuxPoW validation sequence,
 // matching the real reference implementation's order exactly (see

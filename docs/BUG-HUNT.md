@@ -96,8 +96,8 @@ fuzz targets, the invariants and the replay script are in
 - **Known findings:** F1 to F5 ([REVIEW.md](REVIEW.md) §3), including on the
   testnet below their activation heights: F2/F3 (malformed AuxPoW) and F5
   (module accounts) are fixed behind `AuxPoWInputGuardHeight` and
-  `ModuleAccountsActivationHeight`, which the testnet turns on with its next
-  validator swap.
+  `ModuleAccountsActivationHeight`, which the testnet turns on at block
+  712,080 ([UPGRADE-INPUT-GUARDS.md](UPGRADE-INPUT-GUARDS.md)).
 - **Documented limits:** the known weaknesses in
   [SEAT-RULE.md](SEAT-RULE.md) and [SEAT-SIM.md](SEAT-SIM.md) (A4 to A6,
   hardened at block 460,800), the inflow cap's known limits

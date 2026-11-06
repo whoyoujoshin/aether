@@ -29,11 +29,12 @@ import (
 // At this height each one is created, or a squatted one converted in place
 // keeping its number and coins, as x/escrow's own account already was at
 // its activation. On fresh chains that is block 1, before any transaction.
-// On the testnet these accounts have long existed (rewards, fees and
-// vouchers created them), so the height is a placeholder, to be set with
-// AuxPoWInputGuardHeight at the next validator swap: it can only change a
-// block where it converts a squatted account.
-const ModuleAccountsActivationHeight int64 = 50_000_000
+// On the testnet all seven have long existed as module accounts (rewards,
+// fees and vouchers created them; checked on the seed at 609,151), so its
+// height, 712,080 with AuxPoWInputGuardHeight (docs/UPGRADE-INPUT-GUARDS.md;
+// earlier binaries carried a 50,000,000 placeholder), changes no block
+// there: TestModuleAccounts_NoChangeWhereTheyAllExist.
+const ModuleAccountsActivationHeight int64 = 712_080
 
 var moduleAccountsActivationHeight = ModuleAccountsActivationHeight
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/whoyoujoshin/aether/gates"
 	"github.com/whoyoujoshin/aether/x/governance"
+	"github.com/whoyoujoshin/aether/x/pow"
 	"github.com/whoyoujoshin/aether/x/treasury"
 )
 
@@ -90,4 +91,41 @@ func TestModuleAccounts_SquattedAccountsConvertedAtTheHeight(t *testing.T) {
 		_, err := h.Handler(msg)(ctx, msg)
 		require.NoError(t, err)
 	})
+}
+
+// On a chain where every module account already exists, as on the testnet
+// (checked on the seed at 609,151, docs/REVIEW.md), reaching the height
+// changes nothing: the app hash at every block matches a chain that never
+// reaches it. So a binary carrying the height and one that doesn't agree
+// across it there.
+func TestModuleAccounts_NoChangeWhereTheyAllExist(t *testing.T) {
+	const activation = 4
+	defer func(orig int64) { moduleAccountsActivationHeight = orig }(moduleAccountsActivationHeight)
+	gated, never := newTestApp(t, dbm.NewMemDB()), newTestApp(t, dbm.NewMemDB())
+	run := func(app *App, at int64, f func()) {
+		moduleAccountsActivationHeight = at
+		f()
+	}
+	for _, app := range []*App{gated, never} {
+		initTestChain(t, app)
+		finalizeAndCommit(t, app, 1)
+		require.NoError(t, finalizeBlock(app, 2))
+		ctx := app.NewUncachedContext(false, cmtproto.Header{Height: 2, Time: testGenesisTime.Add(2 * time.Minute)})
+		for _, name := range moduleAccountNames {
+			app.ensureModuleAccount(ctx, name)
+		}
+		_, err := app.Commit()
+		require.NoError(t, err)
+	}
+	for h := int64(3); h <= activation+2; h++ {
+		run(gated, activation, func() { finalizeAndCommit(t, gated, h) })
+		run(never, 1<<62, func() { finalizeAndCommit(t, never, h) })
+		require.Equal(t, never.LastCommitID().Hash, gated.LastCommitID().Hash, "app hash at %d", h)
+	}
+}
+
+// The testnet turns both review fixes on at one height, with one swap
+// (docs/UPGRADE-INPUT-GUARDS.md).
+func TestModuleAccounts_HeightMatchesTheAuxPoWGuard(t *testing.T) {
+	require.Equal(t, pow.AuxPoWInputGuardHeight, ModuleAccountsActivationHeight)
 }

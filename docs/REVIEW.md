@@ -116,11 +116,11 @@ From the first fuzzing and invariant runs (2026-11-04).
 | # | Finding | Severity | Fix |
 |---|---|---|---|
 | F1 | **A passed governance proposal whose message panics stops the chain.** `x/governance` runs a passed proposal's message in EndBlock, where no transaction's panic recovery applies. The SDK's own x/gov recovers there (`safeExecuteHandler`); Aether's didn't. Any message whose handler panics on its input would stop every node at that block. No such message is known to be reachable this way today (F2's AuxPoW path needs a proposal to commit to a block from the last 60, which it can't know days ahead), and it needs a passing vote, so it is a latent hazard, not an outside attack. | Medium | `safeExecute` in `x/governance/keeper.go`: the proposal lands as `EXECUTION_FAILED` and its writes are dropped. No height: a panic there never happened on the testnet (it would have halted), so history replays the same. |
-| F2 | **Malformed AuxPoW input panics** (found by `FuzzCheckAuxPow` and `FuzzAuxPowCommitment` in their first second): a submission without a coinbase or chain branch dereferences nil, and a coinbase whose scriptSig length is 2^63 or more turns negative in `int` and slices out of range. Inside a transaction the SDK turns the panic into a failed transaction, so nothing halts by that path, but the pool bridge calls the same parser and would crash on a bad coinbase from a pool. | Medium | Refused with an error from `AuxPoWInputGuardHeight`: block 1 on fresh chains, a placeholder (50,000,000) on the testnet until a height is chosen, since the failure's code and gas change. The bridge always uses the strict parser. |
+| F2 | **Malformed AuxPoW input panics** (found by `FuzzCheckAuxPow` and `FuzzAuxPowCommitment` in their first second): a submission without a coinbase or chain branch dereferences nil, and a coinbase whose scriptSig length is 2^63 or more turns negative in `int` and slices out of range. Inside a transaction the SDK turns the panic into a failed transaction, so nothing halts by that path, but the pool bridge calls the same parser and would crash on a bad coinbase from a pool. | Medium | Refused with an error from `AuxPoWInputGuardHeight`: block 1 on fresh chains, 712,080 on the testnet ([UPGRADE-INPUT-GUARDS.md](UPGRADE-INPUT-GUARDS.md)), since the failure's code and gas change. The bridge always uses the strict parser. |
 | F3 | **The AuxPoW coinbase branch had no length limit.** Every hash in it is hashed before the proof is refused: a 1 MB branch of one-byte hashes took about 0.1 s to check. At the mainnet price a block of four costs about 0.004 AETH and slows every validator by about 0.4 s. | Low | From the same height: at most 32 levels (its index is a uint32, so a longer branch names no position in any tree), and every branch hash 32 bytes. |
 | F4 | **The pool bridge used the testnet's merged-mining height on every chain.** `cmd/auxpowd` checked proofs with `CheckAuxPow` (testnet heights) and refused work below 205,000. On `aether-1`, where merged mining is on from block 1, it would have handed out no work for the first 205,000 blocks (about 13 days) and checked proofs under the old byte order. | Medium (availability) | It reads the gate for the chain it talks to (`gates.Height(st.ChainID, …)`). |
 
-| F5 | **One plain send could stop a fresh chain for good** (found by `FuzzMoneySequences` within seconds). Bank blocks no addresses here, and a module account is created only the first time its module uses it: after a fresh genesis pow, treasury, governance, transfer and interchainaccounts don't exist. A send of 1 uaeth to the treasury's address leaves an ordinary account there; that send's own fee reaches the fee collector, and the fee sweep at the end of the block panics ("account is not a module account"), on every node, again on every restart. The same send to pow's address makes every mining reward fail; to governance's, every proposal. | Critical (fresh chains) | From `ModuleAccountsActivationHeight` every module account is created, or a squatted one converted in place keeping its coins (`app/module_accounts.go`, generalising what x/escrow already did at its activation). Block 1 on fresh chains, before any transaction; a placeholder on the testnet, where rewards, fees and vouchers created these accounts long ago (check below). |
+| F5 | **One plain send could stop a fresh chain for good** (found by `FuzzMoneySequences` within seconds). Bank blocks no addresses here, and a module account is created only the first time its module uses it: after a fresh genesis pow, treasury, governance, transfer and interchainaccounts don't exist. A send of 1 uaeth to the treasury's address leaves an ordinary account there; that send's own fee reaches the fee collector, and the fee sweep at the end of the block panics ("account is not a module account"), on every node, again on every restart. The same send to pow's address makes every mining reward fail; to governance's, every proposal. | Critical (fresh chains) | From `ModuleAccountsActivationHeight` every module account is created, or a squatted one converted in place keeping its coins (`app/module_accounts.go`, generalising what x/escrow already did at its activation). Block 1 on fresh chains, before any transaction; 712,080 on the testnet, where rewards, fees and vouchers created these accounts long ago (check below), so it changes nothing there. |
 
 No invariant broke in any app test scenario. The one test that tripped one,
 `TestFeesToTreasury_CreditsDirectSends`, raises the treasury ledger with no
@@ -146,8 +146,8 @@ done
 **Checked on the testnet (Gitty, 2026-11-05, the seed at block 609,151):**
 all seven printed `code 0`, so no module account's address can be taken
 over by a send there, and F5 can't halt the testnet. The testnet's
-`ModuleAccountsActivationHeight` and `AuxPoWInputGuardHeight` can wait for
-the next validator swap.
+`ModuleAccountsActivationHeight` and `AuxPoWInputGuardHeight` are set to
+712,080 together, one validator swap ([UPGRADE-INPUT-GUARDS.md](UPGRADE-INPUT-GUARDS.md)).
 
 ## 4. Bug bounty (small budget; tiers confirmed 2026-11-05)
 
@@ -195,9 +195,9 @@ eligible.
 
 ## 5. Before launch
 
-- Pick `AuxPoWInputGuardHeight` and `ModuleAccountsActivationHeight` for
-  the testnet with the next validator swap (after checking the module
-  accounts above).
+- ~~Pick `AuxPoWInputGuardHeight` and `ModuleAccountsActivationHeight` for
+  the testnet~~ (712,080 after the module-account check above; the swap is
+  [UPGRADE-INPUT-GUARDS.md](UPGRADE-INPUT-GUARDS.md)).
 - Run each fuzz target for an hour on a workstation; commit any crasher.
 - Run the replay against the testnet's history once.
 - A reviewer goes through §1's table, with these tools.
