@@ -112,9 +112,11 @@ c=json.load(urllib.request.urlopen(f"http://localhost:{port}/commit?height={h}")
 print("".join(sorted(name.get(s["validator_address"],"?") for s in c if s.get("signature"))))
 PYEOF
 }
-waitsigns() { # op: until op signs a block, up to 90 s
-  for i in $(seq 1 45); do t=$(tip); [ "$t" -gt 2 ] && signers $((t-1)) | grep -q $1 && return 0; sleep 2; done; return 1
+waitsigns() { # op [from]: until op signs a block made after it restarted (the tip when this is called), up to 120 s
+  local t0=${2:-$(tip)}
+  for i in $(seq 1 60); do t=$(tip); [ "$t" -gt $((t0+1)) ] && signers $((t-1)) | grep -q $1 && { echo $((t-1)); return 0; }; sleep 2; done; return 1
 }
+powerof() { vals | grep -o "$1 [0-9.]*%" | grep -o '[0-9.]*'; }
 # Block intervals from the headers of blocks $1..$2: the longest gap.
 gaps() { python3 - "$(anyrpc)" "$1" "$2" <<'PYEOF'
 import json,sys,urllib.request
@@ -164,11 +166,12 @@ echo "=== drill 1: rolling swap to v2"
 D1=$(tip)
 for op in $OPS; do
   echo "--- $op (tip $(tip); $(vals))"
-  stop $op
+  p=$(powerof $op); python3 -c "import sys; sys.exit(0 if float('$p')<=100/3 else 1)" || echo "  NOTE: $op holds $p%, over a third: blocks wait while it is down"
+  t0=$(tip); stop $op
   sleep 6; echo "  $op down: tip $(tip), block $(( $(tip)-1 )) signed by $(signers $(( $(tip)-1 )))"
   cp $S/bin/v2/aetherd $S/$op/aetherd
   start $op
-  if waitsigns $op; then echo "  $op on v2 and signing at $(tip)"; else echo "  FAIL: $op not signing after 90 s"; fi
+  if h=$(waitsigns $op $t0); then echo "  $op on v2, signed block $h ($(( h - t0 )) blocks after it stopped)"; else echo "  FAIL: $op not signing after 120 s"; fi
 done
 D1E=$(tip)
 gaps $D1 $D1E
@@ -180,8 +183,8 @@ HH=$(( $(tip) + 90 ))
 echo "H = $HH (tip $(tip))"
 for op in $OPS; do
   sed -i "s/^halt-height = .*/halt-height = $HH/" $S/$op/.aether/config/app.toml
-  stop $op; start $op
-  if waitsigns $op; then echo "  $op restarted with halt-height $HH, signing at $(tip)"; else echo "  FAIL: $op not signing"; fi
+  t0=$(tip); stop $op; start $op
+  if h=$(waitsigns $op $t0); then echo "  $op restarted with halt-height $HH, signed block $h"; else echo "  FAIL: $op not signing"; fi
 done
 echo "waiting for H"
 for i in $(seq 1 150); do
@@ -189,16 +192,17 @@ for i in $(seq 1 150); do
 done
 sleep 20
 for op in $OPS; do echo "  $op: process $(alive $op), last block $(tipof $op)"; done
-for op in $OPS; do echo "  $op log: $(grep -m1 -o 'halt per configuration[^"]*' $S/$op.log || echo 'no halt message')"; done
+for op in $OPS; do echo "  $op log: $(grep -m1 -o 'halt per configuration[^"]*' $S/$op.log || echo 'no halt message'); $(grep -c 'CONSENSUS FAILURE' $S/$op.log) CONSENSUS FAILURE line(s)"; done
+echo "  block $HH stored on a: $(curl -s -m 3 "localhost:$(rpcp a)/block?height=$HH" | python3 -c 'import json,sys;print(json.load(sys.stdin)["result"]["block"]["header"]["height"])' 2>/dev/null || echo no)"
 for op in $OPS; do [ "$(alive $op)" = up ] && stop $op; done
 echo "every node stopped; clearing halt-height and starting one at a time"
 for op in $OPS; do
   sed -i "s/^halt-height = .*/halt-height = 0/" $S/$op/.aether/config/app.toml
   start $op; sleep 25
-  echo "  after starting $op: tip $(tip)"
+  echo "  after starting $op ($(powerof $op)% of the power): tip $(tip)"
 done
 for i in $(seq 1 30); do [ "$(tip)" -ge $((HH+10)) ] && break; sleep 2; done
-for op in $OPS; do waitsigns $op && echo "  $op signing at $(tip)" || echo "  FAIL: $op not signing"; done
+for op in $OPS; do h=$(waitsigns $op $HH) && echo "  $op signed block $h" || echo "  FAIL: $op not signing"; done
 echo "block $HH signed by $(signers $HH); block $((HH+5)) by $(signers $((HH+5)))"
 apphash $((HH+5))
 gaps $((HH-5)) $((HH+10))
