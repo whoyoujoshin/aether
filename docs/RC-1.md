@@ -153,13 +153,42 @@ A failure is a finding, not a disaster: fix it, and rehearse again with
 1. **Rolling swap.** The coordinator tags a release with no consensus
    change. Each operator in turn, only while the others sign: build it,
    compare the sha256, stop the node, swap the binary, start it, and
-   confirm it signs before the next one goes.
+   confirm it signs a block made **after** it restarted before the next
+   one goes (an older block's signature proves nothing). An operator
+   holding over a third of the power stops blocks while it is down: it
+   goes when everyone else is confirmed, with the old binary ready to put
+   back.
 2. **Planned halt and restart.** The coordinator names a height a day
-   ahead. Each operator sets `halt-height = <H>` in `app.toml` and restarts
-   once to pick it up, the same way. Every node stops at H. Each operator
-   then clears it (`halt-height = 0`) and starts again; blocks resume once
-   more than two thirds of the power is back. This is how an upgrade that
-   adds a store activates.
+   ahead, away from an epoch boundary. Each operator sets
+   `halt-height = <H>` in `app.toml` and restarts once to pick it up, the
+   same way. At H every node logs `CONSENSUS FAILURE!!!` with a stack
+   trace ("halt per configuration height H"): that is the planned stop,
+   not a crash. The process keeps running, so each operator stops it
+   (`systemctl stop aetherd`), sets `halt-height = 0` and starts it again.
+   Block H is already agreed and stored; it is applied on the restart.
+   Blocks resume once validators holding more than two thirds of the power
+   are back, counted by power, not by operators: the coordinator posts the
+   powers at H so everyone knows whose node is needed. This is how an
+   upgrade that adds a store activates.
+
+**Rehearsed (2026-11-06, `scripts/rc/drills.sh`):** both drills on a
+four-operator `aether-rc-drills` devnet from `cmd/rcgenesis`, every
+operator mining and registered from its first reward, every node checking
+the invariants each block (2 s blocks and 20-block epochs, for speed).
+
+- **Rolling swap:** each node was back and signing within 1 to 4 blocks of
+  stopping; the four agreed on the app hash afterwards. The first operator
+  held 55% of the power, so blocks waited while it restarted: the longest
+  gap was 13.5 s (blocks were otherwise 2 to 4 s).
+- **Planned halt:** all four stopped at H with the lines above and stayed
+  up. Restarted one at a time, blocks resumed only with the fourth: the
+  first three held 63.6% between them, under two thirds. Blocks were
+  stopped 100 s in all (the operators restarting 25 s apart), then every
+  node signed and agreed on the app hash, block H included.
+- No invariant broke on any node in either drill.
+- A first run had a bad check (it accepted a signature from before the
+  restart), so swaps overlapped; blocks slowed to 11 s gaps but didn't
+  stop. Hence the rule above.
 
 Try a remote signer (tmkms or horcrux) on `aether-rc-1` if you plan to use
 one on mainnet: neither has been tried on Aether yet.
