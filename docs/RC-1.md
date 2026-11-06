@@ -49,9 +49,14 @@ proportion to its share over the last three epochs (`docs/SEAT-RULE.md`).
 - **reachable** for the drills.
 
 **What you get:** credit by name or handle on the launch page and in the
-mainnet release notes, and the first invitation to be a genesis operator
-of `aether-1`. Running `aether-rc-1` is what makes an operator eligible
-there: mainnet's operators must have done a binary swap on it.
+mainnet release notes. Anything more will be decided later and announced;
+nothing else is promised. Running `aether-rc-1` is also what makes an
+operator eligible for `aether-1`: mainnet's operators must have done a
+binary swap on it.
+
+**Who else runs one:** Joshua and Gitty run one operator each, on servers
+with their own provider and region, like everyone else's. The rehearsal
+goes ahead with four operators in all, so two places are open.
 
 **Apply:** open an "aether-rc-1 operator" issue on
 `github.com/whoyoujoshin/aether` (the form asks only for public
@@ -63,7 +68,7 @@ Keys come later, and never a private one.
 | When | What |
 |---|---|
 | now to Fri 2026-11-27 | applications; the testnet bug hunt runs to 11-20 |
-| Fri 11-27 | operators chosen (at least four for the rehearsal; mainnet's phase 2 needs seven) |
+| Fri 11-27 | operators chosen: four in all, Joshua's and Gitty's and two from the applications (mainnet's phase 2 needs seven) |
 | by Mon 11-30 | the release tag; every operator builds it and posts the sha256 |
 | by Mon 11-30 | operators send `aetherd comet show-validator` and their miner address |
 | Tue 12-01 | the coordinator builds and posts `genesis.json` and its sha256 |
@@ -164,9 +169,10 @@ one on mainnet: neither has been tried on Aether yet.
 - ~~The dates~~ (decided 2026-11-05: the timeline above).
 - ~~Where applications go~~ (decided 2026-11-05: the public GitHub issue
   form).
-- Whether you and Gitty run operators on `aether-rc-1` too: at most one
-  each, since you're two people, and each in its own provider and region.
-- The smallest number to go ahead with: four is enough to rehearse;
-  mainnet's phase 2 needs seven.
-- What operators get: the credit and the first invitation to `aether-1`
-  above, or more.
+- ~~Whether Joshua and Gitty run operators~~ (decided 2026-11-06: one
+  each, each on its own provider and region; on a server, not a home PC,
+  as the operator definition asks).
+- ~~The smallest number to go ahead with~~ (decided 2026-11-06: four in
+  all; mainnet's phase 2 still needs seven).
+- ~~What operators get~~ (decided 2026-11-06: credit only for now; more is
+  to be decided later).
