@@ -3,6 +3,8 @@
 This guide takes an operator from nothing to a validator seat on a fresh
 Aether chain: the `aether-rc-1` rehearsal first, then `aether-1`. It is
 what to read before agreeing to run one, and what to follow on launch day.
+The `aether-rc-1` invitation, timeline and genesis-day checklist are in
+[RC-1.md](RC-1.md).
 
 Seats on Aether aren't handed out. A validator holds voting power only
 while the miner account bound to it proves work: power is in proportion
