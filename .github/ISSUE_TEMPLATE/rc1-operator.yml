@@ -46,7 +46,7 @@ body:
           required: true
         - label: I'll run a miner from genesis, to keep my seat with my own work.
           required: true
-        - label: I'll be reachable for genesis day (Wed 2026-12-02, 16:00 UTC, proposed) and for the two drills that week.
+        - label: I'll be reachable for genesis day (Wed 2026-12-02, 16:00 UTC) and for the two drills that week.
           required: true
   - type: textarea
     id: experience

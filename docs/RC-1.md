@@ -1,7 +1,7 @@
 # `aether-rc-1`: run a validator for Aether's launch rehearsal
 
-**Status: proposed.** The dates and the application channel below wait on
-Joshua's go-ahead; everything else is settled (`docs/MAINNET.md` §3 and §8).
+**Status: applications open.** Joshua set the dates and the GitHub form on
+2026-11-05; the rest is settled in `docs/MAINNET.md` §3 and §8.
 
 ## The invitation
 
@@ -58,7 +58,7 @@ there: mainnet's operators must have done a binary swap on it.
 information: a name or handle, a contact, the cloud provider and region).
 Keys come later, and never a private one.
 
-## Timeline (proposed)
+## Timeline
 
 | When | What |
 |---|---|
@@ -161,9 +161,9 @@ one on mainnet: neither has been tried on Aether yet.
 
 ## Decisions for Joshua
 
-- The dates: genesis Wednesday 12-02 at 16:00 UTC, or later.
-- Applications by GitHub issue form (public), or by email or a form if you
-  want them private.
+- ~~The dates~~ (decided 2026-11-05: the timeline above).
+- ~~Where applications go~~ (decided 2026-11-05: the public GitHub issue
+  form).
 - Whether you and Gitty run operators on `aether-rc-1` too: at most one
   each, since you're two people, and each in its own provider and region.
 - The smallest number to go ahead with: four is enough to rehearse;
