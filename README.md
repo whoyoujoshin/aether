@@ -97,6 +97,8 @@ Every account transaction must use ML-DSA-44 from genesis (no classical fallback
 
 ### Connecting a node
 
+To become a validator, follow [docs/JOIN-AS-VALIDATOR.md](docs/JOIN-AS-VALIDATOR.md), step by step from the download to a seat.
+
 ```bash
 aetherd init <your-moniker> --chain-id aether-testnet-1
 ```

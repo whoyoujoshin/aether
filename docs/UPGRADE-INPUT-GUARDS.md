@@ -8,6 +8,11 @@ time moves that by about 2.4 hours. It is 720 blocks from each seat
 boundary (the ends of 711,359 and 712,799). Earlier binaries carried a
 50,000,000 placeholder. **H − 600 = 711,480** is the abort line.
 
+**Status (2026-11-07): all four validators run `b9a5957`** (Linux
+`aetherd` sha256 `df0e7cb6…dd9a44`, `aetherd-b9a5957.exe` `4d70809b…c8ea58`,
+built by Gitty with Go 1.26.10); backups `.pre-guards`. What's left is
+step 4 after H.
+
 **For:** the four validators (seed, sync3, sync4, peer-1), plus any other
 node running `aetherd`.
 
