@@ -12,6 +12,9 @@ gets a seat for the node it registered. Your power follows your share of
 the work, but moves at most 10 points of the total each epoch, so a
 newcomer starts with at most 10% and climbs from there. The full rule is in [SEAT-RULE.md](SEAT-RULE.md).
 
+**On Windows?** Steps 0 to 10 below are for a Linux server. The same
+steps for a Windows PC are in [On Windows](#on-windows), further down.
+
 Want to run one on the mainnet rehearsal instead? That's `aether-rc-1`,
 by application: see [RC-1.md](RC-1.md) and [OPERATOR.md](OPERATOR.md).
 
@@ -259,6 +262,199 @@ curl -s localhost:26657/block | jq -r '.result.block.last_commit.signatures[].va
   [releases](https://github.com/whoyoujoshin/aether/releases) page.
 - **Alerts (optional):** `minerwatch --address $MINER` reports your work,
   selection and removal, and can post to a webhook (`minerwatch -h`).
+
+## On Windows
+
+The same ten steps for a Windows 10 or 11 PC, in **PowerShell run as
+Administrator** (Start menu → type "PowerShell" → right-click → Run as
+administrator). Read the Linux steps' explanations above; this section
+only gives the Windows commands.
+
+A home PC can validate, but it has to stay on and online. The testnet's
+own Windows validator was knocked out by a VPN, by a weak 2.4 GHz Wi-Fi
+link, and by its miner not starting again after a reboot, so:
+
+- use a cable or 5 GHz Wi-Fi, and **no VPN**;
+- never let it sleep;
+- keep the node's folder **out of OneDrive** (a synced folder corrupts the
+  chain data). This guide uses `C:\aether` and `C:\aether-node`, which
+  OneDrive doesn't touch.
+
+### W0. Keep the PC awake, open the port
+
+```powershell
+powercfg /change standby-timeout-ac 0
+powercfg /change hibernate-timeout-ac 0
+New-NetFirewallRule -DisplayName "Aether P2P" -Direction Inbound -Protocol TCP -LocalPort 26656 -Action Allow
+```
+
+On a home network, also forward **TCP port 26656** on your router to this
+PC (your router's admin page, "port forwarding"). Find your public IP at
+<https://ifconfig.me>.
+
+### W1. Download the programs
+
+```powershell
+mkdir C:\aether; cd C:\aether
+$TAG = "v0.2.20-testnet"     # or whatever the latest release is called
+curl.exe -LO "https://github.com/whoyoujoshin/aether/releases/download/$TAG/aether-windows-amd64.tar.gz"
+tar -xzf aether-windows-amd64.tar.gz
+dir *.exe     # aetherd.exe, powminer.exe, validatorkeygen.exe, minerwatch.exe, ...
+```
+
+### W2. Set up the node
+
+The node lives in `C:\aether-node`. **Every `aetherd` command that touches
+the node takes `--home C:\aether-node`**; without it, aetherd looks in
+your user folder instead.
+
+```powershell
+C:\aether\aetherd.exe init <pick-a-name> --chain-id aether-testnet-1 --home C:\aether-node
+curl.exe -L -o C:\aether-node\config\genesis.json https://raw.githubusercontent.com/whoyoujoshin/aether/main/testnet/genesis.json
+notepad C:\aether-node\config\config.toml
+```
+
+In Notepad, find these lines and change them to read (then save):
+
+```toml
+external_address = "<your public IP>:26656"
+seeds = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"
+timeout_commit = "5s"
+```
+
+### W3. Run it in the background, at every start-up
+
+Windows has no systemd, so a small script keeps the node running and a
+scheduled task starts that script at boot. Make the script:
+
+```powershell
+@'
+# Keeps the Aether node running; started by the "Aether Node" task.
+while ($true) {
+  if ((Test-Path C:\aether\node.log) -and (Get-Item C:\aether\node.log).Length -gt 200MB) {
+    Move-Item -Force C:\aether\node.log C:\aether\node.log.old
+  }
+  cmd /c "C:\aether\aetherd.exe start --home C:\aether-node >> C:\aether\node.log 2>&1"
+  Start-Sleep -Seconds 5
+}
+'@ | Set-Content -Encoding ascii C:\aether\run-node.ps1
+```
+
+Register the task and start it:
+
+```powershell
+$action    = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File C:\aether\run-node.ps1"
+$trigger   = New-ScheduledTaskTrigger -AtStartup
+$settings  = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType S4U -RunLevel Highest
+Register-ScheduledTask -TaskName "Aether Node" -Action $action -Trigger $trigger -Settings $settings -Principal $principal
+Start-ScheduledTask -TaskName "Aether Node"
+Get-Content C:\aether\node.log -Wait -Tail 20      # Ctrl-C stops watching, not the node
+```
+
+To stop the node (before an upgrade, say): `Stop-ScheduledTask -TaskName
+"Aether Node"`, then `Get-Process aetherd | Stop-Process`. **Never start
+`aetherd.exe` by hand while the task runs it:** two copies of one validator
+is double-signing.
+
+### W4. Wait for it to catch up
+
+```powershell
+(Invoke-RestMethod http://127.0.0.1:26657/status).result.sync_info | Select-Object latest_block_height, catching_up
+```
+
+Done when `catching_up` is `False`. As in step 4, the node stops at
+109,000, 122,000, 161,000 and 511,920 with `restart this node`. The script
+starts it again by itself when it exits; if `node.log` stops moving
+instead, run `Get-Process aetherd | Stop-Process` and the script restarts
+it within seconds.
+
+### W5. Make your miner's key
+
+The miner key lives in your user folder (`%USERPROFILE%\.aether`), where
+`powminer` looks for it, so **no `--home` here**:
+
+```powershell
+C:\aether\aetherd.exe keys add miner --keyring-backend file
+```
+
+Write the recovery phrase on paper. Then save the passphrase (8 characters
+or more) where the miner can read it, readable only by you:
+
+```powershell
+$s = Read-Host "Keyring passphrase" -AsSecureString
+[IO.File]::WriteAllText("C:\aether\keyring-pass.txt", [Net.NetworkCredential]::new("", $s).Password)
+icacls C:\aether\keyring-pass.txt /inheritance:r /grant:r "$($env:USERNAME):(R)" | Out-Null
+$MINER = C:\aether\aetherd.exe keys show miner -a --keyring-backend file
+$MINER
+```
+
+### W6. Open the account with the faucet
+
+```powershell
+Invoke-RestMethod -Method Post -Uri https://faucet.157-245-252-221.sslip.io/request -ContentType "application/json" -Body (@{address=$MINER} | ConvertTo-Json)
+C:\aether\aetherd.exe q bank balances $MINER
+```
+
+### W7. Start mining, at every start-up
+
+Same pattern as the node: a script, and a task that runs it at boot.
+
+```powershell
+@"
+# Keeps the Aether miner running; started by the "Aether Miner" task.
+`$env:USERPROFILE = "$env:USERPROFILE"
+`$env:AETHER_KEYRING_PASSPHRASE_FILE = "C:\aether\keyring-pass.txt"
+while (`$true) {
+  cmd /c "C:\aether\powminer.exe --miner $MINER --from miner --keyring-backend file --chain-id aether-testnet-1 --rpc http://127.0.0.1:26657 --grpc localhost:9090 --auto-submit --loop --fees 0uaeth >> C:\aether\miner.log 2>&1"
+  Start-Sleep -Seconds 10
+}
+"@ | Set-Content -Encoding ascii C:\aether\run-miner.ps1
+
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File C:\aether\run-miner.ps1"
+Register-ScheduledTask -TaskName "Aether Miner" -Action $action -Trigger $trigger -Settings $settings -Principal $principal
+Start-ScheduledTask -TaskName "Aether Miner"
+Get-Content C:\aether\miner.log -Wait -Tail 20
+```
+
+(`$trigger`, `$settings` and `$principal` are the ones from W3; if you
+closed that window, run those three lines again first.) Add `--duty 0.6`
+after `--loop` if the PC slows down while mining.
+
+### W8. Register your node's key to your miner
+
+```powershell
+C:\aether\validatorkeygen.exe --miner $MINER --home C:\aether-node --chain-id aether-testnet-1 --keyring-backend file --fees 200uaeth
+```
+
+Copy the `aetherd tx pow register-validator-pubkey …` line it prints, put
+`C:\aether\` in front of `aetherd`, add `--gas 400000` at the end, and run
+it. It asks for your keyring passphrase. Then check:
+
+```powershell
+C:\aether\aetherd.exe q pow seat-work $MINER
+```
+
+**Back up `C:\aether-node\config\priv_validator_key.json`** (encrypted,
+off the PC). Never run it on two machines at once.
+
+### W9. Get your seat
+
+As in step 9. To see whether your node is signing:
+
+```powershell
+$st = Invoke-RestMethod http://127.0.0.1:26657/status
+$st.result.validator_info.voting_power      # above 0 once seated
+((Invoke-RestMethod http://127.0.0.1:26657/block).result.block.last_commit.signatures | Where-Object validator_address -eq $st.result.validator_info.address).Count   # 1
+```
+
+### W10. Stay in
+
+As in step 10. To upgrade: stop both tasks (`Stop-ScheduledTask`, then
+`Get-Process aetherd, powminer | Stop-Process`), replace the `.exe` files
+in `C:\aether` with the new release's, and start both tasks again. Check
+now and then that `miner.log` still shows finds: a miner that stopped is
+the commonest way to lose a seat.
 
 ## Quick reference
 
