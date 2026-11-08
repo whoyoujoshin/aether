@@ -12,8 +12,9 @@ gets a seat for the node it registered. Your power follows your share of
 the work, but moves at most 10 points of the total each epoch, so a
 newcomer starts with at most 10% and climbs from there. The full rule is in [SEAT-RULE.md](SEAT-RULE.md).
 
-**On Windows?** Steps 0 to 10 below are for a Linux server. The same
-steps for a Windows PC are in [On Windows](#on-windows), further down.
+**On Windows or a Mac?** Steps 0 to 10 below are for a Linux server. The
+same steps for a Windows PC are in [On Windows](#on-windows), and for a
+Mac in [On a Mac](#on-a-mac), further down.
 
 Want to run one on the mainnet rehearsal instead? That's `aether-rc-1`,
 by application: see [RC-1.md](RC-1.md) and [OPERATOR.md](OPERATOR.md).
@@ -455,6 +456,230 @@ As in step 10. To upgrade: stop both tasks (`Stop-ScheduledTask`, then
 in `C:\aether` with the new release's, and start both tasks again. Check
 now and then that `miner.log` still shows finds: a miner that stopped is
 the commonest way to lose a seat.
+
+## On a Mac
+
+The same ten steps for a MacBook (or any Mac) on macOS 13 or later, in the
+**Terminal** app (Applications → Utilities → Terminal). Read the Linux
+steps' explanations above; this section only gives the Mac commands.
+
+A laptop can validate, but only while it stays awake, plugged in and
+online, so:
+
+- keep it **plugged in**, with the lid open (a closed lid sleeps it);
+- use a cable or 5 GHz Wi-Fi, and **no VPN**;
+- keep `~/.aether` where it is: not in Desktop or Documents, which iCloud
+  may sync (a synced folder corrupts the chain data);
+- mining heats a laptop: start with `--duty 0.5` (step M7).
+
+### M0. Keep the Mac awake, open the port
+
+```bash
+sudo pmset -c sleep 0 disksleep 0 displaysleep 10    # never sleep on the charger
+```
+
+On a home network, forward **TCP port 26656** on your router to this Mac
+(your router's admin page, "port forwarding"), and find your public IP at
+<https://ifconfig.me>. If the macOS firewall is on (System Settings →
+Network → Firewall), let the node in after step M1:
+
+```bash
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /usr/local/bin/aetherd
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /usr/local/bin/aetherd
+```
+
+### M1. Download the programs
+
+Pick the file for your Mac: Apple menu → About This Mac → **Chip: Apple M…**
+means `aether-macos-arm64.tar.gz`; **Processor: Intel** means
+`aether-macos-intel.tar.gz`.
+
+```bash
+cd ~
+TAG=v0.2.20-testnet                  # or whatever the latest release is called
+FILE=aether-macos-arm64.tar.gz       # or aether-macos-intel.tar.gz
+curl -LO https://github.com/whoyoujoshin/aether/releases/download/$TAG/$FILE
+mkdir -p aether-bin && tar -xzf $FILE -C aether-bin
+sudo mkdir -p /usr/local/bin
+sudo install -m 0755 aether-bin/aetherd aether-bin/powminer aether-bin/validatorkeygen aether-bin/minerwatch /usr/local/bin/
+which aetherd powminer validatorkeygen     # all three found
+```
+
+Downloading with `curl` as above keeps macOS from blocking the programs.
+If you downloaded the file in a browser instead and macOS says the program
+"cannot be opened", clear the browser's quarantine mark:
+`xattr -dr com.apple.quarantine ~/aether-bin`, then install again.
+
+The commands below use `jq`, which macOS 15 includes. On an older macOS,
+install it with [Homebrew](https://brew.sh): `brew install jq`.
+
+### M2. Set up the node
+
+```bash
+aetherd init <pick-a-name> --chain-id aether-testnet-1
+curl -L -o ~/.aether/config/genesis.json \
+  https://raw.githubusercontent.com/whoyoujoshin/aether/main/testnet/genesis.json
+open -e ~/.aether/config/config.toml
+```
+
+In TextEdit, find these lines and change them to read (then save):
+
+```toml
+external_address = "<your public IP>:26656"
+seeds = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"
+timeout_commit = "5s"
+```
+
+### M3. Run it in the background, at every start-up
+
+macOS starts background programs with `launchd`. This file tells it to
+start the node at boot, as you, and to start it again whenever it stops:
+
+```bash
+sudo tee /Library/LaunchDaemons/io.aether.node.plist >/dev/null <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>io.aether.node</string>
+  <key>UserName</key><string>$USER</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/local/bin/aetherd</string><string>start</string><string>--home</string><string>$HOME/.aether</string>
+  </array>
+  <key>EnvironmentVariables</key><dict>
+    <key>HOME</key><string>$HOME</string>
+    <key>GOMEMLIMIT</key><string>4000MiB</string>
+  </dict>
+  <key>SoftResourceLimits</key><dict><key>NumberOfFiles</key><integer>65535</integer></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>$HOME/aether-node.log</string>
+  <key>StandardErrorPath</key><string>$HOME/aether-node.log</string>
+</dict></plist>
+EOF
+sudo chown root:wheel /Library/LaunchDaemons/io.aether.node.plist
+sudo chmod 644 /Library/LaunchDaemons/io.aether.node.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/io.aether.node.plist
+tail -f ~/aether-node.log            # Ctrl-C stops watching, not the node
+```
+
+Keep the log from filling the disk (macOS trims it at 200 MB, keeping
+three old copies):
+
+```bash
+echo "$HOME/aether-node.log $USER:staff 644 3 200000 * J" | sudo tee /etc/newsyslog.d/aether.conf
+```
+
+To stop the node (before an upgrade, say): `sudo launchctl bootout
+system/io.aether.node`; to start it again, the `bootstrap` line above.
+**Never run `aetherd start` by hand while launchd runs it:** two copies of
+one validator is double-signing.
+
+### M4. Wait for it to catch up
+
+```bash
+curl -s localhost:26657/status | jq '.result.sync_info | {latest_block_height, catching_up}'
+```
+
+Done when `catching_up` is `false`. As in step 4, the node stops at
+109,000, 122,000, 161,000 and 511,920 with `restart this node`; launchd
+starts it again when it exits. If the log stops moving instead, run
+`sudo launchctl kickstart -k system/io.aether.node`.
+
+### M5. Make your miner's key
+
+```bash
+aetherd keys add miner --keyring-backend file
+```
+
+Write the recovery phrase on paper. Then save the passphrase (8 characters
+or more) where the miner can read it, readable only by you:
+
+```bash
+printf "Keyring passphrase: "; read -rs P; echo
+printf '%s' "$P" > ~/.aether/keyring-pass && chmod 600 ~/.aether/keyring-pass; unset P
+MINER=$(aetherd keys show miner -a --keyring-backend file)
+echo $MINER
+```
+
+### M6. Open the account with the faucet
+
+```bash
+curl -s -X POST https://faucet.157-245-252-221.sslip.io/request \
+  -H 'Content-Type: application/json' -d "{\"address\":\"$MINER\"}"
+aetherd q bank balances $MINER
+```
+
+### M7. Start mining, at every start-up
+
+```bash
+sudo tee /Library/LaunchDaemons/io.aether.miner.plist >/dev/null <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>io.aether.miner</string>
+  <key>UserName</key><string>$USER</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/local/bin/powminer</string>
+    <string>--miner</string><string>$MINER</string>
+    <string>--from</string><string>miner</string>
+    <string>--keyring-backend</string><string>file</string>
+    <string>--chain-id</string><string>aether-testnet-1</string>
+    <string>--rpc</string><string>http://127.0.0.1:26657</string>
+    <string>--grpc</string><string>localhost:9090</string>
+    <string>--auto-submit</string><string>--loop</string>
+    <string>--fees</string><string>0uaeth</string>
+    <string>--duty</string><string>0.5</string>
+  </array>
+  <key>EnvironmentVariables</key><dict>
+    <key>HOME</key><string>$HOME</string>
+    <key>AETHER_KEYRING_PASSPHRASE_FILE</key><string>$HOME/.aether/keyring-pass</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>$HOME/aether-miner.log</string>
+  <key>StandardErrorPath</key><string>$HOME/aether-miner.log</string>
+</dict></plist>
+EOF
+sudo chown root:wheel /Library/LaunchDaemons/io.aether.miner.plist
+sudo chmod 644 /Library/LaunchDaemons/io.aether.miner.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/io.aether.miner.plist
+echo "$HOME/aether-miner.log $USER:staff 644 3 50000 * J" | sudo tee -a /etc/newsyslog.d/aether.conf
+tail -f ~/aether-miner.log
+```
+
+`--duty 0.5` hashes half the time, so the laptop stays cooler. Raise it
+(up to `1`) on a desktop Mac.
+
+### M8. Register your node's key to your miner
+
+```bash
+validatorkeygen --miner $MINER --home ~/.aether \
+  --chain-id aether-testnet-1 --keyring-backend file --fees 200uaeth
+```
+
+Copy the `aetherd tx pow register-validator-pubkey …` line it prints, add
+`--gas 400000` at the end, and run it. It asks for your keyring
+passphrase. Then check:
+
+```bash
+aetherd q pow seat-work $MINER
+```
+
+**Back up `~/.aether/config/priv_validator_key.json`** (encrypted, off the
+Mac). Never run it on two machines at once.
+
+### M9. Get your seat
+
+As in step 9; the same `curl … | jq` checks work on a Mac.
+
+### M10. Stay in
+
+As in step 10. To upgrade: `sudo launchctl bootout system/io.aether.miner`
+and `sudo launchctl bootout system/io.aether.node`, install the new
+programs as in M1, then `bootstrap` the node and the miner again (M3, M7).
+Check now and then that `~/aether-miner.log` still shows finds.
 
 ## Quick reference
 
