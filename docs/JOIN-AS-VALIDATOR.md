@@ -101,11 +101,13 @@ sed -i -e '/^\[statesync\]/,/^\[/{' \
   -e "s/^trust_height = .*/trust_height = $TRUST/" \
   -e "s/^trust_hash = .*/trust_hash = \"$HASH\"/" \
   -e '}' ~/.aether/config/config.toml
-sed -i 's#^persistent_peers = .*#persistent_peers = "SNAPSHOT_PEER"#' ~/.aether/config/config.toml
+sed -i 's#^persistent_peers = .*#persistent_peers = "5ddca5a28f3a9dcd20b21f57c87ed4a2f289d922@64.23.217.145:26656"#' ~/.aether/config/config.toml
 ```
 
-`persistent_peers` names a node that serves snapshots, so yours finds one
-straight away. State sync needs **`v0.2.21-testnet` or later**: earlier
+`persistent_peers` names sync3, a testnet node that serves snapshots, so
+yours finds one straight away. `rpc_servers` names the seed's public RPC
+twice: state sync checks the snapshot against the chain through these
+before trusting it, and the seed's is the only public one for now. State sync needs **`v0.2.21-testnet` or later**: earlier
 builds can't restore a snapshot on a new node.
 
 ## Step 3. Run it as a service
@@ -356,7 +358,7 @@ values PowerShell just printed:
 ```toml
 external_address = "<your public IP>:26656"
 seeds = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"
-persistent_peers = "SNAPSHOT_PEER"
+persistent_peers = "5ddca5a28f3a9dcd20b21f57c87ed4a2f289d922@64.23.217.145:26656"
 timeout_commit = "5s"
 
 [statesync]
@@ -587,7 +589,7 @@ sed -i '' -e '/^\[statesync\]/,/^\[/{' \
   -e "s/^trust_height = .*/trust_height = $TRUST/" \
   -e "s/^trust_hash = .*/trust_hash = \"$HASH\"/" \
   -e '}' ~/.aether/config/config.toml
-sed -i '' 's#^persistent_peers = .*#persistent_peers = "SNAPSHOT_PEER"#' ~/.aether/config/config.toml
+sed -i '' 's#^persistent_peers = .*#persistent_peers = "5ddca5a28f3a9dcd20b21f57c87ed4a2f289d922@64.23.217.145:26656"#' ~/.aether/config/config.toml
 ```
 
 ### M3. Run it in the background, at every start-up
