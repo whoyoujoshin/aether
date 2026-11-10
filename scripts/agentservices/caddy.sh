@@ -6,7 +6,9 @@
 # /sandbox/mcp to the hosted test wallet (sandbox.sh, 127.0.0.1:8092), and
 # /a2a to the public read-only agentmcp's A2A endpoint (aether-agentmcp,
 # 127.0.0.1:8090, the same process as /mcp; docs/A2A.md), and /jobs to
-# the job board's host (install.sh, 127.0.0.1:8404; docs/JOBS.md), by adding
+# the job board's host (install.sh, 127.0.0.1:8404; docs/JOBS.md), and
+# /snapshots/ to the chain snapshots in /srv/aether-snapshots
+# (scripts/snapshot/make-snapshot.sh), by adding
 # one block per route to the explorer's site in /etc/caddy/Caddyfile, before
 # its catch-all handle. Backs the file up first, validates, and puts the
 # backup back if Caddy rejects the result. Safe to run again: it replaces
@@ -56,6 +58,12 @@ block=$(mktemp)
   echo "		}"
   echo "		reverse_proxy 127.0.0.1:8404"
   echo "	}"
+  echo "	@snapshots path /snapshots/*"
+  echo "	handle @snapshots {"
+  echo "		uri strip_prefix /snapshots"
+  echo "		root * /srv/aether-snapshots"
+  echo "		file_server"
+  echo "	}"
   echo "	# END agentservices"
 } > "$block"
 
@@ -86,4 +94,4 @@ if ! caddy validate --config "$CADDYFILE" --adapter caddyfile >/dev/null 2>&1; t
   exit 1
 fi
 systemctl reload caddy
-echo "Caddy reloaded with the /svc, /facilitator, /sandbox/mcp, /a2a and /jobs routes."
+echo "Caddy reloaded with the /svc, /facilitator, /sandbox/mcp, /a2a, /jobs and /snapshots routes."
