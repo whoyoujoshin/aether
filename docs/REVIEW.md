@@ -200,7 +200,13 @@ eligible.
 - ~~Pick `AuxPoWInputGuardHeight` and `ModuleAccountsActivationHeight` for
   the testnet~~ (712,080 after the module-account check above; the swap is
   [UPGRADE-INPUT-GUARDS.md](UPGRADE-INPUT-GUARDS.md)).
-- Run each fuzz target for an hour on a workstation; commit any crasher.
+- ~~Run each fuzz target for an hour on a workstation; commit any crasher.~~
+  Done 2026-11-10 at `9672a7b` (4 cores, two targets at a time with
+  `-parallel 2`), no failures: `FuzzCheckAuxPow` 14.7 million inputs in
+  1 h; `FuzzAetherMsgHandlers` 2.2 million in 1 h; `FuzzAuxPowCommitment`
+  9.7 million in 57 min; `FuzzMoneySequences` 303,000 sequences in 57 min
+  (every invariant checked after each step). The last two stopped 3
+  minutes short at the session's background-task limit.
 - Run the replay against the testnet's history once.
 - A reviewer goes through §1's table, with these tools.
 - Open the testnet bug hunt ([BUG-HUNT.md](BUG-HUNT.md)) once the tiers and
