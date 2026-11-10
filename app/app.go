@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"cosmossdk.io/log"
-	"cosmossdk.io/store/rootmulti"
 	storetypes "cosmossdk.io/store/types"
 	"cosmossdk.io/x/feegrant"
 	feegrantkeeper "cosmossdk.io/x/feegrant/keeper"
@@ -337,7 +336,12 @@ func New(
 	}
 	app.SetInterfaceRegistry(app.interfaceRegistry)
 
-	authzFeegrant := planAuthzFeegrant(rootmulti.GetLatestVersion(db), gates.Height(bApp.ChainID(), authzFeegrantActivationHeight))
+	// Which height-gated stores to mount follows the last height saved on
+	// disk (storePlanHeight), or every one of them on a node about to
+	// restore a state-sync snapshot.
+	planHeight := storePlanHeight(db, appOpts)
+
+	authzFeegrant := planAuthzFeegrant(planHeight, gates.Height(bApp.ChainID(), authzFeegrantActivationHeight))
 	app.authzFeegrantWired = authzFeegrant.wire
 	if authzFeegrant.wire {
 		for _, name := range authzFeegrantStoreKeys {
@@ -345,7 +349,7 @@ func New(
 		}
 	}
 
-	ibcCutover := planIBC(rootmulti.GetLatestVersion(db), gates.Height(bApp.ChainID(), ibcActivationHeight))
+	ibcCutover := planIBC(planHeight, gates.Height(bApp.ChainID(), ibcActivationHeight))
 	app.ibcWired = ibcCutover.wire
 	if ibcCutover.wire {
 		for _, name := range ibcStoreKeys {
@@ -353,7 +357,7 @@ func New(
 		}
 	}
 
-	accountAuthCutover := planAccountAuth(rootmulti.GetLatestVersion(db), gates.Height(bApp.ChainID(), accountAuthActivationHeight))
+	accountAuthCutover := planAccountAuth(planHeight, gates.Height(bApp.ChainID(), accountAuthActivationHeight))
 	app.accountAuthWired = accountAuthCutover.wire
 	if accountAuthCutover.wire {
 		for _, name := range accountAuthStoreKeys {
@@ -361,7 +365,7 @@ func New(
 		}
 	}
 
-	escrowCutover := planEscrow(rootmulti.GetLatestVersion(db), gates.Height(bApp.ChainID(), escrowActivationHeight))
+	escrowCutover := planEscrow(planHeight, gates.Height(bApp.ChainID(), escrowActivationHeight))
 	app.escrowWired = escrowCutover.wire
 	if escrowCutover.wire {
 		for _, name := range escrowStoreKeys {
@@ -369,7 +373,7 @@ func New(
 		}
 	}
 
-	inflowCapCutover := planInflowCap(rootmulti.GetLatestVersion(db), gates.Height(bApp.ChainID(), inflowCapActivationHeight))
+	inflowCapCutover := planInflowCap(planHeight, gates.Height(bApp.ChainID(), inflowCapActivationHeight))
 	app.inflowCapWired = inflowCapCutover.wire
 	if inflowCapCutover.wire {
 		for _, name := range inflowCapStoreKeys {

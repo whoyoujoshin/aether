@@ -43,13 +43,13 @@ sudo apt-get update && sudo apt-get install -y curl jq
 ## Step 1. Download the programs
 
 From the [latest release](https://github.com/whoyoujoshin/aether/releases/latest)
-(**`v0.2.20-testnet` or later**: earlier releases don't carry the testnet's
-rules from block 712,080), download **`aether-linux-amd64.tar.gz`** and
+(**`v0.2.21-testnet` or later**: earlier releases don't carry the testnet's
+rules from block 712,080 or can't state-sync a new node), download **`aether-linux-amd64.tar.gz`** and
 unpack it:
 
 ```bash
 cd ~
-TAG=v0.2.20-testnet          # or whatever the latest release is called
+TAG=v0.2.21-testnet          # or whatever the latest release is called
 curl -LO https://github.com/whoyoujoshin/aether/releases/download/$TAG/aether-linux-amd64.tar.gz
 mkdir -p aether-bin && tar -xzf aether-linux-amd64.tar.gz -C aether-bin
 sudo install -m 0755 aether-bin/aetherd aether-bin/powminer aether-bin/validatorkeygen aether-bin/minerwatch /usr/local/bin/
@@ -84,6 +84,32 @@ timeout_commit = "5s"
 **`timeout_commit` must be `"5s"`** on every validator. One validator with a
 longer value makes every block wait for it.
 
+**Start from a recent snapshot (state sync).** A new node can't replay the
+testnet from block 1 with today's `aetherd`: the early blocks were made by
+older builds. Instead it downloads the state at a recent height from a node
+that serves snapshots, checks it against the chain, and carries on from
+there. Set it up before the node's first start:
+
+```bash
+RPC=https://rpc.157-245-252-221.sslip.io
+TRUST=$(( $(curl -s $RPC/block | jq -r .result.block.header.height) - 1000 ))
+HASH=$(curl -s "$RPC/block?height=$TRUST" | jq -r .result.block_id.hash)
+echo "trusting block $TRUST, hash $HASH"
+sed -i -e '/^\[statesync\]/,/^\[/{' \
+  -e 's/^enable = .*/enable = true/' \
+  -e "s#^rpc_servers = .*#rpc_servers = \"$RPC:443,$RPC:443\"#" \
+  -e "s/^trust_height = .*/trust_height = $TRUST/" \
+  -e "s/^trust_hash = .*/trust_hash = \"$HASH\"/" \
+  -e '}' ~/.aether/config/config.toml
+sed -i 's#^persistent_peers = .*#persistent_peers = "5ddca5a28f3a9dcd20b21f57c87ed4a2f289d922@64.23.217.145:26656"#' ~/.aether/config/config.toml
+```
+
+`persistent_peers` names sync3, a testnet node that serves snapshots, so
+yours finds one straight away. `rpc_servers` names the seed's public RPC
+twice: state sync checks the snapshot against the chain through these
+before trusting it, and the seed's is the only public one for now. State sync needs **`v0.2.21-testnet` or later**: earlier
+builds can't restore a snapshot on a new node.
+
 ## Step 3. Run it as a service
 
 ```bash
@@ -110,8 +136,10 @@ journalctl -u aetherd -f          # Ctrl-C stops watching, not the node
 
 ## Step 4. Wait for it to catch up
 
-The node downloads and checks every block since the start of the testnet.
-That takes hours to a day or two. Check progress with:
+In its first minutes the node finds a snapshot, downloads it in chunks
+and restores it (the log shows `Discovered new snapshot`, then `Applied
+snapshot chunk` lines, then `Snapshot restored`). From there it fetches
+the blocks since the snapshot. Check progress with:
 
 ```bash
 curl -s localhost:26657/status | jq '.result.sync_info | {latest_block_height, catching_up}'
@@ -119,18 +147,17 @@ curl -s localhost:26657/status | jq '.result.sync_info | {latest_block_height, c
 
 Compare `latest_block_height` with the explorer
 (<https://explorer.157-245-252-221.sslip.io>). You're caught up when
-`catching_up` is `false`.
+`catching_up` is `false`, usually within an hour.
 
-**A few stops on the way are normal.** At blocks 109,000, 122,000, 161,000
-and 511,920 the testnet added new parts, and a node replaying the history
-stops there with a message that ends `restart this node`. If the process
-exited, systemd starts it again by itself; if the log stops moving instead,
-run `sudo systemctl restart aetherd`. Either way it carries on from the same
-block.
+**If it says `no available snapshots` or keeps looking:** check that
+`persistent_peers` is set as in step 2 and that the node can reach the
+internet. **If the restore fails** (`state sync aborted`, or an error
+naming a store): you're on a build older than `v0.2.21-testnet`, or
+something new; stop the node (`sudo systemctl stop aetherd`), open an
+issue with the last 50 log lines, and don't delete anything.
 
-If it stops with `wrong Block.Header.AppHash` or anything else, that's a
-bug worth reporting ([BUG-HUNT.md](BUG-HUNT.md)): open an issue with the
-block number and the last 50 log lines.
+Once caught up, the node runs normally; state sync only ever runs on an
+empty node, so later restarts don't repeat it.
 
 **Don't start the next steps until it has caught up.** A validator that
 gets a seat before its node is current misses blocks.
@@ -297,7 +324,7 @@ PC (your router's admin page, "port forwarding"). Find your public IP at
 
 ```powershell
 mkdir C:\aether; cd C:\aether
-$TAG = "v0.2.20-testnet"     # or whatever the latest release is called
+$TAG = "v0.2.21-testnet"     # or whatever the latest release is called
 curl.exe -LO "https://github.com/whoyoujoshin/aether/releases/download/$TAG/aether-windows-amd64.tar.gz"
 tar -xzf aether-windows-amd64.tar.gz
 dir *.exe     # aetherd.exe, powminer.exe, validatorkeygen.exe, minerwatch.exe, ...
@@ -315,12 +342,30 @@ curl.exe -L -o C:\aether-node\config\genesis.json https://raw.githubusercontent.
 notepad C:\aether-node\config\config.toml
 ```
 
-In Notepad, find these lines and change them to read (then save):
+Get a recent block to trust for state sync (see step 2):
+
+```powershell
+$RPC = "https://rpc.157-245-252-221.sslip.io"
+$trust = [int](Invoke-RestMethod "$RPC/block").result.block.header.height - 1000
+$hash = (Invoke-RestMethod "$RPC/block?height=$trust").result.block_id.hash
+"trust_height = $trust"; "trust_hash = `"$hash`""
+```
+
+In Notepad, find these lines and change them to read (then save). The
+`[statesync]` ones are under that heading, further down; use the two
+values PowerShell just printed:
 
 ```toml
 external_address = "<your public IP>:26656"
 seeds = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"
+persistent_peers = "5ddca5a28f3a9dcd20b21f57c87ed4a2f289d922@64.23.217.145:26656"
 timeout_commit = "5s"
+
+[statesync]
+enable = true
+rpc_servers = "https://rpc.157-245-252-221.sslip.io:443,https://rpc.157-245-252-221.sslip.io:443"
+trust_height = <the number printed>
+trust_hash = "<the hash printed>"
 ```
 
 ### W3. Run it in the background, at every start-up
@@ -364,11 +409,12 @@ is double-signing.
 (Invoke-RestMethod http://127.0.0.1:26657/status).result.sync_info | Select-Object latest_block_height, catching_up
 ```
 
-Done when `catching_up` is `False`. As in step 4, the node stops at
-109,000, 122,000, 161,000 and 511,920 with `restart this node`. The script
-starts it again by itself when it exits; if `node.log` stops moving
-instead, run `Get-Process aetherd | Stop-Process` and the script restarts
-it within seconds.
+Done when `catching_up` is `False`, usually within an hour. As in step 4,
+the first minutes go to finding and restoring a snapshot (`Snapshot
+restored` in `node.log`). If the restore fails, stop the task
+(`Stop-ScheduledTask -TaskName "Aether Node"`, then `Get-Process aetherd |
+Stop-Process`), open an issue with the end of `node.log`, and don't delete
+anything.
 
 ### W5. Make your miner's key
 
@@ -496,7 +542,7 @@ means `aether-macos-arm64.tar.gz`; **Processor: Intel** means
 
 ```bash
 cd ~
-TAG=v0.2.20-testnet                  # or whatever the latest release is called
+TAG=v0.2.21-testnet                  # or whatever the latest release is called
 FILE=aether-macos-arm64.tar.gz       # or aether-macos-intel.tar.gz
 curl -LO https://github.com/whoyoujoshin/aether/releases/download/$TAG/$FILE
 mkdir -p aether-bin && tar -xzf $FILE -C aether-bin
@@ -528,6 +574,22 @@ In TextEdit, find these lines and change them to read (then save):
 external_address = "<your public IP>:26656"
 seeds = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"
 timeout_commit = "5s"
+```
+
+Then set up state sync (see step 2). macOS's `sed` needs `-i ''`:
+
+```bash
+RPC=https://rpc.157-245-252-221.sslip.io
+TRUST=$(( $(curl -s $RPC/block | jq -r .result.block.header.height) - 1000 ))
+HASH=$(curl -s "$RPC/block?height=$TRUST" | jq -r .result.block_id.hash)
+echo "trusting block $TRUST, hash $HASH"
+sed -i '' -e '/^\[statesync\]/,/^\[/{' \
+  -e 's/^enable = .*/enable = true/' \
+  -e "s#^rpc_servers = .*#rpc_servers = \"$RPC:443,$RPC:443\"#" \
+  -e "s/^trust_height = .*/trust_height = $TRUST/" \
+  -e "s/^trust_hash = .*/trust_hash = \"$HASH\"/" \
+  -e '}' ~/.aether/config/config.toml
+sed -i '' 's#^persistent_peers = .*#persistent_peers = "5ddca5a28f3a9dcd20b21f57c87ed4a2f289d922@64.23.217.145:26656"#' ~/.aether/config/config.toml
 ```
 
 ### M3. Run it in the background, at every start-up
@@ -581,10 +643,11 @@ one validator is double-signing.
 curl -s localhost:26657/status | jq '.result.sync_info | {latest_block_height, catching_up}'
 ```
 
-Done when `catching_up` is `false`. As in step 4, the node stops at
-109,000, 122,000, 161,000 and 511,920 with `restart this node`; launchd
-starts it again when it exits. If the log stops moving instead, run
-`sudo launchctl kickstart -k system/io.aether.node`.
+Done when `catching_up` is `false`, usually within an hour. As in step 4,
+the first minutes go to finding and restoring a snapshot (`Snapshot
+restored` in the log). If the restore fails, stop the node (`sudo
+launchctl bootout system/io.aether.node`), open an issue with the end of
+`~/aether-node.log`, and don't delete anything.
 
 ### M5. Make your miner's key
 
