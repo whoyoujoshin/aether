@@ -181,6 +181,28 @@ covers both). Every validator should run it, since any of them proposes.
 The same devnet then ran the round trip and the inflow cap step
 (`docs/IBC-INFLOW-CAP.md`) with nothing relayed by hand.
 
+**A client that fell too far behind** (found 2026-11-11 at block
+712,080). Aether's client of Injective (`07-tendermint-2`) had not been
+updated since 147,013,626 (2026-11-04). The next update tried to jump
+straight to Injective's tip, 148,124,478, and was refused with
+"insufficient voting power": a client accepts a header that skips ahead
+only if a third of the trusted height's validator power signed it, and
+Injective's testnet set had changed more than that in 1.1 million blocks.
+Every later try would have been refused the same way until the client
+expired (14-day trusting period, about 2026-11-18).
+
+Fixed in `relayer.UpdateClientMsg` (used by Helicase, `cmd/outbound` and
+`cmd/relayer`): before updating, it checks locally, as the client will,
+that the trusted validators signed the tip. If they didn't, it halves the
+distance towards the trusted height until it finds a height they did
+sign, and updates to that (`relayer/bisect.go`); the next cycle carries on
+from there, so a client that has fallen behind catches up in a few steps.
+`TestTrustedSigned` checks the trust rule with real CometBFT commits and
+`TestPickUpdateHeight` the halving, on Injective's numbers. The devnet
+below (`cmd/helicasetest`, every step in both directions) passed with it
+on 2026-11-12. Only the node whose `[helicase]` follows the stuck client
+(peer-1, for Injective) needs the new build; it is not a consensus change.
+
 To reproduce:
 
 1. Build `aetherd` with `ibcActivationHeight` and `helicaseActivationHeight` set to a small value. This is a local build only; never commit it.

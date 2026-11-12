@@ -73,7 +73,10 @@ You'll use four of the programs in it:
 aetherd init <pick-a-name> --chain-id aether-testnet-1
 curl -L -o ~/.aether/config/genesis.json \
   https://raw.githubusercontent.com/whoyoujoshin/aether/main/testnet/genesis.json
+sha256sum ~/.aether/config/genesis.json   # b6f36f01783ed02a4a353ac825deb07c68a5683cdaca92b879e759c0cb988785
 ```
+
+That is the genesis file the validators run, byte for byte.
 
 Set three lines in `~/.aether/config/config.toml`: `seeds` and
 `external_address` (under `[p2p]`) and `timeout_commit` (under
@@ -363,6 +366,7 @@ your user folder instead.
 ```powershell
 C:\aether\aetherd.exe init <pick-a-name> --chain-id aether-testnet-1 --home C:\aether-node
 curl.exe -L -o C:\aether-node\config\genesis.json https://raw.githubusercontent.com/whoyoujoshin/aether/main/testnet/genesis.json
+(Get-FileHash C:\aether-node\config\genesis.json).Hash.ToLower()   # b6f36f01783ed02a4a353ac825deb07c68a5683cdaca92b879e759c0cb988785
 notepad C:\aether-node\config\config.toml
 ```
 
@@ -595,6 +599,7 @@ install it with [Homebrew](https://brew.sh): `brew install jq`.
 aetherd init <pick-a-name> --chain-id aether-testnet-1
 curl -L -o ~/.aether/config/genesis.json \
   https://raw.githubusercontent.com/whoyoujoshin/aether/main/testnet/genesis.json
+shasum -a 256 ~/.aether/config/genesis.json   # b6f36f01783ed02a4a353ac825deb07c68a5683cdaca92b879e759c0cb988785
 ```
 
 Set `seeds` and `external_address` (under `[p2p]`) and `timeout_commit`

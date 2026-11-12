@@ -75,6 +75,37 @@ func UpdateClientMsg(src, dst *Chain, clientID string) (sdk.Msg, clienttypes.Hei
 	if err != nil {
 		return nil, clienttypes.Height{}, err
 	}
+
+	// If the trusted set can't vouch for the tip, update to the highest
+	// height it can (bisect.go).
+	trustedSet, err := valSetFromProto(trustedVals)
+	if err != nil {
+		return nil, clienttypes.Height{}, err
+	}
+	tipCommit, err := cmttypes.CommitFromProto(header.SignedHeader.Commit)
+	if err != nil {
+		return nil, clienttypes.Height{}, err
+	}
+	trustLevel := tmCS.TrustLevel.ToTendermint()
+	pick, err := pickUpdateHeight(int64(trusted.RevisionHeight), height, func(h int64) (bool, error) {
+		commit := tipCommit
+		if h != height {
+			c, err := commitAt(src, h)
+			if err != nil {
+				return false, err
+			}
+			commit = c
+		}
+		return trustedSigned(tmCS.ChainId, trustedSet, commit, trustLevel), nil
+	})
+	if err != nil {
+		return nil, clienttypes.Height{}, fmt.Errorf("%s: client %s: %w", src.Name, clientID, err)
+	}
+	if pick != height {
+		if header, height, err = clientutils.QueryTendermintHeader(src.ClientCtx.WithHeight(pick)); err != nil {
+			return nil, clienttypes.Height{}, fmt.Errorf("%s: querying header at %d: %w", src.Name, pick, err)
+		}
+	}
 	header.TrustedHeight = trusted
 	header.TrustedValidators = trustedVals
 
