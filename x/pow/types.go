@@ -138,6 +138,8 @@ var (
 // now-unrecognized "tail_emission" key computes byte-identical keeper
 // state to one that doesn't -- unlike every other change in this file,
 // this needed no height gate, because nothing ever depended on it.
+// (testnet/genesis.json is the live validators' file byte for byte, so
+// it still carries the key; InitGenesis ignores it.)
 const (
 	InitialBlockReward    int64 = 5_000_000 // 5.00 AETH, in uaeth
 	BlockRewardDecayYears int64 = 8
