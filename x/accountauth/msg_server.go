@@ -76,6 +76,7 @@ func (k msgServer) RegisterAuthenticator(goCtx context.Context, msg *MsgRegister
 	id := k.Keeper.NextAuthenticatorID(ctx, account)
 	a.Id = id
 	k.Keeper.SetAuthenticator(ctx, account, *a)
+	k.Keeper.recordAuthenticator(ctx, account, id)
 
 	return &MsgRegisterAuthenticatorResponse{Id: id}, nil
 }
@@ -91,6 +92,9 @@ func (k msgServer) RevokeAuthenticator(goCtx context.Context, msg *MsgRevokeAuth
 		return nil, sdkerrors.Wrapf(ErrAuthenticatorNotFound, "account %s has no authenticator %d", msg.Account, msg.Id)
 	}
 	k.Keeper.DeleteAuthenticator(ctx, account, msg.Id)
+	if KeyChangeRevokes(ctx) {
+		k.Keeper.forgetAuthenticator(ctx, account, msg.Id)
+	}
 	return &MsgRevokeAuthenticatorResponse{}, nil
 }
 
@@ -122,6 +126,9 @@ func (k msgServer) ExecAuthenticated(goCtx context.Context, msg *MsgExecAuthenti
 	a, found := k.Keeper.GetAuthenticator(ctx, account, msg.AuthenticatorId)
 	if !found {
 		return nil, sdkerrors.Wrapf(ErrAuthenticatorNotFound, "account %s has no authenticator %d", msg.Account, msg.AuthenticatorId)
+	}
+	if !k.Keeper.AuthenticatorCurrent(ctx, account, msg.AuthenticatorId) {
+		return nil, sdkerrors.Wrapf(ErrDelegationRetired, "authenticator %d was registered before %s's key last changed; register it again with the current key", msg.AuthenticatorId, msg.Account)
 	}
 
 	msgs := make([]sdk.Msg, len(msg.Msgs))

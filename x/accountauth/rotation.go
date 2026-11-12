@@ -458,6 +458,7 @@ func (k msgServer) RecoverKey(goCtx context.Context, msg *MsgRecoverKey) (*MsgRe
 		return nil, sdkerrors.Wrap(ErrInvalidNewKey, err.Error())
 	}
 	k.ak.SetAccount(ctx, acc)
+	k.keyChanged(ctx, account)
 	k.clearPending(ctx, account, &st)
 	st.Nonce++
 	st.RecoveryNonce++
@@ -634,6 +635,7 @@ func (k Keeper) applyRotation(ctx sdk.Context, account sdk.AccAddress, p *Pendin
 		return
 	}
 	k.ak.SetAccount(ctx, acc)
+	k.keyChanged(ctx, account)
 	ctx.EventManager().EmitEvent(sdk.NewEvent(EventTypeRotationApplied,
 		sdk.NewAttribute(AttributeAccount, account.String()),
 		sdk.NewAttribute(AttributeNewPubkey, pubkeyDigest(p.NewPubkey))))
