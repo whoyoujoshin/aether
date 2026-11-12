@@ -51,6 +51,8 @@ unpack it:
 cd ~
 TAG=v0.2.21-testnet          # or whatever the latest release is called
 curl -LO https://github.com/whoyoujoshin/aether/releases/download/$TAG/aether-linux-amd64.tar.gz
+curl -LO https://github.com/whoyoujoshin/aether/releases/download/$TAG/SHA256SUMS   # from v0.2.22-testnet on
+sha256sum -c SHA256SUMS --ignore-missing     # aether-linux-amd64.tar.gz: OK
 mkdir -p aether-bin && tar -xzf aether-linux-amd64.tar.gz -C aether-bin
 sudo install -m 0755 aether-bin/aetherd aether-bin/powminer aether-bin/validatorkeygen aether-bin/minerwatch /usr/local/bin/
 which aetherd powminer validatorkeygen     # all three found
@@ -73,12 +75,18 @@ curl -L -o ~/.aether/config/genesis.json \
   https://raw.githubusercontent.com/whoyoujoshin/aether/main/testnet/genesis.json
 ```
 
-Edit `~/.aether/config/config.toml`:
+Set three lines in `~/.aether/config/config.toml`: `seeds` and
+`external_address` (under `[p2p]`) and `timeout_commit` (under
+`[consensus]`). Put your server's public IP in the first line:
 
-```toml
-seeds = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"
-external_address = "<your server's public IP>:26656"
-timeout_commit = "5s"
+```bash
+IP=<your server's public IP>
+sed -i \
+  -e 's#^seeds = .*#seeds = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"#' \
+  -e "s#^external_address = .*#external_address = \"$IP:26656\"#" \
+  -e 's#^timeout_commit = .*#timeout_commit = "5s"#' \
+  ~/.aether/config/config.toml
+grep -E '^(seeds|external_address|timeout_commit) ' ~/.aether/config/config.toml   # the three lines, set
 ```
 
 **`timeout_commit` must be `"5s"`** on every validator. One validator with a
@@ -105,9 +113,11 @@ sed -i 's#^persistent_peers = .*#persistent_peers = "5ddca5a28f3a9dcd20b21f57c87
 ```
 
 `persistent_peers` names sync3, a testnet node that serves snapshots, so
-yours finds one straight away. `rpc_servers` names the seed's public RPC
-twice: state sync checks the snapshot against the chain through these
-before trusting it, and the seed's is the only public one for now. State sync needs **`v0.2.21-testnet` or later**: earlier
+yours finds one straight away. State sync checks the snapshot against
+the chain through the `rpc_servers` before trusting it. The setting needs
+two, and the seed's is the only public RPC for now, so it is named twice:
+the check then trusts the seed alone, with no second node to compare it
+with. A second public RPC will be listed here once there is one. State sync needs **`v0.2.21-testnet` or later**: earlier
 builds can't restore a snapshot on a new node.
 
 ## Step 3. Run it as a service
@@ -136,10 +146,20 @@ journalctl -u aetherd -f          # Ctrl-C stops watching, not the node
 
 ## Step 4. Wait for it to catch up
 
-In its first minutes the node finds a snapshot, downloads it in chunks
-and restores it (the log shows `Discovered new snapshot`, then `Applied
-snapshot chunk` lines, then `Snapshot restored`). From there it fetches
-the blocks since the snapshot. Check progress with:
+Within a minute or two the node finds a snapshot and restores it. The
+log shows, in order:
+
+```
+Offering snapshot to ABCI app        height=...
+Snapshot accepted, restoring
+Applied snapshot chunk to ABCI app   chunk=0 total=1
+Verified ABCI app                    appHash=...
+Snapshot restored
+Time to switch to consensus reactor! height=...
+```
+
+Today's snapshots are a single chunk. The last line means the restore is
+done and the node is following new blocks. Check progress with:
 
 ```bash
 curl -s localhost:26657/status | jq '.result.sync_info | {latest_block_height, catching_up}'
@@ -147,7 +167,8 @@ curl -s localhost:26657/status | jq '.result.sync_info | {latest_block_height, c
 
 Compare `latest_block_height` with the explorer
 (<https://explorer.157-245-252-221.sslip.io>). You're caught up when
-`catching_up` is `false`, usually within an hour.
+`catching_up` is `false`, a few minutes after the restore (on 2026-11-12 a
+new node restored height 716,600 and was caught up about a minute later).
 
 **If it says `no available snapshots` or keeps looking:** check that
 `persistent_peers` is set as in step 2 and that the node can reach the
@@ -326,6 +347,9 @@ PC (your router's admin page, "port forwarding"). Find your public IP at
 mkdir C:\aether; cd C:\aether
 $TAG = "v0.2.21-testnet"     # or whatever the latest release is called
 curl.exe -LO "https://github.com/whoyoujoshin/aether/releases/download/$TAG/aether-windows-amd64.tar.gz"
+# From v0.2.22-testnet on, check the download: the two hashes must match.
+curl.exe -LO "https://github.com/whoyoujoshin/aether/releases/download/$TAG/SHA256SUMS"
+Select-String aether-windows-amd64.tar.gz SHA256SUMS; (Get-FileHash aether-windows-amd64.tar.gz).Hash.ToLower()
 tar -xzf aether-windows-amd64.tar.gz
 dir *.exe     # aetherd.exe, powminer.exe, validatorkeygen.exe, minerwatch.exe, ...
 ```
@@ -351,9 +375,12 @@ $hash = (Invoke-RestMethod "$RPC/block?height=$trust").result.block_id.hash
 "trust_height = $trust"; "trust_hash = `"$hash`""
 ```
 
-In Notepad, find these lines and change them to read (then save). The
-`[statesync]` ones are under that heading, further down; use the two
-values PowerShell just printed:
+In Notepad, find these lines and change them to read (then save; Ctrl+F
+finds each). `external_address`, `seeds` and `persistent_peers` are under
+`[p2p]`, `timeout_commit` under `[consensus]`, and the last four under
+`[statesync]`, further down; use the two values PowerShell just printed.
+`rpc_servers` names the seed twice because it is the only public RPC for
+now (see step 2):
 
 ```toml
 external_address = "<your public IP>:26656"
@@ -409,9 +436,10 @@ is double-signing.
 (Invoke-RestMethod http://127.0.0.1:26657/status).result.sync_info | Select-Object latest_block_height, catching_up
 ```
 
-Done when `catching_up` is `False`, usually within an hour. As in step 4,
-the first minutes go to finding and restoring a snapshot (`Snapshot
-restored` in `node.log`). If the restore fails, stop the task
+Done when `catching_up` is `False`, usually a few minutes after the
+start. As in step 4, the node first finds and restores a snapshot; the
+restore is done when `node.log` shows `Snapshot restored`, then `Time to
+switch to consensus reactor!`. If the restore fails, stop the task
 (`Stop-ScheduledTask -TaskName "Aether Node"`, then `Get-Process aetherd |
 Stop-Process`), open an issue with the end of `node.log`, and don't delete
 anything.
@@ -545,6 +573,8 @@ cd ~
 TAG=v0.2.21-testnet                  # or whatever the latest release is called
 FILE=aether-macos-arm64.tar.gz       # or aether-macos-intel.tar.gz
 curl -LO https://github.com/whoyoujoshin/aether/releases/download/$TAG/$FILE
+curl -LO https://github.com/whoyoujoshin/aether/releases/download/$TAG/SHA256SUMS   # from v0.2.22-testnet on
+shasum -a 256 -c SHA256SUMS --ignore-missing  # <your file>: OK
 mkdir -p aether-bin && tar -xzf $FILE -C aether-bin
 sudo mkdir -p /usr/local/bin
 sudo install -m 0755 aether-bin/aetherd aether-bin/powminer aether-bin/validatorkeygen aether-bin/minerwatch /usr/local/bin/
@@ -565,18 +595,23 @@ install it with [Homebrew](https://brew.sh): `brew install jq`.
 aetherd init <pick-a-name> --chain-id aether-testnet-1
 curl -L -o ~/.aether/config/genesis.json \
   https://raw.githubusercontent.com/whoyoujoshin/aether/main/testnet/genesis.json
-open -e ~/.aether/config/config.toml
 ```
 
-In TextEdit, find these lines and change them to read (then save):
+Set `seeds` and `external_address` (under `[p2p]`) and `timeout_commit`
+(under `[consensus]`), with your public IP in the first line. macOS's
+`sed` needs `-i ''`:
 
-```toml
-external_address = "<your public IP>:26656"
-seeds = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"
-timeout_commit = "5s"
+```bash
+IP=<your public IP>
+sed -i '' \
+  -e 's#^seeds = .*#seeds = "dfa6aae4b7bfd5b0eb1e22fabbae3e83a475b938@157.245.252.221:26656"#' \
+  -e "s#^external_address = .*#external_address = \"$IP:26656\"#" \
+  -e 's#^timeout_commit = .*#timeout_commit = "5s"#' \
+  ~/.aether/config/config.toml
+grep -E '^(seeds|external_address|timeout_commit) ' ~/.aether/config/config.toml   # the three lines, set
 ```
 
-Then set up state sync (see step 2). macOS's `sed` needs `-i ''`:
+Then set up state sync (see step 2):
 
 ```bash
 RPC=https://rpc.157-245-252-221.sslip.io
@@ -643,9 +678,10 @@ one validator is double-signing.
 curl -s localhost:26657/status | jq '.result.sync_info | {latest_block_height, catching_up}'
 ```
 
-Done when `catching_up` is `false`, usually within an hour. As in step 4,
-the first minutes go to finding and restoring a snapshot (`Snapshot
-restored` in the log). If the restore fails, stop the node (`sudo
+Done when `catching_up` is `false`, usually a few minutes after the
+start. As in step 4, the node first finds and restores a snapshot; the
+restore is done when the log shows `Snapshot restored`, then `Time to
+switch to consensus reactor!`. If the restore fails, stop the node (`sudo
 launchctl bootout system/io.aether.node`), open an issue with the end of
 `~/aether-node.log`, and don't delete anything.
 

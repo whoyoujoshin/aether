@@ -42,7 +42,10 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           mkdir -p dist
-          go build -o dist/aetherd${{ matrix.ext }} ./cmd/aetherd
+          # `aetherd version` prints the tag and commit (empty without these).
+          V=github.com/cosmos/cosmos-sdk/version
+          go build -ldflags "-X $V.Name=aether -X $V.AppName=aetherd -X $V.Version=${GITHUB_REF_NAME} -X $V.Commit=${GITHUB_SHA}" \
+            -o dist/aetherd${{ matrix.ext }} ./cmd/aetherd
           go build -o dist/wallet${{ matrix.ext }} ./cmd/wallet
           go build -o dist/faucet${{ matrix.ext }} ./cmd/faucet
           go build -o dist/explorer${{ matrix.ext }} ./cmd/explorer
@@ -56,6 +59,7 @@ jobs:
       - name: Package archive
         run: |
           cd dist
+          sha256sum * > SHA256SUMS
           tar -czf ../aether-${{ matrix.suffix }}.tar.gz *
           cd ..
 
@@ -98,10 +102,17 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Checksums
+        run: |
+          cd artifacts
+          sha256sum *.tar.gz aether-wallet.mcpb server.json Aether-Pay-Setup-*.exe > SHA256SUMS
+          cat SHA256SUMS
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            artifacts/SHA256SUMS
             artifacts/*.tar.gz
             artifacts/aether-wallet.mcpb
             artifacts/server.json
@@ -115,6 +126,8 @@ jobs:
             **This project has not undergone a professional security audit.** Early-stage software -- do not use with real funds you cannot afford to lose entirely.
 
             Download the archive matching your platform, extract it, and run `aetherd` (or `aetherd.exe` on Windows). See the [README](https://github.com/whoyoujoshin/aether#public-testnet) for setup instructions and public testnet connection details.
+
+            `SHA256SUMS` lists the sha256 of every download (`sha256sum -c SHA256SUMS --ignore-missing`), and each archive carries its own `SHA256SUMS` for the programs inside. `aetherd version` prints this release's tag.
 
             Includes: `aetherd` (the node), `wallet` (CLI wallet), `faucet` (testnet faucet service), `explorer` (block explorer dashboard), `agentmcp` (MCP wallet for AI agents: run `agentmcp init`), `paywall` (charge per request for an HTTP API), `powminer` (native PoW miner), `validatorkeygen` (registers a node's consensus key to a miner; see docs/JOIN-AS-VALIDATOR.md), `minerwatch` (webhook alerts for a miner or validator) and `chainwatch` (height, halt and safe-to-stop alerts).
 
