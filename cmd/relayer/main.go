@@ -53,6 +53,8 @@ func main() {
 		sendChannel    = flag.String("send-channel", "", "with -send: the counterparty's channel to Aether, e.g. channel-123")
 		sendTo         = flag.String("send-to", "", "with -send: the Aether address to receive it; empty means the Aether relayer key")
 		sendTimeout    = flag.Duration("send-timeout", time.Hour, "with -send: refund the transfer if it isn't received on Aether within this long")
+		updateClient   = flag.String("update-client", "", "instead of opening a path: bring this Aether client of the counterparty (e.g. 07-tendermint-2) up to the counterparty's tip, signing each update with -aether-key, and exit. Steps through intermediate heights when the counterparty's validators have changed too much for one jump. Needs no counterparty key; -cparty-grpc and -cparty-key are unused")
+		updateSteps    = flag.Int("update-max-steps", 30, "with -update-client: most updates to send")
 	)
 	flag.Parse()
 
@@ -65,6 +67,11 @@ func main() {
 	}
 
 	cpartyEnc := counterparty.MakeEncodingConfig(*cpartyBech32)
+	if *updateClient != "" {
+		updateClientOnAether(aetherKr, aetherEnc, cpartyEnc, *aetherRPC, *aetherGRPC, *aetherChainID, *aetherKey, *aetherGasPrice,
+			*cpartyRPC, *cpartyChainID, *updateClient, *updateSteps)
+		return
+	}
 	cpartyKr, err := relayer.OpenCounterpartyKeyring(*keyringBackend, *cpartyHome, os.Stdin, cpartyEnc.Codec)
 	if err != nil {
 		log.Fatalf("opening counterparty keyring: %v", err)
@@ -244,4 +251,28 @@ func sendToAether(cparty *relayer.Chain, amount, channel, receiver string, timeo
 	}
 	fmt.Printf("sent packet %d over %s/%s: %s from %s to %s; Helicase relays it onto Aether\n",
 		packet.Sequence, transfertypes.PortID, channel, coin, cparty.FromAddrStr, receiver)
+}
+
+// updateClientOnAether is -update-client: one Aether client of the
+// counterparty brought up to date from any machine, by any funded Aether
+// key, reading the counterparty over RPC only.
+func updateClientOnAether(aetherKr keyring.Keyring, aetherEnc app.EncodingConfig, cpartyEnc counterparty.EncodingConfig, aetherRPC, aetherGRPC, aetherChainID, aetherKey, aetherGas,
+	cpartyRPC, cpartyChainID, clientID string, maxSteps int) {
+	aether, err := relayer.NewChain("aether", aetherRPC, aetherGRPC, aetherChainID, app.Bech32MainPrefix,
+		aetherEnc.Codec, aetherEnc.TxConfig, aetherKr, aetherKey, aetherGas)
+	if err != nil {
+		log.Fatalf("connecting to aether: %v", err)
+	}
+	cparty, err := relayer.NewReadOnlyChain("counterparty", cpartyRPC, cpartyChainID, cpartyEnc.Codec, cpartyEnc.TxConfig)
+	if err != nil {
+		log.Fatalf("connecting to counterparty: %v", err)
+	}
+	fmt.Printf("updating %s on aether, signed by %s\n", clientID, aether.FromAddrStr)
+	err = relayer.UpdateClientToTip(cparty, aether, clientID, maxSteps, func(from, to uint64) {
+		fmt.Printf("  %s: %d -> %d\n", clientID, from, to)
+	})
+	if err != nil {
+		log.Fatalf("update-client: %v", err)
+	}
+	fmt.Printf("%s is at the counterparty's tip\n", clientID)
 }
