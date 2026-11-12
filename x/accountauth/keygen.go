@@ -35,8 +35,11 @@ import (
 // or a registration, and accepts what this one refuses, so it splits at
 // the first such transaction.
 //
-// Testnet placeholder until a height is chosen.
-const KeyChangeRevokesHeight int64 = 60_000_000
+// On the testnet: 786,960, proposed 2026-11-12 at a tip of about 723,400,
+// about 14:00 UTC on Monday 2026-11-16 at 5.5 s blocks, 720 blocks from
+// each seat boundary (docs/UPGRADE-KEY-CHANGE.md). It adds no store, so
+// nothing halts at it. Earlier builds of this fix carried 60,000,000.
+const KeyChangeRevokesHeight int64 = 786_960
 
 var (
 	// KeyGenerationPrefix/<len-prefixed account> -> uint64 big-endian.
