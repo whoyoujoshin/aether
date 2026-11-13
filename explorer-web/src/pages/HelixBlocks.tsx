@@ -261,7 +261,7 @@ export default function HelixBlocks() {
         {ibcNote && <NoticeBanner>{ibcNote}</NoticeBanner>}
 
         <div className="helix-hero slim">
-          {h ? <HelixHero helix={h} now={now} view={view} width={narrow ? 560 : 1176} height={120} windowSecs={HERO_WINDOW} /> : <div className="loading">Loading…</div>}
+          {h ? <HelixHero helix={h} now={now} view={view} width={narrow ? 560 : 1176} height={112} windowSecs={HERO_WINDOW} turns={1.6} /> : <div className="loading">Loading…</div>}
         </div>
 
         {h && (view === "both" ? <Timeline h={h} /> : <StrandTable h={h} chain={view} />)}

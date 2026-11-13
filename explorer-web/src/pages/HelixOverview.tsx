@@ -7,10 +7,12 @@ import { TxHash } from "../components/Hash";
 import { ErrorBanner, MsgTag, NoticeBanner } from "../components/ui";
 import {
   HelixHero,
+  bridgeCaption,
   STATUS_LABEL,
   counterpartyNotice,
   blockTimeLabel,
-  mergedBlocks,
+  bridgeInFlight,
+  overviewBlocks,
   packetAmount,
   packetKey,
   packetTs,
@@ -21,7 +23,7 @@ import {
 } from "../components/Helix";
 import { aeth, compact, int, timeAgo } from "../format";
 
-const WINDOW = 96;
+const WINDOW = 60;
 
 interface StrandCard {
   key: string;
@@ -57,7 +59,7 @@ function cards(helix: Helix, stats: Stats | null, view: ChainView): StrandCard[]
     border: "var(--border)",
     stats: [
       ["Packets 24h", br ? int(br.packetsSent) : "—"],
-      ["In flight", br ? int(br.inFlight) : "—"],
+      ["In flight", bridgeInFlight(helix) == null ? "—" : int(bridgeInFlight(helix)!)],
       ["Avg relay", br && br.avgRelaySecs ? `${br.avgRelaySecs.toFixed(1)}s` : "—"],
       ["AETH bridged", br ? compact(Number(br.escrowedUaeth) / 1e6) : "—"],
     ],
@@ -98,8 +100,9 @@ export default function HelixOverview() {
   const ibcNote = counterpartyNotice(h, name);
 
   const title = !h?.ibc || view === "both" ? "Aether helix" : view === "aether" ? "Aether overview" : `${name} overview`;
-  const blocks = h ? mergedBlocks(h, view).slice(0, 7) : [];
+  const blocks = h ? overviewBlocks(h, view, 7) : [];
   const maxTxs = Math.max(1, ...blocks.map((b) => b.numTxs));
+  const caption = h ? bridgeCaption(h, now) : null;
 
   return (
     <>
@@ -123,13 +126,18 @@ export default function HelixOverview() {
               <span className="h" style={{ color: AETHER_COLOR }}>#{h ? int(h.aether.height) : "—"}</span>
               <span className="meta">PoW · {h ? blockTimeLabel(h.aether.blockTimeSecs) : "—"}</span>
             </div>
-            {h?.ibc ? (
+            {!h ? (
+              <div className="strand" style={{ opacity: 0.55 }}>
+                <span className="dot" style={{ border: `1.5px dashed ${IBC_COLOR}`, background: "transparent" }} />
+                <span className="meta">loading the counterparty…</span>
+              </div>
+            ) : h.ibc ? (
               <div className="strand" style={{ opacity: view === "aether" ? 0.3 : 1 }}>
                 <span className="dot" style={{ background: IBC_COLOR, boxShadow: `0 0 10px ${IBC_COLOR}` }} />
                 <span className="name">{name}</span>
                 <span className="h" style={{ color: IBC_COLOR }}>{h.ibc.height > 0 ? `#${int(h.ibc.height)}` : "unreachable"}</span>
                 <span className="meta">
-                  {h.ibc.stale ? `cached ${h.ibc.asOf ? timeAgo(h.ibc.asOf) : ""}` : h.ibc.viaFallback ? "fallback RPC" : `BFT · ${blockTimeLabel(h.ibc.blockTimeSecs)}`}
+                  {h.ibc.stale ? `cached ${h.ibc.asOf ? timeAgo(h.ibc.asOf) : ""}` : h.ibc.viaFallback ? "fallback RPC" : `BFT · ${blockTimeLabel(h.ibc.blockTimeSecs)}${h.ibc.chainId ? ` · ${h.ibc.chainId}` : ""}`}
                 </span>
               </div>
             ) : (
@@ -144,7 +152,12 @@ export default function HelixOverview() {
             </div>
             <div className="window">last {WINDOW}s · time flows left</div>
           </div>
-          {h ? <HelixHero helix={h} now={now} view={view} width={narrow ? 560 : 1168} height={250} windowSecs={WINDOW} /> : <div className="loading">Loading…</div>}
+          {h ? <HelixHero helix={h} now={now} view={view} width={narrow ? 560 : 1168} height={196} windowSecs={WINDOW} turns={2} /> : <div className="loading">Loading…</div>}
+          {caption && (
+            <div className="helix-bridge" style={{ color: caption.color }}>
+              {caption.text}
+            </div>
+          )}
         </div>
 
         {h && (
@@ -247,8 +260,9 @@ export default function HelixOverview() {
                 <span className="card-meta">Aether</span>
               </div>
               <ErrorBanner error={recent.error} />
-              {recent.data && recent.data.length === 0 && <div className="empty">No transactions yet.</div>}
-              {recent.data?.slice(0, 7).map((t) => (
+              {recent.loading && !recent.data && <div className="loading">Loading…</div>}
+              {recent.data && recent.data.length === 0 && <div className="empty">No recent transactions.</div>}
+              {(Array.isArray(recent.data) ? recent.data : []).slice(0, 7).map((t) => (
                 <div key={t.hash} className="row hover" style={{ gridTemplateColumns: "minmax(0,1fr) 170px 110px 64px", gap: 14, padding: "14px 20px", fontSize: 13 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                     <span style={{ flex: "none", width: 8, height: 8, borderRadius: "50%", background: AETHER_COLOR }} />
