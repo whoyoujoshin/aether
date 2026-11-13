@@ -12,6 +12,7 @@ type Keeper struct {
 	storeKey storetypes.StoreKey
 	router   baseapp.MessageRouter
 	ak       AccountKeeper // key rotation; see WithAccountKeeper
+	bk       BankKeeper    // session keys' spending; see WithBankKeeper
 }
 
 func NewKeeper(cdc codec.Codec, storeKey storetypes.StoreKey, router baseapp.MessageRouter) Keeper {
