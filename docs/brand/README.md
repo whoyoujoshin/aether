@@ -30,13 +30,25 @@ Rounded app tile with bone Æ + signal middle bar on ink (except 16px favicon, w
 | `favicon-16.svg` | 16 | Favicon (one-ink) |
 | `favicon-16.png` | 16 | Favicon raster |
 
+## Marks (`marks/`)
+
+The Æ on its own, no tile. Same five-part grid as the sheet.
+
+| File | Use |
+|---|---|
+| `mark-color.svg` | Ink diagonals and bars, signal middle bar |
+| `mark-black.svg` | One-ink, all ink (`#1e1a16`) |
+| `mark-reversed.svg` | Bone diagonals and bars, signal middle bar (for ink backgrounds) |
+| `mark-white.svg` | One-ink, all bone (`#f2eee6`) |
+
 ## Lockups (`lockups/`)
 
 | File | Use |
 |---|---|
 | `lockup-horizontal-on-dark.svg` | Æ \| Aether on dark / ink backgrounds |
 | `lockup-horizontal-on-bone.svg` | Æ \| Aether on bone / light backgrounds |
-| `lockup-stacked.svg` | Æ over AETHER |
+| `lockup-stacked.svg` | Æ over AETHER, bone on ink |
+| `lockup-stacked-on-bone.svg` | Æ over AETHER, ink on bone |
 
 ## Palette
 
