@@ -36,8 +36,13 @@ import (
 // SessionKeyCapHeight switches this on. Fresh chains have it from block
 // 1. On the testnet it needs every validator on a build that has it: from
 // the height an older binary runs what this one refuses, so it splits at
-// the first such transaction. Placeholder until a height is chosen.
-const SessionKeyCapHeight int64 = 70_000_000
+// the first such transaction.
+//
+// On the testnet: 812,880, chosen 2026-11-13 at a tip of 733,035, about
+// 10:20 UTC on Wednesday 2026-11-18 at 5.66 s blocks, 720 blocks from each
+// seat boundary (docs/UPGRADE-SESSION-KEY-CAP.md). It adds no store, so
+// nothing halts at it. Earlier builds of this fix carried 70,000,000.
+const SessionKeyCapHeight int64 = 812_880
 
 // SessionKeyCapOn reports whether the rule is on at ctx's height.
 func SessionKeyCapOn(ctx sdk.Context) bool {
