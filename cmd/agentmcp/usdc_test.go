@@ -261,7 +261,7 @@ func usdcSchemesSeller(t *testing.T, f *fakeChain, usdc wallet.Asset, payout pay
 	g := &chainGrants{f: f, denom: usdc.Denom, collected: map[string]int64{}, grantAt: map[string]int64{}}
 	pw, err := paywall.New(paywall.Config{
 		PayTo: sellerAddr(), Price: math.NewInt(20_000), Asset: usdc, Network: chainID, Lookup: f.lookup,
-		Prepaid: &paywall.PrepaidConfig{Ledger: ledger, MinDeposit: math.NewInt(50_000), Payout: payout},
+		Prepaid: &paywall.PrepaidConfig{Ledger: ledger, Service: "weather", MinDeposit: math.NewInt(50_000), Payout: payout},
 		Pull:    &paywall.PullConfig{Ledger: ledger, Collector: g, Grantee: collectorAddr(), Grants: g.get},
 	})
 	require.NoError(t, err)

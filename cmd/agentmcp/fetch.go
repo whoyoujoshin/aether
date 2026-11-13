@@ -89,15 +89,27 @@ type fetchPaidOutput struct {
 }
 
 type fetchRecord struct {
-	URL       string    `json:"url"`
-	Method    string    `json:"method"`
-	BodyHash  string    `json:"bodyHash"`
-	Invoice   string    `json:"invoice"`
+	URL      string `json:"url"`
+	Method   string `json:"method"`
+	BodyHash string `json:"bodyHash"`
+	Invoice  string `json:"invoice"`
+	// Memo is what the payment carries: the invoice's SHA-256 from a
+	// server that names one (extra.memo), the invoice itself from an
+	// older server or in a record made before memos were hashed.
+	Memo      string    `json:"memo,omitempty"`
 	PayTo     string    `json:"payTo"`
 	Price     string    `json:"priceUaeth"`      // in Denom's base unit
 	Denom     string    `json:"denom,omitempty"` // "" for AETH
 	ExpiresAt time.Time `json:"expiresAt,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
+}
+
+// memo is what the payment of this invoice carries.
+func (r *fetchRecord) memo() string {
+	if r.Memo != "" {
+		return r.Memo
+	}
+	return r.Invoice
 }
 
 // sendKey is the send_aeth idempotency key paying this invoice. It
@@ -301,7 +313,13 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 		if req.Extra.Invoice == "" || len(req.Extra.Invoice) > maxMemoLength {
 			return nil, fetchPaidOutput{}, newError(codePaymentUnsupported, "the server's invoice is missing or too long for a memo")
 		}
-		rec = &fetchRecord{URL: in.URL, Method: method, BodyHash: bodyHash, Invoice: req.Extra.Invoice, PayTo: req.PayTo, Price: price.String(), Denom: recordDenom(asset), CreatedAt: time.Now()}
+		// A server that names a memo wants the invoice's hash on chain, so
+		// the invoice itself stays a secret between it and us; one that
+		// doesn't predates that and wants the invoice.
+		if req.Extra.Memo != "" && req.Extra.Memo != paywall.MemoFor(req.Extra.Invoice) {
+			return nil, fetchPaidOutput{}, newError(codePaymentUnsupported, "the server's memo isn't its invoice's SHA-256. Nothing was paid")
+		}
+		rec = &fetchRecord{URL: in.URL, Method: method, BodyHash: bodyHash, Invoice: req.Extra.Invoice, Memo: req.Extra.Memo, PayTo: req.PayTo, Price: price.String(), Denom: recordDenom(asset), CreatedAt: time.Now()}
 		if exp, err := time.Parse(time.RFC3339, req.Extra.ExpiresAt); err == nil {
 			rec.ExpiresAt = exp
 		}
@@ -327,7 +345,7 @@ func toolFetchPaid(ctx context.Context, _ *mcp.CallToolRequest, in fetchPaidInpu
 	price, _ := math.NewIntFromString(rec.Price)
 	asset := assetOfDenom(rec.Denom)
 	_, sent, err := toolSendAeth(ctx, nil, sendAethInput{
-		To: rec.PayTo, Amount: rec.Price + asset.BaseUnit, Memo: rec.Invoice, IdempotencyKey: rec.sendKey(in.IdempotencyKey),
+		To: rec.PayTo, Amount: rec.Price + asset.BaseUnit, Memo: rec.memo(), IdempotencyKey: rec.sendKey(in.IdempotencyKey),
 	})
 	if err != nil {
 		return nil, fetchPaidOutput{}, err

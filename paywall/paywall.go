@@ -106,6 +106,9 @@ func New(cfg Config) (*Paywall, error) {
 		if cfg.Prepaid.Ledger == nil {
 			return nil, errors.New("prepaid needs a ledger")
 		}
+		if !validService(cfg.Prepaid.Service) {
+			return nil, errors.New("prepaid needs a service name (letters, digits, '.', '_' or '-', at most 64): deposits name the service they're for, so one can't be credited at another paywall paying the same address")
+		}
 		if cfg.Prepaid.MinDeposit.IsNil() || cfg.Prepaid.MinDeposit.LT(cfg.Price) {
 			cfg.Prepaid.MinDeposit = cfg.Price
 		}
@@ -222,8 +225,8 @@ func (p *Paywall) Middleware(next http.Handler) http.Handler {
 			p.paymentRequired(w, r, ErrPaymentFailed, "transaction "+txHash+" failed on chain", "")
 			return
 		}
-		if detail.Memo != invoiceID {
-			p.paymentRequired(w, r, ErrMemoMismatch, "the transaction's memo must be exactly the invoice", "")
+		if detail.Memo != MemoFor(invoiceID) {
+			p.paymentRequired(w, r, ErrMemoMismatch, "the transaction's memo must be extra.memo, the invoice's SHA-256 (clients that put the invoice itself in the memo need updating)", "")
 			return
 		}
 		paid, payer := p.received(detail)
@@ -350,6 +353,7 @@ func (p *Paywall) paymentRequiredFor(w http.ResponseWriter, r *http.Request, cod
 			MaxTimeoutSeconds: int64(p.cfg.InvoiceTTL.Seconds()),
 			Extra: p.priced(Extra{
 				Invoice:      invoiceID,
+				Memo:         MemoFor(invoiceID),
 				ExpiresAt:    expiry.UTC().Format(time.RFC3339),
 				Instructions: p.text(instructions),
 			}),
@@ -359,7 +363,7 @@ func (p *Paywall) paymentRequiredFor(w http.ResponseWriter, r *http.Request, cod
 		prepaid := body.Accepts[0]
 		prepaid.Scheme = SchemePrepaid
 		prepaid.Extra = p.priced(Extra{
-			DepositMemo:  DepositMemoPrefix + "<address>",
+			DepositMemo:  DepositMemo(p.cfg.Prepaid.Service, "<address>"),
 			MinDeposit:   p.cfg.Prepaid.MinDeposit.String(),
 			Instructions: p.text(prepaidInstructions),
 		})

@@ -82,7 +82,7 @@ func (p *Paywall) serveExact(w http.ResponseWriter, r *http.Request, header stri
 		return
 	}
 	s := p.cfg.Exact.Settler.Settle(r.Context(), pay, p.exactRequirement())
-	if s.Transaction != "" {
+	if broadcastHere(s) {
 		p.noteExact(s.Transaction) // broadcast: from now on it may be redeemed here
 	}
 	if s.Success {
@@ -135,6 +135,28 @@ func (p *Paywall) serveExactPaid(w http.ResponseWriter, r *http.Request, next ht
 	if status := p.serveReceipted(w, r, next, bought); status >= 500 {
 		p.store.Release(key) // the server failed: the same payment may be used again
 	}
+}
+
+// broadcastHere reports a settlement in which this paywall's own broadcast
+// reached the chain: settled, or accepted and not yet in a block when the
+// settle gave up. A refusal never is, even if it names a hash: the same
+// signed payment, sent to two paywalls with the same payee and price, is
+// refused by the second ("already in the mempool", or its sequence used)
+// because the first broadcast it, and only the first may serve it
+// (GHSA-vwgw-c458-cm74).
+func broadcastHere(s x402.SettleResponse) bool {
+	if s.Transaction == "" {
+		return false
+	}
+	switch {
+	case s.Success:
+		return true
+	case s.ErrorReason == x402.ReasonTransactionState: // broadcast, no block before the timeout
+		return true
+	case s.ErrorReason == x402.ReasonUnexpectedSettle: // broadcast (or maybe), then the wait broke off
+		return true
+	}
+	return false
 }
 
 func (p *Paywall) noteExact(hash string) {

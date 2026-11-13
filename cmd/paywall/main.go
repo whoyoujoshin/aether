@@ -161,7 +161,11 @@ func main() {
 			log.Fatal(err)
 		}
 		prepaidFile = ledger
-		cfg.Prepaid = &paywall.PrepaidConfig{Ledger: ledger}
+		service := paywall.ServiceSlug(*name)
+		if service == "" {
+			log.Fatal("--prepaid-ledger needs --name: deposits name the service they're for, so one deposit can't be credited at another paywall paying the same address")
+		}
+		cfg.Prepaid = &paywall.PrepaidConfig{Ledger: ledger, Service: service}
 		if *minDeposit != "" {
 			cfg.Prepaid.MinDeposit = parseSame("--min-deposit", *minDeposit)
 		}

@@ -70,8 +70,9 @@ type agentState struct {
 	Events  []spendEvent            `json:"events"`
 	Sends   map[string]*sendRecord  `json:"sends,omitempty"`
 	Fetches map[string]*fetchRecord `json:"fetches,omitempty"` // fetch_paid's quoted invoices
-	// Prepaid holds a deposit per seller (payTo) not yet known to be
-	// credited.
+	// Prepaid holds a deposit per seller (payTo, and its service's
+	// deposit memo; payTo alone for a seller that names no service) not
+	// yet known to be credited.
 	Prepaid map[string]*prepaidDeposit `json:"prepaid,omitempty"`
 	// PrepaidBalances is each seller's (payTo) last report of what this
 	// agent has left with it.

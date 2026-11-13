@@ -99,7 +99,7 @@ func pullSeller(t *testing.T, f *fakeChain) (*httptest.Server, *atomic.Int32, *p
 	g := &chainGrants{f: f, denom: "uaeth", collected: map[string]int64{}, grantAt: map[string]int64{}}
 	pw, err := paywall.New(paywall.Config{
 		PayTo: sellerAddr(), Price: math.NewInt(20_000), Network: chainID, Lookup: f.lookup,
-		Prepaid: &paywall.PrepaidConfig{Ledger: ledger, MinDeposit: math.NewInt(50_000)},
+		Prepaid: &paywall.PrepaidConfig{Ledger: ledger, Service: "weather", MinDeposit: math.NewInt(50_000)},
 		Pull:    &paywall.PullConfig{Ledger: ledger, Collector: g, Grantee: collectorAddr(), Grants: g.get},
 	})
 	require.NoError(t, err)

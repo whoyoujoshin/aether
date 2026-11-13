@@ -78,7 +78,7 @@ func newWithdrawHarness(t *testing.T, ledgerPath string, payout Payout, asset ..
 	cfg := Config{
 		PayTo: seller(), Price: math.NewInt(10_000), Network: "aether-testnet-1",
 		Lookup: (&fakeLedger{txs: map[string]*wallet.TransactionDetail{}}).lookup, Now: func() time.Time { return h.now },
-		Prepaid: &PrepaidConfig{Ledger: led, MinDeposit: math.NewInt(30_000), Payout: payout},
+		Prepaid: &PrepaidConfig{Ledger: led, Service: "weather", MinDeposit: math.NewInt(30_000), Payout: payout},
 	}
 	if len(asset) > 0 {
 		cfg.Asset = asset[0]

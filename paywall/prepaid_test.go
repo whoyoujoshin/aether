@@ -49,7 +49,7 @@ func newPrepaidHarness(t *testing.T, payTo string, ledgerPath string) *prepaidHa
 	p, err := New(Config{
 		PayTo: payTo, Price: math.NewInt(10_000), Network: "aether-testnet-1",
 		Lookup: h.ledger.lookup, Now: func() time.Time { return h.now },
-		Prepaid: &PrepaidConfig{Ledger: led, MinDeposit: math.NewInt(30_000)},
+		Prepaid: &PrepaidConfig{Ledger: led, Service: "weather", MinDeposit: math.NewInt(30_000)},
 	})
 	require.NoError(t, err)
 	mux := http.NewServeMux()
@@ -128,7 +128,7 @@ func (h *prepaidHarness) refused(r signedReq, want string) PaymentRequired {
 }
 
 func (h *prepaidHarness) deposit(hash, beneficiary string, uaeth int64) {
-	h.ledger2().pay(hash, DepositMemoPrefix+beneficiary, h.payTo, uaeth, h.now, 0)
+	h.ledger2().pay(hash, DepositMemo("weather", beneficiary), h.payTo, uaeth, h.now, 0)
 }
 
 func (h *prepaidHarness) ledger2() *fakeLedger { return h.harness.ledger }
@@ -151,7 +151,7 @@ func TestPrepaid_DepositOnceThenPayPerRequestInstantly(t *testing.T) {
 	require.Len(t, pr.Accepts, 2)
 	pre := pr.Accepts[1]
 	require.Equal(t, SchemePrepaid, pre.Scheme)
-	require.Equal(t, "prepaid:<address>", pre.Extra.DepositMemo)
+	require.Equal(t, "prepaid:weather:<address>", pre.Extra.DepositMemo, "a deposit names the service it is for")
 	require.Equal(t, "30000", pre.Extra.MinDeposit)
 
 	// No balance yet.
@@ -258,13 +258,47 @@ func TestPrepaid_DepositsCreditOnlyTheNamedAccount(t *testing.T) {
 	require.Equal(t, "0", tb.String())
 
 	// Deposits below the minimum, to someone else, or with a bad memo don't count.
-	h.ledger2().pay("SMALL", DepositMemoPrefix+thief.address, seller(), 29_999, h.now, 0)
+	h.ledger2().pay("SMALL", DepositMemo("weather", thief.address), seller(), 29_999, h.now, 0)
 	h.refused(signedReq{key: thief, path: "/api/x", requestID: "a", deposit: "SMALL"}, ErrInsufficient)
-	h.ledger2().pay("ELSEWHERE", DepositMemoPrefix+thief.address, buyer(), 50_000, h.now, 0)
+	h.ledger2().pay("ELSEWHERE", DepositMemo("weather", thief.address), buyer(), 50_000, h.now, 0)
 	h.refused(signedReq{key: thief, path: "/api/x", requestID: "b", deposit: "ELSEWHERE"}, ErrInsufficient)
 	h.ledger2().pay("NOMEMO", "hello", seller(), 50_000, h.now, 0)
 	h.refused(signedReq{key: thief, path: "/api/x", requestID: "c", deposit: "NOMEMO"}, ErrInvalidDeposit)
 	h.refused(signedReq{key: thief, path: "/api/x", requestID: "d", deposit: "NOTYET"}, ErrNotConfirmed)
+
+	// A deposit for another service paying the same address keeps to that
+	// service's ledger, and one naming no service at all is refused: else
+	// one deposit was credited at every paywall paying the address
+	// (GHSA-xm9h-23fw-7c6c).
+	h.ledger2().pay("PULSEDEP", DepositMemo("pulse", thief.address), seller(), 50_000, h.now, 0)
+	h.refused(signedReq{key: thief, path: "/api/x", requestID: "e", deposit: "PULSEDEP"}, ErrInvalidDeposit)
+	h.ledger2().pay("OLDMEMO", DepositMemoPrefix+thief.address, seller(), 50_000, h.now, 0)
+	h.refused(signedReq{key: thief, path: "/api/x", requestID: "f", deposit: "OLDMEMO"}, ErrInvalidDeposit)
+	tb, _ = h.ledger.Balance(thief.address)
+	require.Equal(t, "0", tb.String())
+}
+
+func TestServiceSlug(t *testing.T) {
+	for name, want := range map[string]string{
+		"Aether block clock": "aether-block-clock", "  Weather!! API ": "weather-api", "pulse": "pulse",
+		"v1.2_beta": "v1.2_beta", "!!!": "", strings.Repeat("ab ", 40): strings.TrimRight(strings.Repeat("ab-", 22)[:64], "-"),
+	} {
+		got := ServiceSlug(name)
+		require.Equal(t, want, got, name)
+		if got != "" {
+			require.True(t, validService(got), got)
+		}
+	}
+}
+
+func TestPrepaid_NeedsAServiceName(t *testing.T) {
+	led, err := NewFileLedger("")
+	require.NoError(t, err)
+	for _, service := range []string{"", "a:b", "has space", strings.Repeat("x", 65)} {
+		_, err := New(Config{PayTo: seller(), Price: math.NewInt(1), Network: "n", Lookup: (&fakeLedger{}).lookup,
+			Prepaid: &PrepaidConfig{Ledger: led, Service: service}})
+		require.Error(t, err, "%q", service)
+	}
 }
 
 func TestPrepaid_ServerErrorRefunds(t *testing.T) {

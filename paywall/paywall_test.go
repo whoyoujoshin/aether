@@ -140,6 +140,7 @@ func TestPaywall_PayThenServeExactlyOnce(t *testing.T) {
 	require.Equal(t, "0.01", req.Extra.AmountAeth)
 	require.Equal(t, seller(), req.PayTo)
 	require.Less(t, len(req.Extra.Invoice), 256, "must fit in a memo")
+	require.Equal(t, MemoFor(req.Extra.Invoice), req.Extra.Memo, "the 402 names the memo to pay with")
 	require.Equal(t, h.srv.URL+"/weather", req.Resource)
 
 	// Not in a block yet: told to retry, with the same invoice.
@@ -151,7 +152,7 @@ func TestPaywall_PayThenServeExactlyOnce(t *testing.T) {
 	require.Equal(t, ErrNotConfirmed, pending.Error)
 	require.Equal(t, req.Extra.Invoice, pending.Accepts[0].Extra.Invoice)
 
-	h.ledger.pay("AB12", req.Extra.Invoice, seller(), 10_000, h.now.Add(time.Minute), 0)
+	h.ledger.pay("AB12", MemoFor(req.Extra.Invoice), seller(), 10_000, h.now.Add(time.Minute), 0)
 	resp, body = h.get("/weather", proof(req.Extra.Invoice, "ab12"))
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
 	require.Equal(t, "sunny, paid by "+buyer(), body)
@@ -170,26 +171,31 @@ func TestPaywall_RefusesWhatDidntPay(t *testing.T) {
 	inv := h.invoice("/weather").Extra.Invoice
 	at := h.now.Add(time.Minute)
 
-	h.ledger.pay("SHORT", inv, seller(), 9_999, at, 0)
+	h.ledger.pay("SHORT", MemoFor(inv), seller(), 9_999, at, 0)
 	h.expectRefusal(proof(inv, "SHORT"), ErrInsufficient)
 
-	h.ledger.pay("ELSEWHERE", inv, buyer(), 10_000, at, 0)
+	h.ledger.pay("ELSEWHERE", MemoFor(inv), buyer(), 10_000, at, 0)
 	h.expectRefusal(proof(inv, "ELSEWHERE"), ErrInsufficient)
 
 	h.ledger.pay("WRONGMEMO", "some other memo", seller(), 10_000, at, 0)
 	h.expectRefusal(proof(inv, "WRONGMEMO"), ErrMemoMismatch)
 
-	h.ledger.pay("FAILED", inv, seller(), 10_000, at, 5)
+	// The invoice itself in the memo is what old clients did: it put the
+	// bearer token on chain for anyone to present first (GHSA-pvjr-prhw-f4xf).
+	h.ledger.pay("PLAININVOICE", inv, seller(), 10_000, at, 0)
+	h.expectRefusal(proof(inv, "PLAININVOICE"), ErrMemoMismatch)
+
+	h.ledger.pay("FAILED", MemoFor(inv), seller(), 10_000, at, 5)
 	h.expectRefusal(proof(inv, "FAILED"), ErrPaymentFailed)
 
 	// Invoices are bound to this server, this resource and a deadline.
 	tampered := inv[:len(inv)-3] + "AAA"
-	h.ledger.pay("TAMPERED", tampered, seller(), 10_000, at, 0)
+	h.ledger.pay("TAMPERED", MemoFor(tampered), seller(), 10_000, at, 0)
 	h.expectRefusal(proof(tampered, "TAMPERED"), ErrInvalidInvoice)
 	h.expectRefusal(proof("made-up", "X"), ErrInvalidInvoice)
 
 	other := h.invoice("/other").Extra.Invoice
-	h.ledger.pay("OTHER", other, seller(), 10_000, at, 0)
+	h.ledger.pay("OTHER", MemoFor(other), seller(), 10_000, at, 0)
 	h.expectRefusal(proof(other, "OTHER"), ErrResourceMismatch)
 
 	h.expectRefusal("%%%not-base64", ErrInvalidPayment)
@@ -199,20 +205,20 @@ func TestPaywall_RefusesWhatDidntPay(t *testing.T) {
 	require.Zero(t, h.served)
 
 	// ...and after all that the invoice is still good for a real payment.
-	h.ledger.pay("GOOD", inv, seller(), 12_000, at, 0)
+	h.ledger.pay("GOOD", MemoFor(inv), seller(), 12_000, at, 0)
 	resp, _ := h.get("/weather", proof(inv, "GOOD"))
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// A payment that took hours to confirm is still served...
 	inv2 := h.invoice("/weather").Extra.Invoice
-	h.ledger.pay("SLOW", inv2, seller(), 10_000, h.now.Add(6*time.Hour), 0)
+	h.ledger.pay("SLOW", MemoFor(inv2), seller(), 10_000, h.now.Add(6*time.Hour), 0)
 	h.now = h.now.Add(6 * time.Hour)
 	resp, _ = h.get("/weather", proof(inv2, "SLOW"))
 	require.Equal(t, http.StatusOK, resp.StatusCode, "slow confirmation must not forfeit a payment")
 
 	// ...but an invoice presented after its 24h lifetime is dead.
 	inv3 := h.invoice("/weather").Extra.Invoice
-	h.ledger.pay("STALE", inv3, seller(), 10_000, h.now, 0)
+	h.ledger.pay("STALE", MemoFor(inv3), seller(), 10_000, h.now, 0)
 	h.now = h.now.Add(24*time.Hour + time.Second)
 	h.expectRefusal(proof(inv3, "STALE"), ErrInvoiceExpired)
 }
@@ -220,7 +226,7 @@ func TestPaywall_RefusesWhatDidntPay(t *testing.T) {
 func TestPaywall_ServerErrorLetsThePaymentBeReused(t *testing.T) {
 	h := newHarness(t)
 	inv := h.invoice("/weather").Extra.Invoice
-	h.ledger.pay("P", inv, seller(), 10_000, h.now, 0)
+	h.ledger.pay("P", MemoFor(inv), seller(), 10_000, h.now, 0)
 
 	h.fail = true
 	resp, _ := h.get("/weather", proof(inv, "P"))
@@ -239,9 +245,14 @@ func TestPaywall_NodeDownIsNotAPaymentVerdict(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 
 	h.ledger.err = nil
-	h.ledger.pay("P", inv, seller(), 10_000, h.now, 0)
+	h.ledger.pay("P", MemoFor(inv), seller(), 10_000, h.now, 0)
 	resp, _ = h.get("/weather", proof(inv, "P"))
 	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// The same value is pinned in the TS and Python clients' tests.
+func TestMemoFor_IsTheInvoicesSHA256(t *testing.T) {
+	require.Equal(t, "93966cdf82d25a9e7c939d63256d384c7cf1e3d082e497f66c524c8379373d8e", MemoFor("x402-AAAA"))
 }
 
 func TestInvoice_DifferentSecretRejected(t *testing.T) {

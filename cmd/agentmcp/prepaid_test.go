@@ -21,7 +21,7 @@ func prepaidSeller(t *testing.T, f *fakeChain) (*httptest.Server, *atomic.Int32,
 	require.NoError(t, err)
 	pw, err := paywall.New(paywall.Config{
 		PayTo: sellerAddr(), Price: math.NewInt(20_000), Network: chainID, Lookup: f.lookup,
-		Prepaid: &paywall.PrepaidConfig{Ledger: ledger, MinDeposit: math.NewInt(50_000)},
+		Prepaid: &paywall.PrepaidConfig{Ledger: ledger, Service: "weather", MinDeposit: math.NewInt(50_000)},
 	})
 	require.NoError(t, err)
 	var served atomic.Int32
@@ -55,7 +55,7 @@ func TestFetchPaid_PrepaidDepositsOnceThenPaysInstantly(t *testing.T) {
 	memo, _ := decode(t, f.broadcasts[0])
 	w, _ := newWallet()
 	agent, _ := getOrCreateAgentAccount(w)
-	require.Equal(t, "prepaid:"+agent.Address, memo)
+	require.Equal(t, "prepaid:weather:"+agent.Address, memo, "the deposit names the service it is for")
 	require.Equal(t, int64(100_000), spent(t), "the deposit counts against the daily budget")
 
 	// The next four draw on the balance: no transactions at all.

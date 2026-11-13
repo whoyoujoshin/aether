@@ -4,13 +4,19 @@
 //
 //  1. A request without payment gets 402 and a PaymentRequired body
 //     naming the price, the address to pay and a one-time invoice ID.
-//  2. The client sends that amount to that address with the invoice ID
-//     as the transaction memo -- from any wallet, so humans can pay
-//     too -- and waits for it to be in a block.
+//  2. The client sends that amount to that address with the invoice's
+//     SHA-256 (MemoFor, given as extra.memo) as the transaction memo --
+//     from any wallet, so humans can pay too -- and waits for it to be
+//     in a block.
 //  3. It repeats the request with an X-PAYMENT header carrying the
 //     invoice ID and transaction hash. The server looks the
 //     transaction up on chain and, if it paid this invoice, serves
 //     the request exactly once.
+//
+// The invoice itself never goes on chain, only its hash, so whoever sees
+// the payment there can't present it: the invoice reached only the
+// client that asked (GHSA-pvjr-prhw-f4xf, where the memo was the invoice
+// and anyone watching the chain could redeem it first).
 //
 // Unlike x402's "exact" scheme on EVM chains, the client broadcasts the
 // payment itself and nothing is signed for the server to settle, so no
@@ -32,8 +38,11 @@
 package paywall
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"strings"
 )
 
 const (
@@ -44,7 +53,7 @@ const (
 	SchemePrepaid = "aether-prepaid"
 	// SchemePull charges requests to an allowance the buyer granted.
 	SchemePull = "aether-pull"
-	// DepositMemoPrefix + the account to credit is a deposit's memo.
+	// DepositMemoPrefix starts a deposit's memo: DepositMemo.
 	DepositMemoPrefix = "prepaid:"
 	// Asset is the denom prices are stated in unless Config.Asset says
 	// otherwise: AETH's.
@@ -107,9 +116,11 @@ type PaymentRequirements struct {
 
 // Extra carries the schemes' own fields.
 type Extra struct {
-	// aether-memo: Invoice is the memo the payment must carry, and what
-	// X-PAYMENT must name.
+	// aether-memo: Invoice is what X-PAYMENT must name. Keep it to
+	// yourself until then: the payment's memo carries Memo, its SHA-256
+	// (MemoFor), never the invoice.
 	Invoice string `json:"invoice,omitempty"`
+	Memo    string `json:"memo,omitempty"`
 	// Symbol and Amount state the price in the asset's own unit ("USDC",
 	// "0.05"). AmountAeth is the same for an AETH price, and absent for
 	// any other asset.
@@ -164,6 +175,64 @@ type SettlementResponse struct {
 	Allowance string `json:"allowance,omitempty"`
 }
 
+// DepositMemo is the memo of an aether-prepaid deposit crediting account at
+// service: "prepaid:<service>:<account>". It names the service because
+// several paywalls, each with its own ledger, may share a payee: a deposit
+// naming only the account was credited at every one of them
+// (GHSA-xm9h-23fw-7c6c).
+func DepositMemo(service, account string) string {
+	return DepositMemoPrefix + service + ":" + account
+}
+
+// ServiceSlug turns a service's display name into a prepaid service name:
+// lower case, with each run of anything but letters, digits, '.' and '_'
+// made one '-', at most 64 long ("Aether block clock" → "aether-block-clock").
+// It is "" for a name with nothing usable in it.
+func ServiceSlug(name string) string {
+	var b strings.Builder
+	dash := false
+	for _, c := range strings.ToLower(name) {
+		ok := c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '.' || c == '_'
+		if !ok {
+			dash = b.Len() > 0
+			continue
+		}
+		if dash {
+			b.WriteByte('-')
+			dash = false
+		}
+		b.WriteRune(c)
+	}
+	s := b.String()
+	if len(s) > 64 {
+		s = strings.TrimRight(s[:64], "-")
+	}
+	return s
+}
+
+// validService is a prepaid service name: no ':' (it ends the name in a
+// deposit's memo), nothing a person can't type.
+func validService(s string) bool {
+	if s == "" || len(s) > 64 {
+		return false
+	}
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '_', c == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// MemoFor is the memo an aether-memo payment of invoice carries: the
+// invoice's SHA-256, lowercase hex.
+func MemoFor(invoice string) string {
+	h := sha256.Sum256([]byte(invoice))
+	return hex.EncodeToString(h[:])
+}
+
 // EncodeMemoPayment builds an aether-memo X-PAYMENT header value.
 func EncodeMemoPayment(network, invoice, txHash string) (string, error) {
 	return encodePayment(Scheme, network, MemoPayment{Invoice: invoice, TxHash: txHash})
@@ -195,7 +264,7 @@ func DecodeHeader(s string, v any) error {
 	return json.Unmarshal(bz, v)
 }
 
-const instructions = "Send maxAmountRequired uaeth to payTo with memo set to exactly this invoice, wait until the transaction is in a block, " +
+const instructions = "Send maxAmountRequired uaeth to payTo with memo set to exactly extra.memo (the lowercase hex SHA-256 of the invoice; never put the invoice itself in the memo), wait until the transaction is in a block, " +
 	"then repeat this request with header X-PAYMENT: base64 of the JSON " +
 	`{"x402Version":1,"scheme":"aether-memo","network":"<network>","payload":{"invoice":"<invoice>","txHash":"<hash>"}}. ` +
 	"Each invoice pays for one response, and must be presented by expiresAt."

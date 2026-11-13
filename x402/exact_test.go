@@ -307,6 +307,7 @@ func TestSettleReportsARefusal(t *testing.T) {
 	got := f.Settle(ctx, payloadFor(req, tx), req)
 	require.False(t, got.Success)
 	require.Equal(t, ReasonInsufficientFunds, got.ErrorReason)
+	require.Empty(t, got.Transaction, "a refusal at CheckTx put nothing on chain, so it names no transaction")
 
 	// Refused at CheckTx moves nothing, so the same payment may be tried again.
 	chain.checkCode, chain.checkLog = 0, ""
@@ -319,6 +320,31 @@ func TestSettleReportsARefusal(t *testing.T) {
 	got = f2.Settle(ctx, payloadFor(req, tx), req)
 	require.False(t, got.Success)
 	require.Equal(t, ReasonSettlementRejected, got.ErrorReason)
+}
+
+// Two paywalls with the same payee and price each settle the same signed
+// payment through their own facilitator. The second broadcast is refused
+// because the first is in the mempool (code 19): it must not report the
+// transaction as its own, or that paywall would serve it once it lands
+// (GHSA-vwgw-c458-cm74).
+func TestSettleDoesNotClaimSomeoneElsesBroadcast(t *testing.T) {
+	s := newSigner(t)
+	req := requirement()
+	ctx := context.Background()
+	tx := s.sign(t, []sdk.Msg{send(s.addr, payTo, sdk.NewCoins(sdk.NewInt64Coin("uaeth", 500)))}, 7, 3, 0)
+
+	second := &fakeChain{number: 7, sequence: 3, height: 100, checkCode: 19, checkLog: "tx already in mempool"}
+	f := NewFacilitator(testChain, second)
+	f.PollInterval = time.Millisecond
+	got := f.Settle(ctx, payloadFor(req, tx), req)
+	require.False(t, got.Success)
+	require.Empty(t, got.Transaction)
+
+	used := &fakeChain{number: 7, sequence: 3, height: 100, checkCode: 32, checkLog: "account sequence mismatch, expected 4, got 3: incorrect account sequence"}
+	f = NewFacilitator(testChain, used)
+	got = f.Settle(ctx, payloadFor(req, tx), req)
+	require.Equal(t, ReasonSequence, got.ErrorReason)
+	require.Empty(t, got.Transaction)
 }
 
 // The clients' send vector (clients/testdata/vectors.json, which the TS

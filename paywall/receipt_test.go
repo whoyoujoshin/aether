@@ -35,7 +35,7 @@ func newReceiptHarness(t *testing.T, receipts func(payee agentKey) *ReceiptConfi
 	p, err := New(Config{
 		PayTo: h.payee.address, Price: math.NewInt(10_000), Network: "aether-testnet-1",
 		Lookup: h.ledger.lookup, Now: func() time.Time { return h.now },
-		Prepaid:  &PrepaidConfig{Ledger: led, MinDeposit: math.NewInt(30_000)},
+		Prepaid:  &PrepaidConfig{Ledger: led, Service: "weather", MinDeposit: math.NewInt(30_000)},
 		Receipts: receipts(h.payee),
 	})
 	require.NoError(t, err)
@@ -66,7 +66,7 @@ func (h *receiptHarness) payMemo(path, body string) (*http.Response, string, str
 	inv := pr.Accepts[0].Extra.Invoice
 	hash := fmt.Sprintf("TX%d", time.Now().UnixNano())
 	h.ledger.mu.Lock()
-	h.ledger.txs[hash] = &wallet.TransactionDetail{Hash: hash, Memo: inv, Transfers: []wallet.Transfer{{From: buyer(), To: h.payee.address, Amount: "10000uaeth"}}}
+	h.ledger.txs[hash] = &wallet.TransactionDetail{Hash: hash, Memo: MemoFor(inv), Transfers: []wallet.Transfer{{From: buyer(), To: h.payee.address, Amount: "10000uaeth"}}}
 	h.ledger.mu.Unlock()
 	req, _ := http.NewRequest(http.MethodPost, h.srv.URL+path, strings.NewReader(body))
 	req.Header.Set(HeaderPayment, proof(inv, hash))
@@ -114,7 +114,7 @@ func TestReceipt_CoversTheRequestPaymentAndResponse(t *testing.T) {
 func TestReceipt_Prepaid(t *testing.T) {
 	h := newReceiptHarness(t, payeeSigns)
 	agent := newAgentKey(t)
-	h.ledger.pay("DEP1", DepositMemoPrefix+agent.address, h.payee.address, 50_000, h.now, 0)
+	h.ledger.pay("DEP1", DepositMemo("weather", agent.address), h.payee.address, 50_000, h.now, 0)
 	body := `{"q":1}`
 	host := strings.TrimPrefix(h.srv.URL, "http://")
 	header, err := EncodePrepaidPayment(agent.address, RequestFields{
@@ -207,7 +207,7 @@ func TestReceipt_BigAndFailedResponses(t *testing.T) {
 func TestReceipt_OffByDefault(t *testing.T) {
 	h := newHarness(t)
 	req := h.invoice("/weather")
-	h.ledger.pay("H1", req.Extra.Invoice, seller(), 10_000, h.now, 0)
+	h.ledger.pay("H1", MemoFor(req.Extra.Invoice), seller(), 10_000, h.now, 0)
 	resp, _ := h.get("/weather", proof(req.Extra.Invoice, "H1"))
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Empty(t, resp.Header.Get(HeaderReceipt))

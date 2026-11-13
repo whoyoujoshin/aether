@@ -20,6 +20,52 @@ export const SCHEME_MEMO = "aether-memo";
 export const SCHEME_PREPAID = "aether-prepaid";
 export const SCHEME_PULL = "aether-pull";
 export const DEPOSIT_MEMO_PREFIX = "prepaid:";
+
+/**
+ * The memo of an aether-prepaid deposit crediting account at service:
+ * "prepaid:<service>:<account>". It names the service, since several paywalls
+ * with their own ledgers may share a payee (GHSA-xm9h-23fw-7c6c).
+ */
+export function depositMemo(service: string, account: string): string {
+  return `${DEPOSIT_MEMO_PREFIX}${service}:${account}`;
+}
+
+/** A display name as a prepaid service name, as Go's paywall.ServiceSlug ("Aether block clock" → "aether-block-clock"). */
+export function serviceSlug(name: string): string {
+  let out = "";
+  let dash = false;
+  for (const c of name.toLowerCase()) {
+    if (!/^[a-z0-9._]$/.test(c)) {
+      dash = out.length > 0;
+      continue;
+    }
+    if (dash) out += "-";
+    dash = false;
+    out += c;
+  }
+  return out.length > 64 ? out.slice(0, 64).replace(/-+$/, "") : out;
+}
+
+/** The deposit memo a seller's 402 asks for, filled in for account; "prepaid:" + account from a seller that names none. */
+function depositMemoFrom(req: PaymentRequirements, account: string): string {
+  const t = req.extra.depositMemo;
+  if (t === undefined || t === "") return DEPOSIT_MEMO_PREFIX + account;
+  if (!t.startsWith(DEPOSIT_MEMO_PREFIX) || !t.endsWith("<address>") || t.split("<address>").length !== 2) {
+    throw new PaymentError("PAYMENT_UNSUPPORTED", `the server's depositMemo ${JSON.stringify(t)} isn't "prepaid:...<address>". Nothing was paid`);
+  }
+  const memo = t.slice(0, -"<address>".length) + account;
+  if (memo.length > 256) throw new PaymentError("PAYMENT_UNSUPPORTED", "the server's depositMemo is too long for a memo. Nothing was paid");
+  return memo;
+}
+
+/**
+ * The memo an aether-memo payment of invoice carries: its SHA-256, lowercase
+ * hex. The invoice itself never goes on chain, where anyone could present it
+ * first (GHSA-pvjr-prhw-f4xf).
+ */
+export function memoFor(invoice: string): string {
+  return bytesToHex(sha256(new TextEncoder().encode(invoice)));
+}
 const SIGNING_DOMAIN = "aether-prepaid-request/v1\n";
 const PULL_SIGNING_DOMAIN = "aether-pull-request/v1\n";
 /** How long an allowance fetchPaid grants lasts. */
@@ -37,7 +83,7 @@ export interface PaymentRequirements {
   extra: {
     /** symbol and amount state the price in the asset's own unit ("USDC", "0.05"); amountAeth is set only for an AETH price. */
     symbol?: string; amount?: string;
-    invoice?: string; amountAeth?: string; expiresAt?: string; depositMemo?: string; minDeposit?: string; balance?: string; withdrawPath?: string;
+    invoice?: string; memo?: string; amountAeth?: string; expiresAt?: string; depositMemo?: string; minDeposit?: string; balance?: string; withdrawPath?: string;
     /** aether-pull: grant this address the allowance; credit is the most owed before collection; owed is what you owe now. */
     grantee?: string; credit?: string; owed?: string;
   };
@@ -232,7 +278,13 @@ export async function fetchPaid(client: AetherClient, key: Key, url: string, opt
   }
   const price = parseUaeth(memo.maxAmountRequired);
   if (price > maxAmount) throw new PaymentError("PRICE_EXCEEDS_MAX", `the server asks ${formatAmount(asset, price)}; maxAmount is ${formatAmount(asset, maxAmount)}. Nothing was paid`);
-  const sent = await client.send(key, memo.payTo, `${price}${asset.baseUnit}`, { memo: memo.extra.invoice });
+  // A server that names a memo wants the invoice's hash on chain; one that
+  // doesn't predates that and wants the invoice itself.
+  const txMemo = memo.extra.memo ?? memo.extra.invoice;
+  if (memo.extra.memo !== undefined && memo.extra.memo !== memoFor(memo.extra.invoice)) {
+    throw new PaymentError("PAYMENT_UNSUPPORTED", "the server's memo isn't its invoice's SHA-256. Nothing was paid");
+  }
+  const sent = await client.send(key, memo.payTo, `${price}${asset.baseUnit}`, { memo: txMemo });
   if (sent.status === "failed") throw new PaymentError("TX_REJECTED", `the payment was rejected: ${sent.log}`, sent.hash);
   const conf = await client.waitForTransaction(sent.hash, opts.confirmTimeoutMs ?? 150_000);
   if (conf.status === "failed") throw new PaymentError("TX_FAILED", `the payment failed on chain: ${conf.log}`, sent.hash);
@@ -290,7 +342,7 @@ async function fetchPrepaid(
   let pr = (await resp.json()) as PaymentRequired;
   if (pr.error !== "insufficient_balance") throw new PaymentError(pr.error === "invoice_already_redeemed" ? "PAYMENT_ALREADY_REDEEMED" : "PAYMENT_REJECTED", `${pr.error}: ${pr.message ?? ""}`);
 
-  const dep = await client.send(key, req.payTo, `${prepay}${asset.baseUnit}`, { memo: DEPOSIT_MEMO_PREFIX + key.address });
+  const dep = await client.send(key, req.payTo, `${prepay}${asset.baseUnit}`, { memo: depositMemoFrom(req, key.address) });
   if (dep.status === "failed") throw new PaymentError("TX_REJECTED", `the deposit was rejected: ${dep.log}`, dep.hash);
   const conf = await client.waitForTransaction(dep.hash, opts.confirmTimeoutMs ?? 150_000);
   if (conf.status === "failed") throw new PaymentError("TX_FAILED", `the deposit failed on chain: ${conf.log}`, dep.hash);
