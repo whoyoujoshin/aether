@@ -68,3 +68,40 @@ func commitAt(c *Chain, h int64) (*cmttypes.Commit, error) {
 func valSetFromProto(p *cmtproto.ValidatorSet) (*cmttypes.ValidatorSet, error) {
 	return cmttypes.ValidatorSetFromProto(p)
 }
+
+// UpdateClientToTip moves dst's client clientID (which tracks src) up to
+// src's tip as of the call, signing each update with dst's key. Each step
+// goes as far as the trusted validators allow (UpdateClientMsg), so a
+// client that has fallen far behind takes a few. report is told each
+// step's trusted height and new height.
+func UpdateClientToTip(src, dst *Chain, clientID string, maxSteps int, report func(from, to uint64)) error {
+	tip, err := src.LatestHeight()
+	if err != nil {
+		return fmt.Errorf("%s: %w", src.Name, err)
+	}
+	for i := 0; i < maxSteps; i++ {
+		cs, err := clientStateOf(dst, clientID)
+		if err != nil {
+			return err
+		}
+		if !cs.FrozenHeight.IsZero() {
+			return fmt.Errorf("client %s is frozen at %s", clientID, cs.FrozenHeight)
+		}
+		from := cs.LatestHeight.RevisionHeight
+		if from >= uint64(tip) {
+			return nil
+		}
+		msg, to, err := UpdateClientMsg(src, dst, clientID)
+		if err != nil {
+			return err
+		}
+		if _, err := dst.SignAndBroadcast(msg); err != nil {
+			return fmt.Errorf("%s: updating %s from %d to %d: %w", dst.Name, clientID, from, to.RevisionHeight, err)
+		}
+		report(from, to.RevisionHeight)
+		if to.RevisionHeight >= uint64(tip) {
+			return nil
+		}
+	}
+	return fmt.Errorf("client %s not at %s's height %d after %d updates", clientID, src.Name, tip, maxSteps)
+}

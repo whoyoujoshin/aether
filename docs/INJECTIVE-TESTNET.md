@@ -322,3 +322,24 @@ console (first `bind 'set enable-bracketed-paste off'`):
   `aetherd-old.exe` and the old `app.toml` (remove the `[helicase]`
   section), start it again, and tell Claude. The other three keep the
   chain going meanwhile.
+- **Aether's client of Injective stops moving** (`07-tendermint-2`'s
+  `latest_height` the same for hours while Injective's grows; found
+  2026-11-12, stuck at 147,013,626 since 11-04): bring it up by hand from
+  any machine, no validator involved. It needs only a funded Aether key
+  and reads Injective over RPC, so no Injective key:
+
+  ```powershell
+  .\relayer.exe -update-client 07-tendermint-2 `
+    -aether-rpc https://rpc.157-245-252-221.sslip.io:443 -aether-grpc grpc.157-245-252-221.sslip.io:443 `
+    -aether-chain-id aether-testnet-1 -aether-home C:\aether-keys\<keyring dir> -aether-key <key name> -keyring-backend file `
+    -cparty-rpc https://injective-testnet-rpc.polkachu.com:443 -cparty-chain-id injective-888
+  ```
+
+  It prints each step (`07-tendermint-2: 147013626 -> …`) and ends with
+  "is at the counterparty's tip". If Injective's validators changed too
+  much for one jump, it steps through intermediate heights
+  (`relayer/bisect.go`), at most `-update-max-steps` (30) updates. The
+  RPC must keep full history (Polkachu does): the first step needs the
+  validator set just after the client's last height. Build `relayer.exe`
+  from `main` (62f1f17 or later) on a workstation:
+  `go build -o relayer.exe ./cmd/relayer`.
