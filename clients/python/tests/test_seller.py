@@ -14,7 +14,7 @@ import urllib.request
 from wsgiref.simple_server import WSGIRequestHandler, make_server
 
 from aether_client import (PUBKEY_TYPE_URL, WITHDRAW_PATH, AetherClient, FileLedger, Key, Paywall, PaymentError, build_send,
-                           create_receipt_delegation, delegation_signing_message, fetch_paid, memo_payment_header,
+                           create_receipt_delegation, delegation_signing_message, fetch_paid, memo_for, memo_payment_header,
                            prepaid_payment_header, receipt_signing_message, signing_message, verify_receipt, withdraw_prepaid)
 from aether_client.proto import Writer, first
 from aether_client.rpc import RpcError
@@ -194,9 +194,9 @@ class SellerTest(unittest.TestCase):
         def present(h):
             return s.request("/forecast", headers={"X-PAYMENT": memo_payment_header(CHAIN, invoice, h)})
         # The same number of uaeth is not a USDC payment.
-        in_aeth = s.chain.pay(s.seller.address, 50_000, invoice)
+        in_aeth = s.chain.pay(s.seller.address, 50_000, memo_for(invoice))
         self.assertEqual(json.loads(present(in_aeth)[2])["error"], "insufficient_payment")
-        h = s.chain.pay(s.seller.address, 50_000, invoice, denom=denom)
+        h = s.chain.pay(s.seller.address, 50_000, memo_for(invoice), denom=denom)
         status, headers, _ = present(h)
         self.assertEqual(status, 200)
         receipt = json.loads(base64.b64decode(headers["X-PAYMENT-RECEIPT"]))
@@ -214,20 +214,24 @@ class SellerTest(unittest.TestCase):
         self.assertEqual(s.served[-1].balance_uaeth, 150_000, "balances are in uusdc")
         self.assertEqual(json.loads(post(s.signed(agent, "r2", max_price=49_999))[2])["error"], "price_above_signed_max")
 
+    def test_memo_is_the_invoices_sha256(self):
+        # the same value is pinned in the Go and TS tests
+        self.assertEqual(memo_for("x402-AAAA"), "93966cdf82d25a9e7c939d63256d384c7cf1e3d082e497f66c524c8379373d8e")
+
     def test_memo_payment_served_once(self):
         s = self.s = Seller()
         inv = json.loads(s.request("/forecast")[2])["accepts"][0]["extra"]["invoice"]
 
         def present(h, invoice=inv, path="/forecast"):
             return s.request(path, {"X-PAYMENT": memo_payment_header(CHAIN, invoice, h)})
-        unseen = s.chain.pay(s.seller.address, 10_000, inv)
+        unseen = s.chain.pay(s.seller.address, 10_000, memo_for(inv))
         del s.chain.txs[unseen]
         status, headers, body = present(unseen)
         self.assertEqual(json.loads(body)["error"], "payment_not_confirmed")
         self.assertEqual(json.loads(body)["accepts"][0]["extra"]["invoice"], inv)
         self.assertEqual(headers.get("Retry-After"), "10")
 
-        h = s.chain.pay(s.seller.address, 10_000, inv)
+        h = s.chain.pay(s.seller.address, 10_000, memo_for(inv))
         status, headers, _ = present(h)
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(base64.b64decode(headers["X-PAYMENT-RESPONSE"]))["transaction"], h)
@@ -236,19 +240,21 @@ class SellerTest(unittest.TestCase):
         self.assertEqual(json.loads(present(h, path="/other")[2])["error"], "invoice_for_other_resource")
 
         inv2 = json.loads(s.request("/forecast")[2])["accepts"][0]["extra"]["invoice"]
-        for h2, want in [(s.chain.pay(s.seller.address, 9_999, inv2), "insufficient_payment"),
+        for h2, want in [(s.chain.pay(s.seller.address, 9_999, memo_for(inv2)), "insufficient_payment"),
                          (s.chain.pay(s.seller.address, 10_000, "other"), "memo_mismatch"),
-                         (s.chain.pay(s.seller.address, 10_000, inv2, code=5), "payment_failed")]:
+                         # the invoice itself in the memo (old clients) is a bearer token on chain: refused
+                         (s.chain.pay(s.seller.address, 10_000, inv2), "memo_mismatch"),
+                         (s.chain.pay(s.seller.address, 10_000, memo_for(inv2), code=5), "payment_failed")]:
             self.assertEqual(json.loads(present(h2, inv2)[2])["error"], want)
         forged = inv2[:-2] + ("AB" if inv2.endswith("AA") else "AA")
         self.assertEqual(json.loads(present(h, forged)[2])["error"], "invalid_invoice")
         s.t += 25 * 3600
-        self.assertEqual(json.loads(present(s.chain.pay(s.seller.address, 10_000, inv2), inv2)[2])["error"], "invoice_expired")
+        self.assertEqual(json.loads(present(s.chain.pay(s.seller.address, 10_000, memo_for(inv2)), inv2)[2])["error"], "invoice_expired")
 
     def test_failed_response_frees_the_payment(self):
         s = self.s = Seller(fail_with=503)
         inv = json.loads(s.request("/forecast")[2])["accepts"][0]["extra"]["invoice"]
-        h = {"X-PAYMENT": memo_payment_header(CHAIN, inv, s.chain.pay(s.seller.address, 10_000, inv))}
+        h = {"X-PAYMENT": memo_payment_header(CHAIN, inv, s.chain.pay(s.seller.address, 10_000, memo_for(inv)))}
         self.assertEqual(s.request("/forecast", h)[0], 503)
         self.assertEqual(s.request("/forecast", h)[0], 503)
 

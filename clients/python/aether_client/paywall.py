@@ -30,6 +30,13 @@ SCHEME_MEMO = "aether-memo"
 SCHEME_PREPAID = "aether-prepaid"
 SCHEME_PULL = "aether-pull"
 DEPOSIT_MEMO_PREFIX = "prepaid:"
+
+
+def memo_for(invoice: str) -> str:
+    """The memo an aether-memo payment of invoice carries: its SHA-256,
+    lowercase hex. The invoice itself never goes on chain, where anyone could
+    present it first (GHSA-pvjr-prhw-f4xf)."""
+    return hashlib.sha256(invoice.encode()).hexdigest()
 PULL_GRANT_SECONDS = 7 * 86_400  # how long an allowance fetch_paid grants lasts
 _SIGNING_DOMAIN = "aether-prepaid-request/v1\n"
 _PULL_SIGNING_DOMAIN = "aether-pull-request/v1\n"
@@ -242,7 +249,14 @@ def fetch_paid(client: AetherClient, key: Key, url: str, *, max_amount: str, pre
     if price > maximum:
         raise PaymentError("PRICE_EXCEEDS_MAX", f"the server asks {format_amount(asset, price)}; max_amount is {format_amount(asset, maximum)}. Nothing was paid")
     invoice = memo["extra"]["invoice"]
-    sent = client.send(key, memo["payTo"], f"{price}{asset.base_unit}", memo=invoice)
+    # A server that names a memo wants the invoice's hash on chain; one that
+    # doesn't predates that and wants the invoice itself.
+    tx_memo = memo["extra"].get("memo")
+    if tx_memo is None:
+        tx_memo = invoice
+    elif tx_memo != memo_for(invoice):
+        raise PaymentError("PAYMENT_UNSUPPORTED", "the server's memo isn't its invoice's SHA-256. Nothing was paid")
+    sent = client.send(key, memo["payTo"], f"{price}{asset.base_unit}", memo=tx_memo)
     if sent.status == "failed":
         raise PaymentError("TX_REJECTED", f"the payment was rejected: {sent.log}", sent.hash)
     conf = client.wait_for_transaction(sent.hash, timeout=confirm_timeout)

@@ -222,8 +222,8 @@ func (p *Paywall) Middleware(next http.Handler) http.Handler {
 			p.paymentRequired(w, r, ErrPaymentFailed, "transaction "+txHash+" failed on chain", "")
 			return
 		}
-		if detail.Memo != invoiceID {
-			p.paymentRequired(w, r, ErrMemoMismatch, "the transaction's memo must be exactly the invoice", "")
+		if detail.Memo != MemoFor(invoiceID) {
+			p.paymentRequired(w, r, ErrMemoMismatch, "the transaction's memo must be extra.memo, the invoice's SHA-256 (clients that put the invoice itself in the memo need updating)", "")
 			return
 		}
 		paid, payer := p.received(detail)
@@ -350,6 +350,7 @@ func (p *Paywall) paymentRequiredFor(w http.ResponseWriter, r *http.Request, cod
 			MaxTimeoutSeconds: int64(p.cfg.InvoiceTTL.Seconds()),
 			Extra: p.priced(Extra{
 				Invoice:      invoiceID,
+				Memo:         MemoFor(invoiceID),
 				ExpiresAt:    expiry.UTC().Format(time.RFC3339),
 				Instructions: p.text(instructions),
 			}),

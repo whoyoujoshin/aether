@@ -4,13 +4,19 @@
 //
 //  1. A request without payment gets 402 and a PaymentRequired body
 //     naming the price, the address to pay and a one-time invoice ID.
-//  2. The client sends that amount to that address with the invoice ID
-//     as the transaction memo -- from any wallet, so humans can pay
-//     too -- and waits for it to be in a block.
+//  2. The client sends that amount to that address with the invoice's
+//     SHA-256 (MemoFor, given as extra.memo) as the transaction memo --
+//     from any wallet, so humans can pay too -- and waits for it to be
+//     in a block.
 //  3. It repeats the request with an X-PAYMENT header carrying the
 //     invoice ID and transaction hash. The server looks the
 //     transaction up on chain and, if it paid this invoice, serves
 //     the request exactly once.
+//
+// The invoice itself never goes on chain, only its hash, so whoever sees
+// the payment there can't present it: the invoice reached only the
+// client that asked (GHSA-pvjr-prhw-f4xf, where the memo was the invoice
+// and anyone watching the chain could redeem it first).
 //
 // Unlike x402's "exact" scheme on EVM chains, the client broadcasts the
 // payment itself and nothing is signed for the server to settle, so no
@@ -32,7 +38,9 @@
 package paywall
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 )
 
@@ -107,9 +115,11 @@ type PaymentRequirements struct {
 
 // Extra carries the schemes' own fields.
 type Extra struct {
-	// aether-memo: Invoice is the memo the payment must carry, and what
-	// X-PAYMENT must name.
+	// aether-memo: Invoice is what X-PAYMENT must name. Keep it to
+	// yourself until then: the payment's memo carries Memo, its SHA-256
+	// (MemoFor), never the invoice.
 	Invoice string `json:"invoice,omitempty"`
+	Memo    string `json:"memo,omitempty"`
 	// Symbol and Amount state the price in the asset's own unit ("USDC",
 	// "0.05"). AmountAeth is the same for an AETH price, and absent for
 	// any other asset.
@@ -164,6 +174,13 @@ type SettlementResponse struct {
 	Allowance string `json:"allowance,omitempty"`
 }
 
+// MemoFor is the memo an aether-memo payment of invoice carries: the
+// invoice's SHA-256, lowercase hex.
+func MemoFor(invoice string) string {
+	h := sha256.Sum256([]byte(invoice))
+	return hex.EncodeToString(h[:])
+}
+
 // EncodeMemoPayment builds an aether-memo X-PAYMENT header value.
 func EncodeMemoPayment(network, invoice, txHash string) (string, error) {
 	return encodePayment(Scheme, network, MemoPayment{Invoice: invoice, TxHash: txHash})
@@ -195,7 +212,7 @@ func DecodeHeader(s string, v any) error {
 	return json.Unmarshal(bz, v)
 }
 
-const instructions = "Send maxAmountRequired uaeth to payTo with memo set to exactly this invoice, wait until the transaction is in a block, " +
+const instructions = "Send maxAmountRequired uaeth to payTo with memo set to exactly extra.memo (the lowercase hex SHA-256 of the invoice; never put the invoice itself in the memo), wait until the transaction is in a block, " +
 	"then repeat this request with header X-PAYMENT: base64 of the JSON " +
 	`{"x402Version":1,"scheme":"aether-memo","network":"<network>","payload":{"invoice":"<invoice>","txHash":"<hash>"}}. ` +
 	"Each invoice pays for one response, and must be presented by expiresAt."

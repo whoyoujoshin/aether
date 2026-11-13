@@ -8,7 +8,8 @@ agentmcp, these clients, or a person paying an invoice by hand::
     app = pw.asgi(app, free=["/health"])     # FastAPI, Starlette, any ASGI app
 
 aether-memo: an unpaid request gets 402 with a one-time invoice; the buyer
-pays it on chain (memo = invoice) and repeats the request with proof, which
+pays it on chain (memo = the invoice's SHA-256, extra.memo; the invoice
+itself stays off chain) and repeats the request with proof, which
 is checked on chain and served once. aether-prepaid (bots): deposit once,
 then sign each request; the price is deducted instantly. With payout_key,
 buyers can withdraw what they haven't spent. aether-pull (bots): the buyer
@@ -40,7 +41,7 @@ from .directory import MANIFEST_PATH
 from .keys import PUBKEY_BYTES, Key, is_address
 from .rotation import signs_for
 from .ledger import FileLedger, LedgerError, _parse_time
-from .paywall import DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, pull_signing_message, signing_message
+from .paywall import DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, memo_for, pull_signing_message, signing_message
 from .receipt import RECEIPT_HEADER, encode_receipt, malformed, sign_receipt, verify_receipt
 from .rpc import RpcError
 from .tx import DEFAULT_GAS_LIMIT, build_send, build_tx, exec_send_msg
@@ -56,7 +57,8 @@ _MAX_RECEIPT_BODY = 4 << 20
 _HASH = re.compile(r"[0-9A-F]{64}")
 
 _MEMO_INSTRUCTIONS = (
-    "Send maxAmountRequired uaeth to payTo with memo set to exactly this invoice, wait until the transaction is in a block, "
+    "Send maxAmountRequired uaeth to payTo with memo set to exactly extra.memo (the lowercase hex SHA-256 of the invoice; "
+    "never put the invoice itself in the memo), wait until the transaction is in a block, "
     "then repeat this request with header X-PAYMENT: base64 of the JSON "
     '{"x402Version":1,"scheme":"aether-memo","network":"<network>","payload":{"invoice":"<invoice>","txHash":"<hash>"}}. '
     "Each invoice pays for one response, and must be presented by expiresAt.")
@@ -401,8 +403,9 @@ class Paywall:
                                          invoice=invoice, headers={"Retry-After": "10"})
         if t.status == "failed":
             return self.payment_required(req, "payment_failed", f"transaction {tx_hash} failed on chain")
-        if t.memo != invoice:
-            return self.payment_required(req, "memo_mismatch", "the transaction's memo must be exactly the invoice")
+        if t.memo != memo_for(invoice):
+            return self.payment_required(req, "memo_mismatch", "the transaction's memo must be extra.memo, the invoice's SHA-256 "
+                                                               "(clients that put the invoice itself in the memo need updating)")
         paid, payer = self._received(t.transfers)
         if paid < price:
             return self.payment_required(req, "insufficient_payment",
@@ -477,7 +480,7 @@ class Paywall:
             "scheme": SCHEME_MEMO, "network": self.network, "maxAmountRequired": str(self.price), "asset": self.asset.denom,
             "payTo": self.pay_to, "resource": f"{'https' if req.https else 'http'}://{req.host}{req.path}",
             "description": self.description, "mimeType": self.mime_type, "maxTimeoutSeconds": self.ttl,
-            "extra": {"invoice": invoice, **self._priced(), "expiresAt": _rfc3339(expiry),
+            "extra": {"invoice": invoice, "memo": memo_for(invoice), **self._priced(), "expiresAt": _rfc3339(expiry),
                       "instructions": self._text(_MEMO_INSTRUCTIONS)},
         }
         body = {"x402Version": 1, "error": code, "message": message, "accepts": [memo]}

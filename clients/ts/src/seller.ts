@@ -10,7 +10,7 @@ import { signsFor, type AccountKeys } from "./rotation.js";
 import { buildSend, buildTx, execSendMsg, DEFAULT_GAS_LIMIT } from "./tx.js";
 import { AETH, Assets, DENOM, decimalOf, formatAeth, formatAmount, parseUaeth, receiptAmount, type Asset } from "./amount.js";
 import { MANIFEST_PATH, type Manifest } from "./directory.js";
-import { DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, pullSigningMessage, signingMessage, type PaymentRequired, type PaymentRequirements } from "./paywall.js";
+import { DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, memoFor, SCHEME_PREPAID, SCHEME_PULL, pullSigningMessage, signingMessage, type PaymentRequired, type PaymentRequirements } from "./paywall.js";
 import { FileLedger, LedgerError, owedOf, type Collection, type Ledger, type PullLedger, type Withdrawal } from "./ledger.js";
 import type { SendGrant } from "./client.js";
 import { RECEIPT_HEADER, receiptFieldsOK, sha256Hex, signReceipt, verifyReceipt, type ReceiptDelegation } from "./receipt.js";
@@ -23,7 +23,8 @@ import { RECEIPT_HEADER, receiptFieldsOK, sha256Hex, signReceipt, verifyReceipt,
 //   app.use(pw.middleware({ free: ["/health"] }));   // Express, Connect, or node:http
 //
 // aether-memo: an unpaid request gets 402 with a one-time invoice; the
-// buyer pays it on chain (memo = invoice) and repeats the request with
+// buyer pays it on chain (memo = the invoice's SHA-256, extra.memo; the
+// invoice itself stays off chain) and repeats the request with
 // proof, which is checked on chain and served once. aether-prepaid (bots):
 // deposit once, then sign each request; the price is deducted instantly.
 // With prepaid.payoutKey, buyers can withdraw what they haven't spent.
@@ -42,7 +43,7 @@ const MAX_RECEIPT_BODY = 4 << 20;
 const HASH = /^[0-9A-F]{64}$/;
 
 const MEMO_INSTRUCTIONS =
-  "Send maxAmountRequired uaeth to payTo with memo set to exactly this invoice, wait until the transaction is in a block, " +
+  "Send maxAmountRequired uaeth to payTo with memo set to exactly extra.memo (the lowercase hex SHA-256 of the invoice; never put the invoice itself in the memo), wait until the transaction is in a block, " +
   "then repeat this request with header X-PAYMENT: base64 of the JSON " +
   '{"x402Version":1,"scheme":"aether-memo","network":"<network>","payload":{"invoice":"<invoice>","txHash":"<hash>"}}. ' +
   "Each invoice pays for one response, and must be presented by expiresAt.";
@@ -349,7 +350,9 @@ export class Paywall {
       return this.paymentRequired(req, "payment_not_confirmed", `transaction ${txHash} is not in a block yet; retry shortly with the same X-PAYMENT`, invoice, "", { "Retry-After": "10" });
     }
     if (t.status === "failed") return this.paymentRequired(req, "payment_failed", `transaction ${txHash} failed on chain`);
-    if (t.memo !== invoice) return this.paymentRequired(req, "memo_mismatch", "the transaction's memo must be exactly the invoice");
+    if (t.memo !== memoFor(invoice)) {
+      return this.paymentRequired(req, "memo_mismatch", "the transaction's memo must be extra.memo, the invoice's SHA-256 (clients that put the invoice itself in the memo need updating)");
+    }
     const { paid, payer } = this.received(t.transfers);
     if (paid < inv.price) return this.paymentRequired(req, "insufficient_payment", `paid ${this.both(paid)} to ${this.cfg.payTo}; the invoice is for ${this.both(inv.price)}`);
     if (!this.redeem(invoice, inv.expiryMs)) return this.paymentRequired(req, "invoice_already_redeemed", "this invoice has already been used for a response");
@@ -430,7 +433,7 @@ export class Paywall {
     const memo: PaymentRequirements & { mimeType: string } = {
       scheme: SCHEME_MEMO, network: this.network, maxAmountRequired: this.price.toString(), asset: this.asset.denom, payTo: this.cfg.payTo,
       resource, description: this.cfg.description ?? "", mimeType: this.cfg.mimeType ?? "", maxTimeoutSeconds: this.ttlMs / 1000,
-      extra: { invoice, ...this.priced(), expiresAt: new Date(expiryMs).toISOString().replace(".000Z", "Z"), instructions: this.text(MEMO_INSTRUCTIONS) } as PaymentRequirements["extra"],
+      extra: { invoice, memo: memoFor(invoice), ...this.priced(), expiresAt: new Date(expiryMs).toISOString().replace(".000Z", "Z"), instructions: this.text(MEMO_INSTRUCTIONS) } as PaymentRequirements["extra"],
     };
     const body: PaymentRequired = { x402Version: 1, error: code, message, accepts: [memo] };
     if (this.ledger) {

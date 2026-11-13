@@ -85,8 +85,10 @@ func TestProxy_UpstreamSeesPayerOnlyWhenPaid(t *testing.T) {
 	require.NoError(t, err)
 	var pr paywall.PaymentRequired
 	require.NoError(t, jsonDecode(r402.Body, &pr))
-	memo = pr.Accepts[0].Extra.Invoice
-	proof, _ := paywall.EncodeMemoPayment("n", memo, "ABCD")
+	invoice := pr.Accepts[0].Extra.Invoice
+	memo = paywall.MemoFor(invoice)
+	require.Equal(t, memo, pr.Accepts[0].Extra.Memo)
+	proof, _ := paywall.EncodeMemoPayment("n", invoice, "ABCD")
 
 	resp = do("/api", map[string]string{paywall.HeaderPayment: proof, headerPayer: "liar"})
 	require.Equal(t, http.StatusOK, resp.StatusCode)

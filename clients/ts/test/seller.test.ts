@@ -9,7 +9,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { Writer, readFields, first, text } from "../src/proto.js";
 import {
-  AetherClient, FileLedger, Key, Paywall, PUBKEY_TYPE_URL, WITHDRAW_PATH, buildSend, memoPaymentHeader, prepaidPaymentHeader, signingMessage, withdrawPrepaid, fetchPaid,
+  AetherClient, FileLedger, Key, Paywall, PUBKEY_TYPE_URL, WITHDRAW_PATH, buildSend, memoFor, memoPaymentHeader, prepaidPaymentHeader, signingMessage, withdrawPrepaid, fetchPaid,
   createReceiptDelegation,
   type Payment,
 } from "../src/index.js";
@@ -152,13 +152,17 @@ test("unpaid requests get a 402 offering both schemes; free paths and the manife
   }
 });
 
+test("aether-memo: the memo is the invoice's SHA-256, as in Go and Python", () => {
+  assert.equal(memoFor("x402-AAAA"), "93966cdf82d25a9e7c939d63256d384c7cf1e3d082e497f66c524c8379373d8e");
+});
+
 test("aether-memo: a confirmed payment of the invoice is served exactly once", async () => {
   const s = await setup();
   try {
     const invoice = (await quote(s.url + "/forecast")).accepts[0].extra.invoice;
     const present = (hash: string, inv = invoice, path = "/forecast") => fetch(s.url + path, { headers: { "X-PAYMENT": memoPaymentHeader(CHAIN, inv, hash) } });
 
-    const unseen = s.chain.pay(s.seller.address, 10_000n, invoice);
+    const unseen = s.chain.pay(s.seller.address, 10_000n, memoFor(invoice));
     s.chain.txs.delete(unseen); // not in a block yet
     let r = await present(unseen);
     const pending = (await r.json()) as { error: string; accepts: { extra: { invoice: string } }[] };
@@ -166,7 +170,7 @@ test("aether-memo: a confirmed payment of the invoice is served exactly once", a
     assert.equal(pending.accepts[0].extra.invoice, invoice, "the same invoice: the payment may still land");
     assert.equal(r.headers.get("retry-after"), "10");
 
-    const hash = s.chain.pay(s.seller.address, 10_000n, invoice);
+    const hash = s.chain.pay(s.seller.address, 10_000n, memoFor(invoice));
     r = await present(hash);
     assert.equal(r.status, 200);
     const settlement = JSON.parse(Buffer.from(r.headers.get("x-payment-response")!, "base64").toString());
@@ -179,17 +183,19 @@ test("aether-memo: a confirmed payment of the invoice is served exactly once", a
 
     const inv2 = (await quote(s.url + "/forecast")).accepts[0].extra.invoice;
     const cases: [string, string][] = [
-      [s.chain.pay(s.seller.address, 9_999n, inv2), "insufficient_payment"],
+      [s.chain.pay(s.seller.address, 9_999n, memoFor(inv2)), "insufficient_payment"],
       [s.chain.pay(s.seller.address, 10_000n, "something else"), "memo_mismatch"],
-      [s.chain.pay(Key.random().address, 10_000n, inv2), "insufficient_payment"],
-      [s.chain.pay(s.seller.address, 10_000n, inv2, 5), "payment_failed"],
+      // The invoice itself in the memo (what old clients did) is refused: it's a bearer token.
+      [s.chain.pay(s.seller.address, 10_000n, inv2), "memo_mismatch"],
+      [s.chain.pay(Key.random().address, 10_000n, memoFor(inv2)), "insufficient_payment"],
+      [s.chain.pay(s.seller.address, 10_000n, memoFor(inv2), 5), "payment_failed"],
     ];
     for (const [h, want] of cases) assert.equal(((await (await present(h, inv2)).json()) as { error: string }).error, want);
     const forged = inv2.slice(0, -2) + (inv2.endsWith("AA") ? "AB" : "AA");
     assert.equal(((await (await present(hash, forged)).json()) as { error: string }).error, "invalid_invoice");
 
     s.now.t += 25 * 3600_000;
-    assert.equal(((await (await present(s.chain.pay(s.seller.address, 10_000n, inv2), inv2)).json()) as { error: string }).error, "invoice_expired");
+    assert.equal(((await (await present(s.chain.pay(s.seller.address, 10_000n, memoFor(inv2)), inv2)).json()) as { error: string }).error, "invoice_expired");
   } finally {
     s.close();
   }
@@ -199,7 +205,7 @@ test("aether-memo: a failed response lets the same payment be used again", async
   const s = await setup({ failWith: 503 });
   try {
     const invoice = (await quote(s.url + "/forecast")).accepts[0].extra.invoice;
-    const hash = s.chain.pay(s.seller.address, 10_000n, invoice);
+    const hash = s.chain.pay(s.seller.address, 10_000n, memoFor(invoice));
     const h = { "X-PAYMENT": memoPaymentHeader(CHAIN, invoice, hash) };
     assert.equal((await fetch(s.url + "/forecast", { headers: h })).status, 503);
     await new Promise((r) => setTimeout(r, 20));
@@ -571,10 +577,10 @@ test("USDC: priced in USDC, the paywall charges only USDC, as cmd/paywall does",
     const invoice = q.accepts[0].extra.invoice;
     const present = (hash: string) => fetch(s.url + "/forecast", { headers: { "X-PAYMENT": memoPaymentHeader(CHAIN, invoice, hash) } });
     // The same number of uaeth is not a USDC payment.
-    const inAeth = s.chain.pay(s.seller.address, 50_000n, invoice);
+    const inAeth = s.chain.pay(s.seller.address, 50_000n, memoFor(invoice));
     assert.equal(((await (await present(inAeth)).json()) as { error: string }).error, "insufficient_payment");
 
-    const hash = s.chain.pay(s.seller.address, 50_000n, invoice, 0, Key.random(), denom);
+    const hash = s.chain.pay(s.seller.address, 50_000n, memoFor(invoice), 0, Key.random(), denom);
     const r = await present(hash);
     assert.equal(r.status, 200);
     const receipt = JSON.parse(Buffer.from(r.headers.get("x-payment-receipt")!, "base64").toString());

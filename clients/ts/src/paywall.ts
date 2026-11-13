@@ -20,6 +20,15 @@ export const SCHEME_MEMO = "aether-memo";
 export const SCHEME_PREPAID = "aether-prepaid";
 export const SCHEME_PULL = "aether-pull";
 export const DEPOSIT_MEMO_PREFIX = "prepaid:";
+
+/**
+ * The memo an aether-memo payment of invoice carries: its SHA-256, lowercase
+ * hex. The invoice itself never goes on chain, where anyone could present it
+ * first (GHSA-pvjr-prhw-f4xf).
+ */
+export function memoFor(invoice: string): string {
+  return bytesToHex(sha256(new TextEncoder().encode(invoice)));
+}
 const SIGNING_DOMAIN = "aether-prepaid-request/v1\n";
 const PULL_SIGNING_DOMAIN = "aether-pull-request/v1\n";
 /** How long an allowance fetchPaid grants lasts. */
@@ -37,7 +46,7 @@ export interface PaymentRequirements {
   extra: {
     /** symbol and amount state the price in the asset's own unit ("USDC", "0.05"); amountAeth is set only for an AETH price. */
     symbol?: string; amount?: string;
-    invoice?: string; amountAeth?: string; expiresAt?: string; depositMemo?: string; minDeposit?: string; balance?: string; withdrawPath?: string;
+    invoice?: string; memo?: string; amountAeth?: string; expiresAt?: string; depositMemo?: string; minDeposit?: string; balance?: string; withdrawPath?: string;
     /** aether-pull: grant this address the allowance; credit is the most owed before collection; owed is what you owe now. */
     grantee?: string; credit?: string; owed?: string;
   };
@@ -232,7 +241,13 @@ export async function fetchPaid(client: AetherClient, key: Key, url: string, opt
   }
   const price = parseUaeth(memo.maxAmountRequired);
   if (price > maxAmount) throw new PaymentError("PRICE_EXCEEDS_MAX", `the server asks ${formatAmount(asset, price)}; maxAmount is ${formatAmount(asset, maxAmount)}. Nothing was paid`);
-  const sent = await client.send(key, memo.payTo, `${price}${asset.baseUnit}`, { memo: memo.extra.invoice });
+  // A server that names a memo wants the invoice's hash on chain; one that
+  // doesn't predates that and wants the invoice itself.
+  const txMemo = memo.extra.memo ?? memo.extra.invoice;
+  if (memo.extra.memo !== undefined && memo.extra.memo !== memoFor(memo.extra.invoice)) {
+    throw new PaymentError("PAYMENT_UNSUPPORTED", "the server's memo isn't its invoice's SHA-256. Nothing was paid");
+  }
+  const sent = await client.send(key, memo.payTo, `${price}${asset.baseUnit}`, { memo: txMemo });
   if (sent.status === "failed") throw new PaymentError("TX_REJECTED", `the payment was rejected: ${sent.log}`, sent.hash);
   const conf = await client.waitForTransaction(sent.hash, opts.confirmTimeoutMs ?? 150_000);
   if (conf.status === "failed") throw new PaymentError("TX_FAILED", `the payment failed on chain: ${conf.log}`, sent.hash);

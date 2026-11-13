@@ -27,11 +27,11 @@ func TestPaywall_ChargesItsOwnAsset(t *testing.T) {
 	require.NotContains(t, req.Extra.Instructions, "uaeth")
 
 	// The same number of uaeth doesn't pay it.
-	h.ledger.pay("AETH", req.Extra.Invoice, seller(), 10_000, h.now, 0)
+	h.ledger.pay("AETH", MemoFor(req.Extra.Invoice), seller(), 10_000, h.now, 0)
 	h.expectRefusal(proof(req.Extra.Invoice, "AETH"), ErrInsufficient)
 
 	// USDC does.
-	h.ledger.payIn("USDC", req.Extra.Invoice, seller(), "10000"+usdc.Denom, h.now, 0)
+	h.ledger.payIn("USDC", MemoFor(req.Extra.Invoice), seller(), "10000"+usdc.Denom, h.now, 0)
 	resp, body := h.get("/weather", proof(req.Extra.Invoice, "USDC"))
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
 	require.True(t, strings.HasPrefix(body, "sunny"))

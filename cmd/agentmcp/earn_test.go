@@ -63,7 +63,7 @@ func TestFetchPaid_PaysOnceAndGetsTheResponse(t *testing.T) {
 	require.Equal(t, sellerAddr(), out.Payment.PayTo)
 	require.Len(t, f.broadcasts, 1)
 	memo, _ := decode(t, f.broadcasts[0])
-	require.Equal(t, out.Payment.Invoice, memo, "the payment carries the seller's invoice as its memo")
+	require.Equal(t, paywall.MemoFor(out.Payment.Invoice), memo, "the payment carries the invoice's hash as its memo, never the invoice")
 	require.Equal(t, int64(20_000), spent(t))
 
 	// A retry (say the reply got lost) never pays again. The seller
