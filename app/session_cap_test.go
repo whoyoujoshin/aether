@@ -87,6 +87,11 @@ func requireRefused(t *testing.T, code uint32, log string, want uint32) {
 	require.Equal(t, want, code, log)
 }
 
+// The consensus-key ownership rule rides the same validator swap.
+func TestSessionKeyCap_SameHeightAsConsensusKeyOwnership(t *testing.T) {
+	require.Equal(t, accountauth.SessionKeyCapHeight, pow.ConsensusKeyOwnershipHeight)
+}
+
 func TestSessionKeyCap_MultiSendIsCounted(t *testing.T) {
 	f := newSessFixture(t, gates.RehearsalPrefix+"sess", &banktypes.MsgSend{}, &banktypes.MsgMultiSend{})
 	multi := func(n int64) sdk.Msg {

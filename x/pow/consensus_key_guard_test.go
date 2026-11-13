@@ -209,3 +209,46 @@ func TestEndBlock_GenesisKeyHandoverAtSelectionCommits(t *testing.T) {
 	require.True(t, k.IsActiveValidator(ctx, minerA))
 	require.False(t, k.IsActiveValidator(ctx, sdk.AccAddress(cometed25519.PubKey(key.pub).Address())))
 }
+
+// From ConsensusKeyOwnershipHeight a key A registered stays A's after A
+// moves to another key: A can't hand it to a throwaway account so that
+// evidence of A's double-signing lands there instead.
+func TestConsensusKeyOwnership_ReleasedKeyStaysWithItsFirstMiner(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+	ctx = ctx.WithBlockHeight(pow.ConsensusKeyOwnershipHeight)
+	key, other := newConsensusKey(t), newConsensusKey(t)
+	addr := cometed25519.PubKey(key.pub).Address()
+
+	require.NoError(t, register(srv, ctx, minerA, key))
+	require.NoError(t, register(srv, ctx, minerA, other), "A moves to another key")
+	err := register(srv, ctx, minerB, key)
+	require.True(t, errors.Is(err, types.ErrConsensusKeyInUse), "got %v", err)
+	require.Contains(t, err.Error(), minerA.String())
+
+	holder, _ := k.GetMinerByConsensusAddr(ctx, addr)
+	require.Equal(t, minerA, holder, "evidence against the key still names A")
+	_, bHasKey := k.GetValidatorPubkey(ctx, minerB)
+	require.False(t, bHasKey)
+
+	require.NoError(t, register(srv, ctx, minerA, key), "A may take its own key back")
+
+	// A genesis validator's key can still be bound to a miner account.
+	boot := newConsensusKey(t)
+	pk, err := cometencoding.PubKeyToProto(cometed25519.PubKey(boot.pub))
+	require.NoError(t, err)
+	require.NoError(t, k.BootstrapValidator(ctx, pk))
+	require.NoError(t, register(srv, ctx, minerB, boot))
+}
+
+// One height below, a released key could still be taken (as the testnet
+// ran), so replaying history computes what the chain did.
+func TestConsensusKeyOwnership_BeforeHeight_ReleasedKeyCanBeTaken(t *testing.T) {
+	k, ctx, _ := setupKeeper(t)
+	srv := pow.NewMsgServerImpl(k)
+	ctx = ctx.WithBlockHeight(pow.ConsensusKeyOwnershipHeight - 1)
+	key := newConsensusKey(t)
+	require.NoError(t, register(srv, ctx, minerA, key))
+	require.NoError(t, register(srv, ctx, minerA, newConsensusKey(t)))
+	require.NoError(t, register(srv, ctx, minerB, key))
+}

@@ -55,6 +55,17 @@ func (k msgServer) RegisterValidatorPubkey(goCtx context.Context, msg *MsgRegist
 		}
 	}
 
+	// From ConsensusKeyOwnershipHeight a key stays with the first miner
+	// that registered it, even after that miner moves to another key:
+	// evidence of what it signed is then still held against that miner.
+	if gates.On(ctx, ConsensusKeyOwnershipHeight) {
+		if holder, ok := k.Keeper.GetMinerByConsensusAddr(ctx, consensusAddr); ok &&
+			!holder.Equals(minerAddr) && !holder.Equals(sdk.AccAddress(consensusAddr)) {
+			return nil, sdkerrors.Wrapf(types.ErrConsensusKeyInUse,
+				"miner %s registered this consensus key before; a key stays with the first miner that registered it, so evidence of anything it signed is held against that miner. Make a new key for this miner", holder)
+		}
+	}
+
 	// A real, live-flagged gap (Gitty, Section 3 item 1): this handler
 	// never emitted any abci.ValidatorUpdate, so an active miner
 	// rotating consensus keys left their OLD key's real CometBFT

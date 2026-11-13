@@ -79,7 +79,9 @@ aetherd keys show miner -a --keyring-backend file  # the miner's address
   blocks. Back it up encrypted and offline. It must only ever run in one
   place: two nodes signing with one key is double-signing, which bans the
   validator and burns its escrow. When you move a node, stop the old one
-  before starting the new one.
+  before starting the new one. A consensus key stays with the first miner account
+  that registered it: if you ever switch to a new miner account, make a
+  new consensus key for it too.
 - Write down the miner key's recovery phrase and keep it off the server.
   Services that sign unattended open a `file` keyring from a passphrase
   file (`docs/SERVICE-KEYS.md`).

@@ -33,6 +33,16 @@ the two upgrades don't overlap.
   `MsgRegisterValidatorPubkey`, interchain accounts, `MsgReleaseEscrow`.
 - Session-key execs read the account's balances before and after each
   message, so they use a little more gas from H.
+- **A consensus key stays with the first miner that registered it**
+  (`ConsensusKeyOwnershipHeight` in `x/pow/consensus_key_owner.go`, the
+  same H). Before H a key was refused only while another miner still held
+  it, so a validator that double-signed could move to a new key, register
+  the old one to a throwaway miner account, and let the evidence land on
+  that account (ban, empty escrow burned) instead of its own. From H
+  registering a key another miner registered before is refused, so the
+  evidence finds whoever held it. The first miner may register it again,
+  and a genesis validator's key can still be bound to a miner account.
+  An operator who moves to a new miner account makes a new consensus key.
 
 ## How this upgrade works
 
@@ -40,8 +50,9 @@ the two upgrades don't overlap.
 
 **An old binary agrees until the first transaction after H that the new
 rules treat differently:** any `MsgExecAuthenticated` through a session
-key (different gas, and refusals), or a session-key registration allowing
-one of the messages above. So **all five must run the new binary before
+key (different gas, and refusals), a session-key registration allowing
+one of the messages above, or a `MsgRegisterValidatorPubkey` for a key
+another miner registered before. So **all five must run the new binary before
 H.**
 
 ## 1. Build once, on a workstation (never on a validator), with Go 1.26.10
@@ -51,11 +62,12 @@ From the GHSA-j2qr private fork's `fix` branch:
 ```bash
 git fetch origin && git checkout origin/fix
 grep -n "SessionKeyCapHeight int64 = " x/accountauth/session_cap.go       # 812_880
+grep -n "ConsensusKeyOwnershipHeight int64 = " x/pow/consensus_key_owner.go # 812_880
 grep -n "KeyChangeRevokesHeight int64 = " x/accountauth/keygen.go         # 786_960
 grep -n "AuxPoWInputGuardHeight int64 = 712_080" x/pow/auxpow.go          # still there
 grep -n "RotationActivationHeight int64 = 518_940" x/accountauth/rotation.go
 go version                              # go1.26.10
-go test ./x/accountauth/... ./app
+go test ./x/accountauth/... ./x/pow/... ./app
 bash scripts/prebuild.sh                # dist/prebuilt-<commit>/, with SHA256SUMS
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o dist/aetherd-$(git rev-parse --short HEAD).exe ./cmd/aetherd
 sha256sum dist/prebuilt-*/aetherd dist/aetherd-*.exe
