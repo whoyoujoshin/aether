@@ -184,6 +184,25 @@ func TestExactRetryServesAPaymentBroadcastHereOnce(t *testing.T) {
 	require.Equal(t, 2, h.served)
 }
 
+// One signed payment sent to two paywalls with the same payee and price:
+// the second's broadcast is refused because the first's is in the mempool.
+// Even if its settler names the hash, the second never serves it, before
+// or after it lands (GHSA-vwgw-c458-cm74).
+func TestExactRefusedBroadcastIsNotThisPaywalls(t *testing.T) {
+	h := newExactHarness(t, true)
+	sig, hash := exactPayment("tx-sent-by-another-paywall")
+	for _, reason := range []string{x402.ReasonSettlementRejected, x402.ReasonSequence, x402.ReasonAlreadySettled} {
+		h.settler.set(x402.SettleResponse{ErrorReason: reason, Payer: buyer(), Transaction: hash})
+		require.Equal(t, 402, h.get(t, sig).StatusCode)
+	}
+	h.ledger.pay(hash, "", seller(), 10_000, h.now, 0) // the other paywall's broadcast lands
+	h.settler.set(x402.SettleResponse{ErrorReason: x402.ReasonSequence, Payer: buyer(), Transaction: hash})
+	resp := h.get(t, sig)
+	require.Equal(t, 402, resp.StatusCode)
+	require.Equal(t, x402.ReasonSequence, paymentRequiredV2(t, resp).Error)
+	require.Zero(t, h.served)
+}
+
 func TestExactNeverAcceptsATransferItDidntBroadcast(t *testing.T) {
 	h := newExactHarness(t, true)
 	// Someone else's payment to the seller (another scheme's, say), on

@@ -148,8 +148,13 @@ func (f *Facilitator) Settle(ctx context.Context, p PaymentPayload, req PaymentR
 		hash = c.hash
 	}
 	if code != 0 {
-		f.unmark(c.hash) // refused at CheckTx: nothing happened
-		return fail(c.payer, rejectReason(log), hash)
+		// Refused at CheckTx: this call put nothing on chain, so it names
+		// no transaction. The same bytes may still be in the mempool or a
+		// block from someone else's broadcast (code 19, or a used
+		// sequence): that payment isn't this facilitator's to report
+		// (GHSA-vwgw-c458-cm74).
+		f.unmark(c.hash)
+		return fail(c.payer, rejectReason(log), "")
 	}
 
 	timeout := f.SettleTimeout
