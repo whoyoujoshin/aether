@@ -303,3 +303,39 @@ func TestJobs_TestWalletSells(t *testing.T) {
 	require.Equal(t, "Miso, Pip, Juniper", job.Deliveries[0].Content)
 	require.Equal(t, seller, job.Hire.Seller)
 }
+
+// An arbiter the buyer picks can refund at any time, so
+// a hire naming one is unprotected for the seller unless the seller names
+// that arbiter as trusted, even with onExpiry release.
+func TestJobs_DeliverRefusesAnArbiterTheSellerDoesntTrust(t *testing.T) {
+	e, _ := setupEscrow(t)
+	f := &jobsFake{escrowFake: e}
+	dialChain = func() (chain, error) { return f, nil }
+	prevURL := jobBoardURL
+	jobBoardURL = fakeJobHost(t).URL + "/jobs"
+	t.Cleanup(func() { jobBoardURL = prevURL })
+	ctx := context.Background()
+	dir := t.TempDir()
+	seller := as(t, dir, "seller")
+	arbiter := as(t, dir, "buyers-own-arbiter")
+	as(t, dir, "buyer")
+
+	_, posted, err := toolPostJob(ctx, nil, postJobInput{Title: "A logo", Description: "SVG.", IdempotencyKey: "logo", WaitSeconds: 1})
+	require.NoError(t, err)
+	_, hired, err := toolHireForJob(ctx, nil, hireForJobInput{JobID: posted.JobID, Seller: seller, Amount: "0.1 AETH", ExpiresIn: "24h", OnExpiry: "release", Arbiter: arbiter, IdempotencyKey: "h", WaitSeconds: 1})
+	require.NoError(t, err)
+	require.Equal(t, statusConfirmed, hired.Escrow.Status)
+
+	as(t, dir, "seller")
+	_, job, err := toolGetJob(ctx, nil, getJobInput{JobID: posted.JobID})
+	require.NoError(t, err)
+	require.False(t, *job.SellerProtected, "releasing at the deadline doesn't help: the arbiter can refund first")
+	require.Contains(t, job.Next, "trustArbiter")
+	_, _, err = toolDeliverJob(ctx, nil, deliverJobInput{JobID: posted.JobID, Content: "<svg/>", WaitSeconds: 1})
+	requireCode(t, err, codeJobUnprotected)
+	_, _, err = toolDeliverJob(ctx, nil, deliverJobInput{JobID: posted.JobID, Content: "<svg/>", TrustArbiter: seller, WaitSeconds: 1})
+	requireCode(t, err, codeJobUnprotected)
+	_, out, err := toolDeliverJob(ctx, nil, deliverJobInput{JobID: posted.JobID, Content: "<svg/>", TrustArbiter: arbiter, WaitSeconds: 1})
+	require.NoError(t, err)
+	require.Equal(t, statusConfirmed, out.Status)
+}

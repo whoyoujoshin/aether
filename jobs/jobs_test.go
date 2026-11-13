@@ -165,3 +165,27 @@ func TestSpecAndMemos(t *testing.T) {
 	require.LessOrEqual(t, len(DeliverMemo("00000000000000a1", workHash)), 256)
 	require.Equal(t, "00000000000000a1", IDOf("00000000000000A1FFFF"))
 }
+
+// An arbiter can refund at any time and the buyer picks it, so a hire
+// naming one protects only a seller who trusts that arbiter, whatever its
+// onExpiry says.
+func TestSellerProtected(t *testing.T) {
+	const arb = "aether1arbiter"
+	for _, c := range []struct {
+		hire    Hire
+		trusted string
+		want    bool
+	}{
+		{Hire{OnExpiry: "release"}, "", true},
+		{Hire{OnExpiry: "refund"}, "", false},
+		{Hire{OnExpiry: "release", Arbiter: arb}, "", false},
+		{Hire{OnExpiry: "refund", Arbiter: arb}, "", false},
+		{Hire{OnExpiry: "release", Arbiter: arb}, arb, true},
+		{Hire{OnExpiry: "refund", Arbiter: arb}, arb, true},
+		{Hire{OnExpiry: "release", Arbiter: arb}, "aether1someoneelse", false},
+		{Hire{OnExpiry: "release"}, arb, true},
+	} {
+		require.Equal(t, c.want, c.hire.SellerProtectedWith(c.trusted), "%+v trusting %q", c.hire, c.trusted)
+	}
+	require.False(t, Hire{OnExpiry: "release", Arbiter: arb}.SellerProtected())
+}

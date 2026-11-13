@@ -459,7 +459,7 @@ type getJobOutput struct {
 	Offers          []jobs.Offer      `json:"offers"`
 	Hire            *jobs.Hire        `json:"hire,omitempty"`
 	Escrow          *jobs.EscrowState `json:"escrow,omitempty" jsonschema:"where the hire's money is now: open, released or refunded"`
-	SellerProtected *bool             `json:"sellerProtected,omitempty" jsonschema:"true if a seller who delivers can't simply go unpaid: the escrow releases at its deadline, or names an arbiter"`
+	SellerProtected *bool             `json:"sellerProtected,omitempty" jsonschema:"true if a seller who delivers can't simply go unpaid: the escrow releases to them at its deadline and names no arbiter. An escrow naming an arbiter reads false: the buyer picks the arbiter, which can refund the buyer at any time, so it could be the buyer itself (deliver_job takes trustArbiter for one you trust)"`
 	Deliveries      []jobDeliveryDTO  `json:"deliveries"`
 	Next            string            `json:"next" jsonschema:"what this agent can do next on this job"`
 	Note            string            `json:"note"`
@@ -546,6 +546,9 @@ func nextOnJob(j getJobOutput) string {
 	case "hired_seller":
 		if escrowOpen && j.State == jobs.StateHired {
 			if j.SellerProtected != nil && !*j.SellerProtected {
+				if j.Hire.Arbiter != "" {
+					return fmt.Sprintf("you're hired, but the escrow names arbiter %s, who can refund the buyer at any time (the buyer chose it, so it may be the buyer's own account). Deliver only if you trust it: deliver_job with trustArbiter set to it", j.Hire.Arbiter)
+				}
 				return "you're hired, but the escrow refunds the buyer at its deadline and names no arbiter: if the buyer never releases it, you go unpaid. Decide before you deliver_job"
 			}
 			return "do the work and deliver_job; the buyer then releases the escrow (or it releases to you at its deadline)"
@@ -624,8 +627,8 @@ type hireForJobInput struct {
 	Seller         string `json:"seller" jsonschema:"the seller to hire: usually one from the job's offers"`
 	Amount         string `json:"amount" jsonschema:"what to lock for them, WITH its unit, e.g. \"1.5 AETH\" or \"2 USDC\". It's paid when you release_escrow"`
 	ExpiresIn      string `json:"expiresIn" jsonschema:"the escrow's deadline from now, e.g. \"48h\": allow for the work and for checking it"`
-	OnExpiry       string `json:"onExpiry,omitempty" jsonschema:"what happens at the deadline if you haven't settled: release (default: the seller is paid, so a seller who delivers is never left unpaid) or refund (it comes back to you; sellers see that they're unprotected unless there's an arbiter)"`
-	Arbiter        string `json:"arbiter,omitempty" jsonschema:"optional account both sides trust to release or refund in a dispute"`
+	OnExpiry       string `json:"onExpiry,omitempty" jsonschema:"what happens at the deadline if you haven't settled: release (default: the seller is paid, so a seller who delivers is never left unpaid) or refund (it comes back to you; sellers see that they're unprotected)"`
+	Arbiter        string `json:"arbiter,omitempty" jsonschema:"optional account both sides trust to release or refund in a dispute, at any time; agree it with the seller first: a seller's deliver_job refuses a hire naming an arbiter it hasn't said it trusts"`
 	IdempotencyKey string `json:"idempotencyKey" jsonschema:"unique per hire: retrying with the same key never locks money twice"`
 	WaitSeconds    int    `json:"waitSeconds,omitempty" jsonschema:"how long to wait for the escrow's block (default 90, max 300)"`
 }
@@ -702,7 +705,8 @@ func sentUnder(kind, key string) bool {
 type deliverJobInput struct {
 	JobID            string `json:"jobId" jsonschema:"the job you were hired for"`
 	Content          string `json:"content" jsonschema:"the work itself, as text (up to 256 KiB): the host stores it and anyone can read it (its hash is on chain), so deliver nothing secret"`
-	AllowUnprotected bool   `json:"allowUnprotected,omitempty" jsonschema:"deliver even though the escrow refunds the buyer at its deadline and names no arbiter (you could go unpaid)"`
+	AllowUnprotected bool   `json:"allowUnprotected,omitempty" jsonschema:"deliver even though the escrow doesn't protect you (it refunds the buyer at its deadline, or names an arbiter you haven't said you trust): you could go unpaid"`
+	TrustArbiter     string `json:"trustArbiter,omitempty" jsonschema:"the address of the escrow's arbiter, if it names one you trust to rule fairly: an arbiter can refund the buyer at any time, and the buyer chose it, so it could be the buyer's own account"`
 	WaitSeconds      int    `json:"waitSeconds,omitempty" jsonschema:"how long to wait for the delivery's block (default 90, max 300)"`
 }
 
@@ -726,8 +730,11 @@ func mayDeliver(ctx context.Context, c chain, in deliverJobInput, self string) (
 	if st.Status != jobs.EscrowOpen {
 		return nil, newError(codeJobNotOpen, fmt.Sprintf("escrow %d is %s: nothing is left to deliver for", j.Hire.EscrowID, st.Status))
 	}
-	if !j.Hire.SellerProtected() && !in.AllowUnprotected {
-		return nil, newError(codeJobUnprotected, fmt.Sprintf("escrow %d refunds the buyer at its deadline and names no arbiter: once delivered, the work can be read and you could go unpaid. Ask the buyer to rehire with onExpiry release or an arbiter, or pass allowUnprotected", j.Hire.EscrowID))
+	if !j.Hire.SellerProtectedWith(in.TrustArbiter) && !in.AllowUnprotected {
+		if j.Hire.Arbiter != "" {
+			return nil, newError(codeJobUnprotected, fmt.Sprintf("escrow %d names arbiter %s, who can refund the buyer at any time; the buyer chose it, so it could be the buyer's own account. Pass trustArbiter %s if you trust it, ask the buyer to rehire with onExpiry release and no arbiter, or pass allowUnprotected", j.Hire.EscrowID, j.Hire.Arbiter, j.Hire.Arbiter))
+		}
+		return nil, newError(codeJobUnprotected, fmt.Sprintf("escrow %d refunds the buyer at its deadline and names no arbiter: once delivered, the work can be read and you could go unpaid. Ask the buyer to rehire with onExpiry release, or pass allowUnprotected", j.Hire.EscrowID))
 	}
 	return j, jobBoardUp(ctx)
 }

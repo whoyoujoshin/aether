@@ -215,8 +215,23 @@ type Hire struct {
 }
 
 // SellerProtected says whether a seller who delivers can't simply go
-// unpaid: the escrow pays them at the deadline, or an arbiter can.
-func (h Hire) SellerProtected() bool { return h.OnExpiry == "release" || h.Arbiter != "" }
+// unpaid: the escrow pays them at the deadline and names no arbiter. An
+// escrow that names one isn't, by itself: an arbiter can refund the buyer
+// at any time, and the buyer picks it, so it may be the buyer's own
+// account. A seller who trusts the named arbiter says so with
+// SellerProtectedWith.
+func (h Hire) SellerProtected() bool { return h.SellerProtectedWith("") }
+
+// SellerProtectedWith is SellerProtected for a seller who trusts the
+// arbiter trusted (an address; "" trusts none): an escrow naming exactly
+// that arbiter protects them whatever happens at its deadline, since the
+// arbiter can release it to them.
+func (h Hire) SellerProtectedWith(trusted string) bool {
+	if h.Arbiter != "" {
+		return trusted != "" && h.Arbiter == trusted
+	}
+	return h.OnExpiry == "release"
+}
 
 type Delivery struct {
 	Hash   string `json:"hash"`
