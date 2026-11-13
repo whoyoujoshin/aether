@@ -1,0 +1,49 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Node locations</title>
+<script src="https://unpkg.com/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js" integrity="sha384-Ukv1p/xTma6P4/2bY5KzWBw+ydSpXmhCMtyciIQVDJ1RmOxtCYNMF1uXT9T63H67" crossorigin="anonymous"></script>
+<style>html,body{margin:0;height:100%;background:transparent;overflow:hidden}svg{display:block;width:100%;height:100%;cursor:grab}svg:active{cursor:grabbing}.halo{animation:pin 2.4s ease-in-out infinite}@keyframes pin{0%,100%{opacity:.32}50%{opacity:.06}}</style>
+</head><body><svg id="g"></svg>
+<script>
+const svg = d3.select('#g'), proj = d3.geoOrthographic().clipAngle(90), path = d3.geoPath(proj), grat = d3.geoGraticule10();
+let W, H, rot = [-10, -28, 0], land = null, pts = [], hl = null, color = '#c0503a', target = null, dragging = false, last = performance.now();
+const defs = svg.append('defs'), rg = defs.append('radialGradient').attr('id', 'shade').attr('cx', '38%').attr('cy', '32%');
+rg.append('stop').attr('offset', '0').attr('stop-color', '#1a1714'); rg.append('stop').attr('offset', '1').attr('stop-color', '#0a0908');
+const gSphere = svg.append('path').attr('fill', 'url(#shade)').attr('stroke', '#3a342e');
+const gGrat = svg.append('path').attr('fill', 'none').attr('stroke', '#1f1b18').attr('stroke-width', .6);
+const gLand = svg.append('path').attr('fill', '#2c2722').attr('stroke', '#3e3730').attr('stroke-width', .4);
+const gPins = svg.append('g');
+function size() { const b = document.body.getBoundingClientRect(); W = b.width; H = b.height; proj.translate([W / 2, H / 2 + 2]).scale(Math.min(W, H) / 2 - 34); svg.attr('viewBox', `0 0 ${W} ${H}`); }
+function draw() {
+  proj.rotate(rot);
+  gSphere.attr('d', path({ type: 'Sphere' })); gGrat.attr('d', path(grat)); if (land) gLand.attr('d', path(land));
+  const c = [-rot[0], -rot[1]], max = d3.max(pts, p => p.weight) || 1;
+  const sel = gPins.selectAll('g.p').data(pts);
+  const en = sel.enter().append('g').attr('class', 'p'); en.append('circle').attr('class', 'halo'); en.append('circle').attr('class', 'dot'); en.append('title');
+  sel.exit().remove();
+  gPins.selectAll('g.p').each(function (d, i) {
+    const vis = d3.geoDistance([d.lon, d.lat], c) < Math.PI / 2 - 0.04, xy = proj([d.lon, d.lat]), on = i === hl, jail = d.status === 'JAILED';
+    const r = 2.6 + 4 * Math.sqrt(d.weight / max), g = d3.select(this).style('display', vis ? null : 'none').attr('transform', `translate(${xy[0]},${xy[1]})`);
+    g.select('.halo').attr('r', on ? r + 10 : r + 4).attr('fill', color);
+    g.select('.dot').attr('r', on ? r + 1.5 : r).attr('fill', jail ? '#0a0908' : color).attr('stroke', jail ? color : '#0a0908').attr('stroke-width', jail ? 1.5 : 1);
+    g.select('title').text(d.label);
+  });
+}
+function tick(t) {
+  const dt = Math.min(64, t - last); last = t;
+  if (target) { let d = ((target[0] - rot[0] + 540) % 360) - 180; rot[0] += d * 0.1; rot[1] += (target[1] - rot[1]) * 0.1; }
+  else if (!dragging) rot[0] += dt * 0.008;
+  draw(); requestAnimationFrame(tick);
+}
+svg.call(d3.drag().on('start', () => { dragging = true; target = null; }).on('drag', e => { rot[0] += e.dx * 0.45; rot[1] = Math.max(-70, Math.min(70, rot[1] - e.dy * 0.45)); }).on('end', () => { dragging = false; }));
+window.addEventListener('message', e => {
+  const d = e.data; if (!d || d.type !== 'aether-globe') return;
+  pts = d.points || []; color = d.color || color; hl = d.hl;
+  if (hl != null && pts[hl]) target = [-pts[hl].lon, Math.max(-60, Math.min(60, -pts[hl].lat))]; else target = null;
+});
+window.addEventListener('resize', size);
+size(); requestAnimationFrame(tick);
+d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json').then(t => { land = topojson.feature(t, t.objects.countries); });
+parent.postMessage({ type: 'aether-globe-ready' }, '*');
+</script>
+</body></html>
