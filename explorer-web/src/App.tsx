@@ -30,10 +30,9 @@ function NotFound() {
   );
 }
 
-/** Helix overview once chain context is ready (Aether live; IBC ghost without --ibc-rpc). */
+/** The overview fetches on its own. Waiting for the chain probe first
+ * held Recent transactions back behind the counterparty RPC. */
 function Overview() {
-  const { ready } = useChain();
-  if (!ready) return <TopBar />;
   return <HelixOverview />;
 }
 

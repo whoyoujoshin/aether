@@ -86,6 +86,16 @@ interface HelixHeroProps {
   turns?: number;
 }
 
+/**
+ * Packets the chain still has outstanding on this channel
+ * (bridge.inFlight, the same number the IBC bridge card shows).
+ * Null when this response has no bridge. Window packets whose ack
+ * fell outside the fetched blocks are a different count and are not used.
+ */
+export function bridgeInFlight(helix: Helix): number | null {
+  return helix.bridge ? helix.bridge.inFlight : null;
+}
+
 /** One line under the helix: the packet Helicase is carrying, or Ligase just sealed, or idle. */
 export function bridgeCaption(helix: Helix, now: number): { text: string; color: string } {
   const name = helix.ibc?.name || "IBC";
@@ -96,8 +106,9 @@ export function bridgeCaption(helix: Helix, now: number): { text: string; color:
     const sealedAt = p.received ? ts(p.received.time) : p.acked ? ts(p.acked.time) : 0;
     if (sealedAt && sealedAt <= now && now - sealedAt < 3.5 && (!best || sealedAt > best.t)) best = { t: sealedAt, kind: "seal", p };
   }
-  const inflight = helix.bridge?.inFlight ?? helix.packets.filter((p) => p.status === "in-flight").length;
-  if (!best) return { text: `bridge idle · ${inflight} in flight`, color: "#6b645b" };
+  const inflight = bridgeInFlight(helix);
+  const idle = inflight == null ? "bridge idle" : `bridge idle · ${inflight} in flight`;
+  if (!best) return { text: idle, color: "#6b645b" };
   const amt = packetAmount(best.p);
   const from = best.p.direction === "out" ? "Aether" : name;
   const to = best.p.direction === "out" ? name : "Aether";
@@ -406,6 +417,24 @@ export function counterpartyNotice(h: Helix | null | undefined, name: string): s
 export interface StrandBlock extends HelixBlock {
   chain: "aether" | "ibc";
   head: boolean;
+}
+
+/**
+ * Blocks for the overview's Latest list. In Both, a fast counterparty
+ * cannot crowd Aether out: at least half the rows are Aether's when
+ * Aether has that many blocks in the window. Single-chain views are
+ * that chain's newest rows.
+ */
+export function overviewBlocks(helix: Helix, view: ChainView, limit = 7): StrandBlock[] {
+  const aether: StrandBlock[] = helix.aether.blocks.map((b, i) => ({ ...b, chain: "aether", head: i === 0 }));
+  const ibc: StrandBlock[] = helix.ibc ? helix.ibc.blocks.map((b, i) => ({ ...b, chain: "ibc", head: i === 0 })) : [];
+  if (view === "aether") return aether.slice(0, limit);
+  if (view === "ibc") return ibc.slice(0, limit);
+  const aSlots = Math.min(aether.length, Math.max(Math.ceil(limit / 2), limit - ibc.length));
+  const bSlots = Math.min(ibc.length, limit - aSlots);
+  return [...aether.slice(0, aSlots), ...ibc.slice(0, bSlots)].sort(
+    (a, b) => ts(b.time) - ts(a.time) || (a.chain < b.chain ? -1 : 1),
+  );
 }
 
 /** Both strands' blocks, newest first, limited to the chains in view. */

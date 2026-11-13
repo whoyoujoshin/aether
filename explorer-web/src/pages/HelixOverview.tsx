@@ -11,7 +11,8 @@ import {
   STATUS_LABEL,
   counterpartyNotice,
   blockTimeLabel,
-  mergedBlocks,
+  bridgeInFlight,
+  overviewBlocks,
   packetAmount,
   packetKey,
   packetTs,
@@ -58,7 +59,7 @@ function cards(helix: Helix, stats: Stats | null, view: ChainView): StrandCard[]
     border: "var(--border)",
     stats: [
       ["Packets 24h", br ? int(br.packetsSent) : "—"],
-      ["In flight", br ? int(br.inFlight) : "—"],
+      ["In flight", bridgeInFlight(helix) == null ? "—" : int(bridgeInFlight(helix)!)],
       ["Avg relay", br && br.avgRelaySecs ? `${br.avgRelaySecs.toFixed(1)}s` : "—"],
       ["AETH bridged", br ? compact(Number(br.escrowedUaeth) / 1e6) : "—"],
     ],
@@ -99,7 +100,7 @@ export default function HelixOverview() {
   const ibcNote = counterpartyNotice(h, name);
 
   const title = !h?.ibc || view === "both" ? "Aether helix" : view === "aether" ? "Aether overview" : `${name} overview`;
-  const blocks = h ? mergedBlocks(h, view).slice(0, 7) : [];
+  const blocks = h ? overviewBlocks(h, view, 7) : [];
   const maxTxs = Math.max(1, ...blocks.map((b) => b.numTxs));
   const caption = h ? bridgeCaption(h, now) : null;
 
@@ -260,8 +261,8 @@ export default function HelixOverview() {
               </div>
               <ErrorBanner error={recent.error} />
               {recent.loading && !recent.data && <div className="loading">Loading…</div>}
-              {recent.data && recent.data.length === 0 && <div className="empty">No transactions yet.</div>}
-              {recent.data?.slice(0, 7).map((t) => (
+              {recent.data && recent.data.length === 0 && <div className="empty">No recent transactions.</div>}
+              {(Array.isArray(recent.data) ? recent.data : []).slice(0, 7).map((t) => (
                 <div key={t.hash} className="row hover" style={{ gridTemplateColumns: "minmax(0,1fr) 170px 110px 64px", gap: 14, padding: "14px 20px", fontSize: 13 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                     <span style={{ flex: "none", width: 8, height: 8, borderRadius: "50%", background: AETHER_COLOR }} />
