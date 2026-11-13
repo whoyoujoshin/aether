@@ -32,6 +32,43 @@ SCHEME_PULL = "aether-pull"
 DEPOSIT_MEMO_PREFIX = "prepaid:"
 
 
+def deposit_memo(service: str, account: str) -> str:
+    """The memo of an aether-prepaid deposit crediting account at service:
+    "prepaid:<service>:<account>". It names the service, since several paywalls
+    with their own ledgers may share a payee (GHSA-xm9h-23fw-7c6c)."""
+    return f"{DEPOSIT_MEMO_PREFIX}{service}:{account}"
+
+
+def service_slug(name: str) -> str:
+    """A display name as a prepaid service name, as Go's paywall.ServiceSlug
+    ("Aether block clock" -> "aether-block-clock")."""
+    out, dash = [], False
+    for c in name.lower():
+        if not (("a" <= c <= "z") or ("0" <= c <= "9") or c in "._"):
+            dash = bool(out)
+            continue
+        if dash:
+            out.append("-")
+            dash = False
+        out.append(c)
+    s = "".join(out)
+    return s[:64].rstrip("-") if len(s) > 64 else s
+
+
+def _deposit_memo_from(req: dict, account: str) -> str:
+    """The deposit memo a seller's 402 asks for, filled in for account;
+    "prepaid:" + account from a seller that names none."""
+    t = req.get("extra", {}).get("depositMemo") or ""
+    if not t:
+        return DEPOSIT_MEMO_PREFIX + account
+    if not t.startswith(DEPOSIT_MEMO_PREFIX) or not t.endswith("<address>") or t.count("<address>") != 1:
+        raise PaymentError("PAYMENT_UNSUPPORTED", f"the server's depositMemo {t!r} isn't \"prepaid:...<address>\". Nothing was paid")
+    memo = t[:-len("<address>")] + account
+    if len(memo) > 256:
+        raise PaymentError("PAYMENT_UNSUPPORTED", "the server's depositMemo is too long for a memo. Nothing was paid")
+    return memo
+
+
 def memo_for(invoice: str) -> str:
     """The memo an aether-memo payment of invoice carries: its SHA-256,
     lowercase hex. The invoice itself never goes on chain, where anyone could
@@ -321,7 +358,7 @@ def _fetch_prepaid(client, key, url, method, body, req, asset, maximum, prepay, 
     if pr.get("error") != "insufficient_balance":
         code = "PAYMENT_ALREADY_REDEEMED" if pr.get("error") == "invoice_already_redeemed" else "PAYMENT_REJECTED"
         raise PaymentError(code, f"{pr.get('error')}: {pr.get('message', '')}")
-    dep = client.send(key, req["payTo"], f"{prepay}{asset.base_unit}", memo=DEPOSIT_MEMO_PREFIX + key.address)
+    dep = client.send(key, req["payTo"], f"{prepay}{asset.base_unit}", memo=_deposit_memo_from(req, key.address))
     if dep.status == "failed":
         raise PaymentError("TX_REJECTED", f"the deposit was rejected: {dep.log}", dep.hash)
     conf = client.wait_for_transaction(dep.hash, timeout=confirm_timeout)

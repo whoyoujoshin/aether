@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"cosmossdk.io/math"
@@ -23,11 +24,43 @@ import (
 // credited. Recorded before it's sent, so a retried or concurrent call
 // presents the same deposit instead of making another.
 type prepaidDeposit struct {
-	SendKey   string    `json:"sendKey"`
-	TxHash    string    `json:"txHash,omitempty"`
-	Amount    string    `json:"amountUaeth"`     // in Denom's base unit
-	Denom     string    `json:"denom,omitempty"` // "" for AETH
+	SendKey string `json:"sendKey"`
+	TxHash  string `json:"txHash,omitempty"`
+	Amount  string `json:"amountUaeth"`     // in Denom's base unit
+	Denom   string `json:"denom,omitempty"` // "" for AETH
+	// Memo is the deposit's memo ("" in a record made before deposits
+	// named their service: "prepaid:" + the account).
+	Memo      string    `json:"memo,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
+}
+
+// depositMemo is the memo of a deposit crediting account with the seller
+// that sent req: its depositMemo with the account in place of <address>,
+// which names the seller's service so the deposit credits nowhere else.
+// A seller that names none predates that and takes "prepaid:" + account.
+func depositMemo(req paywall.PaymentRequirements, account string) (string, error) {
+	t := req.Extra.DepositMemo
+	if t == "" {
+		return paywall.DepositMemoPrefix + account, nil
+	}
+	if !strings.HasPrefix(t, paywall.DepositMemoPrefix) || !strings.HasSuffix(t, "<address>") || strings.Count(t, "<address>") != 1 {
+		return "", newError(codePaymentUnsupported, fmt.Sprintf("the server's depositMemo %q isn't \"prepaid:...<address>\". Nothing was paid", t))
+	}
+	memo := strings.TrimSuffix(t, "<address>") + account
+	if len(memo) > maxMemoLength {
+		return "", newError(codePaymentUnsupported, "the server's depositMemo is too long for a memo. Nothing was paid")
+	}
+	return memo, nil
+}
+
+// depositKey is where the deposit for memo to payTo is recorded: by payTo
+// alone for the old memo (as before), else by payTo and memo, so two
+// services paying one address keep separate deposits.
+func depositKey(payTo, memo, account string) string {
+	if memo == paywall.DepositMemoPrefix+account {
+		return payTo
+	}
+	return payTo + " " + memo
 }
 
 // requestIDFor is the ID a seller charges at most once: the same
@@ -70,6 +103,11 @@ func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req pay
 	if err != nil {
 		return fetchPaidOutput{}, err
 	}
+	memo, err := depositMemo(req, agent.Address)
+	if err != nil {
+		return fetchPaidOutput{}, err
+	}
+	key := depositKey(req.PayTo, memo, agent.Address)
 	u, _ := url.Parse(in.URL)
 	path := u.Path
 	if path == "" {
@@ -111,7 +149,7 @@ func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req pay
 	if err != nil {
 		return fetchPaidOutput{}, err
 	}
-	dep := st.Prepaid[req.PayTo]
+	dep := st.Prepaid[key]
 
 	if dep == nil {
 		// Try the balance first: usually it's enough, and this is instant.
@@ -130,9 +168,9 @@ func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req pay
 		stateMu.Lock()
 		st, err = loadState()
 		if err == nil {
-			if dep = st.Prepaid[req.PayTo]; dep == nil {
-				dep = &prepaidDeposit{SendKey: fmt.Sprintf("prepay/%s/%d", req.PayTo, time.Now().UnixNano()), Amount: prepay.String(), Denom: recordDenom(asset), CreatedAt: time.Now()}
-				st.Prepaid[req.PayTo] = dep
+			if dep = st.Prepaid[key]; dep == nil {
+				dep = &prepaidDeposit{SendKey: fmt.Sprintf("prepay/%s/%d", req.PayTo, time.Now().UnixNano()), Amount: prepay.String(), Denom: recordDenom(asset), Memo: memo, CreatedAt: time.Now()}
+				st.Prepaid[key] = dep
 				err = st.save()
 			}
 		}
@@ -143,17 +181,20 @@ func fetchPrepaid(ctx context.Context, in fetchPaidInput, method string, req pay
 	}
 
 	depAmount, _ := math.NewIntFromString(dep.Amount)
+	if dep.Memo == "" {
+		dep.Memo = paywall.DepositMemoPrefix + agent.Address // recorded before deposits named their service
+	}
 	depAsset := assetOfDenom(dep.Denom)
 	_, sent, err := toolSendAeth(ctx, nil, sendAethInput{
-		To: req.PayTo, Amount: dep.Amount + depAsset.BaseUnit, Memo: paywall.DepositMemoPrefix + agent.Address, IdempotencyKey: dep.SendKey,
+		To: req.PayTo, Amount: dep.Amount + depAsset.BaseUnit, Memo: dep.Memo, IdempotencyKey: dep.SendKey,
 	})
 	if err != nil {
 		return fetchPaidOutput{}, err
 	}
 	forget := func() {
 		stateMu.Lock()
-		if st, err := loadState(); err == nil && st.Prepaid[req.PayTo] != nil && st.Prepaid[req.PayTo].SendKey == dep.SendKey {
-			delete(st.Prepaid, req.PayTo)
+		if st, err := loadState(); err == nil && st.Prepaid[key] != nil && st.Prepaid[key].SendKey == dep.SendKey {
+			delete(st.Prepaid, key)
 			_ = st.save()
 		}
 		stateMu.Unlock()

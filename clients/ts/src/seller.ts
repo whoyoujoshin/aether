@@ -10,7 +10,7 @@ import { signsFor, type AccountKeys } from "./rotation.js";
 import { buildSend, buildTx, execSendMsg, DEFAULT_GAS_LIMIT } from "./tx.js";
 import { AETH, Assets, DENOM, decimalOf, formatAeth, formatAmount, parseUaeth, receiptAmount, type Asset } from "./amount.js";
 import { MANIFEST_PATH, type Manifest } from "./directory.js";
-import { DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, memoFor, SCHEME_PREPAID, SCHEME_PULL, pullSigningMessage, signingMessage, type PaymentRequired, type PaymentRequirements } from "./paywall.js";
+import { SCHEME_MEMO, depositMemo, memoFor, serviceSlug, SCHEME_PREPAID, SCHEME_PULL, pullSigningMessage, signingMessage, type PaymentRequired, type PaymentRequirements } from "./paywall.js";
 import { FileLedger, LedgerError, owedOf, type Collection, type Ledger, type PullLedger, type Withdrawal } from "./ledger.js";
 import type { SendGrant } from "./client.js";
 import { RECEIPT_HEADER, receiptFieldsOK, sha256Hex, signReceipt, verifyReceipt, type ReceiptDelegation } from "./receipt.js";
@@ -58,7 +58,7 @@ export const COLLECTION_MEMO_PREFIX = "x402-pull:";
 const GRANT_CACHE_MS = 15_000;
 const PREPAID_INSTRUCTIONS =
   "For many requests: deposit at least minDeposit uaeth to payTo with memo depositMemo " +
-  '("prepaid:" + the address to credit). Then sign each request with that account\'s ML-DSA key and send X-PAYMENT: base64 of ' +
+  "(with the address to credit in place of <address>; it names this service, so it credits nowhere else). Then sign each request with that account's ML-DSA key and send X-PAYMENT: base64 of " +
   '{"x402Version":1,"scheme":"aether-prepaid","network":"<network>","payload":{account,pubKey,timestamp,requestId,maxPrice,depositTx?,signature}}' +
   " -- see package paywall's SigningMessage. The first request after a deposit names it in depositTx. " +
   'Each requestId is charged once. Unspent balance stays with the seller; if withdrawPath is set, POST a request signed the same way there (body {"amount":"all"}) to get it back.';
@@ -93,6 +93,12 @@ export interface PaywallConfig {
   prepaid?: {
     /** A Ledger, or a file path for a FileLedger. It holds customers' balances: back it up. */
     ledger: Ledger | string;
+    /**
+     * Names this paywall in deposit memos ("prepaid:<service>:<address>"), so a deposit is credited here and at no
+     * other paywall paying the same address with its own ledger. Letters, digits, ".", "_", "-"; at most 64.
+     * Default: the slug of name ("Weather API" → "weather-api").
+     */
+    service?: string;
     /** Smallest deposit (and partial withdrawal), with unit, in the price's asset. Default: the price. */
     minDeposit?: string;
     /** Pays back unspent balances on request. Keep only a small float in this account. */
@@ -201,6 +207,7 @@ export class Paywall {
   private readonly secret: Uint8Array;
   private readonly ttlMs: number;
   private readonly ledger?: Ledger;
+  private readonly service: string = "";
   private readonly minDeposit: bigint = 0n;
   private readonly payout?: KeyPayout;
   private readonly redeemed = new Map<string, number>();
@@ -233,6 +240,10 @@ export class Paywall {
       this.ledger = typeof cfg.prepaid.ledger === "string" ? new FileLedger(cfg.prepaid.ledger) : cfg.prepaid.ledger;
       const min = cfg.prepaid.minDeposit ? same("minDeposit", cfg.prepaid.minDeposit) : this.price;
       this.minDeposit = min < this.price ? this.price : min;
+      this.service = cfg.prepaid.service ?? serviceSlug(cfg.name ?? "");
+      if (!/^[A-Za-z0-9._-]{1,64}$/.test(this.service)) {
+        throw new Error("prepaid needs a service name (prepaid.service, or a name): deposits name the service they're for, so one can't be credited at another paywall paying the same address");
+      }
       if (cfg.prepaid.payoutKey) this.payout = new KeyPayout(cfg.client, cfg.prepaid.payoutKey, this.asset.denom);
     }
     if (cfg.pull) {
@@ -438,7 +449,7 @@ export class Paywall {
     const body: PaymentRequired = { x402Version: 1, error: code, message, accepts: [memo] };
     if (this.ledger) {
       const extra: Record<string, string> = {
-        ...this.priced(), depositMemo: DEPOSIT_MEMO_PREFIX + "<address>", minDeposit: this.minDeposit.toString(), instructions: this.text(PREPAID_INSTRUCTIONS),
+        ...this.priced(), depositMemo: depositMemo(this.service, "<address>"), minDeposit: this.minDeposit.toString(), instructions: this.text(PREPAID_INSTRUCTIONS),
       };
       if (account) extra.balance = this.ledger.balance(account).toString();
       if (this.payout) extra.withdrawPath = WITHDRAW_PATH;
@@ -525,7 +536,7 @@ export class Paywall {
     const c = ledger.charge(pay.account, pay.requestId, this.price, this.now() + REQUEST_ID_RETENTION_MS);
     if (!c.fresh) return refuse("invoice_already_redeemed", "this requestId was already charged and served");
     if (!c.ok) {
-      return refuse("insufficient_balance", `balance ${this.both(c.balance)} is less than the price ${this.both(this.price)}: deposit to ${this.cfg.payTo} with memo ${DEPOSIT_MEMO_PREFIX}${pay.account}`);
+      return refuse("insufficient_balance", `balance ${this.both(c.balance)} is less than the price ${this.both(this.price)}: deposit to ${this.cfg.payTo} with memo ${depositMemo(this.service, pay.account)}`);
     }
     const settlement = encodeHeader({ success: true, network: this.network, payer: pay.account, balance: c.balance.toString() });
     return {
@@ -706,8 +717,10 @@ export class Paywall {
     if (t.status === "pending") return refuse("payment_not_confirmed", `deposit ${txHash} is not in a block yet; retry shortly`, { "Retry-After": "10" });
     if (t.status === "failed") return refuse("payment_failed", `deposit ${txHash} failed on chain`);
     const memo = t.memo ?? "";
-    if (!memo.startsWith(DEPOSIT_MEMO_PREFIX)) return refuse("invalid_deposit", `a deposit's memo must be ${DEPOSIT_MEMO_PREFIX}<address>`);
-    const beneficiary = memo.slice(DEPOSIT_MEMO_PREFIX.length);
+    // Only a deposit naming this service: another paywall paying the same address keeps its own ledger.
+    const prefix = depositMemo(this.service, "");
+    if (!memo.startsWith(prefix)) return refuse("invalid_deposit", `a deposit's memo must be ${depositMemo(this.service, "<address>")} (depositMemo, with the address to credit)`);
+    const beneficiary = memo.slice(prefix.length);
     if (!isAddress(beneficiary)) return refuse("invalid_deposit", "the deposit's memo names an invalid address");
     const { paid } = this.received(t.transfers);
     if (paid < this.minDeposit) return refuse("insufficient_payment", `deposits must be at least ${this.both(this.minDeposit)} to ${this.cfg.payTo}`);

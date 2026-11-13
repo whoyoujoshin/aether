@@ -14,7 +14,7 @@ import urllib.request
 from wsgiref.simple_server import WSGIRequestHandler, make_server
 
 from aether_client import (PUBKEY_TYPE_URL, WITHDRAW_PATH, AetherClient, FileLedger, Key, Paywall, PaymentError, build_send,
-                           create_receipt_delegation, delegation_signing_message, fetch_paid, memo_for, memo_payment_header,
+                           create_receipt_delegation, delegation_signing_message, deposit_memo, fetch_paid, memo_for, memo_payment_header, service_slug,
                            prepaid_payment_header, receipt_signing_message, signing_message, verify_receipt, withdraw_prepaid)
 from aether_client.proto import Writer, first
 from aether_client.rpc import RpcError
@@ -207,12 +207,19 @@ class SellerTest(unittest.TestCase):
 
         def post(header):
             return s.request("/forecast", headers={"X-PAYMENT": header}, method="POST", body=b"")
-        aeth_deposit = s.chain.pay(s.seller.address, 200_000, "prepaid:" + agent.address)
+        aeth_deposit = s.chain.pay(s.seller.address, 200_000, deposit_memo("weather", agent.address))
         self.assertEqual(json.loads(post(s.signed(agent, "r1", deposit=aeth_deposit, max_price=50_000))[2])["error"], "insufficient_payment")
-        deposit = s.chain.pay(s.seller.address, 200_000, "prepaid:" + agent.address, denom=denom)
+        deposit = s.chain.pay(s.seller.address, 200_000, deposit_memo("weather", agent.address), denom=denom)
         self.assertEqual(post(s.signed(agent, "r1", deposit=deposit, max_price=50_000))[0], 200)
         self.assertEqual(s.served[-1].balance_uaeth, 150_000, "balances are in uusdc")
         self.assertEqual(json.loads(post(s.signed(agent, "r2", max_price=49_999))[2])["error"], "price_above_signed_max")
+
+    def test_deposit_memo_names_the_service(self):
+        # slugged as Go's paywall.ServiceSlug and the TS serviceSlug
+        self.assertEqual(deposit_memo("weather", "aether1x"), "prepaid:weather:aether1x")
+        for name, want in [("Aether block clock", "aether-block-clock"), ("  Weather!! API ", "weather-api"),
+                           ("v1.2_beta", "v1.2_beta"), ("!!!", "")]:
+            self.assertEqual(service_slug(name), want)
 
     def test_memo_is_the_invoices_sha256(self):
         # the same value is pinned in the Go and TS tests
@@ -261,7 +268,7 @@ class SellerTest(unittest.TestCase):
     def test_prepaid_sign_in_follows_the_stored_key(self):
         s = self.s = Seller()
         owner, nxt = Key.random(), Key.random()
-        dep = s.chain.pay(s.seller.address, 50_000, "prepaid:" + owner.address)
+        dep = s.chain.pay(s.seller.address, 50_000, deposit_memo("weather", owner.address))
         self.assertEqual(s.request("/forecast", {"X-PAYMENT": s.signed(owner, "r1", deposit=dep)}, "POST")[0], 200,
                          "nothing stored: its own key")
 
@@ -308,7 +315,7 @@ class SellerTest(unittest.TestCase):
         def post(header, b=body):
             return s.request("/forecast", {"X-PAYMENT": header, "Content-Type": "application/json"}, "POST", b)
         self.assertEqual(json.loads(post(s.signed(agent, "r0", body=body))[2])["error"], "insufficient_balance")
-        dep = s.chain.pay(s.seller.address, 50_000, "prepaid:" + agent.address)
+        dep = s.chain.pay(s.seller.address, 50_000, deposit_memo("weather", agent.address))
         status, _, out = post(s.signed(agent, "r1", body=body, deposit=dep))
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(out)["body"], '{"q":1}', "the app still reads the body")
@@ -322,11 +329,15 @@ class SellerTest(unittest.TestCase):
                              (s.signed(agent, "r3", body=body, max_price=9_999), "price_above_signed_max")]:
             self.assertEqual(json.loads(post(header)[2])["error"], want)
         other = Key.random()
-        theirs = s.chain.pay(s.seller.address, 50_000, "prepaid:" + other.address)
+        theirs = s.chain.pay(s.seller.address, 50_000, deposit_memo("weather", other.address))
         self.assertEqual(post(s.signed(agent, "r4", body=body, deposit=theirs))[0], 200)
         self.assertEqual(s.served[-1].balance_uaeth, 20_000, "charged from its own balance, not credited")
         self.assertEqual(post(s.signed(other, "o1", body=body))[0], 200)
         self.assertEqual(s.served[-1].balance_uaeth, 40_000)
+        # a deposit for another service paying the same address, or naming none, credits nothing here (GHSA-xm9h-23fw-7c6c)
+        for i, memo in enumerate([deposit_memo("pulse", other.address), "prepaid:" + other.address]):
+            dep = s.chain.pay(s.seller.address, 50_000, memo)
+            self.assertEqual(json.loads(post(s.signed(other, f"x{i}", body=body, deposit=dep))[2])["error"], "invalid_deposit")
         s.t += 600
         stale = s.signed(agent, "r5", body=body)
         s.t -= 600
@@ -336,7 +347,7 @@ class SellerTest(unittest.TestCase):
         path = os.path.join(tempfile.mkdtemp(), "ledger.json")
         s = self.s = Seller(payout=True, ledger=path)
         agent = Key.random()
-        dep = s.chain.pay(s.seller.address, 50_000, "prepaid:" + agent.address)
+        dep = s.chain.pay(s.seller.address, 50_000, deposit_memo("weather", agent.address))
         self.assertEqual(s.request("/q", {"X-PAYMENT": s.signed(agent, "r1", path="/q", deposit=dep)}, "POST")[0], 200)
 
         s.chain.on_broadcast = lambda tx: {"code": 5, "codespace": "sdk", "log": "insufficient funds"}
@@ -450,7 +461,7 @@ class AsgiTest(unittest.TestCase):
         chain = FakeChain()
         client = chain.client()
         seller, agent = Key.random(), Key.random()
-        pw = Paywall(client, seller.address, "0.01 AETH", prepaid_ledger="")
+        pw = Paywall(client, seller.address, "0.01 AETH", prepaid_ledger="", prepaid_service="weather")
         seen = {}
 
         async def app(scope, receive, send):
@@ -459,7 +470,7 @@ class AsgiTest(unittest.TestCase):
             await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/plain")]})
             await send({"type": "http.response.body", "body": b"ok"})
         mw = pw.asgi(app)
-        dep = chain.pay(seller.address, 50_000, "prepaid:" + agent.address)
+        dep = chain.pay(seller.address, 50_000, deposit_memo("weather", agent.address))
         body = b'{"q":1}'
         header = prepaid_payment_header(agent, network=CHAIN, pay_to=seller.address, host="svc.example", method="POST",
                                         path="/forecast", body=body, max_price=10_000, timestamp=int(time.time()),
@@ -492,7 +503,7 @@ class AsgiTest(unittest.TestCase):
         chain = FakeChain()
         client = chain.client()
         seller, agent = Key.random(), Key.random()
-        pw = Paywall(client, seller.address, "0.01 AETH", prepaid_ledger="", receipt_key=seller)
+        pw = Paywall(client, seller.address, "0.01 AETH", prepaid_ledger="", prepaid_service="weather", receipt_key=seller)
 
         async def app(scope, receive, send):
             await receive()
@@ -500,7 +511,7 @@ class AsgiTest(unittest.TestCase):
             await send({"type": "http.response.body", "body": b"part1 ", "more_body": True})
             await send({"type": "http.response.body", "body": b"part2"})
         mw = pw.asgi(app)
-        dep = chain.pay(seller.address, 50_000, "prepaid:" + agent.address)
+        dep = chain.pay(seller.address, 50_000, deposit_memo("weather", agent.address))
         header = prepaid_payment_header(agent, network=CHAIN, pay_to=seller.address, host="svc.example", method="GET",
                                         path="/f", body=b"", max_price=10_000, timestamp=int(time.time()), request_id="r1", deposit_tx=dep)
         sent = []

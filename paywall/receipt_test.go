@@ -35,7 +35,7 @@ func newReceiptHarness(t *testing.T, receipts func(payee agentKey) *ReceiptConfi
 	p, err := New(Config{
 		PayTo: h.payee.address, Price: math.NewInt(10_000), Network: "aether-testnet-1",
 		Lookup: h.ledger.lookup, Now: func() time.Time { return h.now },
-		Prepaid:  &PrepaidConfig{Ledger: led, MinDeposit: math.NewInt(30_000)},
+		Prepaid:  &PrepaidConfig{Ledger: led, Service: "weather", MinDeposit: math.NewInt(30_000)},
 		Receipts: receipts(h.payee),
 	})
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestReceipt_CoversTheRequestPaymentAndResponse(t *testing.T) {
 func TestReceipt_Prepaid(t *testing.T) {
 	h := newReceiptHarness(t, payeeSigns)
 	agent := newAgentKey(t)
-	h.ledger.pay("DEP1", DepositMemoPrefix+agent.address, h.payee.address, 50_000, h.now, 0)
+	h.ledger.pay("DEP1", DepositMemo("weather", agent.address), h.payee.address, 50_000, h.now, 0)
 	body := `{"q":1}`
 	host := strings.TrimPrefix(h.srv.URL, "http://")
 	header, err := EncodePrepaidPayment(agent.address, RequestFields{

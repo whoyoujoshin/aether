@@ -106,6 +106,9 @@ func New(cfg Config) (*Paywall, error) {
 		if cfg.Prepaid.Ledger == nil {
 			return nil, errors.New("prepaid needs a ledger")
 		}
+		if !validService(cfg.Prepaid.Service) {
+			return nil, errors.New("prepaid needs a service name (letters, digits, '.', '_' or '-', at most 64): deposits name the service they're for, so one can't be credited at another paywall paying the same address")
+		}
 		if cfg.Prepaid.MinDeposit.IsNil() || cfg.Prepaid.MinDeposit.LT(cfg.Price) {
 			cfg.Prepaid.MinDeposit = cfg.Price
 		}
@@ -360,7 +363,7 @@ func (p *Paywall) paymentRequiredFor(w http.ResponseWriter, r *http.Request, cod
 		prepaid := body.Accepts[0]
 		prepaid.Scheme = SchemePrepaid
 		prepaid.Extra = p.priced(Extra{
-			DepositMemo:  DepositMemoPrefix + "<address>",
+			DepositMemo:  DepositMemo(p.cfg.Prepaid.Service, "<address>"),
 			MinDeposit:   p.cfg.Prepaid.MinDeposit.String(),
 			Instructions: p.text(prepaidInstructions),
 		})

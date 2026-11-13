@@ -22,6 +22,43 @@ export const SCHEME_PULL = "aether-pull";
 export const DEPOSIT_MEMO_PREFIX = "prepaid:";
 
 /**
+ * The memo of an aether-prepaid deposit crediting account at service:
+ * "prepaid:<service>:<account>". It names the service, since several paywalls
+ * with their own ledgers may share a payee (GHSA-xm9h-23fw-7c6c).
+ */
+export function depositMemo(service: string, account: string): string {
+  return `${DEPOSIT_MEMO_PREFIX}${service}:${account}`;
+}
+
+/** A display name as a prepaid service name, as Go's paywall.ServiceSlug ("Aether block clock" → "aether-block-clock"). */
+export function serviceSlug(name: string): string {
+  let out = "";
+  let dash = false;
+  for (const c of name.toLowerCase()) {
+    if (!/^[a-z0-9._]$/.test(c)) {
+      dash = out.length > 0;
+      continue;
+    }
+    if (dash) out += "-";
+    dash = false;
+    out += c;
+  }
+  return out.length > 64 ? out.slice(0, 64).replace(/-+$/, "") : out;
+}
+
+/** The deposit memo a seller's 402 asks for, filled in for account; "prepaid:" + account from a seller that names none. */
+function depositMemoFrom(req: PaymentRequirements, account: string): string {
+  const t = req.extra.depositMemo;
+  if (t === undefined || t === "") return DEPOSIT_MEMO_PREFIX + account;
+  if (!t.startsWith(DEPOSIT_MEMO_PREFIX) || !t.endsWith("<address>") || t.split("<address>").length !== 2) {
+    throw new PaymentError("PAYMENT_UNSUPPORTED", `the server's depositMemo ${JSON.stringify(t)} isn't "prepaid:...<address>". Nothing was paid`);
+  }
+  const memo = t.slice(0, -"<address>".length) + account;
+  if (memo.length > 256) throw new PaymentError("PAYMENT_UNSUPPORTED", "the server's depositMemo is too long for a memo. Nothing was paid");
+  return memo;
+}
+
+/**
  * The memo an aether-memo payment of invoice carries: its SHA-256, lowercase
  * hex. The invoice itself never goes on chain, where anyone could present it
  * first (GHSA-pvjr-prhw-f4xf).
@@ -305,7 +342,7 @@ async function fetchPrepaid(
   let pr = (await resp.json()) as PaymentRequired;
   if (pr.error !== "insufficient_balance") throw new PaymentError(pr.error === "invoice_already_redeemed" ? "PAYMENT_ALREADY_REDEEMED" : "PAYMENT_REJECTED", `${pr.error}: ${pr.message ?? ""}`);
 
-  const dep = await client.send(key, req.payTo, `${prepay}${asset.baseUnit}`, { memo: DEPOSIT_MEMO_PREFIX + key.address });
+  const dep = await client.send(key, req.payTo, `${prepay}${asset.baseUnit}`, { memo: depositMemoFrom(req, key.address) });
   if (dep.status === "failed") throw new PaymentError("TX_REJECTED", `the deposit was rejected: ${dep.log}`, dep.hash);
   const conf = await client.waitForTransaction(dep.hash, opts.confirmTimeoutMs ?? 150_000);
   if (conf.status === "failed") throw new PaymentError("TX_FAILED", `the deposit failed on chain: ${conf.log}`, dep.hash);

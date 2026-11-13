@@ -44,7 +44,7 @@ func withdrawingSeller(t *testing.T, f *fakeChain, payout paywall.Payout) *httpt
 	require.NoError(t, err)
 	pw, err := paywall.New(paywall.Config{
 		PayTo: sellerAddr(), Price: math.NewInt(20_000), Network: chainID, Lookup: f.lookup,
-		Prepaid: &paywall.PrepaidConfig{Ledger: ledger, MinDeposit: math.NewInt(50_000), Payout: payout},
+		Prepaid: &paywall.PrepaidConfig{Ledger: ledger, Service: "weather", MinDeposit: math.NewInt(50_000), Payout: payout},
 	})
 	require.NoError(t, err)
 	mux := http.NewServeMux()

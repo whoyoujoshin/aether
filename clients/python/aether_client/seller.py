@@ -41,7 +41,7 @@ from .directory import MANIFEST_PATH
 from .keys import PUBKEY_BYTES, Key, is_address
 from .rotation import signs_for
 from .ledger import FileLedger, LedgerError, _parse_time
-from .paywall import DEPOSIT_MEMO_PREFIX, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, memo_for, pull_signing_message, signing_message
+from .paywall import SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, deposit_memo, memo_for, service_slug, pull_signing_message, signing_message
 from .receipt import RECEIPT_HEADER, encode_receipt, malformed, sign_receipt, verify_receipt
 from .rpc import RpcError
 from .tx import DEFAULT_GAS_LIMIT, build_send, build_tx, exec_send_msg
@@ -64,7 +64,8 @@ _MEMO_INSTRUCTIONS = (
     "Each invoice pays for one response, and must be presented by expiresAt.")
 _PREPAID_INSTRUCTIONS = (
     "For many requests: deposit at least minDeposit uaeth to payTo with memo depositMemo "
-    '("prepaid:" + the address to credit). Then sign each request with that account\'s ML-DSA key and send X-PAYMENT: base64 of '
+    "(with the address to credit in place of <address>; it names this service, so it credits nowhere else). "
+    "Then sign each request with that account's ML-DSA key and send X-PAYMENT: base64 of "
     '{"x402Version":1,"scheme":"aether-prepaid","network":"<network>","payload":{account,pubKey,timestamp,requestId,maxPrice,depositTx?,signature}}'
     " -- see package paywall's SigningMessage. The first request after a deposit names it in depositTx. "
     'Each requestId is charged once. Unspent balance stays with the seller; if withdrawPath is set, POST a request signed the same way there (body {"amount":"all"}) to get it back.')
@@ -213,6 +214,7 @@ class Paywall:
     def __init__(self, client: AetherClient, pay_to: str, price: str, *, name: str = "", description: str = "",
                  mime_type: str = "", invoice_ttl: int = 86400, secret: Optional[bytes] = None,
                  prepaid_ledger: Union[None, str, FileLedger] = None, min_deposit: Optional[str] = None,
+                 prepaid_service: Optional[str] = None,
                  payout_key: Optional[Key] = None, receipt_key: Optional[Key] = None,
                  receipt_delegation: Optional[dict] = None, pull_collector_key: Optional[Key] = None,
                  pull_ledger: Union[None, str, FileLedger] = None, pull_credit: Optional[str] = None,
@@ -227,7 +229,10 @@ class Paywall:
         balances, pull allowances and collections, and withdrawals; min_deposit and pull_credit
         must then be in USDC too. prepaid_ledger (a
         FileLedger or a path) offers aether-prepaid: it holds customers'
-        balances, so back it up. payout_key pays back unspent balances on
+        balances, so back it up. prepaid_service names this paywall in deposit
+        memos ("prepaid:<service>:<address>"; default: the slug of name), so a
+        deposit is credited here and at no other paywall paying the same
+        address with its own ledger. payout_key pays back unspent balances on
         request: keep only a small float in that account. receipt_key signs a
         receipt for every paid response: pay_to's own key, or one pay_to
         delegated receipts to (receipt_delegation, from
@@ -260,6 +265,10 @@ class Paywall:
         self.now = now
         self.ledger = FileLedger(prepaid_ledger) if isinstance(prepaid_ledger, str) else prepaid_ledger
         self.min_deposit = max(same("min_deposit", min_deposit) if min_deposit else self.price, self.price)
+        self.service = prepaid_service if prepaid_service is not None else service_slug(name)
+        if self.ledger is not None and not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", self.service):
+            raise ValueError("prepaid needs a service name (prepaid_service, or a name): deposits name the service they're for, "
+                             "so one can't be credited at another paywall paying the same address")
         self.payout = KeyPayout(client, payout_key, self.asset.denom) if payout_key and self.ledger is not None else None
         self._redeemed: Dict[str, float] = {}
         self._redeemed_lock = threading.Lock()
@@ -485,7 +494,7 @@ class Paywall:
         }
         body = {"x402Version": 1, "error": code, "message": message, "accepts": [memo]}
         if self.ledger is not None:
-            extra = {**self._priced(), "depositMemo": DEPOSIT_MEMO_PREFIX + "<address>",
+            extra = {**self._priced(), "depositMemo": deposit_memo(self.service, "<address>"),
                      "minDeposit": str(self.min_deposit), "instructions": self._text(_PREPAID_INSTRUCTIONS)}
             if account:
                 extra["balance"] = str(self.ledger.balance(account))
@@ -568,7 +577,7 @@ class Paywall:
             return refuse("invoice_already_redeemed", "this requestId was already charged and served")
         if not charged:
             return refuse("insufficient_balance", f"balance {self._both(bal)} is less than the price {self._both(self.price)}: "
-                                                  f"deposit to {self.pay_to} with memo {DEPOSIT_MEMO_PREFIX}{account}")
+                                                  f"deposit to {self.pay_to} with memo {deposit_memo(self.service, account)}")
         settlement = _encode_header({"success": True, "network": self.network, "payer": account, "balance": str(bal)})
 
         def finish(status: int):
@@ -738,9 +747,12 @@ class Paywall:
             return refuse("payment_not_confirmed", f"deposit {tx_hash} is not in a block yet; retry shortly", {"Retry-After": "10"})
         if t.status == "failed":
             return refuse("payment_failed", f"deposit {tx_hash} failed on chain")
-        if not t.memo.startswith(DEPOSIT_MEMO_PREFIX):
-            return refuse("invalid_deposit", f"a deposit's memo must be {DEPOSIT_MEMO_PREFIX}<address>")
-        beneficiary = t.memo[len(DEPOSIT_MEMO_PREFIX):]
+        # Only a deposit naming this service: another paywall paying the same address keeps its own ledger.
+        prefix = deposit_memo(self.service, "")
+        if not t.memo.startswith(prefix):
+            return refuse("invalid_deposit", f"a deposit's memo must be {deposit_memo(self.service, '<address>')} "
+                                             "(depositMemo, with the address to credit)")
+        beneficiary = t.memo[len(prefix):]
         if not is_address(beneficiary):
             return refuse("invalid_deposit", "the deposit's memo names an invalid address")
         paid, _ = self._received(t.transfers)

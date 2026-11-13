@@ -26,7 +26,7 @@ func receiptSeller(t *testing.T, f *fakeChain, tamper bool) (*httptest.Server, s
 	require.NoError(t, err)
 	pw, err := paywall.New(paywall.Config{
 		PayTo: payTo, Price: math.NewInt(20_000), Network: chainID, Lookup: f.lookup,
-		Prepaid: &paywall.PrepaidConfig{Ledger: ledger, MinDeposit: math.NewInt(50_000)},
+		Prepaid: &paywall.PrepaidConfig{Ledger: ledger, Service: "weather", MinDeposit: math.NewInt(50_000)},
 		Receipts: &paywall.ReceiptConfig{Sign: func(msg []byte) ([]byte, []byte, error) {
 			sig, err := sk.Sign(msg)
 			return sig, sk.PubKey().Bytes(), err

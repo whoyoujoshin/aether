@@ -20,7 +20,7 @@ export { AetherClient, transfers, decodeSendGrant } from "./client.js";
 export { feeFor, parseGasPrices } from "./fees.js";
 export type { Fee, GasPrice } from "./fees.js";
 export type { TransactionInfo, IncomingPayment, SendResult, TxStatus, Transfer, SendGrant } from "./client.js";
-export { fetchPaid, presentPayment, signingMessage, memoFor, memoPaymentHeader, prepaidPaymentHeader, pullSigningMessage, pullPaymentHeader, PaymentError, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, DEPOSIT_MEMO_PREFIX, PULL_GRANT_SECONDS } from "./paywall.js";
+export { fetchPaid, presentPayment, signingMessage, memoFor, depositMemo, serviceSlug, memoPaymentHeader, prepaidPaymentHeader, pullSigningMessage, pullPaymentHeader, PaymentError, SCHEME_MEMO, SCHEME_PREPAID, SCHEME_PULL, DEPOSIT_MEMO_PREFIX, PULL_GRANT_SECONDS } from "./paywall.js";
 export type { FetchPaidOptions, FetchPaidResult, PaymentRequired, PaymentRequirements, RequestFields } from "./paywall.js";
 export { findServices, fetchManifest, normalizeURL, rateService, ratingMemo, DIRECTORY_ADDRESS, ANNOUNCE_PREFIX, DELIST_PREFIX, MANIFEST_PATH, RATE_PREFIX, DEFAULT_WINDOW } from "./directory.js";
 export type { Manifest, Service, Rating, RatingSummary, Reputation, FindServicesOptions } from "./directory.js";

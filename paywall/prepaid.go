@@ -25,8 +25,10 @@ import (
 // The aether-prepaid scheme, for agents making many small requests:
 //
 //  1. Deposit once: send any amount (at least MinDeposit) to payTo with
-//     memo "prepaid:<address>". The address is the account credited --
-//     anyone can fund it, e.g. a person funding their bot.
+//     memo "prepaid:<service>:<address>" (the 402's depositMemo, with the
+//     address filled in). The address is the account credited -- anyone
+//     can fund it, e.g. a person funding their bot -- and the service is
+//     the one paywall (or set of instances sharing a ledger) it's for.
 //  2. Pay per request instantly: sign each request with that account's
 //     ML-DSA key (PrepaidPayment). The server checks the signature and
 //     deducts the price from the balance. No transaction, no block wait.
@@ -60,7 +62,11 @@ const (
 
 // PrepaidConfig enables the aether-prepaid scheme.
 type PrepaidConfig struct {
-	Ledger     Ledger
+	Ledger Ledger
+	// Service names this paywall in deposit memos (DepositMemo). It must
+	// differ between paywalls that pay the same address but keep their own
+	// ledgers; instances sharing one ledger share one name.
+	Service    string
 	MinDeposit math.Int // uaeth; at least the price; also the smallest partial withdrawal
 	// Payout, if set, lets agents withdraw unspent balances (see
 	// WithdrawHandler).
@@ -270,7 +276,7 @@ func (p *Paywall) servePrepaid(w http.ResponseWriter, r *http.Request, raw json.
 		return
 	}
 	if !ok {
-		refuse(ErrInsufficientBalance, fmt.Sprintf("balance %s is less than the price %s: deposit to %s with memo %s%s", p.both(balance), p.both(p.cfg.Price), p.cfg.PayTo, DepositMemoPrefix, pay.Account), pay.Account)
+		refuse(ErrInsufficientBalance, fmt.Sprintf("balance %s is less than the price %s: deposit to %s with memo %s", p.both(balance), p.both(p.cfg.Price), p.cfg.PayTo, DepositMemo(p.cfg.Prepaid.Service, pay.Account)), pay.Account)
 		return
 	}
 
@@ -303,9 +309,11 @@ func (p *Paywall) creditDeposit(w http.ResponseWriter, r *http.Request, txHash, 
 		refuse(ErrPaymentFailed, "deposit "+txHash+" failed on chain")
 		return false
 	}
-	beneficiary, ok := strings.CutPrefix(detail.Memo, DepositMemoPrefix)
+	// Only a deposit naming this service: another paywall paying the same
+	// address keeps its own ledger and credits its own deposits.
+	beneficiary, ok := strings.CutPrefix(detail.Memo, DepositMemo(p.cfg.Prepaid.Service, ""))
 	if !ok {
-		refuse(ErrInvalidDeposit, "a deposit's memo must be "+DepositMemoPrefix+"<address>")
+		refuse(ErrInvalidDeposit, "a deposit's memo must be "+DepositMemo(p.cfg.Prepaid.Service, "<address>")+" (depositMemo, with the address to credit)")
 		return false
 	}
 	if _, err := sdk.AccAddressFromBech32(beneficiary); err != nil {
@@ -328,7 +336,7 @@ func (p *Paywall) creditDeposit(w http.ResponseWriter, r *http.Request, txHash, 
 }
 
 const prepaidInstructions = "For many requests: deposit at least minDeposit uaeth to payTo with memo depositMemo " +
-	"(\"prepaid:\" + the address to credit). Then sign each request with that account's ML-DSA key and send X-PAYMENT: base64 of " +
+	"(with the address to credit in place of <address>; it names this service, so it credits nowhere else). Then sign each request with that account's ML-DSA key and send X-PAYMENT: base64 of " +
 	`{"x402Version":1,"scheme":"aether-prepaid","network":"<network>","payload":{account,pubKey,timestamp,requestId,maxPrice,depositTx?,signature}}` +
 	" -- see package paywall's SigningMessage. The first request after a deposit names it in depositTx. " +
 	"Each requestId is charged once. Unspent balance stays with the seller; if withdrawPath is set, POST a request signed the same way there (body {\"amount\":\"all\"}) to get it back."

@@ -9,7 +9,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { Writer, readFields, first, text } from "../src/proto.js";
 import {
-  AetherClient, FileLedger, Key, Paywall, PUBKEY_TYPE_URL, WITHDRAW_PATH, buildSend, memoFor, memoPaymentHeader, prepaidPaymentHeader, signingMessage, withdrawPrepaid, fetchPaid,
+  AetherClient, FileLedger, Key, Paywall, PUBKEY_TYPE_URL, WITHDRAW_PATH, buildSend, depositMemo, serviceSlug, memoFor, memoPaymentHeader, prepaidPaymentHeader, signingMessage, withdrawPrepaid, fetchPaid,
   createReceiptDelegation,
   type Payment,
 } from "../src/index.js";
@@ -152,6 +152,14 @@ test("unpaid requests get a 402 offering both schemes; free paths and the manife
   }
 });
 
+test("aether-prepaid: deposit memos name the service, slugged as in Go and Python", () => {
+  assert.equal(depositMemo("weather", "aether1x"), "prepaid:weather:aether1x");
+  assert.equal(serviceSlug("Aether block clock"), "aether-block-clock");
+  assert.equal(serviceSlug("  Weather!! API "), "weather-api");
+  assert.equal(serviceSlug("v1.2_beta"), "v1.2_beta");
+  assert.equal(serviceSlug("!!!"), "");
+});
+
 test("aether-memo: the memo is the invoice's SHA-256, as in Go and Python", () => {
   assert.equal(memoFor("x402-AAAA"), "93966cdf82d25a9e7c939d63256d384c7cf1e3d082e497f66c524c8379373d8e");
 });
@@ -238,7 +246,7 @@ test("prepaid sign-in follows the account's stored key", async () => {
     const owner = Key.random();
     const next = Key.random();
     const post = (h: string) => fetch(s.url + "/forecast", { method: "POST", headers: { "X-PAYMENT": h } });
-    const dep = s.chain.pay(s.seller.address, 50_000n, "prepaid:" + owner.address);
+    const dep = s.chain.pay(s.seller.address, 50_000n, depositMemo("weather", owner.address));
     let r = await post(signed(s, owner, { requestId: "r1", depositTx: dep }));
     assert.equal(r.status, 200, "nothing stored: its own key");
 
@@ -299,11 +307,11 @@ test("aether-prepaid: deposit once, then each signed request is charged once", a
     assert.equal(q.error, "insufficient_balance");
     assert.equal(q.accepts[1].extra.balance, "0");
 
-    const tooSmall = s.chain.pay(s.seller.address, 29_999n, "prepaid:" + agent.address);
+    const tooSmall = s.chain.pay(s.seller.address, 29_999n, depositMemo("weather", agent.address));
     q = (await (await post(signed(s, agent, { requestId: "r0", body: '{"q":1}', depositTx: tooSmall }))).json()) as typeof q;
     assert.equal(q.error, "insufficient_payment");
 
-    const dep = s.chain.pay(s.seller.address, 50_000n, "prepaid:" + agent.address);
+    const dep = s.chain.pay(s.seller.address, 50_000n, depositMemo("weather", agent.address));
     r = await post(signed(s, agent, { requestId: "r1", body: '{"q":1}', depositTx: dep }));
     assert.equal(r.status, 200);
     const echoed = (await r.json()) as { body: unknown };
@@ -329,13 +337,22 @@ test("aether-prepaid: deposit once, then each signed request is charged once", a
 
     // Someone else's deposit credits them, not the presenter.
     const other = Key.random();
-    const theirs = s.chain.pay(s.seller.address, 50_000n, "prepaid:" + other.address);
+    const theirs = s.chain.pay(s.seller.address, 50_000n, depositMemo("weather", other.address));
     r = await post(signed(s, agent, { requestId: "r4", body: '{"q":1}', depositTx: theirs }));
     assert.equal(r.status, 200);
     assert.equal(s.served.at(-1)!.balanceUaeth, 20_000n, "charged from its own balance, not credited");
     r = await post(signed(s, other, { requestId: "o1", body: '{"q":1}' }));
     assert.equal(r.status, 200);
     assert.equal(s.served.at(-1)!.balanceUaeth, 40_000n, "the deposit went to the account its memo names");
+
+    // A deposit for another service paying the same address, or one naming no service, credits nothing here
+    // (GHSA-xm9h-23fw-7c6c).
+    const pulse = s.chain.pay(s.seller.address, 50_000n, depositMemo("pulse", other.address));
+    const old = s.chain.pay(s.seller.address, 50_000n, "prepaid:" + other.address);
+    for (const [i, dep] of [pulse, old].entries()) {
+      r = await post(signed(s, other, { requestId: `x${i}`, body: '{"q":1}', depositTx: dep }));
+      assert.equal(((await r.json()) as { error: string }).error, "invalid_deposit");
+    }
 
     s.now.t += 10 * 60_000;
     const stale = signed(s, agent, { requestId: "r5", body: '{"q":1}' });
@@ -364,7 +381,7 @@ test("withdrawals: paid back once to the signer, via the TS buyer client", async
   const s = await setup({ payout: true });
   try {
     const agent = Key.random();
-    const dep = s.chain.pay(s.seller.address, 50_000n, "prepaid:" + agent.address);
+    const dep = s.chain.pay(s.seller.address, 50_000n, depositMemo("weather", agent.address));
     let r = await fetch(s.url + "/forecast", { method: "POST", headers: { "X-PAYMENT": signed(s, agent, { requestId: "r1", depositTx: dep }) } });
     assert.equal(r.status, 200);
 
@@ -394,7 +411,7 @@ test("withdrawals: a rejected payout returns the balance; an unknown outcome is 
   const s = await setup({ payout: true, ledgerPath: path });
   try {
     const agent = Key.random();
-    const dep = s.chain.pay(s.seller.address, 50_000n, "prepaid:" + agent.address);
+    const dep = s.chain.pay(s.seller.address, 50_000n, depositMemo("weather", agent.address));
     assert.equal((await fetch(s.url + "/q", { method: "POST", headers: { "X-PAYMENT": signed(s, agent, { path: "/q", requestId: "r1", depositTx: dep }) } })).status, 200);
 
     s.chain.broadcast = () => ({ code: 5, codespace: "sdk", log: "insufficient funds" });
@@ -589,10 +606,10 @@ test("USDC: priced in USDC, the paywall charges only USDC, as cmd/paywall does",
     // Prepaid deposits count USDC only.
     const agent = Key.random();
     const post = (h: string) => fetch(s.url + "/forecast", { method: "POST", headers: { "X-PAYMENT": h }, body: "" });
-    const aethDeposit = s.chain.pay(s.seller.address, 200_000n, "prepaid:" + agent.address);
+    const aethDeposit = s.chain.pay(s.seller.address, 200_000n, depositMemo("weather", agent.address));
     let p = (await (await post(signed(s, agent, { requestId: "r1", body: "", depositTx: aethDeposit, maxPrice: 50_000n }))).json()) as { error: string };
     assert.equal(p.error, "insufficient_payment");
-    const deposit = s.chain.pay(s.seller.address, 200_000n, "prepaid:" + agent.address, 0, Key.random(), denom);
+    const deposit = s.chain.pay(s.seller.address, 200_000n, depositMemo("weather", agent.address), 0, Key.random(), denom);
     const ok = await post(signed(s, agent, { requestId: "r1", body: "", depositTx: deposit, maxPrice: 50_000n }));
     assert.equal(ok.status, 200);
     assert.equal(s.served.at(-1)!.balanceUaeth, 150_000n, "balances are in uusdc");

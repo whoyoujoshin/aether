@@ -42,6 +42,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 )
 
 const (
@@ -52,7 +53,7 @@ const (
 	SchemePrepaid = "aether-prepaid"
 	// SchemePull charges requests to an allowance the buyer granted.
 	SchemePull = "aether-pull"
-	// DepositMemoPrefix + the account to credit is a deposit's memo.
+	// DepositMemoPrefix starts a deposit's memo: DepositMemo.
 	DepositMemoPrefix = "prepaid:"
 	// Asset is the denom prices are stated in unless Config.Asset says
 	// otherwise: AETH's.
@@ -172,6 +173,57 @@ type SettlementResponse struct {
 	// allowance still covers beyond that ("" if unlimited).
 	Owed      string `json:"owed,omitempty"`
 	Allowance string `json:"allowance,omitempty"`
+}
+
+// DepositMemo is the memo of an aether-prepaid deposit crediting account at
+// service: "prepaid:<service>:<account>". It names the service because
+// several paywalls, each with its own ledger, may share a payee: a deposit
+// naming only the account was credited at every one of them
+// (GHSA-xm9h-23fw-7c6c).
+func DepositMemo(service, account string) string {
+	return DepositMemoPrefix + service + ":" + account
+}
+
+// ServiceSlug turns a service's display name into a prepaid service name:
+// lower case, with each run of anything but letters, digits, '.' and '_'
+// made one '-', at most 64 long ("Aether block clock" → "aether-block-clock").
+// It is "" for a name with nothing usable in it.
+func ServiceSlug(name string) string {
+	var b strings.Builder
+	dash := false
+	for _, c := range strings.ToLower(name) {
+		ok := c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '.' || c == '_'
+		if !ok {
+			dash = b.Len() > 0
+			continue
+		}
+		if dash {
+			b.WriteByte('-')
+			dash = false
+		}
+		b.WriteRune(c)
+	}
+	s := b.String()
+	if len(s) > 64 {
+		s = strings.TrimRight(s[:64], "-")
+	}
+	return s
+}
+
+// validService is a prepaid service name: no ':' (it ends the name in a
+// deposit's memo), nothing a person can't type.
+func validService(s string) bool {
+	if s == "" || len(s) > 64 {
+		return false
+	}
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '_', c == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // MemoFor is the memo an aether-memo payment of invoice carries: the
