@@ -235,3 +235,39 @@ func TestFetchPaid_NeverRequotesOnceAPaymentWasAccepted(t *testing.T) {
 	require.Equal(t, out.Payment.Invoice, again.Payment.Invoice, "money is in flight for this invoice: stick with it")
 	require.Equal(t, out.Payment.TxHash, again.Payment.TxHash)
 }
+
+// The service fails after the payment: the result says to call again,
+// and calling again with the same key gets the response without paying
+// a second time (the paywall released the invoice on the 5xx).
+func TestFetchPaid_ServerErrorAfterPaymentSaysToRetry(t *testing.T) {
+	f := setupAgent(t)
+	f.autoInclude = true
+	pw, err := paywall.New(paywall.Config{PayTo: sellerAddr(), Price: math.NewInt(20_000), Network: chainID, Lookup: f.lookup})
+	require.NoError(t, err)
+	var broken atomic.Bool
+	broken.Store(true)
+	srv := httptest.NewServer(pw.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if broken.Load() {
+			http.Error(w, "upstream down", http.StatusBadGateway)
+			return
+		}
+		fmt.Fprint(w, `{"forecast":"sunny"}`)
+	})))
+	t.Cleanup(srv.Close)
+
+	out, err := fetch(t, srv.URL+"/forecast", "0.05 AETH", "buy-5xx", 5)
+	require.NoError(t, err)
+	require.Equal(t, "paid", out.Status)
+	require.Equal(t, http.StatusBadGateway, out.HTTPStatus)
+	require.Contains(t, out.Message, "same idempotencyKey")
+	require.Equal(t, int64(20_000), spent(t))
+
+	broken.Store(false)
+	out, err = fetch(t, srv.URL+"/forecast", "0.05 AETH", "buy-5xx", 5)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, out.HTTPStatus)
+	require.Equal(t, `{"forecast":"sunny"}`, out.Body)
+	require.Empty(t, out.Message)
+	require.Equal(t, int64(20_000), spent(t), "paid once")
+	require.Len(t, f.broadcasts, 1)
+}

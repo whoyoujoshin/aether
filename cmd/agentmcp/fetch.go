@@ -185,6 +185,13 @@ func (r *httpResult) output(status string) fetchPaidOutput {
 	} else {
 		out.Body, out.BodyBase64 = base64.StdEncoding.EncodeToString(r.body), true
 	}
+	// A seller's paywall doesn't count a payment it answered with a server
+	// error (it releases the invoice, or refunds the charge), so the same
+	// key gets the response later without paying again. Say so: "paid"
+	// alone reads as done.
+	if status == "paid" && r.status >= 500 {
+		out.Message = fmt.Sprintf("the service failed (HTTP %d) after the payment; the seller doesn't count a payment it answers with a server error, so call fetch_paid again later with the same idempotencyKey to get the response without paying again", r.status)
+	}
 	return out
 }
 
