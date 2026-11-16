@@ -48,7 +48,7 @@ func main() {
 		cpartyBech32  = flag.String("cparty-bech32-prefix", counterparty.Bech32Prefix, "the other chain's address prefix, e.g. noble or osmo")
 		cpartyGas     = flag.String("cparty-gas-prices", "", "gas prices on the other chain, e.g. 0.025uosmo; empty pays no fee (Noble waives it for relaying)")
 		gasAdjustment = flag.Float64("gas-adjustment", 1.5, "multiplier on simulated gas")
-		keyringBack   = flag.String("keyring-backend", "test", "keyring backend (test/file/os)")
+		keyringBack   = flag.String("keyring-backend", "file", "keyring backend: file (encrypted, the default), os, or test (unencrypted; throwaway keys only)")
 		passFile      = flag.String("keyring-passphrase-file", "", "file holding the file keyring's passphrase; same as "+wallet.KeyringPassphraseFileEnv+", which it overrides (use it where the environment can't be relied on, e.g. a Windows scheduled task)")
 
 		clientID = flag.String("client-id", "07-tendermint-0", "the other chain's client of Aether")

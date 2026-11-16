@@ -85,6 +85,10 @@ func StakingUnbondingPeriod(chain *Chain) (time.Duration, error) {
 // ibc-go's own QueryTendermintHeader -- the same helper `aetherd query
 // ibc client ...` uses) and submits MsgCreateClient on dst, so dst now
 // tracks src. Returns the new client's ID as dst assigned it.
+//
+// The first header is trusted as given: there's no earlier trusted state
+// to check it against, as with any IBC relayer. So src's endpoint must be
+// one you trust for this; docs/IBC.md says how to check the result.
 func CreateClient(src, dst *Chain, unbondingPeriod time.Duration) (string, error) {
 	header, height, err := clientutils.QueryTendermintHeader(src.ClientCtx)
 	if err != nil {

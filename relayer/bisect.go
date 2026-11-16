@@ -16,9 +16,12 @@ import (
 // is refused ("insufficient voting power") on every try, and the client
 // stays where it is until it expires: Aether's client of Injective
 // (07-tendermint-2) after 1.1 million Injective blocks without an update,
-// at block 712,080 (2026-11-11). So an update goes to the highest height
-// the trusted set can still vouch for, found by halving the distance as a
-// light client does, and the next cycle carries on from there.
+// at block 712,080 (2026-11-11). So an update goes to a height the
+// trusted set can still vouch for: the tip if it can, else the first of
+// the halfway points down towards the trusted height that it can (not
+// necessarily the highest such height, since which heights the trusted
+// set signed needn't be monotonic), and the next cycle carries on from
+// there.
 
 // trustedSigned reports whether trustLevel of trusted signed commit.
 func trustedSigned(chainID string, trusted *cmttypes.ValidatorSet, commit *cmttypes.Commit, trustLevel cmtmath.Fraction) bool {
