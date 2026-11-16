@@ -203,7 +203,11 @@ function WhoRequests({ stats }: { stats: FaucetStats | null }) {
           by drips
         </span>
       </div>
-      <StackBar segments={SOURCES.map((s) => ({ label: s.label, value: c[s.key], color: s.color }))} height={10} />
+      {stats && total === 0 ? (
+        <div className="empty">No drips in the last 30 days.</div>
+      ) : (
+        <StackBar segments={SOURCES.map((s) => ({ label: s.label, value: c[s.key], color: s.color }))} height={10} />
+      )}
       <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
         {SOURCES.map((s) => (
           <div key={s.key} className="who-row">
@@ -237,26 +241,30 @@ function NewWalletsChart({ stats }: { stats: FaucetStats | null }) {
           ))}
         </span>
       </div>
-      <div className="wallet-bars">
-        {days.map((d, i) => {
-          const total = d.agent + d.web + d.api;
-          return (
-            <div key={d.date} className="wallet-bar" title={`${d.date}: ${total} new (${d.agent} agents, ${d.web} people, ${d.api} unverified)`}>
-              <div className="wallet-stack" style={{ height: `${(total / max) * 100}%`, boxShadow: i === days.length - 1 && total ? "0 0 18px rgba(192,80,58,.35)" : undefined }}>
-                <span style={{ flex: d.api, background: "#4a443d" }} />
-                <span style={{ flex: d.web, background: "#e4d9c6" }} />
-                <span style={{ flex: d.agent, background: "var(--red)" }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {days.length > 0 && (
-        <div className="wallet-axis mono faint">
-          <span>{label(days[0].date)}</span>
-          <span>{label(days[Math.floor(days.length / 2)].date)}</span>
-          <span>today</span>
-        </div>
+      {days.length === 0 ? (
+        <div className="empty">No new wallets in this window.</div>
+      ) : (
+        <>
+          <div className="wallet-bars">
+            {days.map((d, i) => {
+              const total = d.agent + d.web + d.api;
+              return (
+                <div key={d.date} className="wallet-bar" title={`${d.date}: ${total} new (${d.agent} agents, ${d.web} people, ${d.api} unverified)`}>
+                  <div className="wallet-stack" style={{ height: `${(total / max) * 100}%`, boxShadow: i === days.length - 1 && total ? "0 0 18px rgba(192,80,58,.35)" : undefined }}>
+                    <span style={{ flex: d.api, background: "#4a443d" }} />
+                    <span style={{ flex: d.web, background: "#e4d9c6" }} />
+                    <span style={{ flex: d.agent, background: "var(--red)" }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="wallet-axis mono faint">
+            <span>{label(days[0].date)}</span>
+            <span>{label(days[Math.floor(days.length / 2)].date)}</span>
+            <span>today</span>
+          </div>
+        </>
       )}
     </div>
   );
