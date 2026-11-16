@@ -95,6 +95,30 @@ func (k Keeper) WithBankKeeper(bk BankKeeper) Keeper {
 	return k
 }
 
+// checkAuthenticatorPresent refuses, from SessionKeyCapHeight, a
+// registration with no authenticator, or a kind with no body. Before it
+// such a transaction failed by panicking in the handler (caught, the same
+// on every node); its result now carries a plain error instead.
+func checkAuthenticatorPresent(ctx sdk.Context, a *Authenticator) error {
+	if !SessionKeyCapOn(ctx) {
+		return nil
+	}
+	if a == nil {
+		return sdkerrors.Wrap(ErrInvalidAuthenticator, "authenticator is required")
+	}
+	switch kind := a.Kind.(type) {
+	case *Authenticator_SessionKey:
+		if kind.SessionKey == nil {
+			return sdkerrors.Wrap(ErrInvalidAuthenticator, "session_key is empty")
+		}
+	case *Authenticator_GuardianThreshold:
+		if kind.GuardianThreshold == nil {
+			return sdkerrors.Wrap(ErrInvalidAuthenticator, "guardian_threshold is empty")
+		}
+	}
+	return nil
+}
+
 // checkSessionAllows refuses, from the height, a session key allowed to
 // run a message it never may.
 func checkSessionAllows(ctx sdk.Context, sk *SessionKey) error {
@@ -151,7 +175,11 @@ func (k msgServer) runMetered(ctx sdk.Context, account sdk.AccAddress, a *Authen
 		if err != nil {
 			return nil, sdkerrors.Wrapf(err, "message %d", i)
 		}
-		spent = spent.Add(cost)
+		total, err := spent.SafeAdd(cost)
+		if err != nil {
+			return nil, sdkerrors.Wrapf(ErrSpendLimitExceeded, "message %d takes this session key's spending past what a uaeth amount can hold", i)
+		}
+		spent = total
 		if spent.GT(limit) {
 			return nil, sdkerrors.Wrapf(ErrSpendLimitExceeded, "this session key's lifetime spend limit is %s uaeth; message %d would take it to %s", limit, i, spent)
 		}

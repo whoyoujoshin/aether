@@ -2,6 +2,7 @@ package accountauth
 
 import (
 	"context"
+	"math/big"
 	"testing"
 	"time"
 
@@ -90,4 +91,50 @@ func TestSessionSpend(t *testing.T) {
 	got, err = sessionSpend(c("100uaeth"), sdk.Coins{})
 	require.NoError(t, err)
 	require.Equal(t, sdkmath.NewInt(100), got)
+}
+
+// Empty nested fields: below the height the handler panics (the SDK turns
+// that into a failed transaction on every node alike); from it, a plain
+// error, and an empty guardian signature is skipped as rotation does.
+func TestSessionKeyCap_EmptyFieldsAreErrorsNotPanics(t *testing.T) {
+	ms, _, ctx := setupMsgServer(t)
+	account := sdk.AccAddress("account_____________")
+	at := ctx.WithBlockHeight(SessionKeyCapHeight)
+	before := ctx.WithBlockHeight(SessionKeyCapHeight - 1)
+
+	for _, a := range []*Authenticator{nil, {Kind: &Authenticator_SessionKey{}}, {Kind: &Authenticator_GuardianThreshold{}}} {
+		_, err := ms.RegisterAuthenticator(at, &MsgRegisterAuthenticator{Account: account.String(), Authenticator: a})
+		require.ErrorIs(t, err, ErrInvalidAuthenticator)
+	}
+	require.Panics(t, func() {
+		_, _ = ms.RegisterAuthenticator(before, &MsgRegisterAuthenticator{Account: account.String()})
+	}, "unchanged below the height")
+
+	_, pub, signer := genSessionKey(t)
+	id := registerSessionKey(t, ms, at, account, pub, []string{sdk.MsgTypeURL(&banktypes.MsgSend{})}, "100", time.Hour)
+	_, err := ms.ExecAuthenticated(at, &MsgExecAuthenticated{Signer: signer.String(), Account: account.String(), AuthenticatorId: id, Msgs: []*codectypes.Any{nil}})
+	require.ErrorIs(t, err, ErrInvalidAuthenticator)
+}
+
+func TestSessionSpend_TotalPastAnyAmountIsRefused(t *testing.T) {
+	_, keeper, ctx := setupMsgServer(t)
+	bank := &fakeBank{coins: map[string]sdk.Coins{}}
+	keeper.router = fakeSpendRouter{bank: bank}
+	keeper = keeper.WithBankKeeper(bank)
+	ms := NewMsgServerImpl(keeper)
+	at := ctx.WithBlockHeight(SessionKeyCapHeight)
+	account := sdk.AccAddress("account_____________")
+	huge := sdkmath.NewIntFromBigInt(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))) // 2^256-1
+	bank.coins[account.String()] = sdk.NewCoins(sdk.NewInt64Coin("uaeth", 1_000))
+	_, pub, signer := genSessionKey(t)
+	id := registerSessionKey(t, ms, at, account, pub, []string{sdk.MsgTypeURL(&banktypes.MsgSend{})}, huge.String(), time.Hour)
+	a, _ := keeper.GetAuthenticator(at, account, id)
+	a.GetSessionKey().SpentUaeth = huge.String() // as if it had spent everything
+	keeper.SetAuthenticator(at, account, a)
+
+	send := &banktypes.MsgSend{FromAddress: account.String(), ToAddress: signer.String(), Amount: sdk.NewCoins(sdk.NewInt64Coin("uaeth", 5))}
+	require.NotPanics(t, func() {
+		_, err := ms.ExecAuthenticated(at, &MsgExecAuthenticated{Signer: signer.String(), Account: account.String(), AuthenticatorId: id, Msgs: []*codectypes.Any{anyOf(t, send)}})
+		require.ErrorIs(t, err, ErrSpendLimitExceeded)
+	})
 }

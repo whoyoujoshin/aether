@@ -34,6 +34,9 @@ func (k msgServer) RegisterAuthenticator(goCtx context.Context, msg *MsgRegister
 	}
 
 	a := msg.Authenticator
+	if err := checkAuthenticatorPresent(ctx, a); err != nil {
+		return nil, err
+	}
 	switch kind := a.Kind.(type) {
 	case *Authenticator_SessionKey:
 		sk := kind.SessionKey
@@ -124,6 +127,13 @@ func (k msgServer) ExecAuthenticated(goCtx context.Context, msg *MsgExecAuthenti
 	}
 	if len(msg.Msgs) == 0 {
 		return nil, sdkerrors.Wrap(ErrInvalidAuthenticator, "no messages to execute")
+	}
+	if SessionKeyCapOn(ctx) {
+		for i, m := range msg.Msgs {
+			if m == nil {
+				return nil, sdkerrors.Wrapf(ErrInvalidAuthenticator, "message %d is empty", i)
+			}
+		}
 	}
 
 	a, found := k.Keeper.GetAuthenticator(ctx, account, msg.AuthenticatorId)
@@ -292,6 +302,9 @@ func (k msgServer) acceptGuardianThreshold(ctx sdk.Context, account sdk.AccAddre
 
 	validDistinct := make(map[string]bool, len(msg.GuardianSignatures))
 	for _, sig := range msg.GuardianSignatures {
+		if sig == nil && SessionKeyCapOn(ctx) {
+			continue // an empty entry, skipped as recoveryApproves does
+		}
 		if !registered[string(sig.Pubkey)] {
 			continue // not a registered guardian: silently ignored, same as an unrecognized signer would be
 		}
