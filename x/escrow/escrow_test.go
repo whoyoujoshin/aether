@@ -306,6 +306,11 @@ func TestEscrowsByAddress(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, page1.Escrows, 4)
 	require.Equal(t, uint64(4), page1.NextAfterId)
+	// The largest cursor is past everything; it doesn't wrap to page one.
+	last, err := f.q.EscrowsByAddress(f.ctx, &QueryEscrowsByAddressRequest{Address: payee, Limit: 4, AfterId: ^uint64(0)})
+	require.NoError(t, err)
+	require.Empty(t, last.Escrows)
+
 	page2, err := f.q.EscrowsByAddress(f.ctx, &QueryEscrowsByAddressRequest{Address: payee, Limit: 4, AfterId: page1.NextAfterId})
 	require.NoError(t, err)
 	require.Equal(t, []uint64{5, 6}, []uint64{page2.Escrows[0].Id, page2.Escrows[1].Id})

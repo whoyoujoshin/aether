@@ -184,6 +184,9 @@ func (k Keeper) ProcessExpired(ctx sdk.Context) {
 // OpenEscrowsOf lists escrows addr is a party to with id > afterID,
 // oldest first, at most limit; next is the id to continue after, or 0.
 func (k Keeper) OpenEscrowsOf(ctx sdk.Context, addr sdk.AccAddress, afterID uint64, limit int) (out []Escrow, next uint64) {
+	if afterID == ^uint64(0) {
+		return nil, 0 // nothing comes after the largest id (afterID+1 would wrap to the first page)
+	}
 	store := ctx.KVStore(k.storeKey)
 	prefix := partyPrefix(addr)
 	it := store.Iterator(join(prefix, u64(afterID+1)), storetypes.PrefixEndBytes(prefix))
