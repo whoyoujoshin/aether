@@ -22,10 +22,14 @@ func (q queryServer) Authenticators(goCtx context.Context, req *QueryAuthenticat
 		return nil, sdkerrors.Wrapf(ErrInvalidAccount, "invalid account address %q: %s", req.Account, err)
 	}
 
+	// Authenticators an earlier key registered no longer act
+	// (keygen.go), so they aren't listed.
 	list := q.Keeper.GetAuthenticators(ctx, account)
-	out := make([]*Authenticator, len(list))
+	out := make([]*Authenticator, 0, len(list))
 	for i := range list {
-		out[i] = &list[i]
+		if q.Keeper.AuthenticatorCurrent(ctx, account, list[i].Id) {
+			out = append(out, &list[i])
+		}
 	}
 	return &QueryAuthenticatorsResponse{Authenticators: out}, nil
 }

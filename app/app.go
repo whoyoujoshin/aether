@@ -589,8 +589,16 @@ func New(
 	// order is unchanged.
 	if authzFeegrant.wire {
 		modules = append(modules,
-			authzmodule.NewAppModule(appCodec, app.AuthzKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
-			feegrantmodule.NewAppModule(appCodec, app.AccountKeeper, app.BankKeeper, app.FeeGrantKeeper, app.interfaceRegistry),
+			// With message servers that retire grants made by a key the
+			// granter no longer has (app/key_change_revokes.go).
+			retiringAuthzModule{
+				AppModule: authzmodule.NewAppModule(appCodec, app.AuthzKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
+				keeper:    app.AuthzKeeper, aa: &app.AccountAuthKeeper, cdc: appCodec,
+			},
+			retiringFeegrantModule{
+				AppModule: feegrantmodule.NewAppModule(appCodec, app.AccountKeeper, app.BankKeeper, app.FeeGrantKeeper, app.interfaceRegistry),
+				keeper:    app.FeeGrantKeeper, aa: &app.AccountAuthKeeper,
+			},
 		)
 	}
 	if ibcCutover.wire {
@@ -641,7 +649,7 @@ func New(
 		AccountKeeper:   app.AccountKeeper,
 		BankKeeper:      app.BankKeeper,
 		SignModeHandler: txConfig.SignModeHandler(),
-		FeegrantKeeper:  feegrantKeeper,
+		FeegrantKeeper:  retiringFeegrant(feegrantKeeper, &app.AccountAuthKeeper),
 		// The minimum gas price, except for a lone native mining
 		// submission with valid proof-of-work (app/mining_fee.go).
 		TxFeeChecker: miningFeeChecker(app.PowKeeper),

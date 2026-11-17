@@ -26,4 +26,5 @@ var (
 	ErrRotationNotDelegable  = sdkerrors.Register(ModuleName, 19, "rotation messages can't run through an authenticator")
 	ErrNotWatchtower         = sdkerrors.Register(ModuleName, 20, "not a valid watchtower signature")
 	ErrWatchtowerOwnRemoval  = sdkerrors.Register(ModuleName, 21, "a watchtower can't cancel a change that removes it")
+	ErrDelegationRetired     = sdkerrors.Register(ModuleName, 22, "made by a key the account no longer has")
 )
