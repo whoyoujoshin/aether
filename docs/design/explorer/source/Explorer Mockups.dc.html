@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="icon" href="assets/aether-favicon-32.svg"><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"><style>body{margin:0;background:#f0eee9;font-family:system-ui,sans-serif}a{color:#16c784;text-decoration:none}a:hover{text-decoration:underline;color:#4be0a6}input{outline:none}input::placeholder{color:#5d6876}.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}.dv-tname{font:600 13px/1.2 system-ui,sans-serif;color:#1a1a1a}.dv-opts{display:flex;flex-direction:column;gap:40px;align-items:flex-start}.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 system-ui,sans-serif;color:rgba(0,0,0,.55)}.dv-card{max-width:100%;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}.dv-opt:target .dv-oid{background:#2a78d6;color:#fff}.dv-next{margin:22px 0 0;font:12px/1.5 system-ui,sans-serif;color:rgba(0,0,0,.5)}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}@keyframes hxflow{to{stroke-dashoffset:24}}@keyframes hcSpin{to{transform:rotate(360deg)}}@keyframes lgSeal{0%{transform:scale(2.8);opacity:0}30%{opacity:1}70%{transform:scale(1);opacity:1}100%{transform:scale(1);opacity:0}}@keyframes lgFlash{0%{transform:scale(.3);opacity:0}55%{transform:scale(.3);opacity:0}70%{transform:scale(1);opacity:.95}100%{transform:scale(2.4);opacity:0}}</style></helmet>
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#1e1a16"></rect><g transform="translate(30 30) scale(0.4)"><polygon points="28 8 44 8 22 92 6 92" fill="#f2eee6"></polygon><polygon points="50 8 64 8 80 92 64 92" fill="#f2eee6"></polygon><rect x="28" y="8" width="64" height="14" fill="#f2eee6"></rect><rect x="62" y="78" width="30" height="14" fill="#f2eee6"></rect><rect x="20" y="44" width="68" height="14" fill="#c74d38"></rect></g></svg></template>
+<section class="dv-turn" id="t6">
+<div class="dv-thd"><a class="dv-tid" href="#t6">6</a><span class="dv-tname">Faucet: request AETH, and see who is creating wallets (people or agents)</span></div>
+<p style="margin:-8px 0 28px;max-width:800px;font:13px/1.55 system-ui,sans-serif;color:rgba(0,0,0,.6);text-wrap:pretty">New "Faucet" tab after For agents, added to the nav on every page. The form works: paste an address (or use the demo one) and request. Instead of a captcha, the browser solves a tiny proof-of-work, which fits Aether. Requests are tagged by source: browser = person, signed agent key = agent, keyless API = unverified. A "new wallet" is an address whose first-ever transaction is a faucet drip. All numbers are placeholders.</p>
+<div class="dv-opts">
+
+<div class="dv-opt" id="6a"><div class="dv-olabel"><a class="dv-oid" href="#6a">6a</a>Faucet</div>
+<div class="dv-card" style="width:1280px;background:#0a0908;color:#f3efe6;font-family:'Space Grotesk',sans-serif;border:1px solid #26221e">
+  <div style="display:flex;align-items:center;gap:28px;padding:0 32px;height:60px;border-bottom:1px solid #1c1916">
+    <div style="display:flex;align-items:center;gap:12px"><img src="assets/aether-mark-reversed.svg" alt="Aether" style="width:26px;height:26px;display:block"><div style="font:600 13px 'Space Grotesk';letter-spacing:.32em">AETHER</div><div style="font-size:13px;color:#9a9186;margin-left:-4px">Explorer</div></div>
+    <div style="display:flex;gap:22px;font-size:14px;color:#9a9186"><span>Overview</span><span>Blocks</span><span>Validators</span><span>Governance</span><span>Services</span><span>For agents</span><span style="color:#f3efe6">Faucet</span></div>
+    <div style="margin-left:auto;display:flex;align-items:center;width:300px;height:36px;padding:0 14px;border-radius:10px;background:#12100e;border:1px solid #26221e"><input placeholder="Search address, hash or height" style="flex:1;border:0;background:transparent;font:inherit;font-size:13px;color:#f3efe6"></div>
+  </div>
+  <div style="padding:28px 32px 36px">
+    <div style="display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:18px">
+      <div style="padding:26px;border-radius:18px;background:radial-gradient(90% 120% at 0% 0%,rgba(192,80,58,.18),rgba(192,80,58,0) 60%),#12100e;border:1px solid rgba(192,80,58,.35)">
+        <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#c0503a">FAUCET</div>
+        <div style="font-size:34px;font-weight:600;letter-spacing:-.02em;margin-top:10px">Get 10 AETH</div>
+        <div style="font-size:14px;color:#9a9186;margin-top:6px">Once per address every 24 hours. Free, no sign-up.</div>
+        <div style="font-size:12px;color:#8f877c;margin-top:22px">Your address</div>
+        <div style="display:flex;align-items:center;gap:10px;height:50px;margin-top:8px;padding:0 8px 0 16px;border-radius:12px;background:#0a0908;border:1px solid {{ fBorder }}">
+          <input value="{{ fAddr }}" onChange="{{ fOnAddr }}" placeholder="aeth1…" spellcheck="false" style="flex:1;min-width:0;border:0;background:transparent;font:400 14px 'JetBrains Mono';color:#f3efe6">
+          <span style="flex:none;font:600 11px 'JetBrains Mono';color:{{ fValidColor }}">{{ fValidText }}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;margin-top:10px;font-size:12px"><span onClick="{{ fUseDemo }}" style="color:#c0503a;cursor:pointer">Use a demo address</span><span style="color:#6b645b">·</span><span style="color:#8f877c">No wallet yet? Any valid aeth1 address works, even a brand-new one.</span></div>
+        <div style="font-size:12px;color:#8f877c;margin-top:20px">Receive on</div>
+        <div style="display:flex;gap:2px;margin-top:8px;padding:3px;border-radius:11px;background:#0a0908;border:1px solid #26221e;width:max-content">
+          <sc-for list="{{ fStrands }}" as="s" hint-placeholder-count="2"><div onClick="{{ s.onClick }}" style="display:flex;align-items:center;gap:8px;height:32px;padding:0 14px;border-radius:8px;cursor:pointer;font-size:13px;background:{{ s.bg }};color:{{ s.color }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ s.dot }}"></span>{{ s.label }}</div></sc-for>
+        </div>
+        <div onClick="{{ fRequest }}" style="margin-top:22px;display:flex;align-items:center;justify-content:center;gap:10px;height:50px;border-radius:12px;font-weight:600;font-size:15px;cursor:{{ fBtnCursor }};background:{{ fBtnBg }};color:{{ fBtnColor }}">{{ fBtnText }}</div>
+        <sc-if value="{{ fShowProgress }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:16px;padding:14px 16px;border-radius:12px;background:#0a0908;border:1px solid #26221e">
+            <div style="display:flex;justify-content:space-between;font:500 12px 'JetBrains Mono'"><span style="color:{{ fStageColor }}">{{ fStageText }}</span><span style="color:#8f877c">{{ fNonce }}</span></div>
+            <div style="height:4px;border-radius:2px;background:#26221e;margin-top:10px;overflow:hidden"><div style="height:4px;width:{{ fPct }};background:{{ fStageColor }};transition:width .2s"></div></div>
+            <sc-if value="{{ fDone }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;margin-top:12px;font-size:13px"><span style="color:#9a9186">Tx</span><a href="#" style="font-family:'JetBrains Mono';color:#c0503a">{{ fTx }}</a><span style="margin-left:auto;padding:3px 8px;border-radius:6px;font:600 10px 'JetBrains Mono';letter-spacing:.05em;color:#16c784;background:rgba(22,199,132,.12)">{{ fNewTag }}</span></div></sc-if>
+          </div>
+        </sc-if>
+        <div style="display:flex;gap:24px;margin-top:22px;padding-top:16px;border-top:1px solid #26221e;font-size:12px;color:#8f877c"><span>Faucet balance <span style="font-family:'JetBrains Mono';color:#f3efe6">1.18M AETH</span></span><span>~118k drips left</span><span>Building a bot? <span style="color:#c0503a">Use an agent key →</span></span></div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+          <sc-for list="{{ fKpis }}" as="k" hint-placeholder-count="4">
+            <div style="padding:18px 20px;border-radius:14px;background:#12100e;border:1px solid {{ k.border }}">
+              <div style="font-size:12px;color:#8f877c">{{ k.label }}</div>
+              <div style="font:600 26px 'JetBrains Mono';margin-top:8px;color:{{ k.color }}">{{ k.value }}</div>
+              <div style="font-size:12px;color:#8f877c;margin-top:4px">{{ k.sub }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="flex:1;padding:20px 22px;border-radius:16px;background:#12100e;border:1px solid #26221e">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#8f877c">WHO REQUESTS · 30D</div><div style="font:500 12px 'JetBrains Mono';color:#8f877c">by drips</div></div>
+          <div style="display:flex;height:12px;border-radius:6px;overflow:hidden;gap:2px;margin-top:16px"><sc-for list="{{ fSources }}" as="s" hint-placeholder-count="3"><div style="width:{{ s.pct }};background:{{ s.c }}"></div></sc-for></div>
+          <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
+            <sc-for list="{{ fSources }}" as="s" hint-placeholder-count="3">
+              <div style="display:grid;grid-template-columns:12px 120px minmax(0,1fr) 54px;gap:10px;align-items:baseline;font-size:13px"><span style="width:8px;height:8px;border-radius:2px;background:{{ s.c }}"></span><span style="font-weight:500">{{ s.name }}</span><span style="color:#8f877c">{{ s.how }}</span><span style="text-align:right;font-family:'JetBrains Mono'">{{ s.pct }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:18px;margin-top:18px">
+      <div style="padding:20px 22px 16px;border-radius:16px;background:#12100e;border:1px solid #26221e">
+        <div style="display:flex;align-items:baseline;gap:18px">
+          <div style="font-weight:600;font-size:16px">New wallets created via the faucet</div>
+          <div style="display:flex;gap:16px;margin-left:auto;font-size:12px;color:#9a9186"><span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:2px;background:#c0503a"></span>Agents</span><span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:2px;background:#e4d9c6"></span>People</span><span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:2px;background:#4a443d"></span>Unverified</span></div>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:6px;height:180px;margin-top:20px">
+          <sc-for list="{{ fDays }}" as="d" hint-placeholder-count="14">
+            <div title="{{ d.tip }}" style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;gap:2px">
+              <div style="height:{{ d.u }};background:#4a443d;border-radius:3px 3px 0 0"></div>
+              <div style="height:{{ d.p }};background:#e4d9c6"></div>
+              <div style="height:{{ d.a }};background:#c0503a;box-shadow:{{ d.glow }}"></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;justify-content:space-between;font:400 11px 'JetBrains Mono';color:#6b645b;margin-top:8px"><span>Sep 20</span><span>Sep 27</span><span>today</span></div>
+      </div>
+      <div style="border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #26221e"><span style="font-weight:600">Top agents · 30d</span><span style="font:500 11px 'JetBrains Mono';color:#6b645b">NEW WALLETS</span></div>
+        <sc-for list="{{ fAgents }}" as="a" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:32px minmax(0,1fr) 70px;gap:12px;align-items:center;padding:11px 20px;border-bottom:1px solid #1c1916">
+            <div style="width:32px;height:32px;border-radius:8px;background:rgba(192,80,58,.14);display:flex;align-items:center;justify-content:center;font:700 11px 'JetBrains Mono';color:#c0503a">{{ a.abbr }}</div>
+            <div style="min-width:0"><div style="font-size:14px;font-weight:500">{{ a.name }}</div><div style="display:flex;align-items:center;gap:8px;margin-top:5px"><div style="flex:1;height:3px;border-radius:2px;background:#26221e;overflow:hidden"><div style="height:3px;width:{{ a.bar }};background:#c0503a"></div></div><span style="font:400 11px 'JetBrains Mono';color:#8f877c">{{ a.key }}</span></div></div>
+            <span style="text-align:right;font:600 14px 'JetBrains Mono'">{{ a.wallets }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid #26221e"><span style="font-weight:600;font-size:16px">Recent drips</span><span style="margin-left:auto;font:400 12px 'JetBrains Mono';color:#6b645b">live</span></div>
+      <div style="display:grid;grid-template-columns:minmax(0,1.3fr) 110px 170px minmax(0,1fr) 120px 80px;gap:16px;padding:11px 22px;font:500 11px 'JetBrains Mono';letter-spacing:.08em;color:#6b645b;border-bottom:1px solid #1c1916"><span>RECIPIENT</span><span>STRAND</span><span>SOURCE</span><span>TX</span><span style="text-align:right">AMOUNT</span><span style="text-align:right">AGE</span></div>
+      <sc-for list="{{ fRecent }}" as="r" hint-placeholder-count="7">
+        <div style="display:grid;grid-template-columns:minmax(0,1.3fr) 110px 170px minmax(0,1fr) 120px 80px;gap:16px;align-items:center;padding:12px 22px;border-bottom:1px solid #1c1916;font-size:13px;background:{{ r.bg }}" style-hover="background:#1a1714">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0"><a href="#" style="font:500 13px 'JetBrains Mono';color:#d8d1c5">{{ r.addr }}</a><sc-if value="{{ r.isNew }}" hint-placeholder-val="{{ false }}"><span style="padding:2px 7px;border-radius:5px;font:600 10px 'JetBrains Mono';letter-spacing:.05em;color:#16c784;background:rgba(22,199,132,.12)">NEW WALLET</span></sc-if></div>
+          <span style="display:flex;align-items:center;gap:7px;color:#9a9186"><span style="width:7px;height:7px;border-radius:50%;background:{{ r.strandC }}"></span>{{ r.strand }}</span>
+          <span><span style="padding:3px 8px;border-radius:6px;font:600 11px 'JetBrains Mono';color:{{ r.srcC }};background:{{ r.srcBg }}">{{ r.src }}</span></span>
+          <a href="#" style="font:400 12px 'JetBrains Mono';color:#c0503a">{{ r.tx }}</a>
+          <span style="text-align:right;font-family:'JetBrains Mono'">10 AETH</span>
+          <span style="text-align:right;color:#8f877c">{{ r.age }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div></div>
+
+</div>
+<p class="dv-next">Try next: "agent detail page: everything one agent key has done" · "add faucet usage to the Overview" · "show a rate-limited / already-claimed state"</p>
+</section>
+<section class="dv-turn" id="t5">
+<div class="dv-thd"><a class="dv-tid" href="#t5">5</a><span class="dv-tname">Dual-strand helix — Overview + Blocks with chain selector</span></div>
+<p style="margin:-8px 0 28px;max-width:800px;font:13px/1.55 system-ui,sans-serif;color:rgba(0,0,0,.6);text-wrap:pretty">The two chains are drawn as the two strands of a helix running along a time axis. Aether blocks (red, 6s) sit on one strand, IBC-chain blocks (bone, 4s) on the other, and the glowing rungs are IBC packets relayed between them. The Both / Aether / IBC switch in the header works on both screens. When value crosses, a helicase unwinds the strands at the send point and carries the amount across; on arrival a ligase seals it into the other strand. Assumed: 4s BFT blocks for the IBC chain, one channel-0 link, AETH as the token that crosses. The second chain's display name is a Tweak.</p>
+<div class="dv-opts">
+
+<div class="dv-opt" id="5a"><div class="dv-olabel"><a class="dv-oid" href="#5a">5a</a>Overview — live helix hero, per-strand + bridge stats, merged feeds</div>
+<div class="dv-card" style="width:1280px;background:#0a0908;color:#f3efe6;font-family:'Space Grotesk',sans-serif;border:1px solid #26221e">
+  <div style="display:flex;align-items:center;gap:20px;padding:0 32px;height:64px;border-bottom:1px solid #1c1916;white-space:nowrap">
+    <div style="display:flex;align-items:center;gap:12px"><img src="assets/aether-mark-reversed.svg" alt="Aether" style="width:26px;height:26px;display:block"><div style="font:600 13px 'Space Grotesk';letter-spacing:.32em">AETHER</div><div style="font-size:13px;color:#9a9186;margin-left:-4px">Explorer</div></div>
+    <div style="display:flex;gap:16px;font-size:14px;color:#9a9186"><span style="color:#f3efe6">Overview</span><span>Blocks</span><span>Validators</span><span>Governance</span><span>Services</span><span>For agents</span><span>Faucet</span></div>
+    <div style="margin-left:auto;display:flex;gap:2px;padding:3px;border-radius:11px;background:#12100e;border:1px solid #26221e">
+      <sc-for list="{{ chainTabsO }}" as="c" hint-placeholder-count="3"><div onClick="{{ c.onClick }}" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:8px;cursor:pointer;font-size:13px;background:{{ c.bg }};color:{{ c.color }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ c.dot }}"></span>{{ c.label }}</div></sc-for>
+    </div>
+    <div style="display:flex;align-items:center;width:150px;height:36px;padding:0 14px;border-radius:10px;background:#12100e;border:1px solid #26221e"><input placeholder="Search either chain" style="flex:1;min-width:0;border:0;background:transparent;font:inherit;font-size:13px;color:#f3efe6"></div>
+  </div>
+  <div style="padding:28px 32px 36px">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="font-size:26px;font-weight:600;letter-spacing:-.01em">{{ titleO }}</div>
+      <div style="display:flex;align-items:center;gap:7px;font:500 11px 'JetBrains Mono';color:#16c784;padding:4px 10px;border-radius:999px;background:rgba(22,199,132,.08);border:1px solid rgba(22,199,132,.25)"><div style="width:6px;height:6px;border-radius:50%;background:#16c784;box-shadow:0 0 8px #16c784;animation:pulse 1.6s infinite"></div>LIVE</div>
+    </div>
+    <div style="margin-top:20px;padding:20px 24px 16px;border-radius:18px;background:radial-gradient(60% 100% at 85% 50%,rgba(192,80,58,.12),rgba(192,80,58,0) 70%),#0e0c0b;border:1px solid #26221e">
+      <div style="display:flex;align-items:center;gap:28px;margin-bottom:10px">
+        <sc-for list="{{ legendO }}" as="l" hint-placeholder-count="2">
+          <div style="display:flex;align-items:center;gap:10px;opacity:{{ l.op }};transition:opacity .4s"><span style="width:10px;height:10px;border-radius:50%;background:{{ l.color }};box-shadow:0 0 10px {{ l.color }}"></span><span style="font-weight:600;font-size:15px">{{ l.name }}</span><span style="font:600 15px 'JetBrains Mono';color:{{ l.color }}">#{{ l.h }}</span><span style="font:400 12px 'JetBrains Mono';color:#8f877c">{{ l.meta }}</span></div>
+        </sc-for>
+        <div style="margin-left:auto;font:400 12px 'JetBrains Mono';color:#6b645b">last 60s · time flows left</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:22px;margin:-2px 0 6px;font-size:12px;color:#9a9186">
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:12px;height:12px;box-sizing:border-box;border-radius:50%;border:1.5px dashed #fff7ee;box-shadow:0 0 8px rgba(192,80,58,.6)"></span>Helicase · unwinding, value in flight</div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;transform:rotate(45deg);background:#fff7ee;border:1.5px solid #e4d9c6"></span>Ligase · sealed on arrival</div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:3px;height:14px;border-radius:2px;background:linear-gradient(#c0503a,#fff7ee,#e4d9c6)"></span>Settled IBC packet</div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px;font:500 12px 'JetBrains Mono';color:{{ bridgeEvtColor }};transition:color .4s"><span style="width:6px;height:6px;border-radius:50%;background:{{ bridgeEvtColor }}"></span>{{ bridgeEvt }}</div>
+      </div>
+      {{ helixO }}
+    </div>
+    <div style="display:flex;gap:14px;margin-top:18px">
+      <sc-for list="{{ statCardsO }}" as="c" hint-placeholder-count="3">
+        <div style="flex:1;min-width:0;padding:18px 20px;border-radius:14px;background:#12100e;border:1px solid {{ c.border }}">
+          <div style="display:flex;align-items:center;gap:9px"><span style="width:8px;height:8px;border-radius:50%;background:{{ c.color }};box-shadow:0 0 8px {{ c.color }}"></span><span style="font-weight:600;font-size:15px">{{ c.title }}</span><span style="font:400 12px 'JetBrains Mono';color:#8f877c;margin-left:auto">{{ c.sub }}</span></div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:14px">
+            <sc-for list="{{ c.stats }}" as="s" hint-placeholder-count="4"><div style="min-width:0"><div style="font-size:12px;color:#8f877c">{{ s.k }}</div><div style="font:600 17px 'JetBrains Mono';margin-top:4px;white-space:nowrap">{{ s.v }}</div></div></sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:18px;margin-top:18px">
+      <div style="border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #26221e"><span style="font-weight:600">Latest blocks</span><span style="font-size:12px;color:#c0503a">All blocks →</span></div>
+        <sc-for list="{{ blocksO }}" as="b" hint-placeholder-count="7">
+          <div style="display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:14px;align-items:center;padding:11px 20px;border-bottom:1px solid #1c1916">
+            <div style="width:44px;height:44px;border-radius:10px;border:1px solid {{ b.border }};background:#0e0c0b;display:flex;align-items:flex-end;padding:4px;box-sizing:border-box"><div style="width:100%;height:{{ b.fill }};border-radius:4px;background:{{ b.fillC }}"></div></div>
+            <div style="min-width:0"><div style="display:flex;align-items:center;gap:8px"><a href="#" style="font:600 14px 'JetBrains Mono';color:{{ b.color }}">{{ b.heightFmt }}</a><span style="display:flex;align-items:center;gap:5px;padding:2px 7px;border-radius:5px;background:#1c1916;font-size:11px;color:#9a9186"><span style="width:6px;height:6px;border-radius:50%;background:{{ b.color }}"></span>{{ b.chainName }}</span></div><div style="font:400 12px 'JetBrains Mono';color:#8f877c;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.hash }} · {{ b.who }}</div></div>
+            <div style="text-align:right"><div style="font-size:13px">{{ b.txs }} txs</div><div style="font-size:12px;color:#8f877c;margin-top:3px">{{ b.age }}</div></div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #26221e"><span style="font-weight:600">Recent transactions</span><span style="font-size:12px;color:#c0503a">All transactions →</span></div>
+        <sc-for list="{{ txsO }}" as="t" hint-placeholder-count="7">
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 170px 150px 64px;gap:14px;align-items:center;padding:14px 20px;border-bottom:1px solid #1c1916;font-size:13px" style-hover="background:#1a1714">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0"><span style="flex:none;width:8px;height:8px;border-radius:50%;background:{{ t.chainColor }}"></span><a href="#" style="font:500 13px 'JetBrains Mono';color:#d8d1c5;white-space:nowrap">{{ t.hash }}</a></div>
+            <div><span style="padding:3px 9px;border-radius:6px;font:500 12px 'JetBrains Mono';color:{{ t.color }};background:{{ t.bg }}">{{ t.type }}</span></div>
+            <span style="font-family:'JetBrains Mono';font-size:12px;color:#d8d1c5;white-space:nowrap">{{ t.amount }}</span>
+            <span style="text-align:right;color:#8f877c">{{ t.age }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<div class="dv-opt" id="5b"><div class="dv-olabel"><a class="dv-oid" href="#5b">5b</a>Blocks — Both: one timeline with the helix as its spine. Pick a single chain: that chain's own table.</div>
+<div class="dv-card" style="width:1280px;background:#0a0908;color:#f3efe6;font-family:'Space Grotesk',sans-serif;border:1px solid #26221e">
+  <div style="display:flex;align-items:center;gap:20px;padding:0 32px;height:64px;border-bottom:1px solid #1c1916;white-space:nowrap">
+    <div style="display:flex;align-items:center;gap:12px"><img src="assets/aether-mark-reversed.svg" alt="Aether" style="width:26px;height:26px;display:block"><div style="font:600 13px 'Space Grotesk';letter-spacing:.32em">AETHER</div><div style="font-size:13px;color:#9a9186;margin-left:-4px">Explorer</div></div>
+    <div style="display:flex;gap:16px;font-size:14px;color:#9a9186"><span>Overview</span><span style="color:#f3efe6">Blocks</span><span>Validators</span><span>Governance</span><span>Services</span><span>For agents</span><span>Faucet</span></div>
+    <div style="margin-left:auto;display:flex;gap:2px;padding:3px;border-radius:11px;background:#12100e;border:1px solid #26221e">
+      <sc-for list="{{ chainTabsB }}" as="c" hint-placeholder-count="3"><div onClick="{{ c.onClick }}" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:8px;cursor:pointer;font-size:13px;background:{{ c.bg }};color:{{ c.color }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ c.dot }}"></span>{{ c.label }}</div></sc-for>
+    </div>
+    <div style="display:flex;align-items:center;width:150px;height:36px;padding:0 14px;border-radius:10px;background:#12100e;border:1px solid #26221e"><input placeholder="Search either chain" style="flex:1;min-width:0;border:0;background:transparent;font:inherit;font-size:13px;color:#f3efe6"></div>
+  </div>
+  <div style="padding:28px 32px 36px">
+    <div style="display:flex;align-items:flex-end;gap:18px">
+      <div><div style="font-size:34px;font-weight:600;letter-spacing:-.02em">Blocks</div><div style="font-size:14px;color:#8f877c;margin-top:6px">{{ subB }}</div></div>
+      <div style="margin-left:auto;display:flex;gap:28px">
+        <sc-for list="{{ legendB }}" as="l" hint-placeholder-count="2"><div style="opacity:{{ l.op }};transition:opacity .4s"><div style="display:flex;align-items:center;gap:7px;font-size:12px;color:#8f877c"><span style="width:7px;height:7px;border-radius:50%;background:{{ l.color }}"></span>{{ l.name }} head</div><div style="font:600 22px 'JetBrains Mono';margin-top:4px;color:{{ l.color }}">{{ l.h }}</div></div></sc-for>
+      </div>
+    </div>
+    <div style="margin-top:20px;padding:12px 20px 8px;border-radius:16px;background:#0e0c0b;border:1px solid #26221e">{{ helixB }}</div>
+
+    <sc-if value="{{ bothB }}" hint-placeholder-val="{{ true }}">
+    <div style="margin-top:18px;border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 120px minmax(0,1fr);padding:12px 0;font:500 11px 'JetBrains Mono';letter-spacing:.1em;border-bottom:1px solid #26221e">
+        <span style="text-align:right;padding:0 20px;color:#c0503a">AETHER · POW · 6S</span><span style="text-align:center;color:#6b645b">PACKETS</span><span style="padding:0 20px;color:#e4d9c6">{{ sNameUpper }} · BFT · 4S</span>
+      </div>
+      <sc-for list="{{ tlRows }}" as="r" hint-placeholder-count="12">
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 120px minmax(0,1fr);height:58px;background:{{ r.bg }}" style-hover="background:#1a1714">
+          <div style="display:flex;justify-content:flex-end;align-items:center;gap:18px;padding:0 20px;min-width:0;border-bottom:1px solid #1c1916;font-size:13px">
+            <sc-if value="{{ r.isA }}" hint-placeholder-val="{{ false }}"><span style="color:#8f877c">{{ r.age }}</span><span style="font-family:'JetBrains Mono';color:#9a9186">{{ r.pk }}</span><span style="font-family:'JetBrains Mono';color:#9a9186">{{ r.txs }} txs</span><span style="font:400 12px 'JetBrains Mono';color:#8f877c">{{ r.who }}</span><span style="font:400 12px 'JetBrains Mono';color:#6b645b">{{ r.hash }}</span><a href="#" style="font:600 15px 'JetBrains Mono';color:#c0503a">{{ r.heightFmt }}</a></sc-if>
+            <sc-if value="{{ r.isP }}" hint-placeholder-val="{{ false }}"><span style="font:500 12px 'JetBrains Mono';color:{{ r.lColor }}">{{ r.pLeft }}</span></sc-if>
+          </div>
+          <svg viewBox="0 0 120 58" style="width:120px;height:58px;display:block;overflow:visible">
+            <path d="{{ r.g.rg }}" style="stroke:#2a2521;stroke-width:1;fill:none"></path>
+            <path d="{{ r.g.aB }}" style="stroke:#c0503a;stroke-opacity:.3;stroke-width:2;fill:none"></path>
+            <path d="{{ r.g.bB }}" style="stroke:#e4d9c6;stroke-opacity:.25;stroke-width:2;fill:none"></path>
+            <path d="{{ r.g.aF }}" style="stroke:#c0503a;stroke-width:3;fill:none"></path>
+            <path d="{{ r.g.bF }}" style="stroke:#e4d9c6;stroke-width:3;fill:none"></path>
+            <path d="{{ r.pRung }}" style="stroke:#f3efe6;stroke-width:2.5;fill:none;filter:drop-shadow(0 0 4px #c0503a)"></path>
+            <circle cx="{{ r.nx }}" cy="29" r="{{ r.nr }}" style="fill:{{ r.nFill }};stroke:{{ r.nStroke }};stroke-width:2"></circle>
+          </svg>
+          <div style="display:flex;align-items:center;gap:18px;padding:0 20px;min-width:0;border-bottom:1px solid #1c1916;font-size:13px">
+            <sc-if value="{{ r.isB }}" hint-placeholder-val="{{ false }}"><a href="#" style="font:600 15px 'JetBrains Mono';color:#e4d9c6">{{ r.heightFmt }}</a><span style="font:400 12px 'JetBrains Mono';color:#6b645b">{{ r.hash }}</span><span style="font-size:12px;color:#8f877c">{{ r.who }}</span><span style="font-family:'JetBrains Mono';color:#9a9186">{{ r.txs }} txs</span><span style="font-family:'JetBrains Mono';color:#9a9186">{{ r.pk }}</span><span style="color:#8f877c">{{ r.age }}</span></sc-if>
+            <sc-if value="{{ r.isP }}" hint-placeholder-val="{{ false }}"><span style="font:500 12px 'JetBrains Mono';color:{{ r.rColor }}">{{ r.pRight }}</span><span style="padding:3px 8px;border-radius:6px;font:600 10px 'JetBrains Mono';letter-spacing:.05em;color:{{ r.stColor }};background:{{ r.stBg }}">{{ r.st }}</span></sc-if>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ singleB }}" hint-placeholder-val="{{ false }}">
+    <div style="margin-top:18px;border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+      <div style="display:grid;grid-template-columns:44px 140px minmax(0,1fr) minmax(0,1fr) 90px 110px 90px;gap:16px;padding:12px 20px 12px 8px;font:500 11px 'JetBrains Mono';letter-spacing:.08em;color:#6b645b;border-bottom:1px solid #26221e"><span></span><span>HEIGHT</span><span>HASH</span><span>{{ whoLabel }}</span><span style="text-align:right">TXS</span><span style="text-align:right">IBC PACKETS</span><span style="text-align:right">AGE</span></div>
+      <sc-for list="{{ singleRows }}" as="r" hint-placeholder-count="12">
+        <div style="display:grid;grid-template-columns:44px 140px minmax(0,1fr) minmax(0,1fr) 90px 110px 90px;gap:16px;align-items:center;height:58px;padding:0 20px 0 8px;font-size:13px" style-hover="background:#1a1714">
+          <svg viewBox="0 0 44 58" style="width:44px;height:58px;display:block;overflow:visible">
+            <path d="{{ r.g.aB }}" style="stroke:{{ selColorB }};stroke-opacity:.3;stroke-width:2;fill:none"></path>
+            <path d="{{ r.g.aF }}" style="stroke:{{ selColorB }};stroke-width:3;fill:none"></path>
+            <circle cx="{{ r.nx }}" cy="29" r="{{ r.nr }}" style="fill:{{ r.nFill }};stroke:{{ selColorB }};stroke-width:2"></circle>
+          </svg>
+          <a href="#" style="font:600 15px 'JetBrains Mono';color:{{ selColorB }}">{{ r.heightFmt }}</a>
+          <span style="font:400 12px 'JetBrains Mono';color:#9a9186">{{ r.hash }}</span>
+          <span style="font:400 12px 'JetBrains Mono';color:#d8d1c5">{{ r.who }}</span>
+          <span style="text-align:right;font-family:'JetBrains Mono'">{{ r.txs }}</span>
+          <span style="text-align:right;font-family:'JetBrains Mono';color:{{ r.pkColor }}">{{ r.pkN }}</span>
+          <span style="text-align:right;color:#8f877c">{{ r.age }}</span>
+        </div>
+      </sc-for>
+    </div>
+    </sc-if>
+  </div>
+</div></div>
+
+</div>
+<p class="dv-next">Try next: "block detail for an IBC-chain block" · "packet detail page (the rung, clicked)" · "helix hero as a vertical strand on mobile"</p>
+</section>
+<section class="dv-turn" id="t4">
+<div class="dv-thd"><a class="dv-tid" href="#t4">4</a><span class="dv-tname">Remaining pages in <a class="dv-oid" href="#2b">2b</a> style</span></div>
+<p style="margin:-8px 0 28px;max-width:780px;font:13px/1.55 system-ui,sans-serif;color:rgba(0,0,0,.6);text-wrap:pretty">Assumptions, since I haven't seen these pages live. Validators: CometBFT signers plus a PoW miners tab. Governance: standard proposals with a tally. Services: public endpoints (RPC, REST, gRPC, faucet) with health. For agents: a machine-readable API guide. Monikers, numbers and endpoint URLs are placeholders.</p>
+<div class="dv-opts">
+
+<div class="dv-opt" id="4a"><div class="dv-olabel"><a class="dv-oid" href="#4a">4a</a>Validators — the Signers / PoW miners tabs are clickable</div>
+<div class="dv-card" style="width:1280px;background:#0a0908;color:#f3efe6;font-family:'Space Grotesk',sans-serif;border:1px solid #26221e">
+  <div style="display:flex;align-items:center;gap:28px;padding:0 32px;height:60px;border-bottom:1px solid #1c1916">
+    <div style="display:flex;align-items:center;gap:12px"><img src="assets/aether-mark-reversed.svg" alt="Aether" style="width:26px;height:26px;display:block"><div style="font:600 13px 'Space Grotesk';letter-spacing:.32em">AETHER</div><div style="font-size:13px;color:#9a9186;margin-left:-4px">Explorer</div></div>
+    <div style="display:flex;gap:22px;font-size:14px;color:#9a9186"><span>Overview</span><span>Blocks</span><span style="color:#f3efe6">Validators</span><span>Governance</span><span>Services</span><span>For agents</span><span>Faucet</span></div>
+    <div style="margin-left:auto;display:flex;align-items:center;width:320px;height:36px;padding:0 14px;border-radius:10px;background:#12100e;border:1px solid #26221e"><input placeholder="Search address, hash or height" style="flex:1;border:0;background:transparent;font:inherit;font-size:13px;color:#f3efe6"></div>
+  </div>
+  <div style="padding:28px 32px 36px">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:stretch">
+      <div style="display:flex;flex-direction:column;justify-content:space-between;gap:22px">
+        <div><div style="font-size:34px;font-weight:600;letter-spacing:-.02em">Validators</div><div style="font-size:14px;color:#8f877c;margin-top:6px">The nodes that sign Aether blocks, and the miners that submit proof-of-work.</div></div>
+        <div style="display:flex;gap:40px">
+          <div><div style="font-size:12px;color:#8f877c">Active set</div><div style="font:600 22px 'JetBrains Mono';margin-top:4px">24 <span style="color:#6b645b;font-size:15px">/ 32</span></div></div>
+          <div><div style="font-size:12px;color:#8f877c">Bonded</div><div style="font:600 22px 'JetBrains Mono';margin-top:4px">1.21M AETH</div></div>
+          <div><div style="font-size:12px;color:#8f877c">Network uptime · 24h</div><div style="font:600 22px 'JetBrains Mono';margin-top:4px;color:#16c784">99.94%</div></div>
+        </div>
+        <div style="padding:16px 20px;border-radius:14px;background:#12100e;border:1px solid #26221e">
+          <div style="display:flex;justify-content:space-between;gap:16px;font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#8f877c"><span>{{ geoTitle }}</span><span style="letter-spacing:.04em">{{ geoSummary }}</span></div>
+          <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px;margin-top:14px"><sc-for list="{{ regions }}" as="g" hint-placeholder-count="4"><div style="width:{{ g.pct }};background:{{ g.c }}"></div></sc-for></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:12px"><sc-for list="{{ regions }}" as="g" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="width:8px;height:8px;border-radius:2px;background:{{ g.c }}"></span>{{ g.name }}<span style="font-family:'JetBrains Mono';color:#9a9186">{{ g.pct }}</span></div></sc-for></div>
+        </div>
+      </div>
+      <div style="position:relative;height:300px;border-radius:16px;background:radial-gradient(60% 60% at 50% 50%,rgba(192,80,58,.12),rgba(192,80,58,0) 70%),#12100e;border:1px solid #26221e;overflow:hidden">
+        <iframe ref="{{ globeRef }}" src="../validator-globe.html" title="Node locations" style="position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:transparent"></iframe>
+        <div style="position:absolute;left:16px;top:14px;font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#8f877c;pointer-events:none">NODE LOCATIONS</div>
+        <div style="position:absolute;left:16px;right:16px;bottom:12px;display:flex;justify-content:space-between;gap:12px;font-size:11px;pointer-events:none"><span style="color:{{ geoHoverColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ geoHover }}</span><span style="flex:none;color:#6b645b">approx. · from IP</span></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:4px;margin:26px 0 16px;border-bottom:1px solid #26221e">
+      <sc-for list="{{ valTabs }}" as="tb" hint-placeholder-count="2"><div onClick="{{ tb.onClick }}" style="padding:10px 16px;font-size:14px;cursor:pointer;color:{{ tb.color }};box-shadow:{{ tb.line }}">{{ tb.label }}</div></sc-for>
+    </div>
+    <sc-if value="{{ valSigners }}" hint-placeholder-val="{{ true }}">
+    <div style="border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+      <div style="display:grid;grid-template-columns:40px minmax(0,1.4fr) minmax(0,1.3fr) 110px 170px 110px;gap:16px;padding:12px 22px;font:500 11px 'JetBrains Mono';letter-spacing:.08em;color:#6b645b;border-bottom:1px solid #1c1916"><span>#</span><span>VALIDATOR</span><span>VOTING POWER</span><span style="text-align:right">COMMISSION</span><span>LAST 50 BLOCKS</span><span style="text-align:right">STATUS</span></div>
+      <sc-for list="{{ validators }}" as="v" hint-placeholder-count="8">
+        <div onMouseEnter="{{ v.onEnter }}" onMouseLeave="{{ v.onLeave }}" style="display:grid;grid-template-columns:40px minmax(0,1.4fr) minmax(0,1.3fr) 110px 170px 110px;gap:16px;align-items:center;padding:13px 22px;border-bottom:1px solid #1c1916;font-size:14px;background:{{ v.rowBg }}" style-hover="background:#1a1714">
+          <span style="font-family:'JetBrains Mono';color:#6b645b">{{ v.rank }}</span>
+          <div style="display:flex;align-items:center;gap:12px;min-width:0"><div style="flex:none;width:32px;height:32px;border-radius:8px;background:#221e1a;display:flex;align-items:center;justify-content:center;font:600 12px 'JetBrains Mono';color:#d8d1c5">{{ v.initial }}</div><div style="min-width:0"><div style="font-weight:500">{{ v.name }}</div><div style="font:400 12px 'JetBrains Mono';color:#8f877c;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ v.addr }} · <span style="color:#9a9186">{{ v.city }}</span></div></div></div>
+          <div><div style="display:flex;justify-content:space-between;font:500 13px 'JetBrains Mono'"><span>{{ v.power }}</span><span style="color:#8f877c">{{ v.pct }}</span></div><div style="height:4px;border-radius:2px;background:#26221e;margin-top:6px;overflow:hidden"><div style="height:4px;width:{{ v.bar }};background:#c0503a"></div></div></div>
+          <span style="text-align:right;font-family:'JetBrains Mono';font-size:13px">{{ v.comm }}</span>
+          <div style="display:grid;grid-template-columns:repeat(25,1fr);gap:1.5px"><sc-for list="{{ v.up }}" as="u" hint-placeholder-count="25"><div style="height:14px;border-radius:1px;background:{{ u }}"></div></sc-for></div>
+          <span style="text-align:right;font:600 11px 'JetBrains Mono';letter-spacing:.04em;color:{{ v.sColor }}">{{ v.status }}</span>
+        </div>
+      </sc-for>
+    </div>
+    </sc-if>
+    <sc-if value="{{ valMiners }}" hint-placeholder-val="{{ false }}">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px">
+      <div style="border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+        <div style="display:grid;grid-template-columns:40px minmax(0,1fr) 150px 140px 120px;gap:16px;padding:12px 22px;font:500 11px 'JetBrains Mono';letter-spacing:.08em;color:#6b645b;border-bottom:1px solid #1c1916"><span>#</span><span>MINER</span><span>BLOCKS · EPOCH 83</span><span style="text-align:right">REWARDS</span><span style="text-align:right">LAST BLOCK</span></div>
+        <sc-for list="{{ miners }}" as="m" hint-placeholder-count="7">
+          <div onMouseEnter="{{ m.onEnter }}" onMouseLeave="{{ m.onLeave }}" style="display:grid;grid-template-columns:40px minmax(0,1fr) 150px 140px 120px;gap:16px;align-items:center;padding:13px 22px;border-bottom:1px solid #1c1916;font-size:14px;background:{{ m.rowBg }}" style-hover="background:#1a1714">
+            <span style="font-family:'JetBrains Mono';color:#6b645b">{{ m.rank }}</span>
+            <div style="display:flex;align-items:baseline;gap:10px;min-width:0"><a href="#" style="font:500 13px 'JetBrains Mono';color:#c0503a">{{ m.addr }}</a><span style="font-size:12px;color:#9a9186;white-space:nowrap">{{ m.city }}</span></div>
+            <div style="display:flex;align-items:center;gap:10px;font:500 13px 'JetBrains Mono'">{{ m.blocks }}<div style="flex:1;height:4px;border-radius:2px;background:#26221e;overflow:hidden"><div style="height:4px;width:{{ m.bar }};background:#c0503a"></div></div></div>
+            <span style="text-align:right;font-family:'JetBrains Mono';font-size:13px">{{ m.reward }}</span>
+            <span style="text-align:right;color:#8f877c;font-size:13px">{{ m.last }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="padding:22px;border-radius:16px;background:radial-gradient(100% 80% at 100% 0%,rgba(192,80,58,.16),rgba(192,80,58,0) 60%),#12100e;border:1px solid rgba(192,80,58,.35)">
+        <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#c0503a">BLOCK SHARE · EPOCH 83</div>
+        <div style="display:flex;height:12px;border-radius:6px;overflow:hidden;gap:2px;margin:18px 0"><sc-for list="{{ minerShare }}" as="s" hint-placeholder-count="5"><div style="width:{{ s.pct }};background:{{ s.c }}"></div></sc-for></div>
+        <sc-for list="{{ minerShare }}" as="s" hint-placeholder-count="5"><div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px"><span style="width:8px;height:8px;border-radius:2px;background:{{ s.c }}"></span><span style="font-family:'JetBrains Mono'">{{ s.label }}</span><span style="margin-left:auto;font-family:'JetBrains Mono';color:#9a9186">{{ s.pct }}</span></div></sc-for>
+        <div style="font-size:12px;color:#8f877c;margin-top:14px;line-height:1.5">No single miner above 33% this epoch.</div>
+      </div>
+    </div>
+    </sc-if>
+  </div>
+</div></div>
+
+<div class="dv-opt" id="4b"><div class="dv-olabel"><a class="dv-oid" href="#4b">4b</a>Governance — the live vote first, then all proposals</div>
+<div class="dv-card" style="width:1280px;background:#0a0908;color:#f3efe6;font-family:'Space Grotesk',sans-serif;border:1px solid #26221e">
+  <div style="display:flex;align-items:center;gap:28px;padding:0 32px;height:60px;border-bottom:1px solid #1c1916">
+    <div style="display:flex;align-items:center;gap:12px"><img src="assets/aether-mark-reversed.svg" alt="Aether" style="width:26px;height:26px;display:block"><div style="font:600 13px 'Space Grotesk';letter-spacing:.32em">AETHER</div><div style="font-size:13px;color:#9a9186;margin-left:-4px">Explorer</div></div>
+    <div style="display:flex;gap:22px;font-size:14px;color:#9a9186"><span>Overview</span><span>Blocks</span><span>Validators</span><span style="color:#f3efe6">Governance</span><span>Services</span><span>For agents</span><span>Faucet</span></div>
+    <div style="margin-left:auto;display:flex;align-items:center;width:320px;height:36px;padding:0 14px;border-radius:10px;background:#12100e;border:1px solid #26221e"><input placeholder="Search address, hash or height" style="flex:1;border:0;background:transparent;font:inherit;font-size:13px;color:#f3efe6"></div>
+  </div>
+  <div style="padding:28px 32px 36px">
+    <div style="display:flex;align-items:flex-end;gap:40px">
+      <div><div style="font-size:34px;font-weight:600;letter-spacing:-.02em">Governance</div><div style="font-size:14px;color:#8f877c;margin-top:6px">On-chain proposals decided by AETH stakers.</div></div>
+      <div style="margin-left:auto;display:flex;gap:32px">
+        <div><div style="font-size:12px;color:#8f877c">Quorum</div><div style="font:600 22px 'JetBrains Mono';margin-top:4px">33.4%</div></div>
+        <div><div style="font-size:12px;color:#8f877c">Pass threshold</div><div style="font:600 22px 'JetBrains Mono';margin-top:4px">50%</div></div>
+        <div><div style="font-size:12px;color:#8f877c">Voting period</div><div style="font:600 22px 'JetBrains Mono';margin-top:4px">3 days</div></div>
+      </div>
+    </div>
+    <div style="margin-top:26px;padding:26px;border-radius:18px;background:radial-gradient(70% 120% at 0% 0%,rgba(192,80,58,.16),rgba(192,80,58,0) 60%),#12100e;border:1px solid rgba(192,80,58,.35);display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:40px">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px"><span style="font:500 13px 'JetBrains Mono';color:#8f877c">#14</span><span style="display:flex;align-items:center;gap:7px;padding:4px 10px;border-radius:999px;background:rgba(192,80,58,.14);font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#c0503a"><span style="width:6px;height:6px;border-radius:50%;background:#c0503a;box-shadow:0 0 8px #c0503a;animation:pulse 1.6s infinite"></span>VOTING · 1d 7h LEFT</span><span style="font:500 12px 'JetBrains Mono';color:#9a9186">ParamChange</span></div>
+        <div style="font-size:26px;font-weight:600;letter-spacing:-.01em;margin-top:14px;text-wrap:pretty">Lower target block time from 6s to 5s</div>
+        <div style="font-size:15px;line-height:1.55;color:#d8d1c5;margin-top:10px;max-width:560px;text-wrap:pretty">Adjusts the difficulty retarget so blocks land every 5 seconds on average. The block reward scales down to keep issuance per epoch unchanged.</div>
+        <div style="display:flex;gap:24px;margin-top:18px;font-size:13px;color:#8f877c"><span>Proposer <a href="#" style="font-family:'JetBrains Mono';color:#c0503a">aeth1n6fe…q0t4r</a></span><span>Deposit <span style="font-family:'JetBrains Mono';color:#d8d1c5">1,000 AETH</span></span><span>Ends <span style="color:#d8d1c5">Sep 28, 04:12 UTC</span></span></div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;color:#8f877c"><span>Turnout <span style="font-family:'JetBrains Mono';color:#f3efe6">41.2%</span></span><span>quorum reached</span></div>
+        <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;gap:2px;margin:12px 0 18px"><sc-for list="{{ tally }}" as="t" hint-placeholder-count="4"><div style="width:{{ t.pct }};background:{{ t.c }};box-shadow:{{ t.glow }}"></div></sc-for></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 20px"><sc-for list="{{ tally }}" as="t" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:10px;font-size:14px"><span style="width:8px;height:8px;border-radius:2px;background:{{ t.c }}"></span>{{ t.label }}<span style="margin-left:auto;font-family:'JetBrains Mono'">{{ t.pct }}</span></div></sc-for></div>
+        <div style="margin-top:22px;display:flex;align-items:center;justify-content:center;height:44px;border-radius:12px;background:#c0503a;color:#f3efe6;font-weight:600;font-size:14px">Vote with wallet</div>
+      </div>
+    </div>
+    <div style="margin-top:18px;border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:14px;padding:16px 22px;border-bottom:1px solid #26221e"><span style="font-weight:600;font-size:16px">All proposals</span><div style="display:flex;gap:6px;font-size:12px;color:#9a9186;margin-left:auto"><span style="padding:5px 10px;border-radius:999px;background:#26221e;color:#f3efe6">All</span><span style="padding:5px 10px;border-radius:999px;border:1px solid #26221e">Voting</span><span style="padding:5px 10px;border-radius:999px;border:1px solid #26221e">Passed</span><span style="padding:5px 10px;border-radius:999px;border:1px solid #26221e">Rejected</span></div></div>
+      <sc-for list="{{ proposals }}" as="p" hint-placeholder-count="6">
+        <div style="display:grid;grid-template-columns:56px minmax(0,1fr) 160px 200px 130px;gap:16px;align-items:center;padding:15px 22px;border-bottom:1px solid #1c1916" style-hover="background:#1a1714">
+          <span style="font:500 13px 'JetBrains Mono';color:#8f877c">#{{ p.id }}</span>
+          <div style="min-width:0"><div style="font-size:15px;font-weight:500">{{ p.title }}</div><div style="font:400 12px 'JetBrains Mono';color:#8f877c;margin-top:3px">{{ p.kind }}</div></div>
+          <div style="display:flex;height:6px;border-radius:3px;overflow:hidden;gap:1px"><div style="width:{{ p.yes }};background:#16c784"></div><div style="width:{{ p.no }};background:#c0503a"></div><div style="flex:1;background:#2a2521"></div></div>
+          <span style="font-size:13px;color:#8f877c">{{ p.date }}</span>
+          <span style="text-align:right"><span style="padding:4px 9px;border-radius:6px;font:600 11px 'JetBrains Mono';letter-spacing:.04em;color:{{ p.sColor }};background:{{ p.sBg }}">{{ p.status }}</span></span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div></div>
+
+<div class="dv-opt" id="4c"><div class="dv-olabel"><a class="dv-oid" href="#4c">4c</a>Services — public endpoints with live health</div>
+<div class="dv-card" style="width:1280px;background:#0a0908;color:#f3efe6;font-family:'Space Grotesk',sans-serif;border:1px solid #26221e">
+  <div style="display:flex;align-items:center;gap:28px;padding:0 32px;height:60px;border-bottom:1px solid #1c1916">
+    <div style="display:flex;align-items:center;gap:12px"><img src="assets/aether-mark-reversed.svg" alt="Aether" style="width:26px;height:26px;display:block"><div style="font:600 13px 'Space Grotesk';letter-spacing:.32em">AETHER</div><div style="font-size:13px;color:#9a9186;margin-left:-4px">Explorer</div></div>
+    <div style="display:flex;gap:22px;font-size:14px;color:#9a9186"><span>Overview</span><span>Blocks</span><span>Validators</span><span>Governance</span><span style="color:#f3efe6">Services</span><span>For agents</span><span>Faucet</span></div>
+    <div style="margin-left:auto;display:flex;align-items:center;width:320px;height:36px;padding:0 14px;border-radius:10px;background:#12100e;border:1px solid #26221e"><input placeholder="Search address, hash or height" style="flex:1;border:0;background:transparent;font:inherit;font-size:13px;color:#f3efe6"></div>
+  </div>
+  <div style="padding:28px 32px 36px">
+    <div style="display:flex;align-items:center;gap:18px">
+      <div><div style="font-size:34px;font-weight:600;letter-spacing:-.02em">Services</div><div style="font-size:14px;color:#8f877c;margin-top:6px">Public infrastructure for building on Aether.</div></div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:12px;background:rgba(22,199,132,.08);border:1px solid rgba(22,199,132,.3);font-size:14px;color:#16c784"><span style="width:8px;height:8px;border-radius:50%;background:#16c784;box-shadow:0 0 8px #16c784;animation:pulse 1.6s infinite"></span>All systems operational</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:26px">
+      <sc-for list="{{ services }}" as="s" hint-placeholder-count="4">
+        <div style="padding:22px;border-radius:16px;background:#12100e;border:1px solid #26221e;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;gap:12px"><div style="width:38px;height:38px;border-radius:10px;background:rgba(192,80,58,.14);display:flex;align-items:center;justify-content:center;font:700 11px 'JetBrains Mono';color:#c0503a">{{ s.abbr }}</div><div><div style="font-size:17px;font-weight:600">{{ s.name }}</div><div style="font-size:13px;color:#8f877c;margin-top:2px">{{ s.desc }}</div></div><div style="margin-left:auto;display:flex;align-items:center;gap:7px;font:600 11px 'JetBrains Mono';color:{{ s.sColor }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ s.sColor }}"></span>{{ s.status }}</div></div>
+          <div style="display:flex;align-items:center;gap:10px;height:40px;padding:0 12px;border-radius:10px;background:#0a0908;border:1px solid #26221e;font:400 13px 'JetBrains Mono';color:#d8d1c5"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.url }}</span><div style="width:10px;height:10px;border:1.5px solid #4a443d;border-radius:2px"></div></div>
+          <div style="display:flex;align-items:flex-end;gap:2px;height:32px"><sc-for list="{{ s.lat }}" as="l" hint-placeholder-count="40"><div style="flex:1;height:{{ l.h }};background:{{ l.c }};border-radius:1px"></div></sc-for></div>
+          <div style="display:flex;justify-content:space-between;font:400 12px 'JetBrains Mono';color:#8f877c"><span>p50 <span style="color:#f3efe6">{{ s.p50 }}</span></span><span>uptime 30d <span style="color:#f3efe6">{{ s.uptime }}</span></span><span>{{ s.extra }}</span></div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="margin-top:18px;padding:18px 22px;border-radius:16px;background:#12100e;border:1px solid #26221e;display:flex;align-items:center;gap:20px;font-size:14px">
+      <span style="font-weight:600">Chain ID</span><span style="font-family:'JetBrains Mono';color:#d8d1c5">aether-1</span>
+      <span style="width:1px;height:18px;background:#26221e"></span>
+      <span style="font-weight:600">Denom</span><span style="font-family:'JetBrains Mono';color:#d8d1c5">uaeth · 6 decimals</span>
+      <span style="width:1px;height:18px;background:#26221e"></span>
+      <span style="font-weight:600">Bech32 prefix</span><span style="font-family:'JetBrains Mono';color:#d8d1c5">aeth</span>
+      <div style="margin-left:auto;padding:9px 16px;border-radius:10px;border:1px solid #c0503a;color:#c0503a;font-weight:600;font-size:13px">Add to wallet</div>
+    </div>
+  </div>
+</div></div>
+
+<div class="dv-opt" id="4d"><div class="dv-olabel"><a class="dv-oid" href="#4d">4d</a>For agents — API guide for AI agents and bots</div>
+<div class="dv-card" style="width:1280px;background:#0a0908;color:#f3efe6;font-family:'Space Grotesk',sans-serif;border:1px solid #26221e">
+  <div style="display:flex;align-items:center;gap:28px;padding:0 32px;height:60px;border-bottom:1px solid #1c1916">
+    <div style="display:flex;align-items:center;gap:12px"><img src="assets/aether-mark-reversed.svg" alt="Aether" style="width:26px;height:26px;display:block"><div style="font:600 13px 'Space Grotesk';letter-spacing:.32em">AETHER</div><div style="font-size:13px;color:#9a9186;margin-left:-4px">Explorer</div></div>
+    <div style="display:flex;gap:22px;font-size:14px;color:#9a9186"><span>Overview</span><span>Blocks</span><span>Validators</span><span>Governance</span><span>Services</span><span style="color:#f3efe6">For agents</span><span>Faucet</span></div>
+    <div style="margin-left:auto;display:flex;align-items:center;width:320px;height:36px;padding:0 14px;border-radius:10px;background:#12100e;border:1px solid #26221e"><input placeholder="Search address, hash or height" style="flex:1;border:0;background:transparent;font:inherit;font-size:13px;color:#f3efe6"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:230px minmax(0,1fr);min-height:760px">
+    <div style="padding:28px 20px;border-right:1px solid #1c1916;display:flex;flex-direction:column;gap:4px;font-size:14px;color:#9a9186">
+      <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#6b645b;padding:0 10px 8px">GUIDE</div>
+      <span style="padding:8px 10px;border-radius:8px;background:rgba(192,80,58,.12);color:#f3efe6">Quickstart</span><span style="padding:8px 10px">Authentication</span><span style="padding:8px 10px">Rate limits</span>
+      <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#6b645b;padding:18px 10px 8px">ENDPOINTS</div>
+      <span style="padding:8px 10px">Chain status</span><span style="padding:8px 10px">Blocks</span><span style="padding:8px 10px">Transactions</span><span style="padding:8px 10px">Accounts</span><span style="padding:8px 10px">Broadcast</span>
+      <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#6b645b;padding:18px 10px 8px">MACHINE-READABLE</div>
+      <span style="padding:8px 10px;font-family:'JetBrains Mono';font-size:13px">/llms.txt</span><span style="padding:8px 10px;font-family:'JetBrains Mono';font-size:13px">/openapi.json</span>
+    </div>
+    <div style="padding:32px 40px 40px">
+      <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#c0503a">FOR AGENTS</div>
+      <div style="font-size:34px;font-weight:600;letter-spacing:-.02em;margin-top:10px">Read and act on Aether from code</div>
+      <div style="font-size:15px;line-height:1.6;color:#d8d1c5;margin-top:10px;max-width:640px;text-wrap:pretty">A stable JSON API for AI agents, bots and indexers. Amounts come back in both uaeth and AETH, and every response includes the height it was read at.</div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:24px">
+        <div style="padding:16px 18px;border-radius:14px;background:#12100e;border:1px solid #26221e"><div style="font-size:12px;color:#8f877c">Base URL</div><div style="font:500 14px 'JetBrains Mono';margin-top:6px">/api/v1</div></div>
+        <div style="padding:16px 18px;border-radius:14px;background:#12100e;border:1px solid #26221e"><div style="font-size:12px;color:#8f877c">Auth</div><div style="font:500 14px 'JetBrains Mono';margin-top:6px">none for reads</div></div>
+        <div style="padding:16px 18px;border-radius:14px;background:#12100e;border:1px solid #26221e"><div style="font-size:12px;color:#8f877c">Rate limit</div><div style="font:500 14px 'JetBrains Mono';margin-top:6px">60 req / min / IP</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-top:24px">
+        <div style="border-radius:14px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:4px;padding:8px 10px;border-bottom:1px solid #26221e"><sc-for list="{{ langTabs }}" as="tb" hint-placeholder-count="3"><div onClick="{{ tb.onClick }}" style="padding:6px 12px;border-radius:7px;font:500 12px 'JetBrains Mono';cursor:pointer;color:{{ tb.color }};background:{{ tb.bg }}">{{ tb.label }}</div></sc-for><div style="margin-left:auto;width:10px;height:10px;border:1.5px solid #4a443d;border-radius:2px;margin-right:6px"></div></div>
+          <pre style="margin:0;padding:18px;font:400 13px/1.65 'JetBrains Mono';color:#d8d1c5;white-space:pre-wrap">{{ codeSample }}</pre>
+        </div>
+        <div style="border-radius:14px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+          <div style="padding:12px 16px;border-bottom:1px solid #26221e;font:500 12px 'JetBrains Mono';color:#16c784">200 OK · 42ms</div>
+          <pre style="margin:0;padding:18px;font:400 13px/1.65 'JetBrains Mono';color:#d8d1c5;white-space:pre-wrap">{{ codeResponse }}</pre>
+        </div>
+      </div>
+      <div style="margin-top:24px;border-radius:14px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+        <sc-for list="{{ endpoints }}" as="e" hint-placeholder-count="6">
+          <div style="display:grid;grid-template-columns:64px 320px minmax(0,1fr);gap:16px;align-items:center;padding:13px 18px;border-bottom:1px solid #1c1916;font-size:14px" style-hover="background:#1a1714">
+            <span style="font:600 11px 'JetBrains Mono';color:{{ e.mColor }}">{{ e.method }}</span>
+            <span style="font:500 13px 'JetBrains Mono'">{{ e.path }}</span>
+            <span style="color:#9a9186">{{ e.desc }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<div class="dv-opt" id="4e"><div class="dv-olabel"><a class="dv-oid" href="#4e">4e</a>Address — balances, authz grants, history</div>
+<div class="dv-card" style="width:1280px;background:#0a0908;color:#f3efe6;font-family:'Space Grotesk',sans-serif;border:1px solid #26221e">
+  <div style="display:flex;align-items:center;gap:28px;padding:0 32px;height:60px;border-bottom:1px solid #1c1916">
+    <div style="display:flex;align-items:center;gap:12px"><img src="assets/aether-mark-reversed.svg" alt="Aether" style="width:26px;height:26px;display:block"><div style="font:600 13px 'Space Grotesk';letter-spacing:.32em">AETHER</div><div style="font-size:13px;color:#9a9186;margin-left:-4px">Explorer</div></div>
+    <div style="display:flex;gap:22px;font-size:14px;color:#9a9186"><span>Overview</span><span>Blocks</span><span>Validators</span><span>Governance</span><span>Services</span><span>For agents</span><span>Faucet</span></div>
+    <div style="margin-left:auto;display:flex;align-items:center;width:320px;height:36px;padding:0 14px;border-radius:10px;background:#12100e;border:1px solid #26221e"><input placeholder="Search address, hash or height" style="flex:1;border:0;background:transparent;font:inherit;font-size:13px;color:#f3efe6"></div>
+  </div>
+  <div style="padding:28px 32px 36px">
+    <div style="display:flex;gap:8px;font-size:13px;color:#8f877c"><span>Address</span></div>
+    <div style="display:flex;align-items:center;gap:14px;margin-top:12px"><div style="font:600 22px 'JetBrains Mono';letter-spacing:-.01em">aeth1m4dz8q0y6x2kfr5lv9s3hc7e0wtn1pj4aw2f0d</div><div style="width:12px;height:12px;border:1.5px solid #4a443d;border-radius:2px"></div><span style="padding:4px 10px;border-radius:7px;font:500 12px 'JetBrains Mono';color:#9a9186;border:1px solid #26221e">Account</span></div>
+    <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:18px;margin-top:24px">
+      <div style="padding:24px;border-radius:18px;background:radial-gradient(90% 120% at 0% 0%,rgba(192,80,58,.16),rgba(192,80,58,0) 60%),#12100e;border:1px solid rgba(192,80,58,.35)">
+        <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#c0503a">TOTAL BALANCE</div>
+        <div style="font:700 48px/1 'JetBrains Mono';letter-spacing:-.02em;margin-top:14px;text-shadow:0 0 24px rgba(192,80,58,.35)">2,418.36 <span style="font-size:22px;color:#9a9186">AETH</span></div>
+        <div style="font:400 13px 'JetBrains Mono';color:#8f877c;margin-top:8px">2,418,360,000 uaeth</div>
+        <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px;margin-top:22px"><div style="width:62%;background:#c0503a"></div><div style="width:34%;background:#d8d1c5"></div><div style="width:4%;background:#16c784"></div></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px">
+          <div><div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#8f877c"><span style="width:8px;height:8px;border-radius:2px;background:#c0503a"></span>Available</div><div style="font:600 17px 'JetBrains Mono';margin-top:4px">1,499.38</div></div>
+          <div><div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#8f877c"><span style="width:8px;height:8px;border-radius:2px;background:#d8d1c5"></span>Delegated</div><div style="font:600 17px 'JetBrains Mono';margin-top:4px">822.24</div></div>
+          <div><div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#8f877c"><span style="width:8px;height:8px;border-radius:2px;background:#16c784"></span>Rewards</div><div style="font:600 17px 'JetBrains Mono';margin-top:4px">96.74</div></div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div style="padding:20px 22px;border-radius:16px;background:#12100e;border:1px solid #26221e;display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+          <div><div style="font-size:12px;color:#8f877c">Transactions</div><div style="font:600 20px 'JetBrains Mono';margin-top:4px">214</div></div>
+          <div><div style="font-size:12px;color:#8f877c">First seen</div><div style="font:600 15px 'JetBrains Mono';margin-top:6px">block 4,102</div></div>
+          <div><div style="font-size:12px;color:#8f877c">Last active</div><div style="font:600 15px 'JetBrains Mono';margin-top:6px">2h ago</div></div>
+        </div>
+        <div style="flex:1;padding:20px 22px;border-radius:16px;background:#12100e;border:1px solid #26221e">
+          <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#8f877c">AUTHZ GRANTS GIVEN</div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:14px;padding:12px 14px;border-radius:10px;background:#0a0908;border:1px solid #26221e;font-size:13px"><a href="#" style="font-family:'JetBrains Mono';color:#c0503a">aeth1q7h2…ux9k3</a><span style="color:#8f877c">may</span><span style="padding:3px 8px;border-radius:6px;font:500 12px 'JetBrains Mono';color:#c0503a;background:rgba(192,80,58,.14)">MsgSend</span><span style="margin-left:auto;color:#8f877c">up to 100 AETH · expires Dec 31</span></div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:18px;border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+      <div style="display:flex;align-items:center;padding:16px 22px;border-bottom:1px solid #26221e"><span style="font-weight:600;font-size:16px">History</span><span style="margin-left:auto;font-size:12px;color:#c0503a">Export CSV</span></div>
+      <sc-for list="{{ addrHistory }}" as="t" hint-placeholder-count="6">
+        <div style="display:grid;grid-template-columns:36px 1fr 230px 150px 90px;gap:16px;align-items:center;padding:12px 22px;border-bottom:1px solid #1c1916" style-hover="background:#1a1714">
+          <div style="width:36px;height:36px;border-radius:10px;background:{{ t.bg }};display:flex;align-items:center;justify-content:center;font:700 13px 'JetBrains Mono';color:{{ t.color }}">{{ t.dir }}</div>
+          <div><div style="font-size:14px;font-weight:500">{{ t.label }}</div><a href="#" style="font:400 12px 'JetBrains Mono';color:#c0503a">{{ t.hash }}</a></div>
+          <a href="#" style="font:400 12px 'JetBrains Mono';color:#d8d1c5">{{ t.cp }}</a>
+          <span style="text-align:right;font:600 14px 'JetBrains Mono';color:{{ t.aColor }}">{{ t.amount }}</span>
+          <span style="text-align:right;font-size:12px;color:#8f877c">{{ t.age }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div></div>
+
+</div>
+<p class="dv-next">Try next: "mobile versions of <a class="dv-oid" href="#2b">2b</a>, <a class="dv-oid" href="#3a">3a</a>, <a class="dv-oid" href="#3b">3b</a>" · "a proposal detail page from <a class="dv-oid" href="#4b">4b</a>" · "a validator detail page from <a class="dv-oid" href="#4a">4a</a>"</p>
+</section>
+<section class="dv-turn" id="t3">
+<div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">Block detail + Transaction detail in <a class="dv-oid" href="#2b">2b</a> style</span></div>
+<p style="margin:-8px 0 28px;max-width:780px;font:13px/1.55 system-ui,sans-serif;color:rgba(0,0,0,.6);text-wrap:pretty">Same shell as <a class="dv-oid" href="#2b">2b</a>. Block pages lead with the proof-of-work (hash vs. target) since that's what makes Aether different. Tx pages lead with a plain-English summary, then nested messages (MsgExec → inner MsgSend). Tabs on 3b are clickable. Nonce, fee, gas, addresses and memo are placeholders — send a real block/tx JSON and I'll map the fields.</p>
+<div class="dv-opts">
+
+<div class="dv-opt" id="3a"><div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a>Block detail</div>
+<div class="dv-card" style="width:1280px;background:#0a0908;color:#f3efe6;font-family:'Space Grotesk',sans-serif;border:1px solid #26221e">
+  <div style="display:flex;align-items:center;gap:28px;padding:0 32px;height:60px;border-bottom:1px solid #1c1916">
+    <div style="display:flex;align-items:center;gap:12px"><img src="assets/aether-mark-reversed.svg" alt="Aether" style="width:26px;height:26px;display:block"><div style="font:600 13px 'Space Grotesk';letter-spacing:.32em">AETHER</div><div style="font-size:13px;color:#9a9186;margin-left:-4px">Explorer</div></div>
+    <div style="display:flex;gap:22px;font-size:14px;color:#9a9186"><span>Overview</span><span style="color:#f3efe6">Blocks</span><span>Validators</span><span>Governance</span><span>Services</span><span>For agents</span><span>Faucet</span></div>
+    <div style="margin-left:auto;display:flex;align-items:center;width:320px;height:36px;padding:0 14px;border-radius:10px;background:#12100e;border:1px solid #26221e"><input placeholder="Search address, hash or height" style="flex:1;border:0;background:transparent;font:inherit;font-size:13px;color:#f3efe6"></div>
+  </div>
+  <div style="padding:28px 32px 36px">
+    <div style="display:flex;gap:8px;font-size:13px;color:#8f877c"><a href="#" style="color:#8f877c">Blocks</a><span>/</span><span style="color:#d8d1c5">120,449</span></div>
+    <div style="display:flex;align-items:center;gap:16px;margin:14px 0 6px">
+      <div style="font-size:34px;font-weight:600;letter-spacing:-.02em">Block <span style="font-family:'JetBrains Mono';color:#c0503a;text-shadow:0 0 24px rgba(192,80,58,.5)">120,449</span></div>
+      <div style="display:flex;gap:6px"><div style="width:32px;height:32px;border-radius:8px;border:1px solid #26221e;display:flex;align-items:center;justify-content:center;color:#9a9186">‹</div><div style="width:32px;height:32px;border-radius:8px;border:1px solid #26221e;display:flex;align-items:center;justify-content:center;color:#9a9186">›</div></div>
+      <div style="display:flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;background:rgba(22,199,132,.1);font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#16c784"><span style="width:6px;height:6px;border-radius:50%;background:#16c784"></span>FINALIZED · 412 CONFIRMATIONS</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;font:400 13px 'JetBrains Mono';color:#9a9186">0x0000003f9ac41e27b5d08c6f19e2a73d4c58b0e91f7a26c3d8e4b5a0f1c2d9e7<div style="width:10px;height:10px;border:1.5px solid #4a443d;border-radius:2px"></div></div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:18px;margin-top:26px">
+      <div style="border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+        <div style="display:grid;grid-template-columns:180px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Timestamp</span><span>Sep 26, 2026 21:44:18 UTC <span style="color:#8f877c">· 41 min ago</span></span></div>
+        <div style="display:grid;grid-template-columns:180px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Epoch</span><span style="display:flex;align-items:center;gap:12px"><a href="#" style="color:#c0503a">83</a><span style="color:#8f877c">block 929 of 1,440</span><span style="width:140px;height:5px;border-radius:3px;background:#26221e;overflow:hidden"><span style="display:block;height:5px;width:64%;background:#c0503a"></span></span></span></div>
+        <div style="display:grid;grid-template-columns:180px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Mined by</span><span style="display:flex;align-items:center;gap:10px"><a href="#" style="font-family:'JetBrains Mono';font-size:13px;color:#c0503a">aeth1q7h2f0v9k3m8x4lz6c5wtr2p9s0d7ygn4ux9k3</a><div style="width:10px;height:10px;border:1.5px solid #4a443d;border-radius:2px"></div></span></div>
+        <div style="display:grid;grid-template-columns:180px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Block reward</span><span style="font-family:'JetBrains Mono'">5 AETH <span style="color:#8f877c">· 5,000,000 uaeth</span></span></div>
+        <div style="display:grid;grid-template-columns:180px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Transactions</span><span><a href="#" style="color:#c0503a">6 transactions</a></span></div>
+        <div style="display:grid;grid-template-columns:180px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Gas used</span><span style="display:flex;align-items:center;gap:12px;font-family:'JetBrains Mono';font-size:13px">412,880 / 10,000,000<span style="width:140px;height:5px;border-radius:3px;background:#26221e;overflow:hidden"><span style="display:block;height:5px;width:4%;background:#d8d1c5"></span></span><span style="color:#8f877c">4.1%</span></span></div>
+        <div style="display:grid;grid-template-columns:180px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Size</span><span style="font-family:'JetBrains Mono';font-size:13px">3,214 bytes</span></div>
+        <div style="display:grid;grid-template-columns:180px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Parent hash</span><a href="#" style="font-family:'JetBrains Mono';font-size:13px;color:#c0503a">0x000000a17c3e…9d42b6e1</a></div>
+        <div style="display:grid;grid-template-columns:180px 1fr;padding:14px 22px;font-size:14px"><span style="color:#8f877c">App hash</span><span style="font-family:'JetBrains Mono';font-size:13px;color:#d8d1c5">5E0C7A19F2B4…61D3A08C</span></div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div style="padding:22px;border-radius:16px;background:radial-gradient(100% 80% at 100% 0%,rgba(192,80,58,.16),rgba(192,80,58,0) 60%),#12100e;border:1px solid rgba(192,80,58,.35)">
+          <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#c0503a">PROOF OF WORK</div>
+          <div style="font:500 12px 'JetBrains Mono';color:#8f877c;margin-top:16px">block hash</div>
+          <div style="font:500 15px/1.5 'JetBrains Mono';word-break:break-all;margin-top:4px"><span style="color:#c0503a;text-shadow:0 0 14px rgba(192,80,58,.6)">0000003f</span>9ac41e27b5d08c6f</div>
+          <div style="font:500 12px 'JetBrains Mono';color:#8f877c;margin-top:12px">must be below target</div>
+          <div style="font:500 15px/1.5 'JetBrains Mono';word-break:break-all;margin-top:4px;color:#9a9186"><span style="color:#d8d1c5">00000095</span>ffffffffffffffff</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px;padding-top:16px;border-top:1px solid #26221e">
+            <div><div style="font-size:12px;color:#8f877c">Difficulty</div><div style="font:600 17px 'JetBrains Mono';margin-top:4px">28,622,232</div></div>
+            <div><div style="font-size:12px;color:#8f877c">Nonce</div><div style="font:600 17px 'JetBrains Mono';margin-top:4px">4,193,882,017</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:16px;font-size:13px;color:#16c784"><span style="width:6px;height:6px;border-radius:50%;background:#16c784"></span>Valid — 2.4× below target</div>
+        </div>
+        <div style="padding:18px 22px;border-radius:16px;background:#12100e;border:1px solid #26221e">
+          <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#8f877c">NEIGHBOURS</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:14px">
+            <div style="flex:1;padding:10px;border-radius:10px;border:1px solid #26221e;font:500 13px 'JetBrains Mono';color:#9a9186;text-align:center">120,448</div>
+            <div style="width:10px;height:2px;background:rgba(192,80,58,.6)"></div>
+            <div style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(192,80,58,.6);box-shadow:0 0 18px rgba(192,80,58,.25);font:600 13px 'JetBrains Mono';color:#c0503a;text-align:center">120,449</div>
+            <div style="width:10px;height:2px;background:#2a2521"></div>
+            <div style="flex:1;padding:10px;border-radius:10px;border:1px solid #26221e;font:500 13px 'JetBrains Mono';color:#9a9186;text-align:center">120,450</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+      <div style="display:flex;align-items:center;padding:16px 22px;border-bottom:1px solid #26221e"><span style="font-weight:600;font-size:16px">Transactions in this block</span><span style="margin-left:10px;font:500 12px 'JetBrains Mono';color:#8f877c">6</span></div>
+      <div style="display:grid;grid-template-columns:230px 1fr 1fr 1fr 150px 90px;gap:16px;padding:11px 22px;font:500 11px 'JetBrains Mono';letter-spacing:.08em;color:#6b645b;border-bottom:1px solid #1c1916"><span>HASH</span><span>TYPE</span><span>FROM</span><span>TO</span><span style="text-align:right">AMOUNT</span><span style="text-align:right">STATUS</span></div>
+      <sc-for list="{{ blockTxs }}" as="t" hint-placeholder-count="6">
+        <div style="display:grid;grid-template-columns:230px 1fr 1fr 1fr 150px 90px;gap:16px;align-items:center;padding:12px 22px;border-bottom:1px solid #1c1916;font-size:13px" style-hover="background:#1a1714">
+          <a href="#" style="font:500 13px 'JetBrains Mono';color:#c0503a">{{ t.hash }}</a>
+          <div><span style="padding:3px 9px;border-radius:6px;font:500 12px 'JetBrains Mono';color:{{ t.color }};background:{{ t.bg }}">{{ t.type }}</span></div>
+          <a href="#" style="font:400 12px 'JetBrains Mono';color:#d8d1c5">{{ t.from }}</a>
+          <a href="#" style="font:400 12px 'JetBrains Mono';color:#d8d1c5">{{ t.to }}</a>
+          <span style="text-align:right;font-family:'JetBrains Mono'">{{ t.amount }}</span>
+          <span style="text-align:right;font:600 11px 'JetBrains Mono';color:{{ t.sColor }}">{{ t.statusShort }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div></div>
+
+<div class="dv-opt" id="3b"><div class="dv-olabel"><a class="dv-oid" href="#3b">3b</a>Transaction detail</div>
+<div class="dv-card" style="width:1280px;background:#0a0908;color:#f3efe6;font-family:'Space Grotesk',sans-serif;border:1px solid #26221e">
+  <div style="display:flex;align-items:center;gap:28px;padding:0 32px;height:60px;border-bottom:1px solid #1c1916">
+    <div style="display:flex;align-items:center;gap:12px"><img src="assets/aether-mark-reversed.svg" alt="Aether" style="width:26px;height:26px;display:block"><div style="font:600 13px 'Space Grotesk';letter-spacing:.32em">AETHER</div><div style="font-size:13px;color:#9a9186;margin-left:-4px">Explorer</div></div>
+    <div style="display:flex;gap:22px;font-size:14px;color:#9a9186"><span style="color:#f3efe6">Overview</span><span>Blocks</span><span>Validators</span><span>Governance</span><span>Services</span><span>For agents</span><span>Faucet</span></div>
+    <div style="margin-left:auto;display:flex;align-items:center;width:320px;height:36px;padding:0 14px;border-radius:10px;background:#12100e;border:1px solid #26221e"><input placeholder="Search address, hash or height" style="flex:1;border:0;background:transparent;font:inherit;font-size:13px;color:#f3efe6"></div>
+  </div>
+  <div style="padding:28px 32px 36px">
+    <div style="display:flex;gap:8px;font-size:13px;color:#8f877c"><a href="#" style="color:#8f877c">Transactions</a><span>/</span><span style="color:#d8d1c5;font-family:'JetBrains Mono'">99222A32CB…06A308</span></div>
+    <div style="display:flex;align-items:center;gap:14px;margin:14px 0 6px">
+      <div style="font-size:34px;font-weight:600;letter-spacing:-.02em">Transaction</div>
+      <div style="display:flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;background:rgba(22,199,132,.1);font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#16c784"><span style="width:6px;height:6px;border-radius:50%;background:#16c784;box-shadow:0 0 8px #16c784"></span>SUCCESS</div>
+      <span style="padding:5px 11px;border-radius:7px;font:500 12px 'JetBrains Mono';color:oklch(0.76 0.13 235);background:color-mix(in oklch, oklch(0.76 0.13 235) 13%, transparent)">MsgExec</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;font:400 13px 'JetBrains Mono';color:#9a9186">99222A32CB7E41D08F5C3B2A96E17D4F0C8B5A2E91D3F6078B4C2A1E5D06A308<div style="width:10px;height:10px;border:1.5px solid #4a443d;border-radius:2px"></div></div>
+
+    <div style="margin-top:24px;padding:22px 24px;border-radius:16px;background:radial-gradient(80% 140% at 0% 0%,rgba(192,80,58,.14),rgba(192,80,58,0) 60%),#12100e;border:1px solid rgba(192,80,58,.3);display:flex;align-items:center;gap:22px">
+      <div style="flex:1;font-size:20px;line-height:1.5;text-wrap:pretty"><a href="#" style="font-family:'JetBrains Mono';font-size:17px;color:#c0503a">aeth1q7h2…ux9k3</a> used a grant to send <span style="font-family:'JetBrains Mono';font-weight:600">12.5 AETH</span> from <a href="#" style="font-family:'JetBrains Mono';font-size:17px;color:#c0503a">aeth1m4dz…w2f0d</a> to <a href="#" style="font-family:'JetBrains Mono';font-size:17px;color:#c0503a">aeth1v8rk…c3n7p</a></div>
+      <div style="text-align:right;flex:none"><div style="font:600 26px 'JetBrains Mono'">12.5 AETH</div><div style="font-size:12px;color:#8f877c;margin-top:4px">12,500,000 uaeth</div></div>
+    </div>
+
+    <div style="display:flex;gap:4px;margin:24px 0 16px;border-bottom:1px solid #26221e">
+      <sc-for list="{{ txTabs }}" as="tb" hint-placeholder-count="3">
+        <div onClick="{{ tb.onClick }}" style="padding:10px 16px;font-size:14px;cursor:pointer;color:{{ tb.color }};box-shadow:{{ tb.line }}">{{ tb.label }}</div>
+      </sc-for>
+    </div>
+
+    <sc-if value="{{ tabOverview }}" hint-placeholder-val="{{ true }}">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px">
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div style="border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+          <div style="display:grid;grid-template-columns:170px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Block</span><span><a href="#" style="font-family:'JetBrains Mono';color:#c0503a">119,208</a> <span style="color:#8f877c">· 1,241 confirmations</span></span></div>
+          <div style="display:grid;grid-template-columns:170px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Timestamp</span><span>Sep 26, 2026 19:41:02 UTC <span style="color:#8f877c">· 2h ago</span></span></div>
+          <div style="display:grid;grid-template-columns:170px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Signer</span><a href="#" style="font-family:'JetBrains Mono';font-size:13px;color:#c0503a">aeth1q7h2f0v9k3m8x4lz6c5wtr2p9s0d7ygn4ux9k3</a></div>
+          <div style="display:grid;grid-template-columns:170px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Fee</span><span style="font-family:'JetBrains Mono';font-size:13px">0.002 AETH <span style="color:#8f877c">· 2,000 uaeth</span></span></div>
+          <div style="display:grid;grid-template-columns:170px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Gas used / wanted</span><span style="display:flex;align-items:center;gap:12px;font-family:'JetBrains Mono';font-size:13px">84,211 / 120,000<span style="width:140px;height:5px;border-radius:3px;background:#26221e;overflow:hidden"><span style="display:block;height:5px;width:70%;background:#d8d1c5"></span></span><span style="color:#8f877c">70%</span></span></div>
+          <div style="display:grid;grid-template-columns:170px 1fr;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:14px"><span style="color:#8f877c">Sequence</span><span style="font-family:'JetBrains Mono';font-size:13px">214</span></div>
+          <div style="display:grid;grid-template-columns:170px 1fr;padding:14px 22px;font-size:14px"><span style="color:#8f877c">Memo</span><span style="color:#8f877c;font-style:italic">none</span></div>
+        </div>
+
+        <div style="border-radius:16px;background:#12100e;border:1px solid #26221e;padding:20px 22px">
+          <div style="display:flex;align-items:center;gap:10px"><span style="font-weight:600;font-size:16px">Messages</span><span style="font:500 12px 'JetBrains Mono';color:#8f877c">1 outer · 1 inner</span></div>
+          <div style="margin-top:16px;border-radius:12px;border:1px solid #2a2521;padding:16px 18px">
+            <div style="display:flex;align-items:center;gap:10px"><span style="font:500 12px 'JetBrains Mono';color:#8f877c">#0</span><span style="padding:3px 9px;border-radius:6px;font:500 12px 'JetBrains Mono';color:oklch(0.76 0.13 235);background:color-mix(in oklch, oklch(0.76 0.13 235) 13%, transparent)">MsgExec</span><span style="font-size:13px;color:#9a9186">cosmos.authz.v1beta1</span></div>
+            <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;margin-top:12px;font-size:13px"><span style="color:#8f877c">Grantee</span><a href="#" style="font-family:'JetBrains Mono';color:#c0503a">aeth1q7h2…ux9k3</a></div>
+            <div style="margin-top:14px;margin-left:14px;padding:14px 16px;border-radius:10px;background:#0a0908;border:1px solid #26221e;border-left:1px solid rgba(192,80,58,.5)">
+              <div style="display:flex;align-items:center;gap:10px"><span style="font:500 12px 'JetBrains Mono';color:#8f877c">#0.0</span><span style="padding:3px 9px;border-radius:6px;font:500 12px 'JetBrains Mono';color:#c0503a;background:rgba(192,80,58,.14)">MsgSend</span><span style="font-size:13px;color:#9a9186">cosmos.bank.v1beta1</span></div>
+              <div style="display:grid;grid-template-columns:120px 1fr;gap:8px 8px;margin-top:12px;font-size:13px">
+                <span style="color:#8f877c">From</span><a href="#" style="font-family:'JetBrains Mono';color:#c0503a">aeth1m4dz8q0…w2f0d</a>
+                <span style="color:#8f877c">To</span><a href="#" style="font-family:'JetBrains Mono';color:#c0503a">aeth1v8rk3n5…c3n7p</a>
+                <span style="color:#8f877c">Amount</span><span style="font-family:'JetBrains Mono'">12.5 AETH</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div style="padding:20px 22px;border-radius:16px;background:#12100e;border:1px solid #26221e">
+          <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#8f877c">LIFECYCLE</div>
+          <div style="display:flex;flex-direction:column;margin-top:16px">
+            <div style="display:grid;grid-template-columns:16px 1fr;gap:12px"><div style="display:flex;flex-direction:column;align-items:center"><div style="width:10px;height:10px;border-radius:50%;background:#d8d1c5"></div><div style="flex:1;width:1px;background:#2a2521;min-height:28px"></div></div><div style="padding-bottom:14px"><div style="font-size:14px">Broadcast</div><div style="font:400 12px 'JetBrains Mono';color:#8f877c;margin-top:2px">19:40:58 UTC</div></div></div>
+            <div style="display:grid;grid-template-columns:16px 1fr;gap:12px"><div style="display:flex;flex-direction:column;align-items:center"><div style="width:10px;height:10px;border-radius:50%;background:#c0503a;box-shadow:0 0 10px #c0503a"></div><div style="flex:1;width:1px;background:#2a2521;min-height:28px"></div></div><div style="padding-bottom:14px"><div style="font-size:14px">Included in block <a href="#" style="font-family:'JetBrains Mono';color:#c0503a">119,208</a></div><div style="font:400 12px 'JetBrains Mono';color:#8f877c;margin-top:2px">19:41:02 UTC · +4s</div></div></div>
+            <div style="display:grid;grid-template-columns:16px 1fr;gap:12px"><div style="display:flex;flex-direction:column;align-items:center"><div style="width:10px;height:10px;border-radius:50%;background:#16c784"></div></div><div><div style="font-size:14px">Finalized</div><div style="font:400 12px 'JetBrains Mono';color:#8f877c;margin-top:2px">1,241 confirmations</div></div></div>
+          </div>
+        </div>
+        <div style="padding:20px 22px;border-radius:16px;background:#12100e;border:1px solid #26221e">
+          <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#8f877c">BALANCE CHANGES</div>
+          <div style="display:flex;flex-direction:column;gap:12px;margin-top:14px;font-size:13px">
+            <div style="display:flex;justify-content:space-between"><a href="#" style="font-family:'JetBrains Mono';color:#d8d1c5">aeth1m4dz…w2f0d</a><span style="font-family:'JetBrains Mono';color:#c0503a">−12.5 AETH</span></div>
+            <div style="display:flex;justify-content:space-between"><a href="#" style="font-family:'JetBrains Mono';color:#d8d1c5">aeth1v8rk…c3n7p</a><span style="font-family:'JetBrains Mono';color:#16c784">+12.5 AETH</span></div>
+            <div style="display:flex;justify-content:space-between"><a href="#" style="font-family:'JetBrains Mono';color:#d8d1c5">aeth1q7h2…ux9k3</a><span style="font-family:'JetBrains Mono';color:#9a9186">−0.002 AETH fee</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+    <sc-if value="{{ tabEvents }}" hint-placeholder-val="{{ false }}">
+      <div style="border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+        <sc-for list="{{ txEvents }}" as="ev" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:200px 1fr;gap:16px;padding:14px 22px;border-bottom:1px solid #1c1916;font-size:13px"><span style="font-family:'JetBrains Mono';color:#c0503a">{{ ev.type }}</span><span style="font-family:'JetBrains Mono';color:#d8d1c5">{{ ev.attrs }}</span></div>
+        </sc-for>
+      </div>
+    </sc-if>
+    <sc-if value="{{ tabRaw }}" hint-placeholder-val="{{ false }}">
+      <pre style="margin:0;padding:22px;border-radius:16px;background:#12100e;border:1px solid #26221e;font:400 13px/1.6 'JetBrains Mono';color:#d8d1c5;overflow:auto">{{ txRaw }}</pre>
+    </sc-if>
+  </div>
+</div></div>
+
+</div>
+<p class="dv-next">Try next: "do the Address page" · "mobile versions of <a class="dv-oid" href="#3a">3a</a> and <a class="dv-oid" href="#3b">3b</a>" · "show a failed MsgSubmitPoW tx in <a class="dv-oid" href="#3b">3b</a>"</p>
+</section>
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Riffs on <a class="dv-oid" href="#1c">1c</a> with the Aether identity</span></div>
+<p style="margin:-8px 0 28px;max-width:780px;font:13px/1.55 system-ui,sans-serif;color:rgba(0,0,0,.6);text-wrap:pretty">From your identity sheet: Æ ligature, ink / bone / signal red (oklch 0.58 0.16 32), letterspaced AETHER wordmark. Uses the reversed Æ mark from your logo files.</p>
+<div class="dv-opts">
+<div class="dv-opt" id="2a"><div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>1c + Æ mark with red signal bar. Green stays for live data, red is brand only.</div>
+<div class="dv-card" style="width:1280px;background:#05070a;color:#e6edf3;font-family:'Space Grotesk',sans-serif;border:1px solid #1a212a">
+  <div style="background:radial-gradient(60% 120% at 50% 0%,rgba(22,199,132,.16),rgba(22,199,132,0) 70%)">
+    <div style="display:flex;align-items:center;gap:28px;padding:0 32px;height:60px">
+      <div style="display:flex;align-items:center;gap:12px"><img src="assets/aether-mark-reversed.svg" alt="Aether" style="width:30px;height:30px;display:block"><div style="font:600 14px 'Space Grotesk';letter-spacing:.32em;color:#f3efe6">AETHER</div><div style="font:400 14px 'Space Grotesk';color:#8a95a3;margin-left:-4px">Explorer</div></div>
+      <div style="margin-left:auto;display:flex;gap:22px;font-size:14px;color:#8a95a3"><span style="color:#e6edf3">Overview</span><span>Blocks</span><span>Validators</span><span>Governance</span><span>Services</span><span>For agents</span><span>Faucet</span></div>
+    </div>
+    <div style="padding:44px 32px 36px;display:flex;flex-direction:column;align-items:center;gap:22px">
+      <div style="font-size:40px;font-weight:600;letter-spacing:-.02em;text-align:center">Explore <span style="color:#16c784;text-shadow:0 0 24px rgba(22,199,132,.6)">Aether Chain</span></div>
+      <div style="display:flex;align-items:center;gap:12px;width:680px;height:56px;padding:0 8px 0 20px;border-radius:14px;background:rgba(14,18,23,.9);border:1px solid rgba(22,199,132,.35);box-shadow:0 0 0 4px rgba(22,199,132,.06),0 0 40px rgba(22,199,132,.15)">
+        <input placeholder="Search by address, transaction hash or block height" style="flex:1;border:0;background:transparent;font:inherit;font-size:15px;color:#e6edf3">
+        <div style="height:40px;padding:0 20px;display:flex;align-items:center;border-radius:10px;background:#16c784;color:#04130c;font-weight:600;font-size:14px">Search</div>
+      </div>
+      <div style="display:flex;gap:28px;font:400 13px 'JetBrains Mono';color:#7d8896"><span>height <span style="color:#e6edf3">{{ heightFmt }}</span></span><span>epoch <span style="color:#e6edf3">83</span></span><span>difficulty <span style="color:#e6edf3">28.62M</span></span><span>reward <span style="color:#e6edf3">{{ rewardMain }}</span></span><span>treasury <span style="color:#e6edf3">{{ treasuryMain }}</span></span></div>
+    </div>
+  </div>
+  <div style="padding:8px 32px 0">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px"><div style="font-weight:600;font-size:16px">Latest blocks</div><div style="font:500 12px 'JetBrains Mono';color:#7d8896">mining <span style="color:#16c784">#{{ nextHeight }}</span> · {{ countdown }}s</div></div>
+    <div style="display:flex;align-items:center">
+      <div style="flex:none;width:118px;height:124px;border-radius:14px;border:1.5px dashed rgba(22,199,132,.5);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font:500 12px 'JetBrains Mono';color:#16c784"><div style="width:10px;height:10px;transform:rotate(45deg);background:#16c784;box-shadow:0 0 10px #16c784;animation:pulse 1.2s infinite"></div><span>#{{ nextHeight }}</span></div>
+      <sc-for list="{{ strip }}" as="b" hint-placeholder-count="7">
+        <div style="display:flex;align-items:center">
+          <div style="width:18px;height:2px;background:{{ b.link }}"></div>
+          <div style="width:128px;height:124px;box-sizing:border-box;padding:12px;border-radius:14px;background:{{ b.bg }};border:1px solid {{ b.border }};box-shadow:{{ b.glow }};display:flex;flex-direction:column;justify-content:space-between">
+            <a href="#" style="font:600 14px 'JetBrains Mono';color:{{ b.color }}">{{ b.heightFmt }}</a>
+            <div style="font:400 11px 'JetBrains Mono';color:#7d8896">{{ b.hash }}</div>
+            <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:2px"><sc-for list="{{ b.cells }}" as="c" hint-placeholder-count="16"><div style="height:6px;border-radius:1px;background:{{ c }}"></div></sc-for></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#8a95a3"><span>{{ b.txs }} txs</span><span>{{ b.age }}</span></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="padding:28px 32px 36px;display:grid;grid-template-columns:320px minmax(0,1fr);gap:18px">
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <div style="padding:20px;border-radius:16px;background:#0c1014;border:1px solid #1a212a">
+        <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#7d8896">ACTIVITY MIX · 24H</div>
+        <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px;margin:16px 0 16px"><sc-for list="{{ mix }}" as="m" hint-placeholder-count="5"><div style="width:{{ m.pct }};background:{{ m.color }};box-shadow:0 0 10px {{ m.color }}"></div></sc-for></div>
+        <sc-for list="{{ mix }}" as="m" hint-placeholder-count="5">
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px"><span style="width:8px;height:8px;border-radius:2px;background:{{ m.color }}"></span><span style="font-family:'JetBrains Mono'">{{ m.type }}</span><span style="margin-left:auto;font-family:'JetBrains Mono';color:#8a95a3">{{ m.pct }}</span></div>
+        </sc-for>
+      </div>
+      <div style="padding:20px;border-radius:16px;background:#0c1014;border:1px solid #1a212a">
+        <div style="display:flex;justify-content:space-between"><div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#7d8896">EPOCH 83</div><div style="font:500 12px 'JetBrains Mono';color:#16c784">{{ epochPct }}</div></div>
+        <div style="display:grid;grid-template-columns:repeat(24,1fr);gap:3px;margin-top:14px"><sc-for list="{{ epochCells }}" as="c" hint-placeholder-count="48"><div style="height:14px;border-radius:2px;background:{{ c.bg }};box-shadow:{{ c.glow }}"></div></sc-for></div>
+        <div style="font-size:12px;color:#7d8896;margin-top:12px">{{ epochLeft }} blocks until epoch 84 · ~{{ epochEta }}</div>
+      </div>
+    </div>
+    <div style="border-radius:16px;background:#0c1014;border:1px solid #1a212a;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:16px;padding:16px 20px;border-bottom:1px solid #1a212a"><span style="font-weight:600;font-size:16px">Transactions</span><span style="margin-left:auto;font:400 12px 'JetBrains Mono';color:#5d6876">auto-refresh 6s</span></div>
+      <sc-for list="{{ txsMid }}" as="t" hint-placeholder-count="8">
+        <div style="display:grid;grid-template-columns:36px 1fr 120px 80px;gap:14px;align-items:center;padding:12px 20px;border-bottom:1px solid #131920" style-hover="background:#111820">
+          <div style="width:36px;height:36px;border-radius:10px;background:{{ t.bg }};display:flex;align-items:center;justify-content:center;font:700 11px 'JetBrains Mono';color:{{ t.color }}">{{ t.abbr }}</div>
+          <div><div style="font-size:14px;font-weight:500">{{ t.type }}</div><a href="#" style="font:400 12px 'JetBrains Mono'">{{ t.hash }}</a></div>
+          <div style="font:400 12px 'JetBrains Mono';color:#8a95a3">block <span style="color:#c9d3de">{{ t.heightFmt }}</span></div>
+          <div style="text-align:right"><div style="font:600 11px 'JetBrains Mono';color:{{ t.sColor }}">{{ t.statusShort }}</div><div style="font-size:12px;color:#7d8896;margin-top:3px">{{ t.age }}</div></div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div></div>
+
+<div class="dv-opt" id="2b"><div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>1c in full Aether identity: signal red accent on warm ink and bone. Green only means success.</div>
+<div class="dv-card" style="width:1280px;background:#0a0908;color:#f3efe6;font-family:'Space Grotesk',sans-serif;border:1px solid #26221e">
+  <div style="background:radial-gradient(60% 120% at 50% 0%,rgba(192,80,58,.16),rgba(192,80,58,0) 70%)">
+    <div style="display:flex;align-items:center;gap:28px;padding:0 32px;height:60px">
+      <div style="display:flex;align-items:center;gap:12px"><img src="assets/aether-mark-reversed.svg" alt="Aether" style="width:30px;height:30px;display:block"><div style="font:600 14px 'Space Grotesk';letter-spacing:.32em;color:#f3efe6">AETHER</div><div style="font:400 14px 'Space Grotesk';color:#9a9186;margin-left:-4px">Explorer</div></div>
+      <div style="margin-left:auto;display:flex;gap:22px;font-size:14px;color:#9a9186"><span style="color:#f3efe6">Overview</span><span>Blocks</span><span>Validators</span><span>Governance</span><span>Services</span><span>For agents</span><span>Faucet</span></div>
+    </div>
+    <div style="padding:44px 32px 36px;display:flex;flex-direction:column;align-items:center;gap:22px">
+      <div style="font-size:40px;font-weight:600;letter-spacing:-.02em;text-align:center">Explore <span style="color:#c0503a;text-shadow:0 0 24px rgba(192,80,58,.6)">Aether Chain</span></div>
+      <div style="display:flex;align-items:center;gap:12px;width:680px;height:56px;padding:0 8px 0 20px;border-radius:14px;background:rgba(14,18,23,.9);border:1px solid rgba(192,80,58,.35);box-shadow:0 0 0 4px rgba(192,80,58,.06),0 0 40px rgba(192,80,58,.15)">
+        <input placeholder="Search by address, transaction hash or block height" style="flex:1;border:0;background:transparent;font:inherit;font-size:15px;color:#f3efe6">
+        <div style="height:40px;padding:0 20px;display:flex;align-items:center;border-radius:10px;background:#c0503a;color:#f3efe6;font-weight:600;font-size:14px">Search</div>
+      </div>
+      <div style="display:flex;gap:28px;font:400 13px 'JetBrains Mono';color:#8f877c"><span>height <span style="color:#f3efe6">{{ heightFmt }}</span></span><span>epoch <span style="color:#f3efe6">83</span></span><span>difficulty <span style="color:#f3efe6">28.62M</span></span><span>reward <span style="color:#f3efe6">{{ rewardMain }}</span></span><span>treasury <span style="color:#f3efe6">{{ treasuryMain }}</span></span></div>
+    </div>
+  </div>
+  <div style="padding:8px 32px 0">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px"><div style="font-weight:600;font-size:16px">Latest blocks</div><div style="font:500 12px 'JetBrains Mono';color:#8f877c">mining <span style="color:#c0503a">#{{ nextHeight }}</span> · {{ countdown }}s</div></div>
+    <div style="display:flex;align-items:center">
+      <div style="flex:none;width:118px;height:124px;border-radius:14px;border:1.5px dashed rgba(192,80,58,.5);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font:500 12px 'JetBrains Mono';color:#c0503a"><div style="width:10px;height:10px;transform:rotate(45deg);background:#c0503a;box-shadow:0 0 10px #c0503a;animation:pulse 1.2s infinite"></div><span>#{{ nextHeight }}</span></div>
+      <sc-for list="{{ stripR }}" as="b" hint-placeholder-count="7">
+        <div style="display:flex;align-items:center">
+          <div style="width:18px;height:2px;background:{{ b.link }}"></div>
+          <div style="width:128px;height:124px;box-sizing:border-box;padding:12px;border-radius:14px;background:{{ b.bg }};border:1px solid {{ b.border }};box-shadow:{{ b.glow }};display:flex;flex-direction:column;justify-content:space-between">
+            <a href="#" style="font:600 14px 'JetBrains Mono';color:{{ b.color }}">{{ b.heightFmt }}</a>
+            <div style="font:400 11px 'JetBrains Mono';color:#8f877c">{{ b.hash }}</div>
+            <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:2px"><sc-for list="{{ b.cells }}" as="c" hint-placeholder-count="16"><div style="height:6px;border-radius:1px;background:{{ c }}"></div></sc-for></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#9a9186"><span>{{ b.txs }} txs</span><span>{{ b.age }}</span></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="padding:28px 32px 36px;display:grid;grid-template-columns:320px minmax(0,1fr);gap:18px">
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <div style="padding:20px;border-radius:16px;background:#12100e;border:1px solid #26221e">
+        <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#8f877c">ACTIVITY MIX · 24H</div>
+        <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px;margin:16px 0 16px"><sc-for list="{{ mixR }}" as="m" hint-placeholder-count="5"><div style="width:{{ m.pct }};background:{{ m.color }};box-shadow:0 0 10px {{ m.color }}"></div></sc-for></div>
+        <sc-for list="{{ mixR }}" as="m" hint-placeholder-count="5">
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px"><span style="width:8px;height:8px;border-radius:2px;background:{{ m.color }}"></span><span style="font-family:'JetBrains Mono'">{{ m.type }}</span><span style="margin-left:auto;font-family:'JetBrains Mono';color:#9a9186">{{ m.pct }}</span></div>
+        </sc-for>
+      </div>
+      <div style="padding:20px;border-radius:16px;background:#12100e;border:1px solid #26221e">
+        <div style="display:flex;justify-content:space-between"><div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#8f877c">EPOCH 83</div><div style="font:500 12px 'JetBrains Mono';color:#c0503a">{{ epochPct }}</div></div>
+        <div style="display:grid;grid-template-columns:repeat(24,1fr);gap:3px;margin-top:14px"><sc-for list="{{ epochCellsR }}" as="c" hint-placeholder-count="48"><div style="height:14px;border-radius:2px;background:{{ c.bg }};box-shadow:{{ c.glow }}"></div></sc-for></div>
+        <div style="font-size:12px;color:#8f877c;margin-top:12px">{{ epochLeft }} blocks until epoch 84 · ~{{ epochEta }}</div>
+      </div>
+    </div>
+    <div style="border-radius:16px;background:#12100e;border:1px solid #26221e;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:16px;padding:16px 20px;border-bottom:1px solid #26221e"><span style="font-weight:600;font-size:16px">Transactions</span><span style="margin-left:auto;font:400 12px 'JetBrains Mono';color:#6b645b">auto-refresh 6s</span></div>
+      <sc-for list="{{ txsMidR }}" as="t" hint-placeholder-count="8">
+        <div style="display:grid;grid-template-columns:36px 1fr 120px 80px;gap:14px;align-items:center;padding:12px 20px;border-bottom:1px solid #1c1916" style-hover="background:#1a1714">
+          <div style="width:36px;height:36px;border-radius:10px;background:{{ t.bg }};display:flex;align-items:center;justify-content:center;font:700 11px 'JetBrains Mono';color:{{ t.color }}">{{ t.abbr }}</div>
+          <div><div style="font-size:14px;font-weight:500">{{ t.type }}</div><a href="#" style="font:400 12px 'JetBrains Mono';color:#c0503a">{{ t.hash }}</a></div>
+          <div style="font:400 12px 'JetBrains Mono';color:#9a9186">block <span style="color:#d8d1c5">{{ t.heightFmt }}</span></div>
+          <div style="text-align:right"><div style="font:600 11px 'JetBrains Mono';color:{{ t.sColor }}">{{ t.statusShort }}</div><div style="font-size:12px;color:#8f877c;margin-top:3px">{{ t.age }}</div></div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div></div>
+</div>
+<p class="dv-next">Try next: "go with <a class="dv-oid" href="#2b">2b</a>, now do Block detail and Transaction detail" · "<a class="dv-oid" href="#2a">2a</a> but with red for the newest block only" · "mobile <a class="dv-oid" href="#2b">2b</a>"</p>
+</section>
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Aether Explorer — Overview, three directions</span></div>
+<p style="margin:-8px 0 28px;max-width:780px;font:13px/1.55 system-ui,sans-serif;color:rgba(0,0,0,.6);text-wrap:pretty">Built from your current Overview screenshot: same nav, stats and tx data. Changes across all three — amounts shown in AETH (raw uaeth as secondary), epoch progress made visible, message types color-coded, green accent with glow on live data. Simulated: a new block every 6s.</p>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a"><div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Refresh — your layout, sharpened. Lowest effort to ship.</div>
+<div class="dv-card" style="width:1280px;background:#07090c;color:#e6edf3;font-family:'Space Grotesk',sans-serif;border:1px solid #1a212a">
+  <div style="display:flex;align-items:center;gap:28px;padding:0 28px;height:64px;border-bottom:1px solid #1a212a;background:#0a0d11">
+    <div style="display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px"><div style="width:12px;height:12px;transform:rotate(45deg);background:#16c784;box-shadow:0 0 12px #16c784"></div>Aether Explorer</div>
+    <div style="display:flex;gap:4px;font-size:14px;color:#8a95a3">
+      <span style="padding:7px 12px;border-radius:8px;background:rgba(22,199,132,.1);color:#16c784">Overview</span><span style="padding:7px 12px">Blocks</span><span style="padding:7px 12px">Validators</span><span style="padding:7px 12px">Governance</span><span style="padding:7px 12px">Services</span><span style="padding:7px 12px">For agents</span><span style="padding:7px 12px">Faucet</span>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:10px;width:380px;height:40px;padding:0 6px 0 14px;border:1px solid #232c37;border-radius:10px;background:#0e1217">
+      <input placeholder="Search address, tx hash or height" style="flex:1;border:0;background:transparent;font:inherit;font-size:13px;color:#e6edf3">
+      <span style="font:500 11px 'JetBrains Mono';color:#5d6876;border:1px solid #232c37;padding:3px 7px;border-radius:5px">/</span>
+    </div>
+  </div>
+  <div style="padding:32px 40px 40px">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+      <div style="font-size:24px;font-weight:600;letter-spacing:-.01em">Network overview</div>
+      <div style="display:flex;align-items:center;gap:7px;font:500 11px 'JetBrains Mono';color:#16c784;padding:4px 10px;border-radius:999px;background:rgba(22,199,132,.08);border:1px solid rgba(22,199,132,.25)"><div style="width:6px;height:6px;border-radius:50%;background:#16c784;box-shadow:0 0 8px #16c784;animation:pulse 1.6s infinite"></div>LIVE · next block {{ countdown }}s</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px">
+      <div style="padding:18px;border-radius:14px;background:linear-gradient(180deg,#0f1a16,#0d1115);border:1px solid rgba(22,199,132,.28);box-shadow:0 0 30px rgba(22,199,132,.08) inset">
+        <div style="font:500 11px 'JetBrains Mono';letter-spacing:.08em;color:#7d8896">LATEST HEIGHT</div>
+        <div style="font:600 26px 'JetBrains Mono';margin-top:10px;color:#16c784;text-shadow:0 0 18px rgba(22,199,132,.5)">{{ heightFmt }}</div>
+        <div style="font-size:12px;color:#7d8896;margin-top:6px">~6.0s block time</div>
+      </div>
+      <div style="padding:18px;border-radius:14px;background:#0e1217;border:1px solid #1a212a">
+        <div style="font:500 11px 'JetBrains Mono';letter-spacing:.08em;color:#7d8896">CURRENT EPOCH</div>
+        <div style="font:600 26px 'JetBrains Mono';margin-top:10px">83</div>
+        <div style="height:4px;border-radius:2px;background:#1a212a;margin-top:12px;overflow:hidden"><div style="height:4px;width:{{ epochPct }};background:#16c784;box-shadow:0 0 8px #16c784"></div></div>
+        <div style="font-size:12px;color:#7d8896;margin-top:6px">{{ epochLeft }} blocks to epoch 84</div>
+      </div>
+      <div style="padding:18px;border-radius:14px;background:#0e1217;border:1px solid #1a212a">
+        <div style="font:500 11px 'JetBrains Mono';letter-spacing:.08em;color:#7d8896">DIFFICULTY</div>
+        <div style="font:600 26px 'JetBrains Mono';margin-top:10px">28.62M</div>
+        <svg viewBox="0 0 200 30" preserveAspectRatio="none" style="width:100%;height:24px;margin-top:6px;display:block"><path d="{{ diffSpark }}" fill="none" stroke="#16c784" stroke-width="1.5" style="filter:drop-shadow(0 0 3px #16c784)"></path></svg>
+      </div>
+      <div style="padding:18px;border-radius:14px;background:#0e1217;border:1px solid #1a212a">
+        <div style="font:500 11px 'JetBrains Mono';letter-spacing:.08em;color:#7d8896">BLOCK REWARD</div>
+        <div style="font:600 26px 'JetBrains Mono';margin-top:10px">{{ rewardMain }}</div>
+        <div style="font:400 12px 'JetBrains Mono';color:#7d8896;margin-top:6px">{{ rewardSub }}</div>
+      </div>
+      <div style="padding:18px;border-radius:14px;background:#0e1217;border:1px solid #1a212a">
+        <div style="font:500 11px 'JetBrains Mono';letter-spacing:.08em;color:#7d8896">TREASURY</div>
+        <div style="font:600 26px 'JetBrains Mono';margin-top:10px">{{ treasuryMain }}</div>
+        <div style="font:400 12px 'JetBrains Mono';color:#7d8896;margin-top:6px">{{ treasurySub }}</div>
+      </div>
+    </div>
+    <div style="margin-top:22px;border-radius:14px;background:#0e1217;border:1px solid #1a212a;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:16px;padding:16px 20px;border-bottom:1px solid #1a212a">
+        <div style="font-weight:600;font-size:16px">Recent transactions</div>
+        <div style="display:flex;gap:6px;font-size:12px;color:#8a95a3"><span style="padding:5px 10px;border-radius:999px;background:#1a212a;color:#e6edf3">All</span><span style="padding:5px 10px;border-radius:999px;border:1px solid #1a212a">Send</span><span style="padding:5px 10px;border-radius:999px;border:1px solid #1a212a">Vote</span><span style="padding:5px 10px;border-radius:999px;border:1px solid #1a212a">PoW</span><span style="padding:5px 10px;border-radius:999px;border:1px solid #1a212a">Authz</span></div>
+        <div style="margin-left:auto;font-size:12px;color:#16c784">View all →</div>
+      </div>
+      <div style="display:grid;grid-template-columns:260px 1fr 140px 150px 120px;gap:16px;padding:12px 20px;font:500 11px 'JetBrains Mono';letter-spacing:.08em;color:#5d6876;border-bottom:1px solid #1a212a"><span>HASH</span><span>TYPE</span><span>HEIGHT</span><span>STATUS</span><span style="text-align:right">AGE</span></div>
+      <sc-for list="{{ txs }}" as="t" hint-placeholder-count="10">
+        <div style="display:grid;grid-template-columns:260px 1fr 140px 150px 120px;gap:16px;align-items:center;padding:13px 20px;border-bottom:1px solid #131920;font-size:14px" style-hover="background:#111820">
+          <div style="display:flex;align-items:center;gap:10px"><a href="#" style="font:500 13px 'JetBrains Mono'">{{ t.hash }}</a><div style="width:10px;height:10px;border:1.5px solid #3b4652;border-radius:2px"></div></div>
+          <div><span style="display:inline-flex;align-items:center;gap:7px;padding:4px 10px;border-radius:7px;font:500 12px 'JetBrains Mono';color:{{ t.color }};background:{{ t.bg }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ t.color }}"></span>{{ t.type }}</span></div>
+          <a href="#" style="font:500 13px 'JetBrains Mono';color:#c9d3de">{{ t.heightFmt }}</a>
+          <div><span style="padding:4px 9px;border-radius:6px;font:600 11px 'JetBrains Mono';letter-spacing:.04em;color:{{ t.sColor }};background:{{ t.sBg }}">{{ t.status }}</span></div>
+          <div style="text-align:right;color:#8a95a3;font-size:13px">{{ t.age }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div></div>
+
+<div class="dv-opt" id="1b"><div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Mining dashboard — PoW front and center: chain head, glowing difficulty chart, blocks + txs side by side.</div>
+<div class="dv-card" style="width:1280px;background:#06080b;color:#e6edf3;font-family:'Space Grotesk',sans-serif;border:1px solid #1a212a">
+  <div style="display:flex;align-items:center;gap:28px;padding:0 28px;height:60px;border-bottom:1px solid #151b22">
+    <div style="display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px"><div style="width:12px;height:12px;transform:rotate(45deg);background:#16c784;box-shadow:0 0 12px #16c784"></div>Aether</div>
+    <div style="display:flex;gap:22px;font-size:14px;color:#7d8896"><span style="color:#e6edf3;box-shadow:0 2px 0 #16c784;padding:20px 0 19px">Overview</span><span style="padding:20px 0">Blocks</span><span style="padding:20px 0">Validators</span><span style="padding:20px 0">Governance</span><span style="padding:20px 0">Services</span><span style="padding:20px 0">For agents</span><span style="padding:20px 0">Faucet</span></div>
+    <div style="margin-left:auto;display:flex;align-items:center;width:340px;height:38px;padding:0 14px;border-radius:999px;background:#0e1217;border:1px solid #1d252e"><input placeholder="Address / tx hash / height" style="flex:1;border:0;background:transparent;font:inherit;font-size:13px;color:#e6edf3"></div>
+  </div>
+  <div style="padding:28px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.55fr);gap:18px">
+    <div style="position:relative;padding:26px;border-radius:18px;background:radial-gradient(120% 90% at 0% 0%,rgba(22,199,132,.18),rgba(22,199,132,0) 60%),#0c1014;border:1px solid rgba(22,199,132,.22);overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center"><div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#16c784">CHAIN HEAD</div><div style="font:500 12px 'JetBrains Mono';color:#7d8896">next in <span style="color:#e6edf3">{{ countdown }}s</span></div></div>
+      <div style="font:700 72px/1 'JetBrains Mono';letter-spacing:-.03em;margin:18px 0 8px;color:#eafff5;text-shadow:0 0 28px rgba(22,199,132,.55)">{{ heightFmt }}</div>
+      <div style="font:400 13px 'JetBrains Mono';color:#7d8896">{{ head.hash }} · {{ head.txs }} txs · {{ head.age }}</div>
+      <div style="display:flex;align-items:flex-end;gap:3px;height:64px;margin-top:22px">
+        <sc-for list="{{ bars }}" as="s" hint-placeholder-count="36"><div style="flex:1;border-radius:2px 2px 0 0;height:{{ s.h }};background:{{ s.c }};box-shadow:{{ s.glow }}"></div></sc-for>
+      </div>
+      <div style="display:flex;justify-content:space-between;font:400 11px 'JetBrains Mono';color:#5d6876;margin-top:8px"><span>txs per block · last 36</span><span>now</span></div>
+    </div>
+    <div style="padding:22px 24px 14px;border-radius:18px;background:#0c1014;border:1px solid #1a212a">
+      <div style="display:flex;align-items:baseline;gap:18px">
+        <div><div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#7d8896">DIFFICULTY</div><div style="font:600 30px 'JetBrains Mono';margin-top:6px">28,622,232</div></div>
+        <div style="font:500 13px 'JetBrains Mono';color:#16c784">▲ 4.1% this epoch</div>
+        <div style="margin-left:auto;display:flex;gap:4px;font:500 12px 'JetBrains Mono';color:#7d8896"><span style="padding:5px 10px;border-radius:7px">24h</span><span style="padding:5px 10px;border-radius:7px;background:#1a212a;color:#e6edf3">Epochs</span><span style="padding:5px 10px;border-radius:7px">All</span></div>
+      </div>
+      <svg viewBox="0 0 600 190" preserveAspectRatio="none" style="width:100%;height:200px;display:block;margin-top:14px">
+        <defs><linearGradient id="g1b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16c784" stop-opacity=".35"></stop><stop offset="1" stop-color="#16c784" stop-opacity="0"></stop></linearGradient></defs>
+        <line x1="0" y1="47" x2="600" y2="47" stroke="#161d25"></line><line x1="0" y1="95" x2="600" y2="95" stroke="#161d25"></line><line x1="0" y1="142" x2="600" y2="142" stroke="#161d25"></line>
+        <path d="{{ diffArea }}" fill="url(#g1b)"></path>
+        <path d="{{ diffLine }}" fill="none" stroke="#16c784" stroke-width="2" style="filter:drop-shadow(0 0 6px #16c784)"></path>
+      </svg>
+      <div style="display:flex;justify-content:space-between;font:400 11px 'JetBrains Mono';color:#5d6876"><span>epoch 44</span><span>epoch 64</span><span>epoch 83</span></div>
+    </div>
+    <div style="grid-column:1 / -1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-radius:14px;border:1px solid #1a212a;background:#0c1014">
+      <div style="padding:16px 20px;border-right:1px solid #1a212a"><div style="font-size:12px;color:#7d8896">Epoch 83</div><div style="display:flex;align-items:center;gap:12px;margin-top:8px"><div style="flex:1;height:6px;border-radius:3px;background:#1a212a;overflow:hidden"><div style="height:6px;width:{{ epochPct }};background:#16c784;box-shadow:0 0 10px #16c784"></div></div><span style="font:500 13px 'JetBrains Mono'">{{ epochPct }}</span></div></div>
+      <div style="padding:16px 20px;border-right:1px solid #1a212a"><div style="font-size:12px;color:#7d8896">Block reward</div><div style="font:600 18px 'JetBrains Mono';margin-top:6px">{{ rewardMain }}</div></div>
+      <div style="padding:16px 20px;border-right:1px solid #1a212a"><div style="font-size:12px;color:#7d8896">Treasury</div><div style="font:600 18px 'JetBrains Mono';margin-top:6px">{{ treasuryMain }}</div></div>
+      <div style="padding:16px 20px"><div style="font-size:12px;color:#7d8896">Failed txs · 24h</div><div style="font:600 18px 'JetBrains Mono';margin-top:6px">0</div></div>
+    </div>
+    <div style="border-radius:18px;background:#0c1014;border:1px solid #1a212a;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #1a212a"><span style="font-weight:600">Latest blocks</span><span style="font-size:12px;color:#16c784">All blocks →</span></div>
+      <sc-for list="{{ blocks }}" as="b" hint-placeholder-count="6">
+        <div style="display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:center;padding:12px 20px;border-bottom:1px solid #131920;background:{{ b.rowBg }}">
+          <div style="width:44px;height:44px;border-radius:10px;border:1px solid {{ b.border }};background:#0f151b;display:flex;align-items:flex-end;padding:4px;box-sizing:border-box;box-shadow:{{ b.glow }}"><div style="width:100%;height:{{ b.fill }};border-radius:4px;background:rgba(22,199,132,.55)"></div></div>
+          <div><a href="#" style="font:600 14px 'JetBrains Mono'">{{ b.heightFmt }}</a><div style="font:400 12px 'JetBrains Mono';color:#7d8896;margin-top:3px">{{ b.hash }}</div></div>
+          <div style="text-align:right"><div style="font-size:13px">{{ b.txs }} txs</div><div style="font-size:12px;color:#7d8896;margin-top:3px">{{ b.age }}</div></div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="border-radius:18px;background:#0c1014;border:1px solid #1a212a;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #1a212a"><span style="font-weight:600">Recent transactions</span><span style="font-size:12px;color:#16c784">All transactions →</span></div>
+      <sc-for list="{{ txsShort }}" as="t" hint-placeholder-count="6">
+        <div style="display:grid;grid-template-columns:1fr 210px 90px 70px;gap:14px;align-items:center;padding:14px 20px;border-bottom:1px solid #131920;font-size:13px" style-hover="background:#111820">
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:8px;height:8px;border-radius:50%;background:{{ t.sColor }};box-shadow:0 0 8px {{ t.sColor }}"></span><a href="#" style="font:500 13px 'JetBrains Mono'">{{ t.hash }}</a></div>
+          <div><span style="padding:3px 9px;border-radius:6px;font:500 12px 'JetBrains Mono';color:{{ t.color }};background:{{ t.bg }}">{{ t.type }}</span></div>
+          <span style="font-family:'JetBrains Mono';color:#c9d3de">{{ t.heightFmt }}</span>
+          <span style="text-align:right;color:#7d8896">{{ t.age }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div></div>
+
+<div class="dv-opt" id="1c"><div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Chain view — search-first hero, the chain drawn as a live strip of blocks, activity mix by message type.</div>
+<div class="dv-card" style="width:1280px;background:#05070a;color:#e6edf3;font-family:'Space Grotesk',sans-serif;border:1px solid #1a212a">
+  <div style="background:radial-gradient(60% 120% at 50% 0%,rgba(22,199,132,.16),rgba(22,199,132,0) 70%)">
+    <div style="display:flex;align-items:center;gap:28px;padding:0 32px;height:60px">
+      <div style="display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px"><div style="width:12px;height:12px;transform:rotate(45deg);background:#16c784;box-shadow:0 0 12px #16c784"></div>Aether Explorer</div>
+      <div style="margin-left:auto;display:flex;gap:22px;font-size:14px;color:#8a95a3"><span style="color:#e6edf3">Overview</span><span>Blocks</span><span>Validators</span><span>Governance</span><span>Services</span><span>For agents</span><span>Faucet</span></div>
+    </div>
+    <div style="padding:44px 32px 36px;display:flex;flex-direction:column;align-items:center;gap:22px">
+      <div style="font-size:40px;font-weight:600;letter-spacing:-.02em;text-align:center">Explore <span style="color:#16c784;text-shadow:0 0 24px rgba(22,199,132,.6)">Aether Chain</span></div>
+      <div style="display:flex;align-items:center;gap:12px;width:680px;height:56px;padding:0 8px 0 20px;border-radius:14px;background:rgba(14,18,23,.9);border:1px solid rgba(22,199,132,.35);box-shadow:0 0 0 4px rgba(22,199,132,.06),0 0 40px rgba(22,199,132,.15)">
+        <input placeholder="Search by address, transaction hash or block height" style="flex:1;border:0;background:transparent;font:inherit;font-size:15px;color:#e6edf3">
+        <div style="height:40px;padding:0 20px;display:flex;align-items:center;border-radius:10px;background:#16c784;color:#04130c;font-weight:600;font-size:14px">Search</div>
+      </div>
+      <div style="display:flex;gap:28px;font:400 13px 'JetBrains Mono';color:#7d8896"><span>height <span style="color:#e6edf3">{{ heightFmt }}</span></span><span>epoch <span style="color:#e6edf3">83</span></span><span>difficulty <span style="color:#e6edf3">28.62M</span></span><span>reward <span style="color:#e6edf3">{{ rewardMain }}</span></span><span>treasury <span style="color:#e6edf3">{{ treasuryMain }}</span></span></div>
+    </div>
+  </div>
+  <div style="padding:8px 32px 0">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px"><div style="font-weight:600;font-size:16px">Latest blocks</div><div style="font:500 12px 'JetBrains Mono';color:#7d8896">mining <span style="color:#16c784">#{{ nextHeight }}</span> · {{ countdown }}s</div></div>
+    <div style="display:flex;align-items:center">
+      <div style="flex:none;width:118px;height:124px;border-radius:14px;border:1.5px dashed rgba(22,199,132,.5);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font:500 12px 'JetBrains Mono';color:#16c784"><div style="width:10px;height:10px;transform:rotate(45deg);background:#16c784;box-shadow:0 0 10px #16c784;animation:pulse 1.2s infinite"></div><span>#{{ nextHeight }}</span></div>
+      <sc-for list="{{ strip }}" as="b" hint-placeholder-count="7">
+        <div style="display:flex;align-items:center">
+          <div style="width:18px;height:2px;background:{{ b.link }}"></div>
+          <div style="width:128px;height:124px;box-sizing:border-box;padding:12px;border-radius:14px;background:{{ b.bg }};border:1px solid {{ b.border }};box-shadow:{{ b.glow }};display:flex;flex-direction:column;justify-content:space-between">
+            <a href="#" style="font:600 14px 'JetBrains Mono';color:{{ b.color }}">{{ b.heightFmt }}</a>
+            <div style="font:400 11px 'JetBrains Mono';color:#7d8896">{{ b.hash }}</div>
+            <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:2px"><sc-for list="{{ b.cells }}" as="c" hint-placeholder-count="16"><div style="height:6px;border-radius:1px;background:{{ c }}"></div></sc-for></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#8a95a3"><span>{{ b.txs }} txs</span><span>{{ b.age }}</span></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="padding:28px 32px 36px;display:grid;grid-template-columns:320px minmax(0,1fr);gap:18px">
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <div style="padding:20px;border-radius:16px;background:#0c1014;border:1px solid #1a212a">
+        <div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#7d8896">ACTIVITY MIX · 24H</div>
+        <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px;margin:16px 0 16px"><sc-for list="{{ mix }}" as="m" hint-placeholder-count="5"><div style="width:{{ m.pct }};background:{{ m.color }};box-shadow:0 0 10px {{ m.color }}"></div></sc-for></div>
+        <sc-for list="{{ mix }}" as="m" hint-placeholder-count="5">
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px"><span style="width:8px;height:8px;border-radius:2px;background:{{ m.color }}"></span><span style="font-family:'JetBrains Mono'">{{ m.type }}</span><span style="margin-left:auto;font-family:'JetBrains Mono';color:#8a95a3">{{ m.pct }}</span></div>
+        </sc-for>
+      </div>
+      <div style="padding:20px;border-radius:16px;background:#0c1014;border:1px solid #1a212a">
+        <div style="display:flex;justify-content:space-between"><div style="font:500 11px 'JetBrains Mono';letter-spacing:.12em;color:#7d8896">EPOCH 83</div><div style="font:500 12px 'JetBrains Mono';color:#16c784">{{ epochPct }}</div></div>
+        <div style="display:grid;grid-template-columns:repeat(24,1fr);gap:3px;margin-top:14px"><sc-for list="{{ epochCells }}" as="c" hint-placeholder-count="48"><div style="height:14px;border-radius:2px;background:{{ c.bg }};box-shadow:{{ c.glow }}"></div></sc-for></div>
+        <div style="font-size:12px;color:#7d8896;margin-top:12px">{{ epochLeft }} blocks until epoch 84 · ~{{ epochEta }}</div>
+      </div>
+    </div>
+    <div style="border-radius:16px;background:#0c1014;border:1px solid #1a212a;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:16px;padding:16px 20px;border-bottom:1px solid #1a212a"><span style="font-weight:600;font-size:16px">Transactions</span><span style="margin-left:auto;font:400 12px 'JetBrains Mono';color:#5d6876">auto-refresh 6s</span></div>
+      <sc-for list="{{ txsMid }}" as="t" hint-placeholder-count="8">
+        <div style="display:grid;grid-template-columns:36px 1fr 120px 80px;gap:14px;align-items:center;padding:12px 20px;border-bottom:1px solid #131920" style-hover="background:#111820">
+          <div style="width:36px;height:36px;border-radius:10px;background:{{ t.bg }};display:flex;align-items:center;justify-content:center;font:700 11px 'JetBrains Mono';color:{{ t.color }}">{{ t.abbr }}</div>
+          <div><div style="font-size:14px;font-weight:500">{{ t.type }}</div><a href="#" style="font:400 12px 'JetBrains Mono'">{{ t.hash }}</a></div>
+          <div style="font:400 12px 'JetBrains Mono';color:#8a95a3">block <span style="color:#c9d3de">{{ t.heightFmt }}</span></div>
+          <div style="text-align:right"><div style="font:600 11px 'JetBrains Mono';color:{{ t.sColor }}">{{ t.statusShort }}</div><div style="font-size:12px;color:#7d8896;margin-top:3px">{{ t.age }}</div></div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div></div>
+
+</div>
+<p class="dv-next">Try next: "take <a class="dv-oid" href="#1b">1b</a>'s chart into <a class="dv-oid" href="#1a">1a</a>" · "do Block + Transaction detail pages in the style of <a class="dv-oid" href="#1c">1c</a>" · "mobile version of <a class="dv-oid" href="#1a">1a</a>"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;units&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;AETH&quot;,&quot;uaeth&quot;],&quot;default&quot;:&quot;AETH&quot;,&quot;tsType&quot;:&quot;'AETH'|'uaeth'&quot;},&quot;live&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;strandName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;IBC&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  state = { h: 120449, cd: 6 };
+  componentDidMount() {
+    this.iv = setInterval(() => {
+      if (this.props.live === false) return;
+      this.setState(s => s.cd <= 1 ? { h: s.h + 1, cd: 6 } : { cd: s.cd - 1 });
+    }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this.iv); window.removeEventListener('message', this.onGeoMsg); }
+  componentDidUpdate() { this.postGlobe(false); }
+  postGlobe(force) {
+    if (!this.onGeoMsg) { this.onGeoMsg = e => { if (e.data && e.data.type === 'aether-globe-ready') this.postGlobe(true); }; window.addEventListener('message', this.onGeoMsg); }
+    const p = this._geoPayload, w = this.globeRef && this.globeRef.current && this.globeRef.current.contentWindow;
+    if (!p || !w) return;
+    const s = JSON.stringify(p);
+    if (!force && s === this._geoSent) return;
+    w.postMessage(p, '*'); this._geoSent = s;
+  }
+  faucetRun() {
+    clearInterval(this.fIv);
+    this.setState({ fStage: 'pow', fProg: 0, fN: 0 });
+    this.fIv = setInterval(() => {
+      const s = this.state;
+      if (s.fStage === 'pow') { const p = s.fProg + 0.07; this.setState(p >= 1 ? { fStage: 'bc', fProg: 0 } : { fProg: p, fN: s.fN + 9000 + Math.floor(Math.random() * 4000) }); }
+      else if (s.fStage === 'bc') { const p = s.fProg + 0.2; this.setState(p >= 1 ? { fStage: 'done', fProg: 1 } : { fProg: p }); }
+      else clearInterval(this.fIv);
+    }, 110);
+  }
+  faucetVals(f) {
+    const AC = '#c0503a', BC = '#e4d9c6', sName = this.props.strandName ?? 'IBC';
+    const addr = this.state.fAddr ?? '', stage = this.state.fStage || 'idle', strand = this.state.fStrand || 'A';
+    const valid = /^aeth1[02-9ac-hj-np-z]{38}$/.test(addr), partial = addr.length > 0 && !valid, busy = stage === 'pow' || stage === 'bc';
+    const pct = stage === 'pow' ? this.state.fProg * 100 : stage === 'bc' ? this.state.fProg * 100 : 100;
+    const fStrands = [['A', 'Aether', AC], ['B', sName, BC]].map(([v, label, dot]) => ({ label, dot, onClick: () => this.setState({ fStrand: v }), bg: v === strand ? '#26221e' : 'transparent', color: v === strand ? '#f3efe6' : '#8f877c' }));
+    const kp = (label, value, sub, color, border) => ({ label, value, sub, color: color || '#f3efe6', border: border || '#26221e' });
+    const fKpis = [kp('Drips · all time', '48,213', '482,130 AETH sent'), kp('Unique wallets funded', '21,904', 'since genesis'), kp('New wallets created', '17,622', 'first tx was a faucet drip', '#16c784'), kp('Created by agents', '61%', '10,749 wallets', AC, 'rgba(192,80,58,.35)')];
+    const fSources = [['Agents', 'signed agent key', 58, AC], ['People', 'browser, proof-of-work', 31, BC], ['Unverified API', 'no key, tighter limits', 11, '#4a443d']].map(([name, how, p, c]) => ({ name, how, pct: p + '%', c }));
+    const days = [], mx = 760;
+    for (let i = 0; i < 14; i++) { const a = Math.round(260 + i * 22 + this.rnd(i + 3) * 160 + (i === 9 ? 180 : 0)), p = Math.round(150 + this.rnd(i + 40) * 90), u = Math.round(30 + this.rnd(i + 80) * 50); days.push({ a: (a / mx * 100) + '%', p: (p / mx * 100) + '%', u: (u / mx * 100) + '%', glow: i === 13 ? '0 0 12px rgba(192,80,58,.5)' : 'none', tip: `${a} agents · ${p} people · ${u} unverified` }); }
+    const ag = [['relayer-sim', 'ak_7f3c…', 3120], ['wallet-gen-ci', 'ak_02be…', 2410], ['trade-agent-04', 'ak_c91d…', 1866], ['airdrop-tester', 'ak_5a0e…', 1204], ['indexer-canary', 'ak_e47b…', 655]];
+    const fAgents = ag.map(([name, key, w]) => ({ name, key, abbr: name.split('-').map(x => x[0]).join('').slice(0, 2).toUpperCase(), wallets: f(w), bar: (w / ag[0][2] * 100) + '%' }));
+    const src = { AGENT: [AC, 'rgba(192,80,58,.14)'], WEB: [BC, 'rgba(228,217,198,.1)'], API: ['#9a9186', '#221e1a'] };
+    const rec = [['aeth1x9tq…7mf2a', 'B', 'AGENT', 'relayer-sim', 1, 8], ['aeth1k3vd…p0c8e', 'A', 'WEB', '', 1, 21], ['aeth1w7ne…3dq9s', 'A', 'AGENT', 'wallet-gen-ci', 1, 34], ['aeth1m4dz…w2f0d', 'A', 'WEB', '', 0, 52], ['aeth1c0hu…k6r1l', 'A', 'AGENT', 'trade-agent-04', 1, 77], ['aeth1s8yp…g4n0t', 'B', 'API', '', 1, 95], ['aeth1q2ze…h5w7v', 'A', 'AGENT', 'relayer-sim', 1, 128]];
+    const fRecent = [];
+    if (stage === 'done') fRecent.push({ addr: addr.slice(0, 9) + '…' + addr.slice(-5), strand: strand === 'A' ? 'Aether' : sName, strandC: strand === 'A' ? AC : BC, src: 'WEB · you', srcC: BC, srcBg: 'rgba(228,217,198,.1)', tx: this.state.fTxh, isNew: true, age: 'just now', bg: 'rgba(192,80,58,.06)' });
+    rec.forEach(([a, s, k, who, nw, sec]) => fRecent.push({ addr: a, strand: s === 'A' ? 'Aether' : sName, strandC: s === 'A' ? AC : BC, src: k === 'AGENT' ? 'AGENT · ' + who : k, srcC: src[k][0], srcBg: src[k][1], tx: this.hex(sec * 7 + 3).slice(0, 10) + '…', isNew: !!nw, age: sec < 60 ? sec + 's ago' : Math.floor(sec / 60) + 'm ago', bg: 'transparent' }));
+    const btn = busy ? ['Working…', '#26221e', '#9a9186', 'default'] : stage === 'done' ? ['Sent. Request again in 24h', '#26221e', '#9a9186', 'default'] : valid ? [`Request 10 AETH on ${strand === 'A' ? 'Aether' : sName}`, AC, '#f3efe6', 'pointer'] : ['Enter an address to continue', '#1c1916', '#6b645b', 'not-allowed'];
+    return {
+      fAddr: addr, fStrands, fKpis, fSources, fDays: days, fAgents, fRecent: fRecent.slice(0, 7),
+      fOnAddr: e => { clearInterval(this.fIv); this.setState({ fAddr: e.target.value.trim(), fStage: 'idle' }); },
+      fUseDemo: () => { clearInterval(this.fIv); this.setState({ fAddr: 'aeth1k3vd8wq5zt0xj2ne7mf9yc4lrhs6gup0c8e3a', fStage: 'idle' }); },
+      fRequest: () => { if (!valid || busy || stage === 'done') return; this.setState({ fTxh: this.hex(Date.now() % 9973).slice(0, 10) + '…' }); this.faucetRun(); },
+      fBorder: valid ? 'rgba(22,199,132,.45)' : partial ? 'rgba(240,80,110,.45)' : '#26221e',
+      fValidText: valid ? 'VALID' : partial ? 'NOT AN AETH ADDRESS' : '', fValidColor: valid ? '#16c784' : '#f0506e',
+      fBtnText: btn[0], fBtnBg: btn[1], fBtnColor: btn[2], fBtnCursor: btn[3],
+      fShowProgress: stage !== 'idle', fDone: stage === 'done', fPct: pct + '%',
+      fStageText: stage === 'pow' ? 'Solving proof-of-work in your browser…' : stage === 'bc' ? 'Broadcasting drip…' : '10 AETH sent',
+      fStageColor: stage === 'done' ? '#16c784' : AC,
+      fNonce: stage === 'pow' ? f(this.state.fN || 0) + ' hashes' : stage === 'bc' ? 'nonce found' : 'included in next block',
+      fTx: this.state.fTxh || '', fNewTag: 'NEW WALLET'
+    };
+  }
+  geoVals(vt, validators, miners) {
+    this.globeRef = this.globeRef || React.createRef();
+    if (!this.onGeoMsg) setTimeout(() => this.postGlobe(true), 0);
+    const VG = [['Frankfurt', 'DE', 50.11, 8.68, 'Europe'], ['Ashburn', 'US', 39.04, -77.49, 'N. America'], ['Helsinki', 'FI', 60.17, 24.94, 'Europe'], ['Singapore', 'SG', 1.35, 103.82, 'Asia'], ['Toronto', 'CA', 43.65, -79.38, 'N. America'], ['Tokyo', 'JP', 35.68, 139.69, 'Asia'], ['São Paulo', 'BR', -23.55, -46.63, 'S. America'], ['Amsterdam', 'NL', 52.37, 4.9, 'Europe']];
+    const MG = [['Reykjavík', 'IS', 64.15, -21.94, 'Europe'], ['Dallas', 'US', 32.78, -96.8, 'N. America'], ['Almaty', 'KZ', 43.24, 76.89, 'Asia'], ['Stockholm', 'SE', 59.33, 18.07, 'Europe'], ['Sydney', 'AU', -33.87, 151.21, 'Oceania'], ['Lagos', 'NG', 6.52, 3.38, 'Africa'], ['Montréal', 'CA', 45.5, -73.57, 'N. America']];
+    const isV = vt === 'Signers', k = isV ? 'v' : 'm', hov = this.state.geoHl, hl = hov && hov.k === k ? hov.i : null;
+    const aug = (arr, G, kk) => arr.map((x, i) => ({ ...x, city: G[i][0] + ', ' + G[i][1], rowBg: hov && hov.k === kk && hov.i === i ? 'rgba(192,80,58,.07)' : 'transparent', onEnter: () => this.setState({ geoHl: { k: kk, i } }), onLeave: () => this.setState({ geoHl: null }) }));
+    const vs = aug(validators, VG, 'v'), ms = aug(miners, MG, 'm');
+    const G = isV ? VG : MG, list = isV ? vs : ms;
+    const points = G.map((g, i) => ({ lat: g[2], lon: g[3], label: (isV ? list[i].name : list[i].addr) + ' · ' + g[0] + ', ' + g[1], weight: isV ? parseFloat(list[i].pct) : parseFloat(String(list[i].blocks).replace(/,/g, '')), status: isV ? list[i].status : 'ACTIVE' }));
+    const color = isV ? '#c0503a' : '#e4d9c6';
+    this._geoPayload = { type: 'aether-globe', points, hl, color };
+    const reg = {}, tot = points.reduce((a, p) => a + p.weight, 0);
+    points.forEach((p, i) => { reg[G[i][4]] = (reg[G[i][4]] || 0) + p.weight; });
+    const pal = ['#c0503a', '#d8d1c5', '#9a9186', '#6b645b', '#3a342e', '#2a2521'];
+    const regions = Object.entries(reg).sort((a, b) => b[1] - a[1]).map(([name, w], i) => ({ name, pct: Math.round(w / tot * 100) + '%', c: pal[i] }));
+    const countries = new Set(G.map(g => g[1])).size;
+    return {
+      validators: vs, miners: ms,
+      extra: {
+        globeRef: this.globeRef, regions,
+        geoTitle: isV ? 'VOTING POWER BY REGION' : 'HASH SHARE BY REGION · EPOCH 83',
+        geoSummary: countries + ' countries · largest ' + regions[0].pct,
+        geoHover: hl != null ? points[hl].label : 'Drag to spin · hover a row to locate',
+        geoHoverColor: hl != null ? '#f3efe6' : '#6b645b'
+      }
+    };
+  }
+  rnd(n) { const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); }
+  hex(n) { let s = ''; for (let i = 0; i < 4; i++) s += Math.floor(this.rnd(n * 7 + i) * 65536).toString(16).padStart(4, '0'); return s.toUpperCase(); }
+  buildHelix(o) {
+    const e = React.createElement, { W, H, win, now, sel, blocks, packets, AC, BC, id } = o, turns = o.turns || 2.2;
+    const cy = H / 2, A = H * 0.31, pad = 84, x0 = 8, L = (W - pad - x0) / turns, pps = (W - pad - 10) / win;
+    const X = ts => W - pad - (now - ts) * pps, th = x => 2 * Math.PI * (x - x0) / L, Y = (x, sg) => cy + sg * A * Math.sin(th(x)), Z = (x, sg) => sg * Math.cos(th(x));
+    const seg = sg => { let fr = '', bk = '', prev = null; for (let x = x0; x <= W - 6; x += 1.5) { const p = x.toFixed(1) + ' ' + Y(x, sg).toFixed(2) + ' ', isF = Z(x, sg) > 0; if (prev === null) (isF ? (fr += 'M' + p) : (bk += 'M' + p)); else if (prev === isF) (isF ? (fr += 'L' + p) : (bk += 'L' + p)); else { if (prev) { fr += 'L' + p; bk += 'M' + p; } else { bk += 'L' + p; fr += 'M' + p; } } prev = isF; } return [fr, bk]; };
+    const [aF, aBk] = seg(1), [bF, bBk] = seg(-1);
+    const dA = sel === 'B' ? 0.1 : 1, dB = sel === 'A' ? 0.1 : 1, fade = { transition: 'opacity .4s' }, tr = 'transform 1s linear, opacity .4s';
+    const nowX = W - pad, mono = "'JetBrains Mono', monospace", u = k => k + '-' + id;
+    const defs = e('defs', { key: 'defs' },
+      e('linearGradient', { id: u('fade'), x1: 0, x2: 1, y1: 0, y2: 0 }, e('stop', { offset: 0, stopColor: '#fff', stopOpacity: 0 }), e('stop', { offset: 0.16, stopColor: '#fff', stopOpacity: 1 }), e('stop', { offset: 1, stopColor: '#fff', stopOpacity: 1 })),
+      e('mask', { id: u('mask'), maskUnits: 'userSpaceOnUse', x: 0, y: -20, width: W, height: H + 40 }, e('rect', { x: 0, y: -20, width: W, height: H + 40, fill: `url(#${u('fade')})` })),
+      e('filter', { id: u('glow'), x: '-20%', y: '-60%', width: '140%', height: '220%' }, e('feGaussianBlur', { stdDeviation: 3.2 })),
+      e('filter', { id: u('soft'), x: '-50%', y: '-50%', width: '200%', height: '200%' }, e('feGaussianBlur', { stdDeviation: 1.6 })),
+      e('linearGradient', { id: u('tubeA'), x1: 0, x2: 0, y1: 0, y2: 1 }, e('stop', { offset: 0, stopColor: '#e0735b' }), e('stop', { offset: 1, stopColor: '#9c3b28' })),
+      e('linearGradient', { id: u('tubeB'), x1: 0, x2: 0, y1: 0, y2: 1 }, e('stop', { offset: 0, stopColor: '#fbf6ec' }), e('stop', { offset: 1, stopColor: '#b9ad99' })),
+      e('radialGradient', { id: u('nA'), cx: '35%', cy: '32%', r: '70%' }, e('stop', { offset: 0, stopColor: '#ffd9cc' }), e('stop', { offset: 0.35, stopColor: '#e2694f' }), e('stop', { offset: 1, stopColor: '#8f3423' })),
+      e('radialGradient', { id: u('nB'), cx: '35%', cy: '32%', r: '70%' }, e('stop', { offset: 0, stopColor: '#ffffff' }), e('stop', { offset: 0.4, stopColor: '#efe6d6' }), e('stop', { offset: 1, stopColor: '#a99d89' })),
+      e('linearGradient', { id: u('pk'), x1: 0, x2: 0, y1: 0, y2: 1 }, e('stop', { offset: 0, stopColor: AC }), e('stop', { offset: 0.5, stopColor: '#fff7ee' }), e('stop', { offset: 1, stopColor: BC })),
+      e('radialGradient', { id: u('bub') }, e('stop', { offset: 0, stopColor: '#fff1e8', stopOpacity: 0.28 }), e('stop', { offset: 0.7, stopColor: AC, stopOpacity: 0.12 }), e('stop', { offset: 1, stopColor: AC, stopOpacity: 0 })),
+      e('radialGradient', { id: u('hc'), cx: '35%', cy: '30%', r: '75%' }, e('stop', { offset: 0, stopColor: '#fff7ee' }), e('stop', { offset: 0.45, stopColor: '#e98a72' }), e('stop', { offset: 1, stopColor: '#7d2c1e' }))
+    );
+    const pairs = [];
+    for (let x = x0 + 4; x < W - 8; x += 8) { const ya = Y(x, 1), yb = Y(x, -1), sp = Math.abs(ya - yb); if (sp < 5) continue; const m = (ya + yb) / 2, op = 0.1 + 0.32 * (sp / (2 * A)); pairs.push(e('g', { key: 'bp' + x, opacity: op }, e('line', { x1: x, x2: x, y1: ya, y2: m, stroke: AC, strokeWidth: 1.6, strokeLinecap: 'round', style: { ...fade, opacity: dA } }), e('line', { x1: x, x2: x, y1: m, y2: yb, stroke: BC, strokeWidth: 1.6, strokeLinecap: 'round', style: { ...fade, opacity: dB } }))); }
+    const tube = (d, k, grad, glowC, op, hiOp) => [
+      glowC ? e('path', { key: k + 'g', d, stroke: glowC, strokeOpacity: 0.55, strokeWidth: 9, fill: 'none', strokeLinecap: 'round', filter: `url(#${u('glow')})`, style: { ...fade, opacity: op } }) : null,
+      e('path', { key: k + 'o', d, stroke: '#0a0908', strokeWidth: 7, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round', style: { ...fade, opacity: op * 0.9 } }),
+      e('path', { key: k + 'b', d, stroke: `url(#${grad})`, strokeWidth: 4.5, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round', style: { ...fade, opacity: op } }),
+      e('path', { key: k + 'h', d, stroke: '#fffaf2', strokeOpacity: hiOp, strokeWidth: 1.1, fill: 'none', strokeLinecap: 'round', transform: 'translate(0 -1.3)', style: { ...fade, opacity: op } })
+    ];
+    const backA = e('path', { key: 'ab', d: aBk, stroke: AC, strokeOpacity: 0.32, strokeWidth: 2.6, fill: 'none', strokeLinecap: 'round', style: { ...fade, opacity: dA } });
+    const backB = e('path', { key: 'bb', d: bBk, stroke: BC, strokeOpacity: 0.22, strokeWidth: 2.6, fill: 'none', strokeLinecap: 'round', style: { ...fade, opacity: dB } });
+    const node = (b, front) => {
+      const x = X(b.ts); if (x < -12) return null;
+      const sg = b.chain === 'A' ? 1 : -1, z = Z(x, sg); if ((z > 0) !== front) return null;
+      const isA = b.chain === 'A', c = isA ? AC : BC, r = (b.head ? 6.4 : 4.6) + 1.6 * (z + 1) / 2;
+      return e('g', { key: b.chain + b.height, style: { transform: `translate(${x}px,${Y(x, sg)}px)`, transition: tr, opacity: isA ? dA : dB } },
+        b.head ? e('circle', { r: r + 4, fill: c, opacity: 0.25 }, e('animate', { attributeName: 'r', values: `${r + 3};${r + 12};${r + 3}`, dur: '2.4s', repeatCount: 'indefinite' }), e('animate', { attributeName: 'opacity', values: '.35;0;.35', dur: '2.4s', repeatCount: 'indefinite' })) : null,
+        front ? e('circle', { r: r + 2.2, fill: c, opacity: 0.35, filter: `url(#${u('soft')})` }) : null,
+        front ? e('circle', { r, fill: `url(#${u(isA ? 'nA' : 'nB')})`, stroke: '#0a0908', strokeWidth: 1.2 }) : e('circle', { r: r - 0.6, fill: '#0e0c0b', stroke: c, strokeOpacity: 0.6, strokeWidth: 1.4 }),
+        e('title', null, `${isA ? 'Aether' : o.sName} #${b.height.toLocaleString('en-US')}`));
+    };
+    const glowF = `url(#${u('glow')})`;
+    const pk = packets.filter(p => p.ts <= now && X(p.ts) > 0).map(p => {
+      const x = X(p.ts), ya = Y(x, 1) - cy, yb = Y(x, -1) - cy, ab = p.dir === 'AB', ys = ab ? ya : yb, yd = ab ? yb : ya;
+      const srcC = ab ? AC : BC, dstC = ab ? BC : AC, prog = Math.max(0, Math.min(1, (now - p.ts) / p.relay)), since = now - (p.ts + p.relay), k = [];
+      if (p.inflight) {
+        k.push(
+          e('ellipse', { key: 'bub', cx: 0, cy: (ya + yb) / 2, rx: 12, ry: Math.max(5, Math.abs(ya - yb) / 2 + 5), fill: `url(#${u('bub')})` }),
+          e('line', { key: 'dash', x1: 0, x2: 0, y1: ys, y2: yd, stroke: '#fff7ee', strokeOpacity: 0.55, strokeWidth: 1.6, strokeDasharray: '3 5', strokeLinecap: 'round', style: { animation: 'hxflow .8s linear infinite' } }),
+          e('circle', { key: 'lw', cx: 0, cy: yd, r: 7.5, fill: 'none', stroke: dstC, strokeOpacity: 0.55, strokeWidth: 1.2, strokeDasharray: '2 3' }),
+          e('g', { key: 'hc', transform: `translate(0 ${ys.toFixed(2)})` },
+            e('circle', { r: 12, fill: srcC, opacity: 0.3, filter: glowF }),
+            e('ellipse', { rx: 5.6, ry: 8, fill: `url(#${u('hc')})`, stroke: '#0a0908', strokeWidth: 1 }),
+            e('circle', { r: 10.5, fill: 'none', stroke: '#fff7ee', strokeWidth: 1.4, strokeDasharray: '4 3.5', strokeLinecap: 'round', style: { animation: 'hcSpin 1.1s linear infinite' } })),
+          e('g', { key: 'orb', style: { transform: `translate(0px,${(ys + (yd - ys) * prog).toFixed(2)}px)`, transition: 'transform 1s linear' } },
+            e('circle', { r: 6.5, fill: '#fff1e8', opacity: 0.6, filter: glowF }),
+            e('circle', { r: 3.4, fill: '#fff7ee' }),
+            e('text', { x: 10, y: 3.6, fill: '#f3efe6', fontSize: 10.5, fontWeight: 600, fontFamily: mono, style: { paintOrder: 'stroke', stroke: '#0a0908', strokeWidth: 3 } }, p.amt + ' AETH'))
+        );
+      } else {
+        k.push(
+          e('line', { key: 'g1', x1: 0, x2: 0, y1: ya, y2: yb, stroke: '#ffe9df', strokeOpacity: 0.7, strokeWidth: 7, strokeLinecap: 'round', filter: glowF }),
+          e('line', { key: 'g2', x1: 0, x2: 0, y1: ya, y2: yb, stroke: Math.abs(ya - yb) > 4 ? `url(#${u('pk')})` : '#fff7ee', strokeWidth: 2.6, strokeLinecap: 'round' }),
+          e('circle', { key: 'sc', cx: 0, cy: ys, r: 2.4, fill: '#fff7ee' }),
+          e('rect', { key: 'knot', x: -3.3, y: yd - 3.3, width: 6.6, height: 6.6, transform: `rotate(45 0 ${yd.toFixed(2)})`, fill: '#fff7ee', stroke: dstC, strokeWidth: 1.4 })
+        );
+        if (since < 2.6) k.push(e('g', { key: 'lg', transform: `translate(0 ${yd.toFixed(2)})` },
+          e('circle', { r: 9, fill: 'none', stroke: dstC, strokeWidth: 2.4, style: { animation: 'lgSeal 1.3s ease-out forwards' } }),
+          e('circle', { r: 8, fill: '#fff7ee', style: { animation: 'lgFlash 1.3s ease-out forwards' } })));
+      }
+      k.push(e('title', { key: 'tt' }, `IBC packet #${p.id} · ${p.amt} AETH · ${ab ? 'Aether → ' + o.sName : o.sName + ' → Aether'} · ${p.inflight ? 'helicase relaying' : 'ligase sealed'}`));
+      return e('g', { key: 'p' + p.id, style: { transform: `translate(${x}px,${cy}px)`, transition: tr, opacity: sel === 'both' ? 1 : 0.3 } }, ...k);
+    });
+    const helix = e('g', { key: 'hx', mask: `url(#${u('mask')})` },
+      backA, backB, ...blocks.map(b => node(b, false)), ...pairs,
+      ...tube(bF, 'bf', u('tubeB'), null, dB, 0.6), ...tube(aF, 'af', u('tubeA'), AC, dA, 0.45),
+      ...pk, ...blocks.map(b => node(b, true)));
+    const ticks = []; for (let s2 = 15; s2 < win; s2 += 15) ticks.push(e('g', { key: 't' + s2 }, e('line', { x1: nowX - s2 * pps, x2: nowX - s2 * pps, y1: H - 16, y2: H - 12, stroke: '#3a342e' }), e('text', { x: nowX - s2 * pps, y: H - 1, fill: '#4a443d', fontSize: 10.5, fontFamily: mono, textAnchor: 'middle' }, '−' + s2 + 's')));
+    const kids = [defs,
+      e('line', { key: 'ax', x1: x0, x2: nowX, y1: H - 14, y2: H - 14, stroke: '#1f1b18' }), ...ticks,
+      e('line', { key: 'now', x1: nowX, x2: nowX, y1: 4, y2: H - 12, stroke: '#4a443d', strokeDasharray: '2 4' }),
+      e('text', { key: 'nowt', x: nowX, y: H - 1, fill: '#8f877c', fontSize: 10.5, fontFamily: mono, textAnchor: 'middle' }, 'now'),
+      helix,
+      e('text', { key: 'ha', x: nowX + 14, y: Y(nowX, 1) + 4, fill: AC, fontSize: 12, fontWeight: 600, fontFamily: mono, style: { ...fade, opacity: dA } }, o.hAtxt),
+      e('text', { key: 'hb', x: nowX + 14, y: Y(nowX, -1) + 4, fill: BC, fontSize: 12, fontWeight: 600, fontFamily: mono, style: { ...fade, opacity: dB } }, o.hBtxt)];
+    return e('svg', { viewBox: `0 0 ${W} ${H}`, shapeRendering: 'geometricPrecision', style: { width: '100%', height: 'auto', display: 'block', overflow: 'visible' } }, ...kids);
+  }
+  vseg(i, RH, CW, amp, single) {
+    const cx = CW / 2, Lv = RH * 5, th = y => 2 * Math.PI * (i * RH + y) / Lv;
+    const seg = sign => { let f = '', b = '', prev = null; for (let y = -2; y <= RH + 2; y += 3) { const p = (cx + sign * amp * Math.sin(th(y))).toFixed(1) + ' ' + y + ' ', fr = sign * Math.cos(th(y)) > 0; if (prev === null) { if (fr) f += 'M' + p; else b += 'M' + p; } else if (prev === fr) { if (fr) f += 'L' + p; else b += 'L' + p; } else if (prev) { f += 'L' + p; b += 'M' + p; } else { b += 'L' + p; f += 'M' + p; } prev = fr; } return [f, b]; };
+    const [aF, aB] = seg(1), [bF, bB] = single ? ['', ''] : seg(-1);
+    let rg = ''; if (!single) for (let gy = Math.ceil(i * RH / 12) * 12; gy < (i + 1) * RH; gy += 12) { const y = gy - i * RH, s = amp * Math.sin(th(y)); rg += `M${(cx + s).toFixed(1)} ${y} L${(cx - s).toFixed(1)} ${y} `; }
+    const at = sign => ({ x: +(cx + sign * amp * Math.sin(th(RH / 2))).toFixed(1), z: sign * Math.cos(th(RH / 2)) });
+    return { aF, aB, bF, bB, rg, at };
+  }
+  helixVals(f, T) {
+    this.t0 = this.t0 || Date.now();
+    const now = this.props.live === false ? 30 : (Date.now() - this.t0) / 1000 + 30;
+    const AC = '#c0503a', BC = '#e4d9c6', sName = this.props.strandName ?? 'IBC';
+    const aIdx = Math.floor(now / 6), iIdx = Math.floor(now / 4), hA = 120449 + aIdx, hI = 88210 + iIdx;
+    const aAt = ts => 120449 + Math.floor(ts / 6), iAt = ts => 88210 + Math.floor(ts / 4);
+    const miners = ['aeth1q7h2…ux9k3', 'aeth1h8sl…d4c2x', 'aeth1r2wd…k7v9j', 'aeth1t0pq…8hw2e'], vals = ['Helios Node', 'Obsidian Labs', 'Northwind', 'Kiln & Co', 'Lattice', 'Meridian'];
+    const pIdx = Math.floor((now - 3) / 14), packets = [];
+    for (let j = 0; j < 9; j++) {
+      const idx = pIdx - j, ts = idx * 14 + 3, dir = ((idx % 2) + 2) % 2 ? 'BA' : 'AB', relay = 7 + (((idx % 5) + 5) % 5), recv = ts + relay;
+      packets.push({ id: 400 + idx, ts, dir, relay, inflight: recv > now, srcH: dir === 'AB' ? aAt(ts) : iAt(ts), dstH: dir === 'AB' ? aAt(recv) + 1 : iAt(recv) + 1, amt: dir === 'AB' ? 25 - (idx % 4) * 5 : 8 + (idx % 3) });
+    }
+    const pkOn = (chain, h) => packets.filter(p => (p.dir === 'AB' ? (chain === 'A' ? p.srcH : p.dstH) : (chain === 'B' ? p.srcH : p.dstH)) === h && (!p.inflight || (chain === 'A') === (p.dir === 'AB'))).length;
+    const hexU = n => this.hex(n).toUpperCase();
+    const mkA = i => { const height = hA - i, ts = (aIdx - i) * 6, c = Math.round(this.rnd(height) * this.rnd(height + 3) * 14); return { chain: 'A', height, ts, head: i === 0, heightFmt: f(height), hash: '0x' + this.hex(height).slice(0, 4).toLowerCase() + '…' + this.hex(height).slice(-4).toLowerCase(), who: miners[height % 4], txs: c + 1, age: Math.max(0, Math.floor(now - ts)) + 's ago' }; };
+    const mkB = i => { const height = hI - i, ts = (iIdx - i) * 4; return { chain: 'B', height, ts, head: i === 0, heightFmt: f(height), hash: hexU(height * 3 + 11).slice(0, 4) + '…' + hexU(height * 3 + 11).slice(-4), who: vals[height % 6], txs: Math.round(this.rnd(height + 999) * 9) + 1, age: Math.max(0, Math.floor(now - ts)) + 's ago' }; };
+    const aL = Array.from({ length: 18 }, (_, i) => mkA(i)), iL = Array.from({ length: 26 }, (_, i) => mkB(i));
+    const allBlocks = [...aL, ...iL];
+    const hAtxt = '#' + f(hA), hBtxt = '#' + f(hI);
+    const tabs = key => { const cur = this.state[key] || 'both'; return [['both', 'Both', `linear-gradient(90deg, ${AC} 50%, ${BC} 50%)`], ['A', 'Aether', AC], ['B', sName, BC]].map(([v, label, dot]) => ({ label, dot, onClick: () => this.setState({ [key]: v }), bg: v === cur ? '#26221e' : 'transparent', color: v === cur ? '#f3efe6' : '#8f877c' })); };
+    const selO = this.state.chainO || 'both', selB = this.state.chainB || 'both';
+    const legend = sel => [{ name: 'Aether', color: AC, h: f(hA), meta: 'PoW · 6s', op: sel === 'B' ? 0.3 : 1 }, { name: sName, color: BC, h: f(hI), meta: 'BFT · 4s', op: sel === 'A' ? 0.3 : 1 }];
+    const inflight = packets.filter(p => p.inflight && p.ts <= now).length;
+    const aCard = { title: 'Aether', sub: 'proof-of-work · 6s', color: AC, border: 'rgba(192,80,58,.35)', stats: [['Height', f(hA)], ['Epoch 83', Math.round((hA % 1440) / 14.4) + '%'], ['Difficulty', '28.62M'], ['Reward', '5 AETH']] };
+    const bCard = { title: sName, sub: 'BFT · 4s', color: BC, border: 'rgba(228,217,198,.28)', stats: [['Height', f(hI)], ['Validators', '24'], ['Txs · 24h', '18,406'], ['Finality', 'instant']] };
+    const brCard = { title: 'IBC bridge', sub: 'channel-0 ⇄ channel-0', color: '#f3efe6', border: '#26221e', stats: [['Packets · 24h', '1,284'], ['In flight', String(inflight)], ['Avg relay', '9.2s'], ['AETH bridged', '41.2k']] };
+    const mapCard = c => ({ ...c, stats: c.stats.map(([k, v]) => ({ k, v })) });
+    const statCardsO = (selO === 'A' ? [aCard, brCard] : selO === 'B' ? [bCard, brCard] : [aCard, brCard, bCard]).map(mapCard);
+    const blocksO = allBlocks.filter(b => selO === 'both' || b.chain === selO).sort((a, b) => b.ts - a.ts || (a.chain < b.chain ? -1 : 1)).slice(0, 7).map(b => ({ ...b, color: b.chain === 'A' ? AC : BC, chainName: b.chain === 'A' ? 'Aether' : sName, border: b.head ? (b.chain === 'A' ? 'rgba(192,80,58,.6)' : 'rgba(228,217,198,.5)') : '#26221e', fill: Math.max(10, Math.min(100, b.txs / 14 * 100)) + '%', fillC: b.chain === 'A' ? 'rgba(192,80,58,.6)' : 'rgba(228,217,198,.5)' }));
+    const TC = { MsgSend: AC, MsgSubmitPoW: 'oklch(0.8 0.14 80)', MsgTransfer: '#f3efe6', MsgRecvPacket: BC, MsgAcknowledgement: BC, MsgUpdateClient: '#9a9186', MsgVote: T.MsgVote };
+    const txRaw = [['A', 'A41C0E77F2…3B9D10', 'MsgSubmitPoW', '—', 20], ['B', '3F9A0C77E1…B20D4E', 'MsgRecvPacket', '25 AETH', 33], ['B', 'C4E812A9D0…7F3B61', 'MsgUpdateClient', '—', 34], ['A', '7E02C9B1F4…11A7D3', 'MsgTransfer', '25 AETH → ' + sName, 41], ['B', '8B51F0E2A7…4C9D08', 'MsgAcknowledgement', '—', 52], ['B', 'E07D3B9C21…A58F12', 'MsgTransfer', '8 AETH → Aether', 64], ['A', '2D5B4259D3…8BDF25', 'MsgSend', '12.5 AETH', 130], ['B', '19C4AE0D72…F3E6B0', 'MsgSend', '3.1 AETH', 190], ['A', 'DF5AE891C0…229463', 'MsgVote', '—', 7200]];
+    const ageFmt = s => s < 60 ? s + 's ago' : s < 3600 ? Math.floor(s / 60) + 'm ago' : Math.floor(s / 3600) + 'h ago';
+    const txsO = txRaw.filter(t => selO === 'both' || t[0] === selO).slice(0, 7).map(([c, hash, type, amount, s]) => ({ hash, type, amount, age: ageFmt(s), chainColor: c === 'A' ? AC : BC, color: TC[type], bg: `color-mix(in oklch, ${TC[type]} 13%, transparent)` }));
+    const RH = 58;
+    const ev = [...aL.filter(b => b.ts > now - 44), ...iL.filter(b => b.ts > now - 44), ...packets.filter(p => p.ts <= now && p.ts > now - 44).map(p => ({ ...p, chain: 'P' }))].sort((a, b) => b.ts - a.ts || (a.chain === 'P' ? -1 : 1)).slice(0, 18);
+    const tlRows = ev.map((r, i) => {
+      const g = this.vseg(i, RH, 120, 34, false), base = { g, isA: r.chain === 'A', isB: r.chain === 'B', isP: r.chain === 'P', bg: 'transparent', pRung: '', nr: 0, nx: 60, nFill: 'none', nStroke: 'none' };
+      if (r.chain === 'P') {
+        const a = g.at(1).x, b = g.at(-1).x, ab = r.dir === 'AB';
+        return { ...base, bg: 'rgba(192,80,58,.035)', pRung: `M${a} 29 L${b} 29`, lColor: ab ? AC : '#9a9186', rColor: ab ? '#9a9186' : BC,
+          pLeft: ab ? `packet #${r.id} · MsgTransfer ${r.amt} AETH →` : (r.inflight ? '← relaying to Aether' : `← recv #${f(r.dstH)} · ${r.relay}s`),
+          pRight: ab ? (r.inflight ? `relaying to ${sName} →` : `→ recv #${f(r.dstH)} · ${r.relay}s`) : `← packet #${r.id} · MsgTransfer ${r.amt} AETH`,
+          st: r.inflight ? 'IN FLIGHT' : 'ACKED', stColor: r.inflight ? 'oklch(0.8 0.14 80)' : '#16c784', stBg: r.inflight ? 'color-mix(in oklch, oklch(0.8 0.14 80) 14%, transparent)' : 'rgba(22,199,132,.12)' };
+      }
+      const sign = r.chain === 'A' ? 1 : -1, n = g.at(sign), c = sign === 1 ? AC : BC, pk = pkOn(r.chain, r.height);
+      return { ...base, ...r, pk: pk ? pk + ' pkt' : '', nx: n.x, nr: (r.head ? 7.5 : 5) + (n.z > 0 ? 1 : 0), nFill: n.z > 0 ? c : '#12100e', nStroke: c };
+    });
+    const selColorB = selB === 'B' ? BC : AC;
+    const singleRows = (selB === 'B' ? iL : aL).slice(0, 12).map((b, i) => { const g = this.vseg(i, RH, 44, 12, true), n = g.at(1), pk = pkOn(b.chain, b.height); return { ...b, g, nx: n.x, nr: b.head ? 7 : 5, nFill: n.z > 0 ? selColorB : '#12100e', pkN: pk ? String(pk) : '—', pkColor: pk ? '#f3efe6' : '#4a443d' }; });
+    let bev = null;
+    packets.forEach(p => { if (p.ts <= now && now - p.ts < 3.5 && (!bev || p.ts > bev.t)) bev = { t: p.ts, k: 'H', p }; const r = p.ts + p.relay; if (r <= now && now - r < 3.5 && (!bev || r > bev.t)) bev = { t: r, k: 'L', p }; });
+    const sideName = d => d === 'A' ? 'Aether' : sName;
+    const bridgeEvt = !bev ? 'bridge idle · ' + packets.filter(p => p.inflight && p.ts <= now).length + ' in flight' : bev.k === 'H' ? `Helicase · packet #${bev.p.id} unwinding · ${bev.p.amt} AETH ${sideName(bev.p.dir[0])} → ${sideName(bev.p.dir[1])}` : `Ligase · packet #${bev.p.id} sealed on ${sideName(bev.p.dir[1])} at #${f(bev.p.dstH)}`;
+    const bridgeEvtColor = !bev ? '#6b645b' : bev.k === 'H' ? '#e98a72' : '#f3efe6';
+    const hx = (W, H, win, sel, id, turns) => this.buildHelix({ W, H, win, now, sel, id, turns, blocks: allBlocks, packets, AC, BC, sName, hAtxt, hBtxt });
+    return {
+      sName, sNameUpper: sName.toUpperCase(), bridgeEvt, bridgeEvtColor, chainTabsO: tabs('chainO'), chainTabsB: tabs('chainB'),
+      titleO: selO === 'both' ? 'Aether helix' : selO === 'A' ? 'Aether overview' : sName + ' overview',
+      legendO: legend(selO), legendB: legend(selB), helixO: hx(1168, 196, 60, selO, 'o', 2), helixB: hx(1176, 112, 48, selB, 'b', 1.6),
+      statCardsO, blocksO, txsO, tlRows, singleRows, selColorB, bothB: selB === 'both', singleB: selB !== 'both', whoLabel: selB === 'B' ? 'PROPOSER' : 'MINER',
+      subB: selB === 'both' ? 'Both strands on one timeline, newest first. Rungs are IBC packets between the chains.' : selB === 'A' ? 'Aether blocks, proof-of-work, one every ~6s.' : sName + ' blocks, BFT, one every ~4s.'
+    };
+  }
+  renderVals() {
+    const h = this.state.h, f = n => n.toLocaleString('en-US');
+    const T = {
+      MsgSend: 'oklch(0.76 0.16 160)', MsgVote: 'oklch(0.76 0.14 300)', MsgExec: 'oklch(0.76 0.13 235)', MsgGrant: 'oklch(0.76 0.13 235)',
+      MsgSubmitPoW: 'oklch(0.8 0.14 80)', MsgSubmitParamChangeProposal: 'oklch(0.76 0.14 350)'
+    };
+    const raw = [['99222A32CB…06A308','MsgExec',119208,1,'2h ago'],['1C3C2CD0DD…9D5941','MsgGrant',119207,1,'2h ago'],['2D5B4259D3…8BDF25','MsgSend',119206,1,'2h ago'],['5DF5ECDA3A…E50304','MsgSend',119204,1,'2h ago'],['475287FF7D…4991BB','MsgSend',119204,1,'2h ago'],['B12F78DFA1…D26AAB','MsgSend',119184,1,'2h ago'],['9BE508D5BB…C57006','MsgSend',113642,1,'12h ago'],['DF5AE891C0…229463','MsgVote',91406,1,'2d ago'],['15206F7D67…21E4D5','MsgSubmitParamChangeProposal',91395,1,'2d ago'],['70AAAF9BFF…7CBA79','MsgSubmitPoW',86339,0,'4d ago']];
+    const txs = raw.map(([hash, type, ht, ok, age]) => ({
+      hash, type, heightFmt: f(ht), age, color: T[type], bg: `color-mix(in oklch, ${T[type]} 13%, transparent)`,
+      abbr: type.replace('Msg', '').replace(/[a-z]/g, '').slice(0, 3),
+      status: ok ? 'SUCCESS' : 'FAILED (5)', statusShort: ok ? 'OK' : 'FAILED',
+      sColor: ok ? '#16c784' : '#f0506e', sBg: ok ? 'rgba(22,199,132,.12)' : 'rgba(240,80,110,.12)'
+    }));
+    const txCount = n => Math.round(this.rnd(n) * this.rnd(n + 3) * 14);
+    const mk = (n, i) => {
+      const c = txCount(n), ageS = i * 6 + (6 - this.state.cd);
+      return { height: n, heightFmt: f(n), hash: '0x' + this.hex(n).slice(0, 4).toLowerCase() + '…' + this.hex(n).slice(-4).toLowerCase(), txs: c, age: ageS < 60 ? ageS + 's ago' : Math.floor(ageS / 60) + 'm ago', fill: Math.max(8, c / 14 * 100) + '%' };
+    };
+    const blocks = [0,1,2,3,4,5].map(i => { const b = mk(h - i, i); return { ...b, border: i ? '#1f2831' : 'rgba(22,199,132,.6)', glow: i ? 'none' : '0 0 16px rgba(22,199,132,.35)', rowBg: i ? 'transparent' : 'rgba(22,199,132,.04)' }; });
+    const strip = [0,1,2,3,4,5,6].map(i => {
+      const b = mk(h - i, i), cells = [];
+      for (let k = 0; k < 16; k++) cells.push(k < b.txs ? (i ? 'rgba(22,199,132,.45)' : '#16c784') : '#161d25');
+      return { ...b, cells, color: i ? '#c9d3de' : '#16c784', bg: i ? '#0c1014' : 'linear-gradient(180deg,#0f1f19,#0c1014)', border: i ? '#1a212a' : 'rgba(22,199,132,.55)', glow: i ? 'none' : '0 0 24px rgba(22,199,132,.3)', link: i ? '#1f2831' : 'rgba(22,199,132,.6)' };
+    });
+    const bars = []; for (let i = 35; i >= 0; i--) { const c = txCount(h - i); bars.push({ h: Math.max(6, c / 14 * 100) + '%', c: i ? 'rgba(22,199,132,.4)' : '#16c784', glow: i ? 'none' : '0 0 10px #16c784' }); }
+    const pts = []; let v = 0.3; for (let i = 0; i < 40; i++) { v += (this.rnd(i + 5) - 0.42) * 0.08; v = Math.min(0.92, Math.max(0.1, v)); pts.push(v); }
+    const line = (W, H) => pts.map((p, i) => (i ? 'L' : 'M') + (i / 39 * W).toFixed(1) + ' ' + (H - p * H).toFixed(1)).join(' ');
+    const diffLine = line(600, 180);
+    const epochDone = h % 1440, epochLeft = 1440 - epochDone, pct = Math.round(epochDone / 1440 * 100);
+    const epochCells = []; for (let i = 0; i < 48; i++) { const on = i < Math.floor(epochDone / 30); const cur = i === Math.floor(epochDone / 30); epochCells.push({ bg: cur ? '#16c784' : on ? 'rgba(22,199,132,.4)' : '#161d25', glow: cur ? '0 0 8px #16c784' : 'none' }); }
+    const etaMin = Math.round(epochLeft * 6 / 60);
+    const aeth = this.props.units !== 'uaeth';
+    const mix = [['MsgSend', 58], ['MsgVote', 18], ['MsgSubmitPoW', 12], ['MsgExec', 8], ['MsgSubmitParamChangeProposal', 4]].map(([type, p]) => ({ type, pct: p + '%', color: T[type] }));
+    const toR = o => JSON.parse(JSON.stringify(o).replaceAll('#16c784', '#c0503a').replaceAll('rgba(22,199,132,', 'rgba(192,80,58,').replaceAll('#161d25', '#221e1a').replaceAll('#1f2831', '#2a2521').replaceAll('#1a212a', '#26221e').replaceAll('#0c1014', '#12100e').replaceAll('#0f1f19', '#1f1410').replaceAll('#c9d3de', '#d8d1c5'));
+    const mixR = mix.map(m => m.type === 'MsgSend' ? { ...m, color: '#c0503a' } : m);
+    const tab = this.state.tab || 'Overview';
+    const txTabs = ['Overview', 'Events', 'Raw JSON'].map(label => ({ label, onClick: () => this.setState({ tab: label }), color: label === tab ? '#f3efe6' : '#8f877c', line: label === tab ? 'inset 0 -2px 0 #c0503a' : 'none' }));
+    const bT = [['A41C0E77F2…3B9D10','MsgSubmitPoW','aeth1q7h2…ux9k3','—','—',1],['2D5B4259D3…8BDF25','MsgSend','aeth1m4dz…w2f0d','aeth1v8rk…c3n7p','12.5 AETH',1],['5DF5ECDA3A…E50304','MsgSend','aeth1t0pq…8hw2e','aeth1z3ky…m51as','3.2 AETH',1],['C81D2F90AB…77E4C1','MsgVote','aeth1n6fe…q0t4r','—','—',1],['0E93B7D2C4…A1F058','MsgSend','aeth1r2wd…k7v9j','aeth1m4dz…w2f0d','40 AETH',1],['F7A0C35E18…2C6DB9','MsgSubmitPoW','aeth1h8sl…d4c2x','—','—',0]];
+    const blockTxs = bT.map(([hash, type, from, to, amount, ok]) => { const col = type === 'MsgSend' ? '#c0503a' : T[type]; return { hash, type, from, to, amount, color: col, bg: `color-mix(in oklch, ${col} 14%, transparent)`, statusShort: ok ? 'OK' : 'FAILED', sColor: ok ? '#16c784' : '#f0506e' }; });
+    const txEvents = [['message', 'action=/cosmos.authz.v1beta1.MsgExec · sender=aeth1q7h2…ux9k3'], ['coin_spent', 'spender=aeth1m4dz…w2f0d · amount=12500000uaeth'], ['coin_received', 'receiver=aeth1v8rk…c3n7p · amount=12500000uaeth'], ['transfer', 'recipient=aeth1v8rk…c3n7p · amount=12500000uaeth'], ['tx', 'fee=2000uaeth · fee_payer=aeth1q7h2…ux9k3']].map(([type, attrs]) => ({ type, attrs }));
+    const txRaw = JSON.stringify({ height: '119208', txhash: '99222A32CB…06A308', code: 0, gas_wanted: '120000', gas_used: '84211', tx: { body: { messages: [{ '@type': '/cosmos.authz.v1beta1.MsgExec', grantee: 'aeth1q7h2…ux9k3', msgs: [{ '@type': '/cosmos.bank.v1beta1.MsgSend', from_address: 'aeth1m4dz…w2f0d', to_address: 'aeth1v8rk…c3n7p', amount: [{ denom: 'uaeth', amount: '12500000' }] }] }], memo: '' }, auth_info: { fee: { amount: [{ denom: 'uaeth', amount: '2000' }], gas_limit: '120000' } } } }, null, 2);
+    const R = '#c0503a';
+    const vt = this.state.vt || 'Signers';
+    const valTabs = ['Signers', 'PoW miners'].map(label => ({ label, onClick: () => this.setState({ vt: label }), color: label === vt ? '#f3efe6' : '#8f877c', line: label === vt ? 'inset 0 -2px 0 #c0503a' : 'none' }));
+    const vd = [['Helios Node', 142100, '5%', 1], ['Obsidian Labs', 128400, '7%', 1], ['Northwind', 101250, '5%', 1], ['Kiln & Co', 88900, '10%', 1], ['Lattice', 76300, '6%', 1], ['Quartz Relay', 64800, '8%', 0.6], ['Meridian', 52200, '5%', 1], ['Ember Stake', 41700, '9%', 0]];
+    const tot = 1210000;
+    const validators = vd.map(([name, p, comm, ok], i) => {
+      const up = []; for (let k = 0; k < 25; k++) { const miss = ok === 0 ? k > 16 : ok < 1 ? this.rnd(i * 50 + k) < 0.25 : this.rnd(i * 50 + k) < 0.02; up.push(miss ? '#3a2a24' : ok === 1 ? 'rgba(22,199,132,.55)' : 'rgba(22,199,132,.4)'); }
+      return { rank: i + 1, name, initial: name.slice(0, 2).toUpperCase(), addr: 'aethvaloper1' + this.hex(i + 90).slice(0, 4).toLowerCase() + '…' + this.hex(i + 90).slice(-4).toLowerCase(), power: f(p), pct: (p / tot * 100).toFixed(1) + '%', bar: (p / vd[0][1] * 100) + '%', comm, up, status: ok === 0 ? 'JAILED' : ok < 1 ? 'MISSING' : 'ACTIVE', sColor: ok === 0 ? '#f0506e' : ok < 1 ? 'oklch(0.8 0.14 80)' : '#16c784' };
+    });
+    const md = [['aeth1q7h2…ux9k3', 402, '20s'], ['aeth1h8sl…d4c2x', 288, '1m'], ['aeth1r2wd…k7v9j', 151, '3m'], ['aeth1t0pq…8hw2e', 47, '9m'], ['aeth1z3ky…m51as', 25, '14m'], ['aeth1n6fe…q0t4r', 12, '41m'], ['aeth1v8rk…c3n7p', 4, '2h']];
+    const miners = md.map(([addr, b, last], i) => ({ rank: i + 1, addr, blocks: f(b), bar: (b / md[0][1] * 100) + '%', reward: f(b * 5) + ' AETH', last: last + ' ago' }));
+    const mT = md.reduce((a, m) => a + m[1], 0);
+    const shareCols = [R, '#d8d1c5', '#9a9186', '#6b645b', '#3a342e'];
+    const minerShare = [...md.slice(0, 4).map(m => [m[0], m[1]]), ['others', md.slice(4).reduce((a, m) => a + m[1], 0)]].map(([label, b], i) => ({ label, pct: (b / mT * 100).toFixed(1) + '%', c: shareCols[i] }));
+    const tally = [['Yes', 64.2, '#16c784'], ['No', 21.5, R], ['Abstain', 11.8, '#9a9186'], ['No with veto', 2.5, '#6b645b']].map(([label, p, c]) => ({ label, pct: p + '%', c, glow: label === 'Yes' ? '0 0 10px rgba(22,199,132,.5)' : 'none' }));
+    const pS = { VOTING: [R, 'rgba(192,80,58,.14)'], PASSED: ['#16c784', 'rgba(22,199,132,.12)'], REJECTED: ['#9a9186', '#221e1a'] };
+    const proposals = [[14, 'Lower target block time from 6s to 5s', 'ParamChange', 64, 22, 'Ends Sep 28', 'VOTING'], [13, 'Fund explorer & public RPC for 2 epochs', 'CommunityPoolSpend', 78, 9, 'Sep 19, 2026', 'PASSED'], [12, 'Raise min PoW difficulty floor', 'ParamChange', 71, 18, 'Sep 12, 2026', 'PASSED'], [11, 'Enable IBC transfers', 'SoftwareUpgrade', 38, 51, 'Sep 3, 2026', 'REJECTED'], [10, 'Increase max validators to 32', 'ParamChange', 82, 6, 'Aug 27, 2026', 'PASSED'], [9, 'Treasury grant: wallet integration', 'CommunityPoolSpend', 29, 60, 'Aug 18, 2026', 'REJECTED']].map(([id, title, kind, y, n, date, status]) => ({ id, title, kind, yes: y + '%', no: n + '%', date, status, sColor: pS[status][0], sBg: pS[status][1] }));
+    const svc = [['RPC', 'CometBFT RPC', 'Blocks, txs, broadcast', 'https://rpc.aether.example:26657', '38ms', '99.98%', 'height ' + f(h), 1], ['REST', 'LCD / REST', 'Cosmos SDK REST API', 'https://api.aether.example:1317', '54ms', '99.95%', 'v0.50', 1], ['gRPC', 'gRPC', 'For indexers and SDK clients', 'grpc.aether.example:9090', '21ms', '99.97%', 'reflection on', 1], ['FAU', 'Testnet faucet', '10 AETH per address per day', 'https://faucet.aether.example', '310ms', '97.40%', 'degraded', 0]];
+    const services = svc.map(([abbr, name, desc, url, p50, uptime, extra, ok], i) => { const lat = []; for (let k = 0; k < 40; k++) { const v = this.rnd(i * 77 + k); const spike = !ok && k > 30; lat.push({ h: Math.round(20 + v * 50 + (spike ? 30 : 0)) + '%', c: spike ? 'oklch(0.8 0.14 80)' : 'rgba(22,199,132,.5)' }); } return { abbr, name, desc, url, p50, uptime, extra, lat, status: ok ? 'OPERATIONAL' : 'DEGRADED', sColor: ok ? '#16c784' : 'oklch(0.8 0.14 80)' }; });
+    const lang = this.state.lang || 'curl';
+    const langTabs = ['curl', 'python', 'js'].map(label => ({ label, onClick: () => this.setState({ lang: label }), color: label === lang ? '#f3efe6' : '#8f877c', bg: label === lang ? '#26221e' : 'transparent' }));
+    const codes = { curl: 'curl https://explorer.aether.example/api/v1/status', python: 'import requests\n\nr = requests.get(\n  "https://explorer.aether.example/api/v1/status"\n)\nprint(r.json()["height"])', js: 'const r = await fetch(\n  "https://explorer.aether.example/api/v1/status"\n);\nconst { height } = await r.json();' };
+    const codeResponse = JSON.stringify({ chain_id: 'aether-1', height: h, epoch: 83, difficulty: 28622232, block_reward: { uaeth: '5000000', aeth: '5' }, block_time_s: 6.0 }, null, 2);
+    const endpoints = [['GET', '/status', 'Chain head, epoch, difficulty, reward'], ['GET', '/blocks/{height}', 'Block with PoW proof and tx list'], ['GET', '/txs/{hash}', 'Decoded tx, nested msgs, events'], ['GET', '/accounts/{address}', 'Balances, delegations, grants'], ['GET', '/accounts/{address}/txs', 'Paginated history, filter by msg type'], ['POST', '/txs', 'Broadcast a signed tx (key required)']].map(([method, path, desc]) => ({ method, path, desc, mColor: method === 'GET' ? '#16c784' : R }));
+    const addrHistory = [['↓', 'Received', '2D5B4259D3…8BDF25', 'from aeth1r2wd…k7v9j', '+40 AETH', '2h ago', 1], ['↑', 'Sent via grant', '99222A32CB…06A308', 'to aeth1v8rk…c3n7p', '−12.5 AETH', '2h ago', 0], ['◆', 'Delegated', 'B12F78DFA1…D26AAB', 'to Helios Node', '−200 AETH', '12h ago', 2], ['✓', 'Voted Yes on #13', 'DF5AE891C0…229463', 'proposal #13', '—', '2d ago', 2], ['↓', 'Claimed rewards', '957015DF4B…A87425', 'from 2 validators', '+18.2 AETH', '3d ago', 1], ['↑', 'Sent', '35FF528AE6…6861BD', 'to aeth1z3ky…m51as', '−5 AETH', '5d ago', 0]].map(([dir, label, hash, cp, amount, age, k]) => ({ dir, label, hash, cp, amount, age, color: k === 1 ? '#16c784' : k === 0 ? R : '#d8d1c5', bg: k === 1 ? 'rgba(22,199,132,.12)' : k === 0 ? 'rgba(192,80,58,.14)' : '#221e1a', aColor: k === 1 ? '#16c784' : k === 0 ? '#f3efe6' : '#9a9186' }));
+    const hx = this.helixVals(f, T);
+    const geo = this.geoVals(vt, validators, miners);
+    const fc = this.faucetVals(f);
+    return {
+      ...hx, ...fc,
+      valTabs, valSigners: vt === 'Signers', valMiners: vt === 'PoW miners', validators: geo.validators, miners: geo.miners, ...geo.extra, minerShare, tally, proposals, services, langTabs, codeSample: codes[lang], codeResponse, endpoints, addrHistory,
+      txTabs, tabOverview: tab === 'Overview', tabEvents: tab === 'Events', tabRaw: tab === 'Raw JSON', blockTxs, txEvents, txRaw,
+      txsMidR: txs.slice(2, 10).map(t => t.type === 'MsgSend' ? { ...t, color: '#c0503a', bg: 'rgba(192,80,58,.14)' } : t), stripR: toR(strip), epochCellsR: toR(epochCells), mixR,
+      heightFmt: f(h), nextHeight: f(h + 1), countdown: this.state.cd, head: blocks[0], blocks, strip, bars, mix, epochCells,
+      txs, txsShort: txs.slice(0, 6), txsMid: txs.slice(2, 10),
+      epochPct: pct + '%', epochLeft: f(epochLeft), epochEta: etaMin >= 60 ? Math.floor(etaMin / 60) + 'h ' + (etaMin % 60) + 'm' : etaMin + 'm',
+      diffSpark: line(200, 30), diffLine, diffArea: diffLine + ' L600 190 L0 190 Z',
+      rewardMain: aeth ? '5 AETH' : '5,000,000 uaeth', rewardSub: aeth ? '5,000,000 uaeth' : '= 5 AETH',
+      treasuryMain: aeth ? '168.50 AETH' : '168,501,435 uaeth', treasurySub: aeth ? '168,501,435 uaeth' : '= 168.50 AETH'
+    };
+  }
+}
+</script>
+</body>
+</html>
