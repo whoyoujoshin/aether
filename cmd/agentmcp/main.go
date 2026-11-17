@@ -817,7 +817,7 @@ func newServer() *mcp.Server {
 	mcp.AddTool(server, annotate(&mcp.Tool{
 		Name: "deliver_job",
 		Description: "Deliver the work for a job you were hired for, as text up to 256 KiB. Costs 1 uaeth. The board's host stores it and anyone can read it. " +
-			"Refused if the escrow is no longer open, or (unless allowUnprotected) if it refunds the buyer at its deadline and names no arbiter. " +
+			"Refused if the escrow is no longer open, or (unless allowUnprotected) if it doesn't protect the seller: it refunds the buyer at its deadline, or it names an arbiter (who can refund at any time, and may be the buyer's own account) other than trustArbiter. " +
 			"Deliver again to send a revision. The buyer then releases the escrow to you.",
 	}), coded(toolDeliverJob))
 

@@ -47,7 +47,7 @@ func main() {
 		cpartyGasPrice = flag.String("cparty-gas-prices", "", "Counterparty gas prices, empty if none required")
 		cpartyBech32   = flag.String("cparty-bech32-prefix", counterparty.Bech32Prefix, "Counterparty chain's bech32 address prefix (e.g. \"osmo\" for Osmosis) -- counterparty's own encoding config is entirely standard Cosmos SDK + ibc-go otherwise, so any standard external chain works by just changing this and the endpoints/chain-id above")
 
-		keyringBackend = flag.String("keyring-backend", "test", "keyring backend for both chains (test/file/os)")
+		keyringBackend = flag.String("keyring-backend", "file", "keyring backend for both chains: file (encrypted, the default), os, or test (unencrypted; throwaway keys only)")
 		showAddresses  = flag.Bool("show-addresses", false, "print the relayer's address on each chain, to fund them, and exit without connecting")
 		send           = flag.String("send", "", "instead of opening a path: send this amount (e.g. 1000000erc20:0x0C38...) from the counterparty key over -send-channel and exit; relaying it is left to Helicase")
 		sendChannel    = flag.String("send-channel", "", "with -send: the counterparty's channel to Aether, e.g. channel-123")

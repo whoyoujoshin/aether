@@ -97,6 +97,17 @@ packets, acknowledgements and timeouts in itself, unsigned and checked
 by the light client. `cmd/relayer` still opens paths, and relays onto the
 other chain.
 
+**Creating a client trusts the source endpoint once.** A new
+07-tendermint client starts from a header the relayer reads from the
+other chain's RPC; there's nothing earlier to check it against, as with
+any IBC relayer. Every later update is checked by the light client, so
+the risk is only at creation: use an endpoint you trust, and afterwards
+compare the new client's chain ID, height and consensus state root
+(`aetherd q ibc client state <id>` and `consensus-state <id> <height>`)
+with that height's block header (`app_hash`) from a second, independent
+RPC. `cmd/relayer` and `cmd/outbound` use an encrypted `file` keyring
+unless told otherwise (`-keyring-backend test` only for throwaway keys).
+
 One run of `cmd/relayer` does the whole path: a 07-tendermint client on
 each side (trusting/unbonding periods read from each chain's live params
 -- `x/pow` bond cooldown for Aether, `x/staking` unbonding time for the

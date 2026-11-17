@@ -22,7 +22,10 @@ to a new address. Everything bound to the old address stays behind:
 - authz grants and fee allowances;
 - registered authenticators.
 
-Rotation changes the key stored on the account and keeps the address. The
+Rotation changes the key stored on the account and keeps the address.
+What the old key set up to act for the account (authenticators, authz
+grants, fee allowances) stops working at the change; see "What a key
+change retires" below. The
 chain already verifies every signature against the stored key
 (`SigVerificationDecorator`), so the only thing in the way was
 `SetPubKeyDecorator`'s check that a transaction's public key hashes to its
@@ -150,6 +153,36 @@ watchtower vetoes the owner's rotation, the guardians remove it at once,
 and its signatures stop counting. `TestWatchtower_CantBlockItsOwnRemoval`
 plays rule 4 through with the guardians gone. A recovery goes through even with a
 watchtower present, because it applies at once.
+
+### What a key change retires
+
+A thief holding the current key can set things up to act for the account
+later: an authenticator (a session key or a `guardian_threshold` set), an
+authz grant, a fee allowance. Each takes effect at once. Before
+`KeyChangeRevokesHeight` all of them outlived a rotation or a guardian
+recovery, so the thief went on spending through them after the owner had
+taken the account back (GHSA-cgcr-f6g2-ch5v, [REVIEW.md](REVIEW.md) F8).
+
+From that height (`x/accountauth/keygen.go`, block 1 on fresh chains):
+
+- every account has a **key generation**: 0 until its first key change,
+  then one more each time a rotation applies or the guardians recover it
+  (a `key_change_retired_delegations` event carries the new value);
+- every authenticator, authz grant (per grantee and message type) and fee
+  allowance records the generation of the key that made it;
+- `ExecAuthenticated`, authz's `MsgExec` and fee deduction from an
+  allowance refuse one from an older generation, with
+  `ErrDelegationRetired` (accountauth code 22); the `Authenticators` query
+  no longer lists them;
+- the owner registers or grants again with the new key, and those work.
+
+Nothing is deleted at the key change, so a key change costs the same
+however many of them a thief made. Anything made before the height counts
+as generation 0, so the first key change after the height retires it all.
+authz and feegrant are the SDK's modules: their message servers and the
+ante handler's allowance check are wrapped in `app/key_change_revokes.go`.
+Every way to reach them runs through the message router, so every path is
+covered.
 
 ### The ante handler
 

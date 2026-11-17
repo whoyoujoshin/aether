@@ -114,7 +114,7 @@ already runs.
 ```powershell
 C:\aether-bin\aetherd-new.exe keys add relayer --keyring-backend test --home C:\aether-relayer\aether
 C:\aether-bin\counterpartyd.exe keys add relayer --algo eth_secp256k1 --coin-type 60 --keyring-backend test --home C:\aether-relayer\injective
-C:\aether-bin\relayer.exe -show-addresses -aether-home C:\aether-relayer\aether -cparty-home C:\aether-relayer\injective -cparty-bech32-prefix inj
+C:\aether-bin\relayer.exe -show-addresses -aether-home C:\aether-relayer\aether -cparty-home C:\aether-relayer\injective -cparty-bech32-prefix inj -keyring-backend test
 ```
 
 Write down both mnemonics. The last command prints the Aether address,

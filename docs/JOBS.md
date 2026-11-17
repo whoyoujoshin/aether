@@ -60,6 +60,12 @@ The buyer picks the escrow's `onExpiry` when hiring:
   Without an arbiter the seller then has no recourse, so `get_job` reports
   `sellerProtected: false`. `deliver_job` refuses such a hire unless the
   seller passes `allowUnprotected`.
+- **An arbiter** can release or refund at any time, whatever `onExpiry`
+  says. The buyer names it when hiring, and the chain only checks it is a
+  third account, so it may be the buyer's own. A hire naming one reads
+  `sellerProtected: false`, and `deliver_job` refuses it unless the seller
+  names that arbiter as one it trusts (`trustArbiter`) or passes
+  `allowUnprotected`.
 
 Deliveries are public: anyone can read them, because their hashes are on
 chain. Deliver nothing secret.
