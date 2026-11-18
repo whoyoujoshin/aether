@@ -171,13 +171,13 @@ Module: `x/governance`, with spends executed against `x/treasury`.
 | Minimum deposit | 25_000_000 uaeth |
 | Deposit period | 14 days |
 | Voting period | 7 days |
-| Quorum | `ceil(0.6 * TopK)` |
+| Quorum | 60% of the active validators' weight (voting power × tenure ratio) |
 | Pass threshold | 2/3 of non-abstain votes |
 | Veto | 1/3 |
 | Tenure ramp | 30 days (voting power ramps with continuous participation) |
 | Proposal type (primary) | Treasury spends |
 
-Only active validators vote, with tenure-weighted power during the ramp. Passing treasury proposals trigger real transfers from the treasury module account.
+Only active validators vote. A vote weighs the validator's voting power times its tenure ratio, both read when the votes are counted; the pass and veto thresholds and quorum are shares of that weight. Passing treasury proposals trigger real transfers from the treasury module account.
 
 CLI examples (illustrative):
 

@@ -19,6 +19,10 @@ type PowKeeper interface {
 	IsActiveValidator(ctx sdk.Context, minerAddr sdk.AccAddress) bool
 	GetTopKSize(ctx sdk.Context) int64
 	GetActiveValidatorCount(ctx sdk.Context) int64
+	// IterateActiveValidators and GetValidatorVotingPower are read from
+	// PowerWeightedVotingHeight.
+	IterateActiveValidators(ctx sdk.Context) []sdk.AccAddress
+	GetValidatorVotingPower(ctx sdk.Context, minerAddr sdk.AccAddress) int64
 }
 
 type TreasuryKeeper interface {

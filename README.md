@@ -465,7 +465,7 @@ See the whitepaper and wiki tail-emission notes for derivation details.
 | Min deposit | 25_000_000 uaeth |
 | Deposit period | 14 days |
 | Voting period | 7 days |
-| Quorum | ceil(0.6 × Top-K) |
+| Quorum | 60% of the active validators' weight (power × tenure) |
 | Pass | 2/3 non-abstain |
 | Veto | 1/3 |
 | Tenure ramp | 30 days |

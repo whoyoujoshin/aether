@@ -85,6 +85,16 @@ func (k Keeper) powerOrFlat(ctx sdk.Context, addr sdk.AccAddress) int64 {
 	return ValidatorVotingPower
 }
 
+// GetValidatorVotingPower is addr's voting power if it is an active
+// validator, else 0. Governance weighs votes by it from
+// PowerWeightedVotingHeight.
+func (k Keeper) GetValidatorVotingPower(ctx sdk.Context, addr sdk.AccAddress) int64 {
+	if !k.IsActiveValidator(ctx, addr) {
+		return 0
+	}
+	return k.powerOrFlat(ctx, addr)
+}
+
 // mayRemoveForDowntime reports whether removing addr for downtime keeps
 // the removals since the last boundary within SeatEntryLimitBps of the
 // power (what's active plus what they took out). Always true below

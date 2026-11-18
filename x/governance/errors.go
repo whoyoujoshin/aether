@@ -14,4 +14,5 @@ var (
 	ErrInvalidExecuteMsg       = sdkerrors.Register(ModuleName, 9, "invalid or unpackable execute_msg")
 	ErrUnroutableProposalMsg   = sdkerrors.Register(ModuleName, 10, "execute_msg has no registered message handler")
 	ErrInvalidExecuteMsgSigner = sdkerrors.Register(ModuleName, 11, "execute_msg must have exactly this module's own account as its sole signer")
+	ErrNotActiveValidator      = sdkerrors.Register(ModuleName, 12, "only an active validator may vote")
 )

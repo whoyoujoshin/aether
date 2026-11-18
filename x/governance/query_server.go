@@ -5,6 +5,8 @@ import (
 
 	sdkerrors "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"github.com/whoyoujoshin/aether/gates"
 )
 
 type queryServer struct {
@@ -75,6 +77,16 @@ func (q queryServer) Tally(goCtx context.Context, req *QueryTallyRequest) (*Quer
 		NoPower:         result.NoPower.String(),
 		AbstainPower:    result.AbstainPower.String(),
 		VetoPower:       result.VetoPower.String(),
-		QuorumThreshold: q.Keeper.computeQuorumThreshold(ctx),
+		QuorumThreshold: q.Keeper.quorumThresholdForQuery(ctx),
 	}, nil
+}
+
+// quorumThresholdForQuery is the quorum the tally is held to: validators
+// by head before PowerWeightedVotingHeight, weight that must vote (in
+// units of power) from it.
+func (k Keeper) quorumThresholdForQuery(ctx sdk.Context) int64 {
+	if gates.On(ctx, PowerWeightedVotingHeight) {
+		return k.QuorumWeightNeeded(ctx)
+	}
+	return k.computeQuorumThreshold(ctx)
 }

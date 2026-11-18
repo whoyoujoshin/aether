@@ -216,12 +216,15 @@ func (k msgServer) Vote(goCtx context.Context, msg *MsgVote) (*MsgVoteResponse, 
 		return nil, sdkerrors.Wrapf(ErrInvalidVoteOption, "vote option must be specified")
 	}
 
-	// Voting power (tenure ratio) is locked in at the moment of casting,
-	// not recomputed at tally time -- see design discussion. This is
-	// separate from active-validator STATUS, which IS re-checked at tally
-	// time: if this voter has since fallen out of the active set (or been
-	// slashed), their vote counts for nothing at tally, regardless of
-	// what weight was recorded here.
+	if gates.On(ctx, PowerWeightedVotingHeight) && !k.Keeper.powKeeper.IsActiveValidator(ctx, voterAddr) {
+		return nil, sdkerrors.Wrapf(ErrNotActiveValidator, "%s is not an active validator", msg.Voter)
+	}
+
+	// Before PowerWeightedVotingHeight the tenure ratio recorded here is
+	// the vote's weight at tally; from it the tally reads power times
+	// tenure afresh and this field is only a record. Either way the
+	// voter's active STATUS is re-checked at tally: one that has since
+	// fallen out of the set (or been slashed) counts for nothing.
 	weight := k.Keeper.powKeeper.GetValidatorTenureRatio(ctx, voterAddr)
 
 	vote := Vote{
