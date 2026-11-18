@@ -227,7 +227,7 @@ func (f *faucetServer) originOf(w http.ResponseWriter, r *http.Request, ip strin
 		f.reply(w, ip, http.StatusUnauthorized, responseBody{Code: codeInvalidAgent, Message: err.Error()})
 		return origin{}, false
 	}
-	return origin{caller: agentCallerPrefix + k.ID, source: sourceAgent, agent: k}, true
+	return origin{caller: k.quotaCaller(), source: sourceAgent, agent: k}, true
 }
 
 // strandOK accepts the Aether strand. IBC drips (to an address on the
@@ -429,7 +429,7 @@ func (f *faucetServer) dispense(w http.ResponseWriter, o origin, addresses []str
 	drips := make([]drip, len(res.addresses))
 	for i, a := range res.addresses {
 		drips[i] = drip{Time: now, TxHash: txHash, Address: a, AmountUaeth: f.amountUaeth, Strand: strandAether,
-			Source: o.source, AgentID: o.agent.ID, AgentName: o.agent.Name, NewWallet: fresh[a]}
+			Source: o.source, AgentID: o.agent.ID, AgentName: o.agent.Name, NewWallet: fresh[a], Caller: caller}
 	}
 	if err := f.ledger.add(drips); err != nil {
 		log.Printf("faucet couldn't record drips for tx %s: %v", txHash, err)
@@ -640,7 +640,7 @@ func main() {
 	confirmPollSeconds := flag.Int("confirm-poll-seconds", 3, "how often to poll for on-chain confirmation while waiting")
 	dripLog := flag.String("drip-log", "", "file keeping every drip for /stats and /drips (default <keyring dir>/faucet-drips.jsonl)")
 	agentRegistryPath := flag.String("agent-registry", "", "file keeping registered agent keys (default <keyring dir>/faucet-agents.json)")
-	agentLimit := flag.Int("agent-limit", 100, "addresses one registered agent key may fund per --caller-window-minutes")
+	agentLimit := flag.Int("agent-limit", 100, "addresses the agent keys registered from one IP may fund, together, per --caller-window-minutes")
 	powBits := flag.Int("pow-bits", 18, "leading zero bits a browser's /challenge solution needs (18: about a second in a browser)")
 	flag.Parse()
 	if *opener {
@@ -709,6 +709,7 @@ func main() {
 	limits := newLimiter(time.Duration(*cooldownMinutes)*time.Minute, *callerLimit,
 		time.Duration(*callerWindowMinutes)*time.Minute)
 	limits.agentLimit = *agentLimit
+	limits.restore(drips.all())
 	server := &faucetServer{
 		limits:              limits,
 		ledger:              drips,
