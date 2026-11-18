@@ -176,7 +176,11 @@ const QuorumActiveValidatorCountActivationHeight int64 = 109_000
 //
 // The pass and veto ratios (2/3 yes, 1/3 veto, of non-abstain weight)
 // are unchanged. On fresh chains it applies from block 1.
-const PowerWeightedVotingHeight int64 = 50_000_000
+//
+// Testnet: 884,880, chosen 2026-11-18 at a tip of 805,534 (about 14:00
+// UTC on Monday 2026-11-23 at 5.96 s blocks), 720 blocks from each seat
+// boundary. Runbook: docs/UPGRADE-GOVERNANCE-WEIGHT.md.
+const PowerWeightedVotingHeight int64 = 884_880
 
 // QuorumWeightBps is quorum from PowerWeightedVotingHeight: the share of
 // the active set's total weight, in basis points, that must have voted.

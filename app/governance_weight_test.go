@@ -8,7 +8,9 @@ import (
 	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/whoyoujoshin/aether/x/accountauth"
 	"github.com/whoyoujoshin/aether/x/governance"
+	"github.com/whoyoujoshin/aether/x/pow"
 )
 
 // GHSA-3cvf on a fresh chain with the real x/pow keeper: seats that just
@@ -94,4 +96,16 @@ func TestGovernance_NewSeatsCantOutvoteByHead(t *testing.T) {
 			t.Fatal("a vote from an account outside the set was accepted")
 		}
 	})
+}
+
+// The testnet height comes after the session-key upgrade and sits
+// midway between seat boundaries (every 1,440 blocks).
+func TestGovernance_PowerWeightedHeight(t *testing.T) {
+	h := governance.PowerWeightedVotingHeight
+	if h <= accountauth.SessionKeyCapHeight {
+		t.Fatalf("height %d is not after the session-key cap (%d)", h, accountauth.SessionKeyCapHeight)
+	}
+	if epoch := pow.DefaultGenesisState().Params.EpochLength; h%epoch != epoch/2 {
+		t.Fatalf("height %d is %d blocks into an epoch, want %d", h, h%epoch, epoch/2)
+	}
 }
