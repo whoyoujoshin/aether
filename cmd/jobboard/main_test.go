@@ -36,15 +36,27 @@ func newTestServer(t *testing.T, c *fakeChain) *httptest.Server {
 	require.NoError(t, err)
 	s := &server{
 		board: &jobs.Board{
-			Scan: func(context.Context) ([]wallet.IncomingPayment, error) {
+			Scan: func(_ context.Context, from int64) ([]wallet.IncomingPayment, error) {
 				c.mu.Lock()
 				defer c.mu.Unlock()
-				return append([]wallet.IncomingPayment(nil), c.payments...), nil
+				var out []wallet.IncomingPayment
+				for _, p := range c.payments {
+					if p.Height >= from {
+						out = append(out, p)
+					}
+				}
+				return out, nil
 			},
-			Escrows: func(context.Context) ([]wallet.EscrowCreated, error) {
+			Escrows: func(_ context.Context, from int64) ([]wallet.EscrowCreated, error) {
 				c.mu.Lock()
 				defer c.mu.Unlock()
-				return append([]wallet.EscrowCreated(nil), c.escrows...), nil
+				var out []wallet.EscrowCreated
+				for _, e := range c.escrows {
+					if e.Height >= from {
+						out = append(out, e)
+					}
+				}
+				return out, nil
 			},
 		},
 		store: st,
