@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
@@ -36,15 +37,27 @@ func newTestServer(t *testing.T, c *fakeChain) *httptest.Server {
 	require.NoError(t, err)
 	s := &server{
 		board: &jobs.Board{
-			Scan: func(context.Context) ([]wallet.IncomingPayment, error) {
+			Scan: func(_ context.Context, from int64) ([]wallet.IncomingPayment, error) {
 				c.mu.Lock()
 				defer c.mu.Unlock()
-				return append([]wallet.IncomingPayment(nil), c.payments...), nil
+				var out []wallet.IncomingPayment
+				for _, p := range c.payments {
+					if p.Height >= from {
+						out = append(out, p)
+					}
+				}
+				return out, nil
 			},
-			Escrows: func(context.Context) ([]wallet.EscrowCreated, error) {
+			Escrows: func(_ context.Context, from int64) ([]wallet.EscrowCreated, error) {
 				c.mu.Lock()
 				defer c.mu.Unlock()
-				return append([]wallet.EscrowCreated(nil), c.escrows...), nil
+				var out []wallet.EscrowCreated
+				for _, e := range c.escrows {
+					if e.Height >= from {
+						out = append(out, e)
+					}
+				}
+				return out, nil
 			},
 		},
 		store: st,
@@ -158,13 +171,55 @@ func TestJobBoard(t *testing.T) {
 func TestStoreQuota(t *testing.T) {
 	st, err := openStore(t.TempDir(), 10)
 	require.NoError(t, err)
-	_, err = st.put(jobs.Hash([]byte("12345678")), []byte("12345678"))
-	require.NoError(t, err)
-	_, err = st.put(jobs.Hash([]byte("abc")), []byte("abc"))
-	require.ErrorIs(t, err, errFull)
+	put := func(text string, goesFirst func(string) bool) error {
+		_, err := st.put(jobs.Hash([]byte(text)), []byte(text), goesFirst)
+		return err
+	}
+	var evicted []string
+	st.onEvict = func(h string) { evicted = append(evicted, h) }
 
-	// A reopened store counts what's there.
+	require.NoError(t, put("1234", nil))
+	time.Sleep(10 * time.Millisecond)
+	require.NoError(t, put("5678", nil))
+	require.ErrorIs(t, put("this is longer than ten", nil), errFull, "bigger than the whole store")
+
+	// Full: the oldest goes to make room.
+	require.NoError(t, put("abc", nil))
+	require.Equal(t, []string{jobs.Hash([]byte("1234"))}, evicted)
+	require.False(t, st.has(jobs.Hash([]byte("1234"))))
+	require.Equal(t, int64(7), st.used)
+
+	// What the caller marks goes first, even if newer.
+	evicted = nil
+	abc := jobs.Hash([]byte("abc"))
+	require.NoError(t, put("wxyz", func(h string) bool { return h == abc }))
+	require.Equal(t, []string{abc}, evicted)
+	require.True(t, st.has(jobs.Hash([]byte("5678"))))
+
+	// A deleted text can be stored again.
+	time.Sleep(10 * time.Millisecond)
+	require.NoError(t, put("1234", nil))
+	require.True(t, st.has(jobs.Hash([]byte("1234"))))
+
+	// A reopened store counts what's there, and keeps making room.
 	again, err := openStore(st.dir, 10)
 	require.NoError(t, err)
-	require.Equal(t, int64(8), again.used)
+	require.Equal(t, st.used, again.used)
+	_, err = again.put(jobs.Hash([]byte("zz")), []byte("zz"), nil)
+	require.NoError(t, err)
+	require.LessOrEqual(t, again.used, int64(10))
+}
+
+func TestMakeRoomFrom(t *testing.T) {
+	board := []jobs.Job{
+		{SpecHash: "open-spec", State: jobs.StateOpen},
+		{SpecHash: "hired-spec", State: jobs.StateHired, Deliveries: []jobs.Delivery{{Hash: "delivery"}}},
+		{SpecHash: "withdrawn-spec", State: jobs.StateClosed},
+	}
+	first := makeRoomFrom(board)
+	require.False(t, first("open-spec"))
+	require.False(t, first("hired-spec"))
+	require.False(t, first("delivery"))
+	require.True(t, first("withdrawn-spec"))
+	require.True(t, first("named-by-no-job"))
 }

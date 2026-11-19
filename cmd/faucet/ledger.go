@@ -34,6 +34,10 @@ type drip struct {
 	// NewWallet: the chain had no account at Address before this drip,
 	// so the drip is the first transaction that address ever received.
 	NewWallet bool `json:"new_wallet"`
+	// Caller is the limiter identity the drip counted against (a client
+	// IP, or an agent's quota). Kept in the drip log so a restart can
+	// rebuild the limits; never served (recent clears it).
+	Caller string `json:"caller,omitempty"`
 }
 
 // ledger is every confirmed drip, in memory for /stats and /drips and
@@ -113,9 +117,19 @@ func (l *ledger) recent(n int) []drip {
 	// Sized by the ledger and the constant, never by the request.
 	out := make([]drip, 0, min(len(l.drips), maxRecentDrips))
 	for i := len(l.drips) - 1; i >= 0 && len(out) < n; i-- {
-		out = append(out, l.drips[i])
+		d := l.drips[i]
+		d.Caller = ""
+		out = append(out, d)
 	}
 	return out
+}
+
+// all is every drip, oldest first, Caller included: for rebuilding the
+// limits at start.
+func (l *ledger) all() []drip {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]drip(nil), l.drips...)
 }
 
 type sourceCounts struct {

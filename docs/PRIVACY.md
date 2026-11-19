@@ -48,8 +48,12 @@ may log your IP address, the time and the request path, as web servers do.
   or API), and the agent key's ID and name if one was used. These records
   are published at the faucet's `/drips` and `/stats`.
 - It uses your IP address to enforce its per-caller limits. The address is
-  held in memory for that, and written to the faucet's server log next to
-  the address it funded.
+  held in memory for that, written to the faucet's server log next to the
+  address it funded, and kept with each payment in the faucet's own drip
+  log on the server, so a restart doesn't reset the limits; when you
+  register an agent key, the registry on the server keeps the IP that
+  registered it. Neither is published: `/drips` and `/stats` leave it
+  out.
 
 ## Explorer
 

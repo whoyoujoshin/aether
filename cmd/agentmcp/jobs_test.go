@@ -62,10 +62,10 @@ func (j *jobsFake) broadcast(s wallet.SignedTx) (wallet.BroadcastResult, error) 
 	return res, err
 }
 
-func (j *jobsFake) escrowsWithTerms(substr string, _ int) ([]wallet.EscrowCreated, error) {
+func (j *jobsFake) escrowsWithTerms(substr string, from int64, _ int) ([]wallet.EscrowCreated, error) {
 	var out []wallet.EscrowCreated
 	for _, e := range j.created {
-		if strings.Contains(e.Terms, substr) {
+		if strings.Contains(e.Terms, substr) && e.Height >= from {
 			out = append(out, e)
 		}
 	}

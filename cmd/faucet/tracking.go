@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"sync"
@@ -56,7 +57,12 @@ func (f *faucetServer) handleAgents(w http.ResponseWriter, r *http.Request) {
 			Message: "too many agent registrations from this caller; try later", RetryAfterSeconds: ceilSeconds(q.reset)})
 		return
 	}
-	k, created, err := f.agents.register(req.Name, req.PublicKey)
+	k, created, err := f.agents.register(req.Name, req.PublicKey, caller)
+	if errors.Is(err, errAgentKeysPerCaller) {
+		f.regLimits.release(res)
+		writeJSON(w, http.StatusTooManyRequests, responseBody{Code: codeCallerLimit, Message: err.Error()})
+		return
+	}
 	if err != nil {
 		f.regLimits.release(res)
 		writeJSON(w, http.StatusBadRequest, responseBody{Code: codeInvalidRequest, Message: err.Error()})

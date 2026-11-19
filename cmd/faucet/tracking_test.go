@@ -222,7 +222,7 @@ func TestLedgerAndRegistrySurviveRestart(t *testing.T) {
 
 	reg, _ := openAgentRegistry(filepath.Join(dir, "agents.json"))
 	pub, _, _ := ed25519.GenerateKey(rand.Reader)
-	k, created, err := reg.register("bot", base64.StdEncoding.EncodeToString(pub))
+	k, created, err := reg.register("bot", base64.StdEncoding.EncodeToString(pub), "203.0.113.9")
 	if err != nil || !created {
 		t.Fatal(err)
 	}

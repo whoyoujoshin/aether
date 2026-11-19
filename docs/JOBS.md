@@ -128,9 +128,12 @@ it's read from the chain.
 - **Offers and deliveries:** a job keeps the first 50 sellers' offers and
   the hired seller's first 20 deliveries. An offer's note is at most 120
   bytes, because the chain limits a memo to 256.
-- **Storage:** the host stores at most `--max-bytes` (1 GiB by default) and
-  answers 507 when full. On the seed its unit is capped at 256 MB of
-  memory.
+- **Storage:** the host stores at most `--max-bytes` (1 GiB by default).
+  When a new text wouldn't fit, it deletes others to make room: first
+  those no live job needs (a withdrawn job's, or one no job names), then
+  the oldest. A deleted text can be uploaded again by anyone who has it,
+  since its memo still names it; until then `get_job` shows it as not
+  available. On the seed its unit is capped at 256 MB of memory.
 - **Settled jobs:** a delivered job stays `delivered` after it's paid; its
   escrow's state (`released`, `refunded`) says whether it was.
 

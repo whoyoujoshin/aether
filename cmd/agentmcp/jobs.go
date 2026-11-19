@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -54,13 +53,27 @@ var jobHTTP = &http.Client{Timeout: 20 * time.Second}
 
 // jobChain is what the job tools need beyond chain.
 type jobChain interface {
-	escrowsWithTerms(substr string, max int) ([]wallet.EscrowCreated, error)
+	escrowsWithTerms(substr string, from int64, max int) ([]wallet.EscrowCreated, error)
 }
 
-func (g grpcChain) escrowsWithTerms(s string, max int) ([]wallet.EscrowCreated, error) {
+func (g grpcChain) escrowsWithTerms(s string, from int64, max int) ([]wallet.EscrowCreated, error) {
 	ctx, cancel := escrowCtx()
 	defer cancel()
-	return g.c.EscrowsCreatedWithTerms(ctx, s, 1, max)
+	return g.c.EscrowsCreatedWithTerms(ctx, s, from, max)
+}
+
+// boardHistories keeps the board history read from each node, so a job
+// tool reads only what's new since the last one and never a board cut
+// short at a page.
+var boardHistories sync.Map // historyKey -> *jobs.History
+
+// historyKey names the node a chain reads: every connection agentmcp dials
+// goes to grpcEndpoint, and a test's fake chain stands for itself.
+func historyKey(c chain) any {
+	if _, ok := c.(grpcChain); ok {
+		return "grpc|" + grpcEndpoint
+	}
+	return c
 }
 
 func readBoard(c chain) ([]jobs.Job, error) {
@@ -68,12 +81,15 @@ func readBoard(c chain) ([]jobs.Job, error) {
 	if !ok {
 		return nil, newError(codeInternal, "this node connection can't search escrows")
 	}
-	payments, err := c.incoming(jobs.Address(), 1, jobs.ScanLimit)
-	if err != nil && !errors.Is(err, wallet.ErrTooMuchHistory) {
-		return nil, err
-	}
-	escrows, err := jc.escrowsWithTerms(jobs.TermsPrefix, jobs.ScanLimit)
-	if err != nil && !errors.Is(err, wallet.ErrTooMuchHistory) {
+	v, _ := boardHistories.LoadOrStore(historyKey(c), &jobs.History{})
+	payments, escrows, err := v.(*jobs.History).Read(
+		func(from int64) ([]wallet.IncomingPayment, error) {
+			return c.incoming(jobs.Address(), from, jobs.ScanLimit)
+		},
+		func(from int64) ([]wallet.EscrowCreated, error) {
+			return jc.escrowsWithTerms(jobs.TermsPrefix, from, jobs.ScanLimit)
+		})
+	if err != nil {
 		return nil, err
 	}
 	return jobs.Derive(payments, escrows), nil

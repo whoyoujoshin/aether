@@ -3,50 +3,120 @@ package jobs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/whoyoujoshin/aether/wallet"
 )
 
-// ScanLimit bounds each scan of the board's memos and of job escrows.
+// ScanLimit bounds each page of a scan of the board's memos and of job
+// escrows. A scan that fills a page goes on from where it stopped, so the
+// board is never cut short.
 const ScanLimit = 20000
+
+// scanRounds bounds the pages one refresh reads; a board longer than that
+// is read over several refreshes, and is refused until it is whole.
+const scanRounds = 50
+
+// ErrBoardIncomplete means the board's history wasn't read to the end, so
+// no view of it is served: an incomplete board shows hired jobs as open
+// and hides every newer post.
+var ErrBoardIncomplete = errors.New("the job board's history isn't fully read yet; try again shortly")
 
 // Board keeps a cached view of the board.
 type Board struct {
-	// Scan returns the payments to Address(), oldest first.
-	Scan func(ctx context.Context) ([]wallet.IncomingPayment, error)
-	// Escrows returns the escrows whose terms contain TermsPrefix,
-	// oldest first.
-	Escrows func(ctx context.Context) ([]wallet.EscrowCreated, error)
+	// Scan returns the payments to Address() at or above height from,
+	// oldest first, with wallet.ErrTooMuchHistory (and what it has) when
+	// it stops at its cap.
+	Scan func(ctx context.Context, from int64) ([]wallet.IncomingPayment, error)
+	// Escrows returns the escrows whose terms contain TermsPrefix created
+	// at or above height from, oldest first, as Scan does.
+	Escrows func(ctx context.Context, from int64) ([]wallet.EscrowCreated, error)
 	TTL     time.Duration // default 30s
 
 	mu      sync.Mutex
 	at      time.Time
 	cached  []Job
 	refresh sync.Mutex
+	history History
 }
 
 // FromClient reads the board through a node.
 func FromClient(dial func() (*wallet.Client, error)) *Board {
 	return &Board{
-		Scan: func(ctx context.Context) ([]wallet.IncomingPayment, error) {
+		Scan: func(ctx context.Context, from int64) ([]wallet.IncomingPayment, error) {
 			c, err := dial()
 			if err != nil {
 				return nil, err
 			}
 			defer c.Close()
-			return c.GetIncomingPayments(Address(), 1, ScanLimit)
+			return c.GetIncomingPayments(Address(), from, ScanLimit)
 		},
-		Escrows: func(ctx context.Context) ([]wallet.EscrowCreated, error) {
+		Escrows: func(ctx context.Context, from int64) ([]wallet.EscrowCreated, error) {
 			c, err := dial()
 			if err != nil {
 				return nil, err
 			}
 			defer c.Close()
-			return c.EscrowsCreatedWithTerms(ctx, TermsPrefix, 1, ScanLimit)
+			return c.EscrowsCreatedWithTerms(ctx, TermsPrefix, from, ScanLimit)
 		},
 	}
+}
+
+// History is the board's memos and job escrows read so far. Each read
+// asks only from the newest height it holds (inclusive) and pages on past
+// a full page, so it reads the whole history once and then only what is
+// new. The zero value is ready to use.
+type History struct {
+	mu       sync.Mutex
+	payments []wallet.IncomingPayment
+	escrows  []wallet.EscrowCreated
+}
+
+// Read brings the history up to date and returns all of it, oldest first.
+// It fails rather than return part of it.
+func (h *History) Read(scan func(from int64) ([]wallet.IncomingPayment, error), escrows func(from int64) ([]wallet.EscrowCreated, error)) ([]wallet.IncomingPayment, []wallet.EscrowCreated, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var err error
+	if h.payments, err = catchUp(h.payments, func(p wallet.IncomingPayment) int64 { return p.Height }, scan); err != nil {
+		return nil, nil, err
+	}
+	if h.escrows, err = catchUp(h.escrows, func(e wallet.EscrowCreated) int64 { return e.Height }, escrows); err != nil {
+		return nil, nil, err
+	}
+	return append([]wallet.IncomingPayment(nil), h.payments...), append([]wallet.EscrowCreated(nil), h.escrows...), nil
+}
+
+// catchUp extends have, oldest first, to the end of what scan finds. It
+// keeps whatever it read, even when it stops early with an error.
+func catchUp[T any](have []T, height func(T) int64, scan func(from int64) ([]T, error)) ([]T, error) {
+	for round := 0; round < scanRounds; round++ {
+		from := int64(1)
+		if n := len(have); n > 0 {
+			from = height(have[n-1])
+		}
+		// The newest block held is read again in full: drop it first.
+		keep := len(have)
+		for keep > 0 && height(have[keep-1]) >= from {
+			keep--
+		}
+		got, err := scan(from)
+		capped := errors.Is(err, wallet.ErrTooMuchHistory)
+		if err != nil && !capped {
+			return have, err
+		}
+		if capped && (len(got) == 0 || height(got[len(got)-1]) <= from) {
+			// One block holds more than a page: no way forward.
+			return have, fmt.Errorf("%w: more than %d entries in block %d", ErrBoardIncomplete, ScanLimit, from)
+		}
+		have = append(have[:keep:keep], got...)
+		if !capped {
+			return have, nil
+		}
+	}
+	return have, ErrBoardIncomplete
 }
 
 // Jobs is the board, newest first, no older than TTL.
@@ -73,12 +143,10 @@ func (b *Board) within(ctx context.Context, maxAge time.Duration) ([]Job, error)
 	if out, ok := b.cachedWithin(maxAge); ok {
 		return out, nil
 	}
-	payments, err := b.Scan(ctx)
-	if err != nil && !errors.Is(err, wallet.ErrTooMuchHistory) {
-		return nil, err
-	}
-	escrows, err := b.Escrows(ctx)
-	if err != nil && !errors.Is(err, wallet.ErrTooMuchHistory) {
+	payments, escrows, err := b.history.Read(
+		func(from int64) ([]wallet.IncomingPayment, error) { return b.Scan(ctx, from) },
+		func(from int64) ([]wallet.EscrowCreated, error) { return b.Escrows(ctx, from) })
+	if err != nil {
 		return nil, err
 	}
 	jobs := Derive(payments, escrows)

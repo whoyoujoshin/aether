@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"regexp"
@@ -49,6 +50,25 @@ type agentKey struct {
 	Name       string    `json:"name"`
 	PublicKey  string    `json:"public_key"` // base64 ed25519
 	Registered time.Time `json:"registered"`
+	// RegisteredBy is the client IP that registered the key. Every key
+	// one caller registers shares one agent quota, so registering more
+	// keys gets no more drips. Kept in the registry file, never served.
+	RegisteredBy string `json:"registered_by,omitempty"`
+}
+
+// maxAgentKeysPerCaller is the most keys one caller may register.
+const maxAgentKeysPerCaller = 10
+
+var errAgentKeysPerCaller = fmt.Errorf("this caller has registered the most agent keys it may (%d); its keys share one quota, so reuse one", maxAgentKeysPerCaller)
+
+// quotaCaller is the limiter identity k's drips count against: one per
+// registering caller. Keys registered before that was recorded keep a
+// quota each; no new key can join them.
+func (k agentKey) quotaCaller() string {
+	if k.RegisteredBy != "" {
+		return agentCallerPrefix + "by:" + k.RegisteredBy
+	}
+	return agentCallerPrefix + k.ID
 }
 
 type agentRegistry struct {
@@ -86,9 +106,10 @@ func agentID(pub ed25519.PublicKey) string {
 	return "ak_" + hex.EncodeToString(sum[:6])
 }
 
-// register adds pub under name, or returns its existing registration
-// (keeping the first name) when it's already known.
-func (r *agentRegistry) register(name, publicKeyB64 string) (agentKey, bool, error) {
+// register adds pub under name for caller, or returns its existing
+// registration (keeping the first name and caller) when it's already
+// known. A caller may register at most maxAgentKeysPerCaller keys.
+func (r *agentRegistry) register(name, publicKeyB64, caller string) (agentKey, bool, error) {
 	if !agentNamePattern.MatchString(name) {
 		return agentKey{}, false, errors.New("name: 1 to 40 letters, digits, '.', '_' or '-', starting with a letter or digit")
 	}
@@ -102,7 +123,16 @@ func (r *agentRegistry) register(name, publicKeyB64 string) (agentKey, bool, err
 	if k, ok := r.keys[id]; ok {
 		return k, false, nil
 	}
-	k := agentKey{ID: id, Name: name, PublicKey: publicKeyB64, Registered: r.now().UTC()}
+	n := 0
+	for _, k := range r.keys {
+		if k.RegisteredBy == caller {
+			n++
+		}
+	}
+	if n >= maxAgentKeysPerCaller {
+		return agentKey{}, false, errAgentKeysPerCaller
+	}
+	k := agentKey{ID: id, Name: name, PublicKey: publicKeyB64, Registered: r.now().UTC(), RegisteredBy: caller}
 	r.keys[id] = k
 	if err := r.saveLocked(); err != nil {
 		delete(r.keys, id)

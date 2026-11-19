@@ -169,6 +169,34 @@ func (l *limiter) release(r reservation) {
 	}
 }
 
+// restore rebuilds the limits from drips already sent (oldest first), so
+// a restart neither lets an address be funded again inside its cooldown
+// nor hands a caller a fresh quota: each address's last drip still within
+// the cooldown, and each caller's drips within the last window. Drips
+// logged before callers were recorded restore only the cooldowns.
+func (l *limiter) restore(ds []drip) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	for _, d := range ds {
+		if l.cooldown > 0 && now.Sub(d.Time) < l.cooldown && d.Time.After(l.lastRequest[d.Address]) {
+			l.lastRequest[d.Address] = d.Time
+		}
+		if d.Caller == "" || l.limitFor(d.Caller) <= 0 || now.Sub(d.Time) >= l.callerWindow {
+			continue
+		}
+		w := l.callers[d.Caller]
+		if w == nil {
+			w = &callerWindow{start: d.Time}
+			l.callers[d.Caller] = w
+		}
+		if d.Time.Before(w.start) {
+			w.start = d.Time
+		}
+		w.used++
+	}
+}
+
 // pruneLocked drops expired entries now and then, so the maps don't
 // grow with every address ever funded.
 func (l *limiter) pruneLocked(now time.Time) {

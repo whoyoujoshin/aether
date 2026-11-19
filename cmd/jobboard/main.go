@@ -41,7 +41,7 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:8404", "address to serve on")
 	grpcEndpoint := flag.String("grpc", "localhost:9090", "node gRPC endpoint")
 	dir := flag.String("dir", "aether-jobs", "directory the texts are stored in")
-	maxBytes := flag.Int64("max-bytes", 1<<30, "most bytes of texts stored in all; uploads past it get 507")
+	maxBytes := flag.Int64("max-bytes", 1<<30, "most bytes of texts stored in all; past it the oldest texts, withdrawn jobs' first, are deleted to make room")
 	flag.Parse()
 
 	st, err := openStore(*dir, *maxBytes)
@@ -49,7 +49,12 @@ func main() {
 		log.Fatalf("--dir %s: %v", *dir, err)
 	}
 	dial := func() (*wallet.Client, error) { return wallet.NewClient(*grpcEndpoint) }
-	s := &server{
+	var s *server
+	st.onEvict = func(hash string) {
+		s.specs.Delete(hash)
+		log.Printf("deleted text %s to make room", hash)
+	}
+	s = &server{
 		board: jobs.FromClient(dial),
 		store: st,
 		fresh: time.Second,
@@ -326,7 +331,7 @@ func (s *server) handlePutBlob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	created, err := s.store.put(hash, body)
+	created, err := s.store.put(hash, body, makeRoomFrom(board))
 	if errors.Is(err, errFull) {
 		writeError(w, http.StatusInsufficientStorage, err)
 		return
@@ -340,6 +345,23 @@ func (s *server) handlePutBlob(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusCreated
 	}
 	writeJSON(w, status, map[string]any{"stored": true, "url": "/jobs/blobs/" + hash})
+}
+
+// makeRoomFrom says which texts the store deletes first when full: those
+// no job on the board still needs, because the job was withdrawn or no
+// job names them.
+func makeRoomFrom(board []jobs.Job) func(hash string) bool {
+	live := map[string]bool{}
+	for _, j := range board {
+		if j.State == jobs.StateClosed {
+			continue
+		}
+		live[j.SpecHash] = true
+		for _, d := range j.Deliveries {
+			live[d.Hash] = true
+		}
+	}
+	return func(hash string) bool { return !live[hash] }
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
