@@ -34,6 +34,9 @@ func (k msgServer) RegisterAuthenticator(goCtx context.Context, msg *MsgRegister
 	}
 
 	a := msg.Authenticator
+	if err := checkAuthenticatorPresent(ctx, a); err != nil {
+		return nil, err
+	}
 	switch kind := a.Kind.(type) {
 	case *Authenticator_SessionKey:
 		sk := kind.SessionKey
@@ -48,6 +51,9 @@ func (k msgServer) RegisterAuthenticator(goCtx context.Context, msg *MsgRegister
 		}
 		if _, ok := sdkmath.NewIntFromString(sk.SpendLimitUaeth); !ok {
 			return nil, sdkerrors.Wrapf(ErrInvalidAuthenticator, "spend_limit_uaeth %q is not a valid non-negative integer", sk.SpendLimitUaeth)
+		}
+		if err := checkSessionAllows(ctx, sk); err != nil {
+			return nil, err
 		}
 		sk.SpentUaeth = "0" // always starts at zero, regardless of what was submitted
 	case *Authenticator_GuardianThreshold:
@@ -122,6 +128,13 @@ func (k msgServer) ExecAuthenticated(goCtx context.Context, msg *MsgExecAuthenti
 	if len(msg.Msgs) == 0 {
 		return nil, sdkerrors.Wrap(ErrInvalidAuthenticator, "no messages to execute")
 	}
+	if SessionKeyCapOn(ctx) {
+		for i, m := range msg.Msgs {
+			if m == nil {
+				return nil, sdkerrors.Wrapf(ErrInvalidAuthenticator, "message %d is empty", i)
+			}
+		}
+	}
 
 	a, found := k.Keeper.GetAuthenticator(ctx, account, msg.AuthenticatorId)
 	if !found {
@@ -157,6 +170,17 @@ func (k msgServer) ExecAuthenticated(goCtx context.Context, msg *MsgExecAuthenti
 
 	switch kind := a.Kind.(type) {
 	case *Authenticator_SessionKey:
+		if SessionKeyCapOn(ctx) {
+			// Checked here, spent as the messages run (session_cap.go).
+			if err := k.checkSessionKey(ctx, signer, kind.SessionKey, msgs); err != nil {
+				return nil, err
+			}
+			results, err := k.runMetered(ctx, account, &a, kind.SessionKey, msgs)
+			if err != nil {
+				return nil, err
+			}
+			return &MsgExecAuthenticatedResponse{Results: results}, nil
+		}
 		if err := k.acceptSessionKey(ctx, account, signer, &a, kind.SessionKey, msgs); err != nil {
 			return nil, err
 		}
@@ -170,19 +194,55 @@ func (k msgServer) ExecAuthenticated(goCtx context.Context, msg *MsgExecAuthenti
 
 	results := make([][]byte, len(msgs))
 	for i, m := range msgs {
-		handler := k.router.Handler(m)
-		if handler == nil {
-			return nil, sdkerrors.Wrapf(stderrors.ErrUnknownRequest, "unrecognized message route: %s", sdk.MsgTypeURL(m))
-		}
-		resp, err := handler(ctx, m)
+		data, err := k.dispatch(ctx, i, m)
 		if err != nil {
-			return nil, sdkerrors.Wrapf(err, "failed to execute message %d", i)
+			return nil, err
 		}
-		results[i] = resp.Data
-		ctx.EventManager().EmitEvents(resp.GetEvents())
+		results[i] = data
 	}
 
 	return &MsgExecAuthenticatedResponse{Results: results}, nil
+}
+
+// dispatch runs message i of an exec as its signer and emits its events.
+func (k msgServer) dispatch(ctx sdk.Context, i int, m sdk.Msg) ([]byte, error) {
+	handler := k.router.Handler(m)
+	if handler == nil {
+		return nil, sdkerrors.Wrapf(stderrors.ErrUnknownRequest, "unrecognized message route: %s", sdk.MsgTypeURL(m))
+	}
+	resp, err := handler(ctx, m)
+	if err != nil {
+		return nil, sdkerrors.Wrapf(err, "failed to execute message %d", i)
+	}
+	ctx.EventManager().EmitEvents(resp.GetEvents())
+	return resp.Data, nil
+}
+
+// checkSessionKey is acceptSessionKey's checks from SessionKeyCapHeight,
+// with spending left to runMetered: signer, expiry, the allow-list, and
+// no message a session key never runs (even one allowed when it was
+// registered, before the height).
+func (k msgServer) checkSessionKey(ctx sdk.Context, signer sdk.AccAddress, sk *SessionKey, msgs []sdk.Msg) error {
+	if !bytes.Equal(signer, (&mldsa.PubKey{Key: sk.Pubkey}).Address().Bytes()) {
+		return sdkerrors.Wrap(ErrWrongSigner, "signer is not this session key")
+	}
+	if ctx.BlockTime().Unix() >= sk.ExpiresAtUnix {
+		return sdkerrors.Wrapf(ErrSessionKeyExpired, "expired at %s", time.Unix(sk.ExpiresAtUnix, 0).UTC())
+	}
+	allowed := make(map[string]bool, len(sk.AllowedMsgTypes))
+	for _, t := range sk.AllowedMsgTypes {
+		allowed[t] = true
+	}
+	for _, m := range msgs {
+		typeURL := sdk.MsgTypeURL(m)
+		if why, never := SessionNeverDelegable(typeURL); never {
+			return sdkerrors.Wrapf(ErrNotSessionDelegable, "%s: %s", typeURL, why)
+		}
+		if !allowed[typeURL] {
+			return sdkerrors.Wrapf(ErrMsgTypeNotAllowed, "%s is not on this session key's allow-list", typeURL)
+		}
+	}
+	return nil
 }
 
 // acceptSessionKey checks that signer really is this session key
@@ -242,6 +302,9 @@ func (k msgServer) acceptGuardianThreshold(ctx sdk.Context, account sdk.AccAddre
 
 	validDistinct := make(map[string]bool, len(msg.GuardianSignatures))
 	for _, sig := range msg.GuardianSignatures {
+		if sig == nil && SessionKeyCapOn(ctx) {
+			continue // an empty entry, skipped as recoveryApproves does
+		}
 		if !registered[string(sig.Pubkey)] {
 			continue // not a registered guardian: silently ignored, same as an unrecognized signer would be
 		}

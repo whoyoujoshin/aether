@@ -27,4 +27,5 @@ var (
 	ErrNotWatchtower         = sdkerrors.Register(ModuleName, 20, "not a valid watchtower signature")
 	ErrWatchtowerOwnRemoval  = sdkerrors.Register(ModuleName, 21, "a watchtower can't cancel a change that removes it")
 	ErrDelegationRetired     = sdkerrors.Register(ModuleName, 22, "made by a key the account no longer has")
+	ErrNotSessionDelegable   = sdkerrors.Register(ModuleName, 23, "a session key can't run this message")
 )

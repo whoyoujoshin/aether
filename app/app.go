@@ -562,7 +562,7 @@ func New(
 	// (see app/accountauth.go for why: same reasoning as authz/feegrant
 	// and IBC above).
 	if accountAuthCutover.wire {
-		app.AccountAuthKeeper = accountauth.NewKeeper(appCodec, app.keys[accountauth.StoreKey], rotationFilteredRouter{app.MsgServiceRouter()}).WithAccountKeeper(app.AccountKeeper)
+		app.AccountAuthKeeper = accountauth.NewKeeper(appCodec, app.keys[accountauth.StoreKey], rotationFilteredRouter{app.MsgServiceRouter()}).WithAccountKeeper(app.AccountKeeper).WithBankKeeper(app.BankKeeper)
 	}
 	if escrowCutover.wire {
 		app.EscrowKeeper = escrow.NewKeeper(appCodec, app.keys[escrow.StoreKey], app.BankKeeper, logger)

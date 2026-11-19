@@ -52,9 +52,25 @@ ordinary transaction.
   `PostQuantumDecorator` + signature-verification path proving whoever
   submitted it controls that key. The handler additionally checks:
   not expired, every inner message's type is on the key's allow-list,
-  and (for `MsgSend`) the cumulative lifetime spend stays under the
-  key's `spend_limit_uaeth` (tracked in `spent_uaeth`, persisted after
-  every accepted exec).
+  and the cumulative lifetime spend stays under the key's
+  `spend_limit_uaeth` (tracked in `spent_uaeth`, persisted after every
+  accepted exec). From `SessionKeyCapHeight` (block 1 on fresh chains;
+  `x/accountauth/session_cap.go`) the spend is what actually leaves the
+  account: each inner message's fall in its uaeth balance, read from the
+  bank before and after it runs, whatever the message (a send, a
+  multi-send, an IBC transfer, an escrow, a deposit). The limit is in
+  uaeth, so a message that lowers any other balance (USDC, say) is
+  refused, and an exec that would pass the limit fails as a whole.
+- **What a session key never runs** (from the same height, refused both
+  when it runs and when a key allowing it is registered): anything that
+  hands the account's authority to another key or moves value already
+  out of its balance: authz `MsgGrant` and `MsgExec`, a fee allowance,
+  registering, revoking or running another authenticator, rotation and
+  recovery messages, `MsgRegisterValidatorPubkey`, interchain-account
+  registration and `MsgSendTx`, and `MsgReleaseEscrow`. Before the
+  height only a `MsgSend`'s uaeth counted, so any of these, a
+  multi-send or a send of another denom got past the limit
+  (GHSA-j2qr-v7fr-w36f).
 - **Guardian threshold**: the outer transaction's signer can be
   *anyone* (a relayer with no stake in the outcome) -- authorization
   instead comes from `guardian_signatures` attached to the message,

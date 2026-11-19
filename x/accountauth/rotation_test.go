@@ -80,7 +80,7 @@ func newRotFixture(t *testing.T, chainID string, height int64) *rotFixture {
 	require.NoError(t, acc.SetPubKey(&mldsa.PubKey{Key: owner.pub}))
 	accounts.SetAccount(ctx, acc)
 
-	k := NewKeeper(newTestCodec(), storeKey, fakeRouter{}).WithAccountKeeper(accounts)
+	k := NewKeeper(newTestCodec(), storeKey, fakeRouter{}).WithAccountKeeper(accounts).WithBankKeeper(&fakeBank{coins: map[string]sdk.Coins{}})
 	return &rotFixture{t: t, ms: NewMsgServerImpl(k), k: k, ctx: ctx, accounts: accounts, owner: owner, account: account}
 }
 
@@ -412,12 +412,15 @@ func TestRotation_NoRecoverySet(t *testing.T) {
 func TestRotation_NotThroughAuthenticators(t *testing.T) {
 	f := newRotFixture(t, rotChain, 10)
 	_, sessionPub, sessionAddr := genSessionKey(t)
-	reg, err := f.ms.RegisterAuthenticator(f.ctx, &MsgRegisterAuthenticator{Account: f.addr(), Authenticator: &Authenticator{
-		Kind: &Authenticator_SessionKey{SessionKey: &SessionKey{Pubkey: sessionPub, ExpiresAtUnix: f.ctx.BlockTime().Unix() + 3600,
-			AllowedMsgTypes: []string{sdk.MsgTypeURL(&MsgRotateKey{})}, SpendLimitUaeth: "0"}}}})
-	require.NoError(t, err)
+	sk := &SessionKey{Pubkey: sessionPub, ExpiresAtUnix: f.ctx.BlockTime().Unix() + 3600,
+		AllowedMsgTypes: []string{sdk.MsgTypeURL(&MsgRotateKey{})}, SpendLimitUaeth: "0"}
+	_, err := f.ms.RegisterAuthenticator(f.ctx, &MsgRegisterAuthenticator{Account: f.addr(), Authenticator: &Authenticator{
+		Kind: &Authenticator_SessionKey{SessionKey: sk}}})
+	require.ErrorIs(t, err, ErrNotSessionDelegable, "from SessionKeyCapHeight one can't even be registered")
+	// One registered before that height still can't run it.
+	f.k.SetAuthenticator(f.ctx, f.account, Authenticator{Id: 1, Kind: &Authenticator_SessionKey{SessionKey: sk}})
 	_, err = f.ms.ExecAuthenticated(f.ctx, &MsgExecAuthenticated{Signer: sessionAddr.String(), Account: f.addr(),
-		AuthenticatorId: reg.Id, Msgs: []*codectypes.Any{anyOf(t, f.rotateMsg(newRotKey(t), 0))}})
+		AuthenticatorId: 1, Msgs: []*codectypes.Any{anyOf(t, f.rotateMsg(newRotKey(t), 0))}})
 	require.ErrorIs(t, err, ErrRotationNotDelegable)
 	require.Nil(t, f.state().PendingRotation)
 }
