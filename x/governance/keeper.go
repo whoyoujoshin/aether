@@ -408,9 +408,14 @@ func (k Keeper) TallyVotes(ctx sdk.Context, proposalID uint64) TallyResult {
 			continue
 		}
 
-		weight, err := math.LegacyNewDecFromStr(vote.Weight)
-		if err != nil {
-			continue
+		var weight math.LegacyDec
+		if gates.On(ctx, PowerWeightedVotingHeight) {
+			weight = k.voteWeight(ctx, voterAddr)
+		} else {
+			weight, err = math.LegacyNewDecFromStr(vote.Weight)
+			if err != nil {
+				continue
+			}
 		}
 
 		result.ValidVoterCount++
@@ -429,6 +434,45 @@ func (k Keeper) TallyVotes(ctx sdk.Context, proposalID uint64) TallyResult {
 	return result
 }
 
+// voteWeight is what addr's vote counts for from PowerWeightedVotingHeight:
+// its current voting power times its tenure ratio, read at tally. An
+// address that isn't an active validator weighs nothing.
+func (k Keeper) voteWeight(ctx sdk.Context, addr sdk.AccAddress) math.LegacyDec {
+	power := k.powKeeper.GetValidatorVotingPower(ctx, addr)
+	if power <= 0 {
+		return math.LegacyZeroDec()
+	}
+	return math.LegacyNewDec(power).Mul(k.powKeeper.GetValidatorTenureRatio(ctx, addr))
+}
+
+// TotalVoteWeight is the summed voteWeight of every active validator:
+// the base that quorum is measured against from PowerWeightedVotingHeight.
+func (k Keeper) TotalVoteWeight(ctx sdk.Context) math.LegacyDec {
+	total := math.LegacyZeroDec()
+	for _, addr := range k.powKeeper.IterateActiveValidators(ctx) {
+		total = total.Add(k.voteWeight(ctx, addr))
+	}
+	return total
+}
+
+// weightQuorumMet reports whether the weight that voted, abstains
+// included, reaches QuorumWeightBps of the active set's total weight.
+// Never met while the total or the vote is zero.
+func (k Keeper) weightQuorumMet(ctx sdk.Context, result TallyResult) bool {
+	total := k.TotalVoteWeight(ctx)
+	voted := result.YesPower.Add(result.NoPower).Add(result.AbstainPower).Add(result.VetoPower)
+	if !total.IsPositive() || !voted.IsPositive() {
+		return false
+	}
+	return voted.MulInt64(10_000).GTE(total.MulInt64(QuorumWeightBps))
+}
+
+// QuorumWeightNeeded is the weight that must vote for quorum from
+// PowerWeightedVotingHeight, rounded up to a whole unit of power.
+func (k Keeper) QuorumWeightNeeded(ctx sdk.Context) int64 {
+	return k.TotalVoteWeight(ctx).MulInt64(QuorumWeightBps).QuoInt64(10_000).Ceil().TruncateInt64()
+}
+
 // ResolveProposal tallies votes for a proposal whose voting period has
 // closed and transitions it to its final status:
 //   - FAILED_QUORUM if fewer than QuorumThreshold validators cast a
@@ -442,7 +486,11 @@ func (k Keeper) TallyVotes(ctx sdk.Context, proposalID uint64) TallyResult {
 func (k Keeper) ResolveProposal(ctx sdk.Context, proposal Proposal, quorumThreshold int64) error {
 	result := k.TallyVotes(ctx, proposal.Id)
 
-	if result.ValidVoterCount < quorumThreshold {
+	quorumFailed := result.ValidVoterCount < quorumThreshold
+	if gates.On(ctx, PowerWeightedVotingHeight) {
+		quorumFailed = !k.weightQuorumMet(ctx, result)
+	}
+	if quorumFailed {
 		proposal.Status = ProposalStatus_PROPOSAL_STATUS_FAILED_QUORUM
 		k.SetProposal(ctx, proposal)
 		return k.burnDeposits(ctx, proposal.Id)

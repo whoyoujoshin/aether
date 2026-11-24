@@ -153,3 +153,35 @@ const TreasuryCoinSpendActivationHeight int64 = 511_920
 // ParamChangeGovernanceActivationHeight). Every node must run this
 // binary before 109,000, together with AuthzFeegrantActivationHeight.
 const QuorumActiveValidatorCountActivationHeight int64 = 109_000
+
+// PowerWeightedVotingHeight is when governance starts counting validators
+// by the power the seat rule gives them instead of by head (GHSA-3cvf).
+//
+// Before it, a vote weighs its voter's tenure ratio (0 to 1 over 30 days)
+// as of the vote, and quorum is 60% of the active validators by head.
+// Every seat counts the same toward quorum, and a seat costs only 1% of
+// the window's work, so seats with almost no weight could make quorum
+// and pass a treasury spend the honest validators never voted on: by
+// voting yes, or by abstaining (counted toward quorum, left out of the
+// pass ratio) beside a single tiny yes.
+//
+// From it:
+//   - a vote weighs its voter's current power times its tenure ratio,
+//     both read when the votes are counted (voteWeight);
+//   - quorum is the weight that voted, abstains included, reaching 60%
+//     of the active set's total weight (QuorumWeightBps); nothing passes
+//     while that total is zero;
+//   - only an active validator may vote, so votes can't pile up from
+//     accounts that will never count.
+//
+// The pass and veto ratios (2/3 yes, 1/3 veto, of non-abstain weight)
+// are unchanged. On fresh chains it applies from block 1.
+//
+// Testnet: 884,880, chosen 2026-11-18 at a tip of 805,534 (about 14:00
+// UTC on Monday 2026-11-23 at 5.96 s blocks), 720 blocks from each seat
+// boundary. Runbook: docs/UPGRADE-GOVERNANCE-WEIGHT.md.
+const PowerWeightedVotingHeight int64 = 884_880
+
+// QuorumWeightBps is quorum from PowerWeightedVotingHeight: the share of
+// the active set's total weight, in basis points, that must have voted.
+const QuorumWeightBps int64 = 6_000
