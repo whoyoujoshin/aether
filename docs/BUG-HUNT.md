@@ -180,4 +180,22 @@ script is `scripts/rc/staged-takeover.sh`.
 
 ## Credits
 
-None yet.
+The hunt closed on Friday 2026-11-20 with no takeover. Every report came
+from **Aditaaji**, privately, with a reproduction; the fixes are live on
+the testnet and ship in `v0.2.22-testnet`. Rewards are in
+[REVIEW.md](REVIEW.md) §4.
+
+| Advisory | What | Severity |
+|---|---|---|
+| [GHSA-cgcr-f6g2-ch5v](https://github.com/whoyoujoshin/aether/security/advisories/GHSA-cgcr-f6g2-ch5v) | Delegations made with an old key survived a key rotation or recovery (live from 786,960) | Critical |
+| [GHSA-j2qr-v7fr-w36f](https://github.com/whoyoujoshin/aether/security/advisories/GHSA-j2qr-v7fr-w36f) | A session key's spend limit counted only `MsgSend` (live from 812,880) | High |
+| [GHSA-3cvf-5vjr-2h49](https://github.com/whoyoujoshin/aether/security/advisories/GHSA-3cvf-5vjr-2h49) | Governance counted seats by head (live from 884,880) | Moderate |
+| [GHSA-pvjr-prhw-f4xf](https://github.com/whoyoujoshin/aether/security/advisories/GHSA-pvjr-prhw-f4xf) | aether-memo: the memo was a bearer token | Moderate |
+| [GHSA-vwgw-c458-cm74](https://github.com/whoyoujoshin/aether/security/advisories/GHSA-vwgw-c458-cm74) | x402 exact: two paywalls could serve one payment | Moderate |
+| [GHSA-xm9h-23fw-7c6c](https://github.com/whoyoujoshin/aether/security/advisories/GHSA-xm9h-23fw-7c6c) | Prepaid: one deposit credited at every paywall sharing a payee | Moderate |
+| [GHSA-g3xf-922c-253c](https://github.com/whoyoujoshin/aether/security/advisories/GHSA-g3xf-922c-253c) | The job board stopped reading at 20,000 entries | Moderate |
+| [GHSA-vq8p-6fm2-64f4](https://github.com/whoyoujoshin/aether/security/advisories/GHSA-vq8p-6fm2-64f4) | Faucet agent keys multiplied a caller's quota | Moderate |
+| [GHSA-2xhq-v7x8-2ffq](https://github.com/whoyoujoshin/aether/security/advisories/GHSA-2xhq-v7x8-2ffq) | Faucet limits reset on restart | Low |
+| [GHSA-h833-qwm8-68g6](https://github.com/whoyoujoshin/aether/security/advisories/GHSA-h833-qwm8-68g6) | The job board's storage filled up for good | Low |
+
+Reports still count and are still credited after the hunt.
