@@ -6,6 +6,26 @@ import { ProposalStatusBadge } from "../components/StatusBadge";
 import { ErrorBanner, HeadStat, StackBar, pct } from "../components/ui";
 import { aeth, coins, duration, utc } from "../format";
 
+/** Quorum is QUORUM_SHARE of the active validators' total weight (voting
+ *  power × tenure); the tally reports the weight that must vote as
+ *  quorumThreshold, in units of voting power. */
+const QUORUM_SHARE = 0.6;
+
+/** The weight that voted, abstains included. */
+function votedWeight(t: Tally): number {
+  return tallySegments(t).reduce((a, s) => a + s.value, 0);
+}
+
+/** What share of the active validators' total weight voted. */
+function turnout(t: Tally): string {
+  const totalWeight = t.quorumThreshold / QUORUM_SHARE;
+  return totalWeight > 0 ? pct(votedWeight(t), totalWeight) : "—";
+}
+
+function weight(v: number): string {
+  return v.toLocaleString("en-US", { maximumFractionDigits: 0 });
+}
+
 /** A treasury spend's amount: a plain integer is uaeth; from the coin-spend
  *  height it may be one coin of another denom, e.g. USDC. */
 function spendAmount(amount: string): string {
@@ -44,7 +64,7 @@ function LiveVote({ p, activeValidators }: { p: Proposal; activeValidators: numb
   const segs = t ? tallySegments(t) : [];
   const total = segs.reduce((a, s) => a + s.value, 0);
   const left = p.votingEndTime - Date.now() / 1000;
-  const quorum = t ? t.validVoterCount >= t.quorumThreshold : false;
+  const quorum = t ? votedWeight(t) > 0 && votedWeight(t) >= t.quorumThreshold : false;
   const voteCmd = `aetherd tx governance vote ${p.id} yes --from <validator-key>`;
 
   return (
@@ -71,7 +91,7 @@ function LiveVote({ p, activeValidators }: { p: Proposal; activeValidators: numb
           ) : (
             "If it passes, the chain executes the proposal's parameter change."
           )}{" "}
-          Only active validators' votes count, weighted by their tenure.
+          Only active validators vote, each weighted by its voting power and tenure.
         </div>
         <div style={{ display: "flex", gap: "8px 24px", marginTop: 18, fontSize: 13, flexWrap: "wrap" }} className="muted">
           <span>
@@ -88,11 +108,12 @@ function LiveVote({ p, activeValidators }: { p: Proposal; activeValidators: numb
           <span>
             Turnout{" "}
             <span className="mono" style={{ color: "var(--bone)" }}>
-              {t ? `${t.validVoterCount}${activeValidators ? ` / ${activeValidators}` : ""}` : "—"}
+              {t ? turnout(t) : "—"}
             </span>{" "}
-            validators
+            of the weight
+            {t ? ` · ${t.validVoterCount}${activeValidators ? ` / ${activeValidators}` : ""} validators` : ""}
           </span>
-          <span>{t ? (quorum ? "quorum reached" : `quorum needs ${t.quorumThreshold}`) : ""}</span>
+          <span>{t ? (quorum ? "quorum reached" : `quorum needs ${QUORUM_SHARE * 100}%`) : ""}</span>
         </div>
         <div style={{ margin: "12px 0 18px" }}>
           <StackBar segments={segs} height={14} />
@@ -167,11 +188,14 @@ function ProposalRow({ p }: { p: Proposal }) {
                 valid voters <span className="mono dim">{t.validVoterCount}</span>
               </span>
               <span>
-                quorum <span className="mono dim">{t.quorumThreshold}</span>
+                turnout <span className="mono dim">{turnout(t)}</span>
+              </span>
+              <span>
+                quorum needs <span className="mono dim">{weight(t.quorumThreshold)}</span>
               </span>
               {segs.map((s) => (
                 <span key={s.label}>
-                  {s.label.toLowerCase()} <span className="mono dim">{String(s.value)}</span>
+                  {s.label.toLowerCase()} <span className="mono dim">{weight(s.value)}</span>
                 </span>
               ))}
             </div>
@@ -187,7 +211,7 @@ function ProposalRow({ p }: { p: Proposal }) {
                 <AddressLink address={v.voter} plain />
                 <span className="mono">{v.option.replace("VOTE_OPTION_", "").replace(/_/g, " ")}</span>
                 <span className="mono muted" style={{ marginLeft: "auto" }}>
-                  weight {v.weight}
+                  tenure when cast {v.weight}
                 </span>
               </div>
             ))
@@ -264,7 +288,7 @@ export default function Governance() {
           <div className="empty">No proposals yet.</div>
         )}
         <div className="muted" style={{ padding: "12px 22px", borderTop: "1px solid var(--rule)", fontSize: 12 }}>
-          Passes with ⅔ of non-abstain voting power; rejected if No with veto reaches ⅓. Quorum is 60% of validators. Click a proposal for its votes.
+          Passes with ⅔ of non-abstain voting power; rejected if No with veto reaches ⅓. Each vote weighs the validator's voting power times its tenure; quorum is 60% of the active validators' total weight. Click a proposal for its votes.
         </div>
       </div>
     </div>

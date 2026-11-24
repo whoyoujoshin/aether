@@ -200,6 +200,33 @@ USDC only from a pool when there is one.
 The findings above (F1 to F4) were found before the bounty and aren't
 eligible.
 
+### The testnet bug hunt's rewards (2026-11-06 to 11-20)
+
+Ten valid reports, all from **Aditaaji**, all private through GitHub. Joshua
+set the amounts on 2026-11-20 (the tiers above, by impact rather than the
+advisories' own severity labels) and told the reporter on GHSA-3cvf. They're
+owed in mainnet AETH, paid from the treasury after launch by treasury-spend
+proposals.
+
+| Advisory | What | Tier | Owed |
+|---|---|---|---|
+| GHSA-cgcr-f6g2-ch5v | Delegations survived a key change (F8) | Critical | 2,000 AETH |
+| GHSA-j2qr-v7fr-w36f | Session-key spend limit counted only `MsgSend` (F9) | High | 500 AETH |
+| GHSA-3cvf-5vjr-2h49 | Governance counted seats by head (F12) | High | 500 AETH |
+| GHSA-xm9h-23fw-7c6c | One prepaid deposit credited at every paywall sharing a payee | High | 500 AETH |
+| GHSA-pvjr-prhw-f4xf | aether-memo's memo was a bearer token | Medium | 100 AETH |
+| GHSA-vwgw-c458-cm74 | One x402 exact payment served by two paywalls | Medium | 100 AETH |
+| GHSA-g3xf-922c-253c | The job board stopped reading at 20,000 entries | Medium | 100 AETH |
+| GHSA-vq8p-6fm2-64f4 | Faucet agent keys multiplied a caller's quota | Medium | 100 AETH |
+| GHSA-2xhq-v7x8-2ffq | Faucet limits reset on restart | Low | credit |
+| GHSA-h833-qwm8-68g6 | The job board's storage filled up for good | Low | credit |
+| **Total** | | | **3,900 AETH** |
+
+GHSA-3cvf and GHSA-xm9h are rated above their advisories' Moderate: the
+first let a treasury spend pass without the validators' votes, and the
+second let prepaid withdrawals pay out from the paywall's key at every
+paywall sharing a payee.
+
 ## 5. Before launch
 
 - ~~Pick `AuxPoWInputGuardHeight` and `ModuleAccountsActivationHeight` for
